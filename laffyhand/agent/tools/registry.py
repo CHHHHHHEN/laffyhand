@@ -12,6 +12,10 @@ class ToolRegistry:
         self._tools: dict[str, BaseTool] = {}
         self._defs: list[ToolDefinition] | None = None
         self.permission = permission or PermissionManager()
+        self._on_build_defs: list[Any] = []
+
+    def on_build_defs(self, callback: Any) -> None:
+        self._on_build_defs.append(callback)
 
     def register_tool(self, tool: BaseTool) -> None:
         self._tools[tool.name] = tool
@@ -22,6 +26,8 @@ class ToolRegistry:
         self._defs = None
 
     def build_tool_definitions(self) -> list[ToolDefinition]:
+        for cb in self._on_build_defs:
+            cb()
         if self._defs is None:
             self._defs = [t.to_definition() for t in self._tools.values()]
         return self._defs

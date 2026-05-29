@@ -7,9 +7,10 @@ load_dotenv()
 from loguru import logger
 from laffyhand import setup_logging
 from laffyhand.agent.schemas import CompactionConfig, SystemMessage, UserMessage, SessionUsage
+from laffyhand.agent.skill import SkillRegistry
 from laffyhand.agent.llm.builders import deepseek_route
 from laffyhand.agent.llm.facade import LLM
-from laffyhand.agent.tools import ToolRegistry
+from laffyhand.agent.tools import ToolRegistry, SkillTool
 from laffyhand.agent.tools.file import ReadTool, WriteTool, EditTool, GlobTool, GrepTool
 from laffyhand.agent.tools.bash import BashTool
 from laffyhand.agent.tools.todo import TodoTool
@@ -38,6 +39,16 @@ async def main():
     llm = LLM(model=OPENCODE_MODEL_NAME, route=route)
     logger.info(f"Agent session started, model={OPENCODE_MODEL_NAME}")
 
+    # ── Skills ────────────────────────────────────────────
+    skill_registry = SkillRegistry()
+    skill_paths_env = os.getenv("SKILLS_PATHS", "")
+    if skill_paths_env:
+        skill_dirs = [d.strip() for d in skill_paths_env.split(":") if d.strip()]
+    else:
+        skill_dirs = ["skills/"]
+    skill_registry.discover(skill_dirs)
+
+    # ── Tools ─────────────────────────────────────────────
     tool_registry = ToolRegistry()
     tool_registry.register_tool(ReadTool())
     tool_registry.register_tool(WriteTool())
@@ -47,7 +58,22 @@ async def main():
     tool_registry.register_tool(BashTool())
     tool_registry.register_tool(TodoTool(todo_path=os.getenv("TODOS_PATH", ".todos.json")))
 
-    system_message = SystemMessage(content=SYSTEM_PROMPT + tool_registry.build_tool_prompt())
+    skill_tool = SkillTool(skill_registry, tool_registry.permission)
+    tool_registry.register_tool(skill_tool)
+
+    def _update_skill_description():
+        summary = skill_registry.build_skills_summary()
+        if summary:
+            skill_tool.description = f"Load and inject a skill into context.\n\nAvailable skills:\n{summary}"
+        else:
+            skill_tool.description = "Load and inject a skill into context."
+    tool_registry.on_build_defs(_update_skill_description)
+    _update_skill_description()
+
+    system_content = SYSTEM_PROMPT + tool_registry.build_tool_prompt()
+    if skill_registry.all():
+        system_content += "\n\n" + skill_registry.build_skills_summary()
+    system_message = SystemMessage(content=system_content)
     history: list = [system_message]
     compaction_config = CompactionConfig(
         tail_turns=int(os.getenv("COMPACTION_TAIL_TURNS", "2")),
