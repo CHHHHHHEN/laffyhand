@@ -141,8 +141,21 @@ async def agent_loop(
                 output_tokens=estimate_tokens("".join(content_buf)),
             )
 
+        # Ensure AssistantMessage always has content or tool_calls — the API rejects
+        # assistant messages where both are absent (e.g. after a stream error).
+        combined_content = "".join(content_buf) if content_buf else None
+        if combined_content is None and not tool_calls:
+            if finish_reason == "error":
+                combined_content = "[Error: LLM stream failed]"
+            elif finish_reason == "length":
+                combined_content = "[Response truncated by token limit]"
+            elif finish_reason == "content_filter":
+                combined_content = "[Response filtered by content policy]"
+            else:
+                combined_content = "" if reasoning_buf else "[Empty response]"
+
         assistant_msg = AssistantMessage(
-            content="".join(content_buf) if content_buf else None,
+            content=combined_content,
             reasoning="".join(reasoning_buf) if reasoning_buf else None,
             tool_calls=tool_calls if tool_calls else None,
             tokens=usage,

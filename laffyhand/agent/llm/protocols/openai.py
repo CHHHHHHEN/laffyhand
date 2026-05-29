@@ -86,6 +86,9 @@ def _message_to_openai(msg: Message) -> dict:
         d: dict = {"role": "assistant"}
         if msg.content is not None:
             d["content"] = msg.content
+        elif not msg.tool_calls:
+            # API requires at least content or tool_calls; provide a fallback.
+            d["content"] = "[Empty response]"
         if msg.reasoning is not None:
             d["reasoning_content"] = msg.reasoning
         if msg.tool_calls:

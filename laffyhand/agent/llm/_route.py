@@ -15,7 +15,7 @@ def _redact_url(url: str) -> str:
     )
     return redacted.geturl()
 
-from laffyhand.agent.schemas import LLMRequest, StreamEvent, StreamFinish
+from laffyhand.agent.schemas import LLMRequest, StreamEvent, StreamFinish, StreamError
 from laffyhand.agent.llm.specs import Protocol, Endpoint, Auth, Framing
 
 
@@ -60,9 +60,16 @@ class Route:
         logger.debug(f"Route POST {_redact_url(url)}")
 
         response = self.http_client.stream("POST", url, headers, body)
-        async for frame in self.framing.frames(response):
-            events = self.protocol.parse_frame(frame)
-            for event in events:
-                yield event
-            if any(isinstance(e, StreamFinish) for e in events):
-                break
+        try:
+            async for frame in self.framing.frames(response):
+                events = self.protocol.parse_frame(frame)
+                for event in events:
+                    yield event
+                if any(isinstance(e, StreamFinish) for e in events):
+                    break
+        except RuntimeError as e:
+            logger.error(f"LLM request failed: {e}")
+            yield StreamError(error=str(e))
+        except Exception as e:
+            logger.exception("Unexpected error in LLM stream")
+            yield StreamError(error=str(e))
