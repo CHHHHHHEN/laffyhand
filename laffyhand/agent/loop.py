@@ -111,11 +111,10 @@ def agent_loop(
         agent_state.turn_count += 1
 
         if usage is None:
-            content_text = "".join(content_buf)
             _logger.warning("API did not return usage, falling back to estimate_tokens")
             usage = Usage(
-                input_tokens=estimate_tokens(content_text),
-                output_tokens=estimate_tokens(content_text),
+                input_tokens=estimate_messages_tokens(messages),
+                output_tokens=estimate_tokens("".join(content_buf)),
             )
 
         assistant_msg = AssistantMessage(
