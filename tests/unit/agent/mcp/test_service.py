@@ -72,3 +72,85 @@ class TestNormalizeSchema(unittest.TestCase):
         result = _normalize_schema(schema)
         self.assertIn("anyOf", result["properties"]["x"])
         self.assertNotIn("nullable", result["properties"]["x"])
+
+    def test_recursive_nested_properties(self):
+        schema = {
+            "type": "object",
+            "properties": {
+                "outer": {
+                    "type": "object",
+                    "properties": {
+                        "inner": {"type": ["string", "null"]},
+                    },
+                },
+            },
+        }
+        result = _normalize_schema(schema)
+        inner = result["properties"]["outer"]["properties"]["inner"]
+        self.assertEqual(inner["type"], "string")
+        self.assertTrue(inner["nullable"])
+
+    def test_recursive_items(self):
+        schema = {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {"type": ["string", "null"]},
+                },
+            },
+        }
+        result = _normalize_schema(schema)
+        self.assertEqual(result["properties"]["items"]["items"]["type"], "string")
+        self.assertTrue(result["properties"]["items"]["items"]["nullable"])
+
+    def test_recursive_additional_properties(self):
+        schema = {
+            "type": "object",
+            "properties": {
+                "dict": {
+                    "type": "object",
+                    "additionalProperties": {"type": ["integer", "null"]},
+                },
+            },
+        }
+        result = _normalize_schema(schema)
+        ap = result["properties"]["dict"]["additionalProperties"]
+        self.assertEqual(ap["type"], "integer")
+        self.assertTrue(ap["nullable"])
+
+    def test_recursive_all_of(self):
+        schema = {
+            "type": "object",
+            "properties": {
+                "x": {
+                    "allOf": [
+                        {"type": "object", "properties": {"y": {"type": ["string", "null"]}}},
+                    ],
+                },
+            },
+        }
+        result = _normalize_schema(schema)
+        y = result["properties"]["x"]["allOf"][0]["properties"]["y"]
+        self.assertEqual(y["type"], "string")
+        self.assertTrue(y["nullable"])
+
+    def test_recursive_defs(self):
+        schema = {
+            "type": "object",
+            "properties": {
+                "ref": {"$ref": "#/$defs/MyType"},
+            },
+            "$defs": {
+                "MyType": {
+                    "type": "object",
+                    "properties": {
+                        "field": {"type": ["number", "null"]},
+                    },
+                },
+            },
+        }
+        result = _normalize_schema(schema)
+        field = result["$defs"]["MyType"]["properties"]["field"]
+        self.assertEqual(field["type"], "number")
+        self.assertTrue(field["nullable"])

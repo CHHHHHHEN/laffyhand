@@ -71,7 +71,7 @@ class SkillTool(BaseTool):
         for child in sorted(base_dir.iterdir()):
             if child.name == "SKILL.md":
                 continue
-            if child.is_file() or child.is_dir():
+            if child.is_file():
                 files.append(child)
                 if len(files) >= max_files:
                     break

@@ -8,8 +8,15 @@ class SkillRegistry:
     def __init__(self) -> None:
         self._skills: dict[str, SkillInfo] = {}
 
+    def clear(self) -> None:
+        self._skills.clear()
+
     def discover(self, dirs: list[str | Path]) -> None:
         self._skills.update(discover_skills(dirs))
+
+    def rediscover(self, dirs: list[str | Path]) -> None:
+        self.clear()
+        self.discover(dirs)
 
     def get(self, name: str) -> SkillInfo | None:
         return self._skills.get(name)

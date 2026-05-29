@@ -25,10 +25,6 @@ class MCPClient:
         self._session: ClientSession | None = None
         self._exit_stack: Any = None
 
-    @property
-    def is_connected(self) -> bool:
-        return self._session is not None
-
     async def connect(self) -> None:
         from contextlib import AsyncExitStack
         self._exit_stack = AsyncExitStack()
@@ -64,10 +60,9 @@ class MCPClient:
         cfg: RemoteMCPConfig = self.config  # type: ignore[assignment]
         transport = cfg.transport
         if transport is None:
-            if cfg.url.rstrip("/").endswith("/sse"):
-                transport = "sse"
-            else:
-                transport = "streamable-http"
+            base = cfg.url.split("?")[0].rstrip("/")
+            transport = "sse" if base.endswith("/sse") else "streamable-http"
+            logger.debug(f"Auto-detected MCP transport '{transport}' for '{cfg.url}'")
 
         if transport == "sse":
             await self._connect_sse(cfg)

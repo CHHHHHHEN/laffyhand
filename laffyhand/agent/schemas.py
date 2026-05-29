@@ -110,6 +110,7 @@ class SessionUsage(BaseModel):
         inp = usage.input_tokens or 0
         out = usage.output_tokens or 0
         cache = usage.cache_read_tokens or 0
+        reasoning = usage.reasoning_tokens or 0
         sess_total = self.total_input + self.total_output
         if self.context_size:
             pct = f" ({sess_total / self.context_size * 100:.2f}%)"
@@ -117,7 +118,16 @@ class SessionUsage(BaseModel):
         else:
             pct = ""
             limit = _k(sess_total)
-        return f"[⬆{_k(inp)} / ⬇{_k(out)} | +{_k(cache)} | {_k(sess_total)}/{limit}{pct}]"
+        parts = [f"⬆{_k(inp)}", f"⬇{_k(out)}"]
+        if reasoning:
+            parts.append(f"🧠{_k(reasoning)}")
+        if cache:
+            parts.append(f"📦{_k(cache)}")
+        if self.total_reasoning:
+            parts.append(f"🧠Σ{_k(self.total_reasoning)}")
+        if self.total_cache_read:
+            parts.append(f"📦Σ{_k(self.total_cache_read)}")
+        return f"[{' / '.join(parts)} | {_k(sess_total)}/{limit}{pct}]"
 
 
 # ─── Stream Events ──────────────────────────────────────────────────

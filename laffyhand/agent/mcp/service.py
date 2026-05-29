@@ -1,3 +1,4 @@
+import asyncio
 import copy
 from typing import Any
 
@@ -10,7 +11,6 @@ from laffyhand.agent.tools.base import BaseTool
 
 class MCPWrappedTool(BaseTool):
     def __init__(self, server_name: str, tool_def: MCPToolDef, client: MCPClient) -> None:
-        self._server_name = server_name
         self._tool_def = tool_def
         self._client = client
         safe_name = tool_def.name.replace("-", "_").replace(".", "_").replace(" ", "_")
@@ -30,42 +30,81 @@ class MCPWrappedTool(BaseTool):
 
 
 def _normalize_schema(schema: dict) -> dict:
-    """Normalize JSON schema for OpenAI compatibility."""
+    """Normalize JSON schema for OpenAI compatibility (recursive)."""
     result = copy.deepcopy(schema)
-    props = result.get("properties", {})
-    for key, prop in props.items():
-        if isinstance(prop, dict):
-            prop_types = prop.get("type")
-            if isinstance(prop_types, list):
-                if "null" in prop_types:
-                    non_null = [t for t in prop_types if t != "null"]
-                    prop["type"] = non_null[0] if len(non_null) == 1 else non_null
-                    prop["nullable"] = True
-            any_of = prop.get("anyOf")
-            if isinstance(any_of, list):
-                null_types = [s for s in any_of if isinstance(s, dict) and s.get("type") == "null"]
-                if null_types:
-                    non_null = [s for s in any_of if isinstance(s, dict) and s.get("type") != "null"]
-                    if len(non_null) == 1:
-                        prop.clear()
-                        prop.update(non_null[0])
-                        prop["nullable"] = True
-                    elif non_null:
-                        prop["anyOf"] = non_null
-                        prop["nullable"] = True
-            one_of = prop.get("oneOf")
-            if isinstance(one_of, list):
-                null_types = [s for s in one_of if isinstance(s, dict) and s.get("type") == "null"]
-                if null_types:
-                    non_null = [s for s in one_of if isinstance(s, dict) and s.get("type") != "null"]
-                    if len(non_null) == 1:
-                        prop.clear()
-                        prop.update(non_null[0])
-                        prop["nullable"] = True
-                    elif non_null:
-                        prop["oneOf"] = non_null
-                        prop["nullable"] = True
+    _normalize_schema_node(result)
     return result
+
+
+def _normalize_schema_node(node: dict) -> None:
+    """In-place normalize a single schema node and recurse into children."""
+    _strip_null(node)
+
+    for key in ("properties", "patternProperties", "definitions", "$defs"):
+        subs = node.get(key)
+        if isinstance(subs, dict):
+            for sub in subs.values():
+                if isinstance(sub, dict):
+                    _normalize_schema_node(sub)
+
+    items = node.get("items")
+    if isinstance(items, dict):
+        _normalize_schema_node(items)
+    elif isinstance(items, list):
+        for item in items:
+            if isinstance(item, dict):
+                _normalize_schema_node(item)
+
+    additional = node.get("additionalProperties")
+    if isinstance(additional, dict):
+        _normalize_schema_node(additional)
+
+    for key in ("allOf", "anyOf", "oneOf"):
+        subs = node.get(key)
+        if isinstance(subs, list):
+            for sub in subs:
+                if isinstance(sub, dict):
+                    _normalize_schema_node(sub)
+
+    not_node = node.get("not")
+    if isinstance(not_node, dict):
+        _normalize_schema_node(not_node)
+
+    if_schema = node.get("if")
+    if isinstance(if_schema, dict):
+        _normalize_schema_node(if_schema)
+    then_schema = node.get("then")
+    if isinstance(then_schema, dict):
+        _normalize_schema_node(then_schema)
+    else_schema = node.get("else")
+    if isinstance(else_schema, dict):
+        _normalize_schema_node(else_schema)
+
+
+def _strip_null(node: dict) -> None:
+    """Handle nullable types in a single schema node."""
+    type_val = node.get("type")
+    if isinstance(type_val, list):
+        if "null" in type_val:
+            non_null = [t for t in type_val if t != "null"]
+            node["type"] = non_null[0] if len(non_null) == 1 else non_null
+            node["nullable"] = True
+
+    for key in ("anyOf", "oneOf"):
+        subs = node.get(key)
+        if not isinstance(subs, list):
+            continue
+        null_types = [s for s in subs if isinstance(s, dict) and s.get("type") == "null"]
+        if not null_types:
+            continue
+        non_null = [s for s in subs if isinstance(s, dict) and s.get("type") != "null"]
+        if len(non_null) == 1:
+            node.clear()
+            node.update(non_null[0])
+            node["nullable"] = True
+        elif non_null:
+            node[key] = non_null
+            node["nullable"] = True
 
 
 Status = str
@@ -77,8 +116,9 @@ class MCPService:
         self._status: dict[str, Status] = {}
 
     async def connect_all(self, configs: dict[str, MCPConfig]) -> None:
-        for name, cfg in configs.items():
-            await self._connect_one(name, cfg)
+        async with asyncio.TaskGroup() as tg:
+            for name, cfg in configs.items():
+                tg.create_task(self._connect_one(name, cfg))
 
     async def _connect_one(self, name: str, cfg: MCPConfig) -> None:
         client = MCPClient(name, cfg)
