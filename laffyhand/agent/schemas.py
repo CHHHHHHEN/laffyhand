@@ -183,6 +183,7 @@ class StreamError(BaseModel):
 class AgentState(BaseModel):
     messages: List[Message]
     turn_count: int = 0
+    step: int = 0
     usage: SessionUsage = SessionUsage()
 
 

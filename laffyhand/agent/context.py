@@ -135,6 +135,35 @@ def build_summary_text(messages: Sequence[Message], tool_truncate: int = 500) ->
     return "\n".join(lines)
 
 
+PRUNE_PROTECT = 40_000
+PRUNE_MINIMUM = 20_000
+
+
+def prune(messages: list[Message]) -> int:
+    tool_indices: list[int] = []
+    total_tokens = 0
+    for i in range(len(messages) - 1, -1, -1):
+        msg = messages[i]
+        if isinstance(msg, ToolMessage):
+            total_tokens += estimate_tokens(msg.content)
+            tool_indices.append(i)
+    if total_tokens <= PRUNE_PROTECT:
+        return 0
+    target = max(PRUNE_MINIMUM, total_tokens // 2)
+    pruned = 0
+    for idx in reversed(tool_indices):
+        msg = messages[idx]
+        if not isinstance(msg, ToolMessage):
+            continue
+        old_t = estimate_tokens(msg.content)
+        if total_tokens - pruned <= target:
+            break
+        msg.content = f"[Tool output pruned: {old_t} tokens]"
+        pruned += old_t - estimate_tokens(msg.content)
+    logger.info(f"Pruned {pruned} tokens from tool outputs")
+    return pruned
+
+
 # TODO: 添加空闲会话主动压缩（nanobot AutoCompact 模式）
 # TODO: 添加图片占位符压缩（hermes ContextCompressor 图像剥离）
 # TODO: 增量摘要（每次在之前摘要基础上追加）
