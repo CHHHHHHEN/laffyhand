@@ -16,3 +16,6 @@ wheels/
 logs/
 laffybot.db*
 skills/
+.todos.json
+test.txt
+*.tmp

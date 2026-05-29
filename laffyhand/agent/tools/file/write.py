@@ -27,7 +27,11 @@ class WriteTool(BaseTool):
         }
 
     async def run(self, params: dict[str, Any]) -> str:
-        path = Path(params["file_path"])
+        raw = params["file_path"]
+        path = Path(raw)
+        if not path.is_absolute():
+            path = Path.cwd() / path
+        path = path.resolve()
         path.parent.mkdir(parents=True, exist_ok=True)
         content = params["content"]
         fd, tmp = tempfile.mkstemp(dir=path.parent, suffix=".tmp")

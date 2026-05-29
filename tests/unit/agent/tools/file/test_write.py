@@ -27,3 +27,19 @@ class TestWriteTool(unittest.TestCase):
         self.assertIn("File written", result)
         self.assertTrue(f.exists())
         self.assertEqual(f.read_text(), "nested")
+
+    def test_write_relative_path(self):
+        """Relative paths should be resolved against CWD."""
+        orig_cwd = Path.cwd()
+        try:
+            import os
+            os.chdir(self.root)
+            tool = WriteTool()
+            result = asyncio.run(tool.run({"file_path": "relative.txt", "content": "relative-path"}))
+            self.assertIn("File written", result)
+            target = self.root / "relative.txt"
+            self.assertTrue(target.exists())
+            self.assertEqual(target.read_text(), "relative-path")
+        finally:
+            import os
+            os.chdir(orig_cwd)
