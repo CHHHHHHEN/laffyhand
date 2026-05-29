@@ -7,7 +7,7 @@ from laffyhand.agent.schemas import ToolDefinition, ToolResultContent
 class BaseTool(ABC):
     name: str = ""
     description: str = ""
-    max_result_size: int | None = 2000
+    max_result_size: int | None = 10000
 
     def to_definition(self) -> ToolDefinition:
         return ToolDefinition(

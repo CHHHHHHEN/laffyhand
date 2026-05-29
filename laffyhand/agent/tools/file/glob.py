@@ -9,6 +9,7 @@ from laffyhand.agent.tools.base import BaseTool
 class GlobTool(BaseTool):
     name = "glob"
     description = "Find files matching a glob pattern."
+    max_result_size = 50000
 
     def _input_schema(self) -> dict:
         return {

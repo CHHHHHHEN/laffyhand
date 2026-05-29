@@ -140,7 +140,7 @@ def build_summary_text(messages: Sequence[Message], tool_truncate: int = 500) ->
 
 PRUNE_PROTECT = 40_000
 PRUNE_MINIMUM = 20_000
-_PRUNE_MIN_SAVINGS = 10
+_PRUNE_MIN_SAVINGS = 50
 
 
 def prune(messages: list[Message]) -> int:
