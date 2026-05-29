@@ -138,6 +138,7 @@ def build_summary_text(messages: Sequence[Message], tool_truncate: int = 500) ->
 
 PRUNE_PROTECT = 40_000
 PRUNE_MINIMUM = 20_000
+_PRUNE_MIN_SAVINGS = 10
 
 
 def prune(messages: list[Message]) -> int:
@@ -157,6 +158,8 @@ def prune(messages: list[Message]) -> int:
         if not isinstance(msg, ToolMessage):
             continue
         old_t = estimate_tokens(msg.content)
+        if old_t < _PRUNE_MIN_SAVINGS:
+            continue
         if total_tokens - pruned <= target:
             break
         msg.content = f"[Tool output pruned: {old_t} tokens]"
