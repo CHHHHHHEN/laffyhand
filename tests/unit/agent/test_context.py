@@ -1,11 +1,19 @@
+from __future__ import annotations
+
 import unittest
+from unittest.mock import MagicMock
+
+import pytest
+
 from laffyhand.agent.schemas import (
-    SystemMessage, UserMessage, AssistantMessage, ToolMessage,
-    ToolCallContent, CompactionConfig,
+    AgentState, AssistantMessage, CompactionConfig, SessionUsage,
+    StreamError, StreamFinish, StreamText, SystemMessage,
+    ToolCallContent, ToolMessage, UserMessage,
 )
 from laffyhand.agent.compaction import (
-    estimate_message_tokens, estimate_messages_tokens,
-    is_overflow, select_tail, build_summary_text,
+    compact, compact_with_chain, estimate_message_tokens,
+    estimate_messages_tokens, is_overflow, select_tail,
+    build_summary_text,
 )
 from laffyhand.agent.prune import prune, PRUNE_PROTECT
 
@@ -150,3 +158,142 @@ class TestPrune(unittest.TestCase):
         msgs = [SystemMessage(content="sys"), UserMessage(content="hi")]
         result = prune(msgs)
         self.assertIs(result, msgs, "no tool messages -> return same list")
+
+    def test_prune_skips_small_savings(self):
+        large = ToolMessage(tool_call_id="c1", content="x" * (PRUNE_PROTECT * 4 + 5))
+        tiny = ToolMessage(tool_call_id="c2", content="tiny")
+        msgs = [tiny, large]
+        result = prune(msgs)
+        self.assertEqual(result[0].content, "tiny", "tiny messages should not be pruned")
+        self.assertTrue(result[1].content.startswith("[Tool output pruned:"))
+
+    def test_prune_partial_some_kept(self):
+        content1 = "x" * (PRUNE_PROTECT * 4 + 5)
+        content2 = "y" * (PRUNE_PROTECT * 4 + 5)
+        msgs = [
+            ToolMessage(tool_call_id="c1", content=content1),
+            ToolMessage(tool_call_id="c2", content=content2),
+        ]
+        result = prune(msgs)
+        pruned_count = sum(1 for m in result if m.content.startswith("[Tool output pruned:"))
+        self.assertGreater(pruned_count, 0)
+        self.assertLess(pruned_count, 3)
+
+
+class TestCompact(unittest.TestCase):
+    @pytest.mark.anyio
+    async def test_compact_no_head_returns_false(self):
+        state = AgentState(
+            messages=[SystemMessage(content="sys"), UserMessage(content="hi")],
+            usage=SessionUsage(context_size=0),
+        )
+        config = CompactionConfig(tail_turns=5)
+        llm = MagicMock()
+        result = await compact(state, llm, config)
+        self.assertFalse(result)
+
+    @pytest.mark.anyio
+    async def test_compact_generates_summary(self):
+        msgs = [SystemMessage(content="sys")]
+        for i in range(20):
+            msgs.append(UserMessage(content=f"user {i}"))
+            msgs.append(AssistantMessage(content=f"asst {i}"))
+        state = AgentState(
+            messages=msgs,
+            usage=SessionUsage(context_size=100_000),
+        )
+        config = CompactionConfig(tail_turns=2, preserve_recent_tokens=6)
+
+        async def mock_stream(*args, **kwargs):
+            yield StreamText(delta="Summary of conversation.")
+            yield StreamFinish(finish_reason="stop")
+
+        llm = MagicMock()
+        llm.stream = mock_stream
+
+        result = await compact(state, llm, config)
+        self.assertTrue(result)
+        self.assertLess(len(state.messages), len(msgs))
+
+    @pytest.mark.anyio
+    async def test_compact_stream_error_returns_false(self):
+        msgs = [SystemMessage(content="sys")]
+        for i in range(20):
+            msgs.append(UserMessage(content=f"user {i}"))
+            msgs.append(AssistantMessage(content=f"asst {i}"))
+        state = AgentState(
+            messages=msgs,
+            usage=SessionUsage(context_size=100_000),
+        )
+        config = CompactionConfig(tail_turns=2, preserve_recent_tokens=6)
+
+        async def mock_stream(*args, **kwargs):
+            yield StreamError(error="LLM failed")
+
+        llm = MagicMock()
+        llm.stream = mock_stream
+
+        result = await compact(state, llm, config)
+        self.assertFalse(result)
+
+
+class TestCompactWithChain(unittest.TestCase):
+    @pytest.mark.anyio
+    async def test_compact_with_chain_no_head_returns_none(self):
+        state = AgentState(
+            messages=[SystemMessage(content="sys"), UserMessage(content="hi")],
+            usage=SessionUsage(context_size=0),
+        )
+        config = CompactionConfig(tail_turns=5)
+        llm = MagicMock()
+        result = await compact_with_chain(state, llm, config)
+        self.assertIsNone(result)
+
+    @pytest.mark.anyio
+    async def test_compact_with_chain_generates_summary(self):
+        msgs = [SystemMessage(content="sys")]
+        for i in range(20):
+            msgs.append(UserMessage(content=f"user {i}"))
+            msgs.append(AssistantMessage(content=f"asst {i}"))
+        state = AgentState(
+            messages=msgs,
+            usage=SessionUsage(context_size=100_000),
+        )
+        config = CompactionConfig(tail_turns=2, preserve_recent_tokens=6)
+
+        async def mock_stream(*args, **kwargs):
+            yield StreamText(delta="Chain summary.")
+            yield StreamFinish(finish_reason="stop")
+
+        llm = MagicMock()
+        llm.stream = mock_stream
+
+        result = await compact_with_chain(state, llm, config)
+        self.assertIsNotNone(result)
+        summary, system_msgs, tail = result
+        self.assertIsInstance(summary, str)
+        self.assertGreater(len(summary), 0)
+        self.assertIsInstance(system_msgs, list)
+        self.assertIsInstance(tail, list)
+        self.assertGreater(len(tail), 0)
+
+    @pytest.mark.anyio
+    async def test_compact_with_chain_stream_error_returns_none(self):
+        msgs = [SystemMessage(content="sys")]
+        for i in range(20):
+            msgs.append(UserMessage(content=f"user {i}"))
+            msgs.append(AssistantMessage(content=f"asst {i}"))
+        state = AgentState(
+            messages=msgs,
+            usage=SessionUsage(context_size=100_000),
+        )
+        config = CompactionConfig(tail_turns=2, preserve_recent_tokens=6)
+
+        async def mock_stream(*args, **kwargs):
+            yield StreamError(error="LLM failed")
+
+        llm = MagicMock()
+        llm.stream = mock_stream
+
+        result = await compact_with_chain(state, llm, config)
+        self.assertIsNone(result)

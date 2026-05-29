@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 import os
 import tempfile
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -381,3 +381,70 @@ class TestCompactOnOverflow:
         config = CompactionConfig()
         result = await _compact_on_overflow(state, llm, config, manager)
         assert result is False
+
+
+# ── create_runtime ─────────────────────────────────────────────
+
+class TestCreateRuntime:
+    @pytest.mark.anyio
+    async def test_creates_runtime(self):
+        from laffyhand.main import create_runtime
+
+        args = argparse.Namespace(session=None, resume=False, list=False)
+
+        with patch("laffyhand.main.OPENCODE_BASE_URL", "http://test"), \
+             patch("laffyhand.main.OPENCODE_API_KEY", "test-key"), \
+             patch("laffyhand.main.OPENCODE_MODEL_NAME", "test-model"), \
+             patch("laffyhand.main.MODEL_CONTEXT_SIZE", 128000), \
+             patch("laffyhand.main.deepseek_route") as mock_route, \
+             patch("laffyhand.main.LLM") as mock_llm, \
+             patch("laffyhand.main.MCPService") as mock_mcp, \
+             patch("laffyhand.main.SessionManager") as mock_sm:
+            mock_route.return_value = "route"
+            mock_llm.return_value = MagicMock()
+            mock_mcp_instance = MagicMock()
+            async def mock_get_wrapped():
+                return []
+            mock_mcp_instance = MagicMock()
+            mock_mcp_instance.get_wrapped_tools = mock_get_wrapped
+            mock_mcp.return_value = mock_mcp_instance
+            mock_sm_instance = MagicMock()
+            mock_sm.return_value = mock_sm_instance
+
+            runtime = await create_runtime(args)
+
+        assert runtime is not None
+        assert runtime.llm is not None
+        assert runtime.session_manager is not None
+        assert runtime.mcp_service is not None
+
+    @pytest.mark.anyio
+    async def test_runtime_has_registries(self):
+        from laffyhand.main import create_runtime
+
+        args = argparse.Namespace(session=None, resume=False, list=False)
+
+        with patch("laffyhand.main.OPENCODE_BASE_URL", "http://test"), \
+             patch("laffyhand.main.OPENCODE_API_KEY", "test-key"), \
+             patch("laffyhand.main.OPENCODE_MODEL_NAME", "test-model"), \
+             patch("laffyhand.main.MODEL_CONTEXT_SIZE", 128000), \
+             patch("laffyhand.main.deepseek_route") as mock_route, \
+             patch("laffyhand.main.LLM") as mock_llm, \
+             patch("laffyhand.main.MCPService") as mock_mcp, \
+             patch("laffyhand.main.SessionManager") as mock_sm:
+            mock_route.return_value = "route"
+            mock_llm.return_value = MagicMock()
+            async def mock_get_wrapped():
+                return []
+            mock_mcp_instance = MagicMock()
+            mock_mcp_instance.get_wrapped_tools = mock_get_wrapped
+            mock_mcp.return_value = mock_mcp_instance
+            mock_sm_instance = MagicMock()
+            mock_sm.return_value = mock_sm_instance
+
+            runtime = await create_runtime(args)
+
+        assert runtime.agent_registry is not None
+        assert runtime.tool_registry is not None
+        assert runtime.skill_registry is not None
+        assert runtime.subagent_manager is not None
