@@ -123,8 +123,6 @@ class SessionUsage(BaseModel):
     total_reasoning: int = 0
     total_cache_read: int = 0
     context_size: int = 0
-    last_input_tokens: Optional[int] = None
-    """Exact input token count from the most recent API response, if available."""
 
     def add(self, usage: Usage) -> None:
         self.total_input += usage.input_tokens or 0

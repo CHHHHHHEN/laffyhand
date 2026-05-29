@@ -72,7 +72,7 @@ class SimpleHTTPHandler(BaseHTTPRequestHandler):
             self.end_headers()
     
     def do_POST(self):
-        content_length = int(self.headers['Content-Length'])
+        content_length = int(self.headers.get('Content-Length', '0'))
         body = self.rfile.read(content_length)
         try:
             data = json.loads(body)

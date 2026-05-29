@@ -27,7 +27,7 @@ def setup_logging(
     logger.add(
         os.path.join(log_dir, "laffyhand_{time:YYYY-MM-DD}.log"),
         level=level,
-        retention=f"{retention} files",
+        retention=retention,
         format="{time:YYYY-MM-DD HH:mm:ss.SSS} | {level:<7} | {module}:{function}:{line} | {message}",
         encoding="utf-8",
         enqueue=True,

@@ -126,6 +126,7 @@ class OpenAIProtocol(Protocol):
         self._tool_call_acc: dict[int, dict] = {}
 
     def build_request(self, request: LLMRequest) -> dict:
+        self._tool_call_acc.clear()
         messages = [_message_to_openai(m) for m in request.messages]
         body: dict = {
             "model": request.model,

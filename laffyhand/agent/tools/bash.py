@@ -54,7 +54,10 @@ class BashTool(BaseTool):
 
     def run(self, params: dict[str, Any]) -> str:
         command = params["command"]
-        timeout = (params.get("timeout") or 120000) / 1000
+        timeout_ms = params.get("timeout")
+        if timeout_ms is None:
+            timeout_ms = 120000
+        timeout = timeout_ms / 1000
         workdir = params.get("workdir")
         logger.info(f"Bash: {_redact_command(command)}")
 

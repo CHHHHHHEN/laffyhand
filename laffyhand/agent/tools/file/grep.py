@@ -34,7 +34,10 @@ class GrepTool(BaseTool):
 
     def run(self, params: dict[str, Any]) -> str:
         root = Path(params.get("path", "."))
-        pattern = re.compile(params["pattern"])
+        try:
+            pattern = re.compile(params["pattern"])
+        except re.error as e:
+            return f"Invalid regex pattern: {e}"
         include = params.get("include", "*")
         max_size = 1_000_000
 
