@@ -1,6 +1,9 @@
+from __future__ import annotations
+
 import json
 from collections.abc import AsyncIterator
-from typing import Optional, Literal
+from typing import TYPE_CHECKING, Optional, Literal
+
 from loguru import logger
 from pydantic import BaseModel
 
@@ -9,9 +12,15 @@ from laffyhand.agent.schemas import (
     StreamToolCall, StreamFinish, StreamError, FinishReason,
     ToolCallContent, ToolMessage, Usage, UserMessage, estimate_tokens,
 )
-from laffyhand.agent.context import compact, prune, wrap_last_user, attach_reminder, estimate_messages_tokens, is_overflow
+from laffyhand.agent.context import (
+    compact, compact_with_chain, prune, wrap_last_user, attach_reminder,
+    estimate_messages_tokens, is_overflow,
+)
 from laffyhand.agent.llm.facade import LLM
 from laffyhand.agent.tools import ToolRegistry
+
+if TYPE_CHECKING:
+    from laffyhand.agent.session import SessionManager
 
 
 class AgentEvent(BaseModel):
@@ -21,17 +30,35 @@ class AgentEvent(BaseModel):
     usage: Optional[Usage] = None
 
 
-
 async def _compact_on_overflow(
     agent_state: AgentState,
     llm: LLM,
     compaction_config: CompactionConfig,
+    session_manager: SessionManager | None = None,
 ) -> bool:
     tokens = estimate_messages_tokens(agent_state.messages)
     if not is_overflow(tokens, agent_state.usage.context_size):
         logger.debug(f"No compaction needed: {tokens} tokens within context limit")
         return False
-    logger.info(f"Compaction triggered: {tokens} tokens, attempting compact...")
+    logger.info(f"Compaction triggered: {tokens} tokens")
+
+    if session_manager is not None and agent_state.session_id:
+        result = await compact_with_chain(agent_state, llm, compaction_config)
+        if result is None:
+            return False
+        summary, original_system, tail = result
+        child = session_manager.create_compacted_child(
+            parent_id=agent_state.session_id,
+            system_messages=original_system,
+            summary_content=summary,
+            tail_messages=tail,
+        )
+        summary_msg = UserMessage(content=summary.strip())
+        agent_state.session_id = child.id
+        agent_state.messages = original_system + [summary_msg] + tail
+        agent_state.step = 0
+        return True
+
     if await compact(agent_state, llm, compaction_config):
         logger.info("Compaction succeeded")
         return True
@@ -46,6 +73,7 @@ async def agent_loop(
     compaction_config: CompactionConfig = CompactionConfig(),
     max_steps: int = 50,
     reminder: str | None = None,
+    session_manager: SessionManager | None = None,
 ) -> AsyncIterator[AgentEvent]:
     messages = agent_state.messages
     context_size = agent_state.usage.context_size
@@ -67,7 +95,9 @@ async def agent_loop(
             agent_state.messages = messages
 
         if agent_state.step > 1 and context_size:
-            if await _compact_on_overflow(agent_state, llm, compaction_config):
+            if await _compact_on_overflow(
+                agent_state, llm, compaction_config, session_manager,
+            ):
                 messages = agent_state.messages
                 yield AgentEvent(type="compacting", data="Compacting conversation history...")
                 continue
@@ -127,6 +157,7 @@ async def agent_loop(
                 try:
                     params = json.loads(tc.args)
                 except json.JSONDecodeError:
+                    logger.warning(f"Failed to parse tool args for {tc.tool_name}: {tc.args[:200]}")
                     messages.append(ToolMessage(
                         tool_call_id=tc.tool_call_id,
                         content=f"Error: failed to parse tool arguments for {tc.tool_name}: {tc.args}",
@@ -143,10 +174,16 @@ async def agent_loop(
                 logger.debug("Pruning after tool calls")
                 messages = prune(messages)
                 agent_state.messages = messages
+            if session_manager is not None and agent_state.session_id:
+                session_manager.append_messages(agent_state.session_id, agent_state.messages)
             continue
 
         if finish_reason is not None:
-            if context_size and await _compact_on_overflow(agent_state, llm, compaction_config):
+            if session_manager is not None and agent_state.session_id:
+                session_manager.append_messages(agent_state.session_id, agent_state.messages)
+            if context_size and await _compact_on_overflow(
+                agent_state, llm, compaction_config, session_manager,
+            ):
                 messages = agent_state.messages
                 yield AgentEvent(type="compacting", data="Compacting conversation history...")
                 if compaction_config.auto_continue:

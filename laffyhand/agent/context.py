@@ -7,6 +7,7 @@ from laffyhand.agent.schemas import (
     StreamError, StreamFinish, StreamText, SystemMessage, ToolMessage,
     UserMessage, estimate_tokens,
 )
+from laffyhand.agent.session.models import TitleConfig
 from laffyhand.agent.llm.facade import LLM
 from laffyhand.agent.truncation import truncate_output
 
@@ -263,3 +264,71 @@ async def compact(agent_state: AgentState, llm: LLM, config: CompactionConfig) -
     agent_state.messages = original_system + [summary_msg] + tail
     logger.info(f"Compaction complete: {len(head_to_summarize)} messages -> 1 summary message")
     return True
+
+
+async def compact_with_chain(
+    agent_state: AgentState,
+    llm: LLM,
+    config: CompactionConfig,
+) -> tuple[str, list[SystemMessage], list[Message]] | None:
+    head, tail = select_tail(
+        agent_state.messages, config, agent_state.usage.context_size,
+    )
+    if not head:
+        logger.info("No messages to compact")
+        return None
+
+    original_system = [m for m in head if isinstance(m, SystemMessage)]
+    head_to_summarize = [m for m in head if not isinstance(m, SystemMessage)]
+
+    if not head_to_summarize:
+        logger.info("Only system messages in head, nothing to compact")
+        return None
+
+    logger.info(
+        f"Chain-compacting {len(head_to_summarize)} messages into summary, "
+        f"keeping {len(tail)} messages verbatim"
+    )
+
+    summary = await _summarize(llm, head_to_summarize, tool_truncate=config.summary_tool_truncate)
+    if not summary:
+        logger.warning("Chain compaction failed: no summary generated")
+        return None
+
+    logger.info(f"Chain compaction summary generated ({len(summary)} chars)")
+    return summary, original_system, tail
+
+
+async def generate_title(
+    session_manager,
+    session_id: str,
+    llm: LLM,
+    config: TitleConfig = TitleConfig(),
+) -> str | None:
+    if config.mode == "off":
+        return None
+    messages = session_manager.get_messages(session_id, limit=10)
+    user_prompts = [m for m in messages if isinstance(m, UserMessage)]
+    if not user_prompts:
+        logger.debug("No user messages found for title generation")
+        return None
+    first_prompt = user_prompts[0].content[:500]
+    title_messages: list[Message] = [
+        SystemMessage(content="You are a helpful assistant. Generate a concise title."),
+        UserMessage(content=f"{config.prompt}\n\nConversation start:\n{first_prompt}"),
+    ]
+    parts: list[str] = []
+    async for event in llm.stream(title_messages):
+        if isinstance(event, StreamText):
+            parts.append(event.delta)
+        elif isinstance(event, StreamFinish):
+            break
+        elif isinstance(event, StreamError):
+            logger.error(f"Title generation stream error: {event.error}")
+            return None
+    title = "".join(parts).strip().strip('"').strip("'")
+    if not title:
+        return None
+    session_manager.set_title(session_id, title)
+    logger.info(f"Title generated for {session_id}: {title}")
+    return title

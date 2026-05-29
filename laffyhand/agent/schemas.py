@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from loguru import logger
 from pydantic import BaseModel
 from typing import Optional, Literal, List, Union
@@ -167,6 +169,7 @@ class AgentState(BaseModel):
     turn_count: int = 0
     step: int = 0
     usage: SessionUsage = SessionUsage()
+    session_id: Optional[str] = None
 
 
 StreamEvent = Union[StreamText, StreamReasoning, StreamToolCall, StreamFinish, StreamError]
