@@ -1,4 +1,5 @@
 import asyncio
+import json
 import os
 import sys
 from dotenv import load_dotenv
@@ -14,6 +15,7 @@ from laffyhand.agent.tools import ToolRegistry, SkillTool
 from laffyhand.agent.tools.file import ReadTool, WriteTool, EditTool, GlobTool, GrepTool
 from laffyhand.agent.tools.bash import BashTool
 from laffyhand.agent.tools.todo import TodoTool
+from laffyhand.agent.mcp import MCPService, LocalMCPConfig, RemoteMCPConfig
 from laffyhand.agent.loop import AgentState, agent_loop
 
 OPENCODE_BASE_URL = os.environ['OPENCODE_BASE_URL']
@@ -48,8 +50,26 @@ async def main():
         skill_dirs = ["skills/"]
     skill_registry.discover(skill_dirs)
 
+    # ── MCP ───────────────────────────────────────────────
+    mcp_service = MCPService()
+    mcp_servers_json = os.getenv("MCP_SERVERS", "")
+    if mcp_servers_json:
+        try:
+            raw: dict = json.loads(mcp_servers_json)
+            mcp_configs: dict[str, LocalMCPConfig | RemoteMCPConfig] = {}
+            for name, cfg in raw.items():
+                if "command" in cfg:
+                    mcp_configs[name] = LocalMCPConfig.model_validate(cfg)
+                else:
+                    mcp_configs[name] = RemoteMCPConfig.model_validate(cfg)
+            await mcp_service.connect_all(mcp_configs)
+        except Exception as e:
+            logger.error(f"Failed to load MCP servers: {e}")
+
     # ── Tools ─────────────────────────────────────────────
     tool_registry = ToolRegistry()
+    for mcp_tool in await mcp_service.get_wrapped_tools():
+        tool_registry.register_tool(mcp_tool)
     tool_registry.register_tool(ReadTool())
     tool_registry.register_tool(WriteTool())
     tool_registry.register_tool(EditTool())
@@ -102,6 +122,8 @@ async def main():
             else:
                 print(event.data, end="")
         print()
+
+    await mcp_service.disconnect_all()
 
 
 if __name__ == "__main__":
