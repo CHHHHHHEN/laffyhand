@@ -125,6 +125,9 @@ async def handle_repl_command(
         if not arg:
             print("Usage: /session <id>")
             return True
+        # Save current state before switching
+        if state.session_id and session_manager.get(state.session_id):
+            session_manager.save_state(state.session_id, state)
         tip = session_manager.get_compression_tip(arg)
         loaded = session_manager.load_state(tip)
         if loaded is None:
@@ -141,6 +144,8 @@ async def handle_repl_command(
 
     if command == "/new":
         if state.session_id:
+            if session_manager.get(state.session_id):
+                session_manager.save_state(state.session_id, state)
             session_manager.complete(state.session_id)
         session = session_manager.create(
             cwd=os.getcwd(),
