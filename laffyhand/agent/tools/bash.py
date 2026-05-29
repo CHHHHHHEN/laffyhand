@@ -26,6 +26,10 @@ class BashTool(BaseTool):
                     "type": "integer",
                     "description": "Timeout in milliseconds (default: 120000)",
                 },
+                "workdir": {
+                    "type": "string",
+                    "description": "Working directory for the command (default: current directory)",
+                },
             },
             "required": ["command"],
         }
@@ -33,6 +37,7 @@ class BashTool(BaseTool):
     def run(self, params: dict[str, Any]) -> ToolResultContent:
         command = params["command"]
         timeout = (params.get("timeout") or 120000) / 1000
+        workdir = params.get("workdir")
 
         try:
             result = subprocess.run(
@@ -41,6 +46,7 @@ class BashTool(BaseTool):
                 capture_output=True,
                 text=True,
                 timeout=timeout,
+                cwd=workdir,
             )
             output = result.stdout
             if result.stderr:
