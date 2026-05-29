@@ -1,3 +1,4 @@
+import glob as glob_module
 import re
 from pathlib import Path
 from typing import Any
@@ -9,6 +10,7 @@ from laffyhand.agent.tools.base import BaseTool
 class GrepTool(BaseTool):
     name = "grep"
     description = "Search file contents using a regular expression."
+    max_result_size = 100_000
 
     def _input_schema(self) -> dict:
         return {
@@ -34,10 +36,16 @@ class GrepTool(BaseTool):
         root = Path(params.get("path", "."))
         pattern = re.compile(params["pattern"])
         include = params.get("include", "*")
+        max_size = 1_000_000
 
+        matched_files = sorted(glob_module.glob(include, root_dir=root, recursive=True))
         matches: list[str] = []
-        for fp in sorted(root.rglob(include)):
+        for rel_path in matched_files:
+            fp = root / rel_path
             if not fp.is_file():
+                continue
+            if fp.stat().st_size > max_size:
+                matches.append(f"{fp}: skipped (file too large)")
                 continue
             try:
                 text = fp.read_text(encoding="utf-8", errors="replace")
