@@ -1,4 +1,5 @@
 import json
+import tempfile
 import uuid
 from pathlib import Path
 from typing import Any
@@ -50,14 +51,23 @@ class TodoTool(BaseTool):
     def _load(self) -> list[dict]:
         path = Path(self._todo_path)
         if path.exists():
-            return json.loads(path.read_text(encoding="utf-8"))
+            try:
+                return json.loads(path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                return []
         return []
 
     def _save(self, todos: list[dict]) -> None:
-        Path(self._todo_path).write_text(
-            json.dumps(todos, indent=2, ensure_ascii=False),
-            encoding="utf-8",
-        )
+        path = Path(self._todo_path)
+        data = json.dumps(todos, indent=2, ensure_ascii=False)
+        fd, tmp = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
+        try:
+            with open(fd, "w", encoding="utf-8") as f:
+                f.write(data)
+            Path(tmp).replace(path)
+        except:
+            Path(tmp).unlink(missing_ok=True)
+            raise
 
     def run(self, params: dict[str, Any]) -> ToolResultContent:
         action = params["action"]

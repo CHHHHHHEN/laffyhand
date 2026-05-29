@@ -44,6 +44,11 @@ class ReadTool(BaseTool):
         limit = params.get("limit")
 
         if offset is not None:
+            if offset < 1:
+                return ToolResultContent(
+                    tool_call_id="", tool_name=self.name,
+                    result=f"Invalid offset: {offset}. Offset must be >= 1.",
+                )
             lines = lines[offset - 1:]
         if limit is not None:
             lines = lines[:limit]

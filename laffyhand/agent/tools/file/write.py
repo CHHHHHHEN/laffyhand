@@ -1,3 +1,4 @@
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -28,9 +29,17 @@ class WriteTool(BaseTool):
     def run(self, params: dict[str, Any]) -> ToolResultContent:
         path = Path(params["file_path"])
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(params["content"], encoding="utf-8")
+        content = params["content"]
+        fd, tmp = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
+        try:
+            with open(fd, "w", encoding="utf-8") as f:
+                f.write(content)
+            Path(tmp).replace(path)
+        except:
+            Path(tmp).unlink(missing_ok=True)
+            raise
         return ToolResultContent(
             tool_call_id="",
             tool_name=self.name,
-            result=f"File written: {path} ({len(params['content'])} chars)",
+            result=f"File written: {path} ({len(content)} chars)",
         )
