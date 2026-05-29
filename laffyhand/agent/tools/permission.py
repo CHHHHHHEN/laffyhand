@@ -23,6 +23,9 @@ class PermissionManager:
 
     async def ask(self, permission: str, patterns: list[str]) -> bool:
         """Interactive permission prompt. Returns True if allowed, False if denied."""
+        if self._rules.get(permission) == "deny":
+            logger.info(f"Permission '{permission}' denied by tool-level rule")
+            return False
         for pattern in patterns:
             rule = self._rules.get(f"{permission}:{pattern}")
             if rule == "deny":

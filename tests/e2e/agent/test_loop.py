@@ -6,7 +6,7 @@ from laffyhand.agent.schemas import (
     StreamText, StreamToolCall, StreamFinish,
 )
 
-from laffyhand.agent.loop import AgentEvent, agent_loop
+from laffyhand.agent.loop import agent_loop
 from laffyhand.agent.tools.base import BaseTool
 from laffyhand.agent.tools.registry import ToolRegistry
 

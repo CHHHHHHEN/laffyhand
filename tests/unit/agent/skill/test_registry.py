@@ -23,8 +23,9 @@ class TestSkillRegistry(unittest.TestCase):
         self.assertIsNone(self.registry.get("nonexistent"))
 
     def test_get_returns_skill(self):
-        # Manually inject via discover (use a helper to populate)
-        pass
+        self.registry._skills["skill-a"] = self.info_a
+        result = self.registry.get("skill-a")
+        self.assertIs(result, self.info_a)
 
     def test_require_found(self):
         # Force-populate the internal dict

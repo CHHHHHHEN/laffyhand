@@ -39,6 +39,7 @@ class MCPClient:
                 await self._connect_remote()
             logger.info(f"MCP client '{self.name}' connected")
         except Exception:
+            await self._exit_stack.aclose()
             self._exit_stack = None
             self._session = None
             raise
@@ -101,7 +102,7 @@ class MCPClient:
 
     async def _connect_streamable_http(self, cfg: RemoteMCPConfig) -> None:
         http_client = await self._exit_stack.enter_async_context(
-            httpx.AsyncClient(headers=cfg.headers, follow_redirects=True, timeout=None)
+            httpx.AsyncClient(headers=cfg.headers, follow_redirects=True, timeout=cfg.timeout)
         )
         read, write, _ = await self._exit_stack.enter_async_context(
             streamable_http_client(cfg.url, http_client=http_client)

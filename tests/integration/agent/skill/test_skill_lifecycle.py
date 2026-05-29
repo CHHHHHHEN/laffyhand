@@ -2,9 +2,7 @@ import asyncio
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
 
-from laffyhand.agent.skill.models import SkillInfo
 from laffyhand.agent.skill.registry import SkillRegistry
 from laffyhand.agent.skill.discovery import discover_skills
 from laffyhand.agent.tools.skill_tool import SkillTool

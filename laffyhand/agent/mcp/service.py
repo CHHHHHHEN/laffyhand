@@ -1,3 +1,4 @@
+import copy
 from typing import Any
 
 from loguru import logger
@@ -30,7 +31,7 @@ class MCPWrappedTool(BaseTool):
 
 def _normalize_schema(schema: dict) -> dict:
     """Normalize JSON schema for OpenAI compatibility."""
-    result = dict(schema)
+    result = copy.deepcopy(schema)
     props = result.get("properties", {})
     for key, prop in props.items():
         if isinstance(prop, dict):

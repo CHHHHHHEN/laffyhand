@@ -2,7 +2,7 @@ import asyncio
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 from laffyhand.agent.skill.models import SkillInfo, SkillNotFoundError
 from laffyhand.agent.skill.registry import SkillRegistry
