@@ -120,13 +120,13 @@ class SessionUsage(BaseModel):
             limit = _k(sess_total)
         parts = [f"⬆{_k(inp)}", f"⬇{_k(out)}"]
         if reasoning:
-            parts.append(f"🧠{_k(reasoning)}")
+            parts.append(f"[r:{_k(reasoning)}]")
         if cache:
-            parts.append(f"📦{_k(cache)}")
+            parts.append(f"[c:{_k(cache)}]")
         if self.total_reasoning:
-            parts.append(f"🧠Σ{_k(self.total_reasoning)}")
+            parts.append(f"[Σr:{_k(self.total_reasoning)}]")
         if self.total_cache_read:
-            parts.append(f"📦Σ{_k(self.total_cache_read)}")
+            parts.append(f"[Σc:{_k(self.total_cache_read)}]")
         return f"[{' / '.join(parts)} | {_k(sess_total)}/{limit}{pct}]"
 
 

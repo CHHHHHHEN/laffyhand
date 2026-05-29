@@ -1,3 +1,4 @@
+import asyncio
 from typing import Literal
 
 from loguru import logger
@@ -23,9 +24,13 @@ class PermissionManager:
 
     async def ask(self, permission: str, patterns: list[str]) -> bool:
         """Interactive permission prompt. Returns True if allowed, False if denied."""
-        if self._rules.get(permission) == "deny":
+        blanket = self._rules.get(permission)
+        if blanket == "deny":
             logger.info(f"Permission '{permission}' denied by tool-level rule")
             return False
+        if blanket == "allow":
+            logger.info(f"Permission '{permission}' allowed by tool-level rule")
+            return True
         for pattern in patterns:
             rule = self._rules.get(f"{permission}:{pattern}")
             if rule == "deny":
@@ -35,7 +40,6 @@ class PermissionManager:
                 logger.info(f"Permission '{permission}:{pattern}' allowed by rule")
                 continue
             prompt = f"\nAllow {permission} '{pattern}'? [y/N/a] "
-            import asyncio
             try:
                 answer = (await asyncio.to_thread(input, prompt)).strip().lower()
             except (EOFError, OSError):

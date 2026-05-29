@@ -1,3 +1,4 @@
+from contextlib import AsyncExitStack
 from typing import Any
 
 import httpx
@@ -23,10 +24,9 @@ class MCPClient:
         self.name = name
         self.config = config
         self._session: ClientSession | None = None
-        self._exit_stack: Any = None
+        self._exit_stack: AsyncExitStack | None = None
 
     async def connect(self) -> None:
-        from contextlib import AsyncExitStack
         self._exit_stack = AsyncExitStack()
         try:
             if isinstance(self.config, LocalMCPConfig):
@@ -41,6 +41,7 @@ class MCPClient:
             raise
 
     async def _connect_stdio(self) -> None:
+        assert self._exit_stack is not None
         cfg: LocalMCPConfig = self.config  # type: ignore[assignment]
         params = StdioServerParameters(
             command=cfg.command[0],
@@ -57,6 +58,7 @@ class MCPClient:
         self._session = session
 
     async def _connect_remote(self) -> None:
+        assert self._exit_stack is not None
         cfg: RemoteMCPConfig = self.config  # type: ignore[assignment]
         transport = cfg.transport
         if transport is None:
@@ -74,6 +76,7 @@ class MCPClient:
             await self._connect_streamable_http(cfg)
 
     async def _connect_sse(self, cfg: RemoteMCPConfig) -> None:
+        assert self._exit_stack is not None
         def _client_factory(
             headers: dict[str, str] | None = None,
             timeout: httpx.Timeout | None = None,
@@ -100,6 +103,7 @@ class MCPClient:
         self._session = session
 
     async def _connect_streamable_http(self, cfg: RemoteMCPConfig) -> None:
+        assert self._exit_stack is not None
         http_client = await self._exit_stack.enter_async_context(
             httpx.AsyncClient(headers=cfg.headers, follow_redirects=True, timeout=cfg.timeout)
         )

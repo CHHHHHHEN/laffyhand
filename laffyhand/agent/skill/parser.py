@@ -5,7 +5,7 @@ from loguru import logger
 from laffyhand.agent.skill.models import SkillInfo
 
 
-def _parse_frontmatter(text: str) -> dict | None:
+def _parse_frontmatter(text: str) -> dict[str, str] | None:
     """Extract YAML-like frontmatter between --- delimiters."""
     lines = text.splitlines()
     if not lines or lines[0].strip() != "---":

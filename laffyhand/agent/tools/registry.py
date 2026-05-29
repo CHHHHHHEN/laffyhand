@@ -28,10 +28,9 @@ class ToolRegistry:
         self._dirty = True
 
     def build_tool_definitions(self) -> list[ToolDefinition]:
-        for cb in self._on_build_defs:
-            cb()
-            self._dirty = True
         if self._dirty:
+            for cb in self._on_build_defs:
+                cb()
             self._defs = [t.to_definition() for t in self._tools.values()]
             self._dirty = False
             logger.debug(f"Built {len(self._defs)} tool definition(s): {[d.name for d in self._defs]}")

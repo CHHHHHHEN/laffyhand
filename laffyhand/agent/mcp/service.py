@@ -139,6 +139,9 @@ class MCPService:
         return self._clients.get(name)
 
     async def connect_all(self, configs: dict[str, MCPConfig]) -> None:
+        # NOTE: 在连接完成前就存储 config，使得首次连接失败的 server
+        # 后续仍可通过 reconnect() 重试。如果不需要此行为，可在连接失败后
+        # 从 _reconnect_cfgs 中移除对应条目。
         self._reconnect_cfgs.update(configs)
         async with asyncio.TaskGroup() as tg:
             for name, cfg in configs.items():
