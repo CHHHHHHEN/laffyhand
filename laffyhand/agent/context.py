@@ -8,6 +8,7 @@ from laffyhand.agent.schemas import (
     UserMessage, estimate_tokens,
 )
 from laffyhand.agent.llm.facade import LLM
+from laffyhand.agent.truncation import truncate_output
 
 
 def estimate_message_tokens(msg: Message) -> int:
@@ -32,8 +33,10 @@ def estimate_messages_tokens(messages: list[Message]) -> int:
 
 
 def is_overflow(tokens: int, context_size: int, reserved: int = 20_000) -> bool:
-    usable = context_size - reserved
-    return usable > 0 and tokens >= usable
+    if context_size <= 0:
+        return False
+    usable = max(context_size - reserved, context_size // 10)
+    return tokens >= usable
 
 
 def select_tail(
@@ -131,15 +134,70 @@ def build_summary_text(messages: Sequence[Message], tool_truncate: int = 500) ->
                 for tc in msg.tool_calls:
                     lines.append(f"[Tool Call: {tc.tool_name}]: {tc.args}")
         elif isinstance(msg, ToolMessage):
-            lines.append(f"[Tool Result - {msg.tool_call_id}]: {truncate_tool_output(msg.content, tool_truncate)}")
+            lines.append(f"[Tool Result - {msg.tool_call_id}]: {truncate_output(msg.content, tool_truncate)}")
     return "\n".join(lines)
 
 
-def truncate_tool_output(text: str, max_chars: int = 2_000) -> str:
-    if not text or len(text) <= max_chars:
-        return text
-    omitted = len(text) - max_chars
-    return f"{text[:max_chars]}\n[Tool output truncated: omitted {omitted} chars]"
+def wrap_last_user(messages: list[Message]) -> list[Message]:
+    result = list(messages)
+    for i in range(len(result) - 1, -1, -1):
+        msg = result[i]
+        if isinstance(msg, UserMessage):
+            content = msg.content
+            if content.startswith("<system-reminder>") and content.rstrip().endswith("</system-reminder>"):
+                return result
+            result[i] = UserMessage(content=f"<system-reminder>\n{content}\n</system-reminder>")
+            return result
+    return result
+
+
+def attach_reminder(messages: list[Message], reminder: str) -> list[Message]:
+    for i, msg in enumerate(messages):
+        if isinstance(msg, SystemMessage):
+            if reminder not in msg.content:
+                result = list(messages)
+                result[i] = SystemMessage(content=msg.content + f"\n\n{reminder}")
+                return result
+            return list(messages)
+    return list(messages)
+
+
+PRUNE_PROTECT = 40_000
+PRUNE_MINIMUM = 20_000
+_PRUNE_MIN_SAVINGS = 50
+
+
+def prune(messages: list[Message]) -> list[Message]:
+    tool_indices: list[int] = []
+    total_tokens = 0
+    for i in range(len(messages) - 1, -1, -1):
+        msg = messages[i]
+        if isinstance(msg, ToolMessage):
+            total_tokens += estimate_tokens(msg.content)
+            tool_indices.append(i)
+    if total_tokens <= PRUNE_PROTECT:
+        return messages
+    target = max(PRUNE_MINIMUM, total_tokens // 2)
+    pruned = 0
+    result = list(messages)
+    for idx in reversed(tool_indices):
+        msg = result[idx]
+        if not isinstance(msg, ToolMessage):
+            continue
+        old_t = estimate_tokens(msg.content)
+        if old_t < _PRUNE_MIN_SAVINGS:
+            continue
+        if total_tokens - pruned <= target:
+            break
+        new_content = f"[Tool output pruned: {old_t} tokens]"
+        result[idx] = ToolMessage(
+            tool_call_id=msg.tool_call_id,
+            content=new_content,
+        )
+        pruned += old_t - estimate_tokens(new_content)
+    logger.info(f"Pruned {pruned} tokens from tool outputs")
+    return result
+
 
 
 def _summarize(llm: LLM, head: Sequence[Message], tool_truncate: int = 500) -> str | None:
