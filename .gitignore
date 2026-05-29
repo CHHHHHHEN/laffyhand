@@ -14,4 +14,4 @@ wheels/
 .env
 
 logs/
-laffybot.db
+laffybot.db*
