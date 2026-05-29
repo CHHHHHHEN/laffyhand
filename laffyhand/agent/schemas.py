@@ -18,28 +18,11 @@ class ToolDefinition(BaseModel):
     input_schema: dict
 
 
-# ─── Content Parts ──────────────────────────────────────────────────
-
-class TextContent(BaseModel):
-    type: Literal['text'] = 'text'
-    text: str
-
-
 class ToolCallContent(BaseModel):
     type: Literal['tool-call'] = 'tool-call'
     tool_call_id: str
     tool_name: str
     args: str
-
-
-class ToolResultContent(BaseModel):
-    type: Literal['tool-result'] = 'tool-result'
-    tool_call_id: str
-    tool_name: str
-    result: str
-
-
-ContentPart = Union[TextContent, ToolCallContent, ToolResultContent]
 
 
 # ─── Prompt Messages ────────────────────────────────────────────────
@@ -92,14 +75,6 @@ class LLMRequest(BaseModel):
     model: str
     messages: list[Message]
     tools: Optional[list[ToolDefinition]] = None
-
-
-# ─── Provider Config ─────────────────────────────────────────────────
-
-class LLMProviderConfig(BaseModel):
-    name: str
-    base_url: str
-    api_key: str
 
 
 # ─── Usage ──────────────────────────────────────────────────────────
@@ -164,7 +139,7 @@ class StreamToolCall(BaseModel):
     args: str
 
 
-FinishReason = Literal['stop', 'length', 'content_filter', 'tool_calls', 'error', 'other']
+FinishReason = Literal['stop', 'length', 'tool_calls', 'error', 'other']
 
 class StreamFinish(BaseModel):
     type: Literal['finish'] = 'finish'
