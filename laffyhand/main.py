@@ -48,18 +48,27 @@ def main():
         tail_turns=int(os.getenv("COMPACTION_TAIL_TURNS", "2")),
     )
     state = AgentState(messages=history, turn_count=0, usage=SessionUsage(context_size=MODEL_CONTEXT_SIZE))
+    max_steps = int(os.getenv("MAX_STEPS", "50"))
 
-    user_prompt = input("Type message: ")
-    user_message = UserMessage(content=user_prompt)
-    state.messages.append(user_message)
+    while True:
+        try:
+            user_prompt = input("\nYou: ")
+        except (EOFError, KeyboardInterrupt):
+            break
+        if user_prompt.lower() in ("", "/exit", "quit", "exit"):
+            break
 
-    for event in agent_loop(state, llm, tool_registry, compaction_config):
-        if event.type == "content" and event.finish_reason is not None and event.usage:
-            print()
-            print(state.usage.display(event.usage))
-        else:
-            print(event.data, end="")
-    print()
+        state.step = 0
+        user_message = UserMessage(content=user_prompt)
+        state.messages.append(user_message)
+
+        for event in agent_loop(state, llm, tool_registry, compaction_config, max_steps=max_steps):
+            if event.type == "content" and event.finish_reason is not None and event.usage:
+                print()
+                print(state.usage.display(event.usage))
+            else:
+                print(event.data, end="")
+        print()
 
 
 if __name__ == "__main__":
