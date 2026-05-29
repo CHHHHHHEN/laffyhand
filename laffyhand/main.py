@@ -166,6 +166,12 @@ async def main():
 
     runtime = await create_runtime(args)
 
+    if args.list:
+        sessions = runtime.session_manager.list_sessions(limit=20)
+        print_sessions(sessions)
+        await runtime.shutdown()
+        return
+
     system_content = runtime.build_system_prompt(SYSTEM_PROMPT)
     system_message = SystemMessage(content=system_content)
 

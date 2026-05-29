@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-from __future__ import annotations
-
 import asyncio
-from collections.abc import Awaitable
+from collections.abc import Coroutine
 import uuid
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Callable, Literal
@@ -181,9 +179,9 @@ class SubagentManager:
         session_id: str,
         parent_session_id: str,
         agent_type: str,
-        coro: Callable[[], Awaitable[None]],
+        coro: Callable[[], Coroutine[Any, Any, None]],
     ) -> None:
-        task = asyncio.ensure_future(coro())
+        task: asyncio.Task[None] = asyncio.create_task(coro())
         running = _RunningSubagent(
             task_id=task_id,
             session_id=session_id,

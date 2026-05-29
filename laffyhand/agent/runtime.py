@@ -234,10 +234,9 @@ class AgentRuntime:
         ):
             if event.type == "content" and event.finish_reason is not None:
                 last_msg = child_state.messages[-1]
-                if isinstance(last_msg, SystemMessage):
-                    pass
-                elif hasattr(last_msg, "content") and last_msg.content:
-                    result_parts.append(last_msg.content)
+                if hasattr(last_msg, "content") and last_msg.content:
+                    if not isinstance(last_msg, SystemMessage):
+                        result_parts.append(last_msg.content)
 
         assert child_state.session_id is not None
         self.session_manager.save_state(child_state.session_id, child_state)
