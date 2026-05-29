@@ -215,7 +215,7 @@ def prune(messages: list[Message]) -> list[Message]:
 
 
 
-def _summarize(llm: LLM, head: Sequence[Message], tool_truncate: int = 500) -> str | None:
+async def _summarize(llm: LLM, head: Sequence[Message], tool_truncate: int = 500) -> str | None:
     head_text = build_summary_text(head, tool_truncate=tool_truncate)
     summary_prompt = SUMMARY_PROMPT_TEMPLATE.format(head_text=head_text)
 
@@ -225,7 +225,7 @@ def _summarize(llm: LLM, head: Sequence[Message], tool_truncate: int = 500) -> s
     ]
 
     text_parts: list[str] = []
-    for event in llm.stream(summary_messages):
+    async for event in llm.stream(summary_messages):
         if isinstance(event, StreamText):
             text_parts.append(event.delta)
         elif isinstance(event, StreamFinish):
@@ -237,7 +237,7 @@ def _summarize(llm: LLM, head: Sequence[Message], tool_truncate: int = 500) -> s
     return "".join(text_parts) if text_parts else None
 
 
-def compact(agent_state: AgentState, llm: LLM, config: CompactionConfig) -> bool:
+async def compact(agent_state: AgentState, llm: LLM, config: CompactionConfig) -> bool:
     head, tail = select_tail(
         agent_state.messages, config, agent_state.usage.context_size,
     )
@@ -254,7 +254,7 @@ def compact(agent_state: AgentState, llm: LLM, config: CompactionConfig) -> bool
 
     logger.info(f"Compacting {len(head_to_summarize)} messages into summary, keeping {len(tail)} messages verbatim")
 
-    summary = _summarize(llm, head_to_summarize, tool_truncate=config.summary_tool_truncate)
+    summary = await _summarize(llm, head_to_summarize, tool_truncate=config.summary_tool_truncate)
     if not summary:
         logger.warning("Compaction failed: no summary generated")
         return False

@@ -1,3 +1,4 @@
+import asyncio
 import unittest
 
 from laffyhand.agent.tools.base import BaseTool
@@ -13,7 +14,7 @@ class CountTool(BaseTool):
     def _input_schema(self) -> dict:
         return {"type": "object", "properties": {"text": {"type": "string"}}, "required": ["text"]}
 
-    def run(self, params: dict) -> str:
+    async def run(self, params: dict) -> str:
         return params.get("text", "")
 
 
@@ -21,7 +22,7 @@ class FailingTool(BaseTool):
     name = "fail"
     description = "Always fails"
 
-    def run(self, params: dict) -> str:
+    async def run(self, params: dict) -> str:
         raise RuntimeError("intentional failure")
 
 
@@ -33,14 +34,13 @@ class TestRegistryIntegration(unittest.TestCase):
         pm.deny("count")
         registry = ToolRegistry(permission=pm)
         registry.register_tool(CountTool())
-        result = registry.run_tool("count", {"text": "x" * 100})
+        result = asyncio.run(registry.run_tool("count", {"text": "x" * 100}))
         self.assertIn("not permitted", result)
-        # Even though text > max_result_size, permission check comes first
 
     def test_truncation_applied(self):
         registry = ToolRegistry()
         registry.register_tool(CountTool())
-        result = registry.run_tool("count", {"text": "x" * 100})
+        result = asyncio.run(registry.run_tool("count", {"text": "x" * 100}))
         self.assertIn("[Tool output truncated:", result)
 
     def test_new_tool_available_immediately(self):
@@ -48,10 +48,10 @@ class TestRegistryIntegration(unittest.TestCase):
         registry.register_tool(CountTool())
         self.assertEqual(len(registry.build_tool_definitions()), 1)
         registry.register_tool(CountTool())
-        self.assertEqual(len(registry.build_tool_definitions()), 1)  # overwrite
+        self.assertEqual(len(registry.build_tool_definitions()), 1)
 
     def test_error_propagation(self):
         registry = ToolRegistry()
         registry.register_tool(FailingTool())
         with self.assertRaises(RuntimeError):
-            registry.run_tool("fail", {})
+            asyncio.run(registry.run_tool("fail", {}))

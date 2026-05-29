@@ -70,7 +70,7 @@ class TodoTool(BaseTool):
             Path(tmp).unlink(missing_ok=True)
             raise
 
-    def run(self, params: dict[str, Any]) -> str:
+    async def run(self, params: dict[str, Any]) -> str:
         action = params["action"]
         todos = self._load()
 

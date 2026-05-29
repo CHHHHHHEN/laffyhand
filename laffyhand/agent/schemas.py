@@ -18,28 +18,11 @@ class ToolDefinition(BaseModel):
     input_schema: dict
 
 
-# ─── Content Parts ──────────────────────────────────────────────────
-
-class TextContent(BaseModel):
-    type: Literal['text'] = 'text'
-    text: str
-
-
 class ToolCallContent(BaseModel):
     type: Literal['tool-call'] = 'tool-call'
     tool_call_id: str
     tool_name: str
     args: str
-
-
-class ToolResultContent(BaseModel):
-    type: Literal['tool-result'] = 'tool-result'
-    tool_call_id: str
-    tool_name: str
-    result: str
-
-
-ContentPart = Union[TextContent, ToolCallContent, ToolResultContent]
 
 
 # ─── Prompt Messages ────────────────────────────────────────────────
@@ -94,14 +77,6 @@ class LLMRequest(BaseModel):
     tools: Optional[list[ToolDefinition]] = None
 
 
-# ─── Provider Config ─────────────────────────────────────────────────
-
-class LLMProviderConfig(BaseModel):
-    name: str
-    base_url: str
-    api_key: str
-
-
 # ─── Usage ──────────────────────────────────────────────────────────
 
 class Usage(BaseModel):
@@ -135,6 +110,7 @@ class SessionUsage(BaseModel):
         inp = usage.input_tokens or 0
         out = usage.output_tokens or 0
         cache = usage.cache_read_tokens or 0
+        reasoning = usage.reasoning_tokens or 0
         sess_total = self.total_input + self.total_output
         if self.context_size:
             pct = f" ({sess_total / self.context_size * 100:.2f}%)"
@@ -142,7 +118,16 @@ class SessionUsage(BaseModel):
         else:
             pct = ""
             limit = _k(sess_total)
-        return f"[⬆{_k(inp)} / ⬇{_k(out)} | +{_k(cache)} | {_k(sess_total)}/{limit}{pct}]"
+        parts = [f"⬆{_k(inp)}", f"⬇{_k(out)}"]
+        if reasoning:
+            parts.append(f"[r:{_k(reasoning)}]")
+        if cache:
+            parts.append(f"[c:{_k(cache)}]")
+        if self.total_reasoning:
+            parts.append(f"[Σr:{_k(self.total_reasoning)}]")
+        if self.total_cache_read:
+            parts.append(f"[Σc:{_k(self.total_cache_read)}]")
+        return f"[{' / '.join(parts)} | {_k(sess_total)}/{limit}{pct}]"
 
 
 # ─── Stream Events ──────────────────────────────────────────────────

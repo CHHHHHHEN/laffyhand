@@ -1,8 +1,9 @@
-import http.client as client
 import json
 from urllib.parse import urlparse
-from typing import Generator, Optional
+from collections.abc import AsyncIterator
+from typing import Optional
 from loguru import logger
+import httpx
 
 
 def _redact_url(url: str) -> str:
@@ -23,22 +24,15 @@ class HTTPClient:
         self.timeout = timeout
         self.max_retries = max_retries
 
-    def stream(self, method: str, url: str, headers: dict, body: bytes) -> Generator[bytes, None, None]:
-        parsed = urlparse(url)
-        path = parsed.path + ("?" + parsed.query if parsed.query else "")
-        ConnectionClass = client.HTTPSConnection if parsed.scheme == "https" else client.HTTPConnection
-        conn = ConnectionClass(host=parsed.netloc, timeout=self.timeout)
-        try:
-            conn.request(method, path, body=body, headers=headers)
-            response = conn.getresponse()
-            logger.debug(f"HTTP {response.status} from {_redact_url(url)}")
-            if response.status != 200:
-                error_body = response.read().decode("utf-8", errors="replace")
-                logger.error(f"HTTP {response.status}: {error_body}")
-                raise RuntimeError(f"HTTP {response.status}: {error_body}")
-            yield from response
-        finally:
-            conn.close()
+    async def stream(self, method: str, url: str, headers: dict, body: bytes) -> AsyncIterator[bytes]:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(self.timeout)) as client:
+            async with client.stream(method, url, headers=headers, content=body) as response:
+                logger.debug(f"HTTP {response.status_code} from {_redact_url(url)}")
+                if response.status_code != 200:
+                    error_body = await response.aread()
+                    raise RuntimeError(f"HTTP {response.status_code}: {error_body.decode()}")
+                async for chunk in response.aiter_bytes():
+                    yield chunk
 
 
 class Route:
@@ -56,7 +50,7 @@ class Route:
         self.framing = framing
         self.http_client = http_client or HTTPClient()
 
-    def execute(self, request: LLMRequest) -> Generator[StreamEvent, None, None]:
+    async def execute(self, request: LLMRequest) -> AsyncIterator[StreamEvent]:
         url = self.endpoint.build(request.model)
         body_dict = self.protocol.build_request(request)
         body = json.dumps(body_dict).encode("utf-8")
@@ -66,7 +60,7 @@ class Route:
         logger.debug(f"Route POST {_redact_url(url)}")
 
         response = self.http_client.stream("POST", url, headers, body)
-        for frame in self.framing.frames(response):
+        async for frame in self.framing.frames(response):
             events = self.protocol.parse_frame(frame)
             for event in events:
                 yield event

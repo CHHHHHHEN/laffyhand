@@ -1,5 +1,6 @@
 import json
-from typing import Optional, Literal, Generator
+from collections.abc import AsyncIterator
+from typing import Optional, Literal
 from loguru import logger
 from pydantic import BaseModel
 
@@ -21,7 +22,7 @@ class AgentEvent(BaseModel):
 
 
 
-def _compact_on_overflow(
+async def _compact_on_overflow(
     agent_state: AgentState,
     llm: LLM,
     compaction_config: CompactionConfig,
@@ -31,21 +32,21 @@ def _compact_on_overflow(
         logger.debug(f"No compaction needed: {tokens} tokens within context limit")
         return False
     logger.info(f"Compaction triggered: {tokens} tokens, attempting compact...")
-    if compact(agent_state, llm, compaction_config):
+    if await compact(agent_state, llm, compaction_config):
         logger.info("Compaction succeeded")
         return True
     logger.warning("Compaction failed: could not compact conversation")
     return False
 
 
-def agent_loop(
+async def agent_loop(
     agent_state: AgentState,
     llm: LLM,
     tool_registry: ToolRegistry,
     compaction_config: CompactionConfig = CompactionConfig(),
     max_steps: int = 50,
     reminder: str | None = None,
-) -> Generator[AgentEvent, None, None]:
+) -> AsyncIterator[AgentEvent]:
     messages = agent_state.messages
     context_size = agent_state.usage.context_size
 
@@ -66,7 +67,7 @@ def agent_loop(
             agent_state.messages = messages
 
         if agent_state.step > 1 and context_size:
-            if _compact_on_overflow(agent_state, llm, compaction_config):
+            if await _compact_on_overflow(agent_state, llm, compaction_config):
                 messages = agent_state.messages
                 yield AgentEvent(type="compacting", data="Compacting conversation history...")
                 continue
@@ -79,7 +80,7 @@ def agent_loop(
         tool_definitions = tool_registry.build_tool_definitions()
         logger.debug(f"Sending {len(messages)} messages to LLM, {len(tool_definitions)} tools")
 
-        for event in llm.stream(messages, tools=tool_definitions):
+        async for event in llm.stream(messages, tools=tool_definitions):
             if isinstance(event, StreamReasoning):
                 reasoning_buf.append(event.delta)
                 yield AgentEvent(type="reasoning", data=event.delta)
@@ -132,7 +133,7 @@ def agent_loop(
                     ))
                     yield AgentEvent(type="tool_result", data=f"Error: invalid JSON args for {tc.tool_name}")
                     continue
-                result = tool_registry.run_tool(tc.tool_name, params)
+                result = await tool_registry.run_tool(tc.tool_name, params)
                 messages.append(ToolMessage(
                     tool_call_id=tc.tool_call_id,
                     content=result,
@@ -145,7 +146,7 @@ def agent_loop(
             continue
 
         if finish_reason is not None:
-            if context_size and _compact_on_overflow(agent_state, llm, compaction_config):
+            if context_size and await _compact_on_overflow(agent_state, llm, compaction_config):
                 messages = agent_state.messages
                 yield AgentEvent(type="compacting", data="Compacting conversation history...")
                 if compaction_config.auto_continue:

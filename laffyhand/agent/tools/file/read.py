@@ -30,7 +30,7 @@ class ReadTool(BaseTool):
             "required": ["file_path"],
         }
 
-    def run(self, params: dict[str, Any]) -> str:
+    async def run(self, params: dict[str, Any]) -> str:
         path = Path(params["file_path"])
         if not path.exists():
             logger.warning(f"Read: file not found {path}")

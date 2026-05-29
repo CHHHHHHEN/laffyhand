@@ -12,7 +12,7 @@ from typing import Callable, Any, Self, override
 from loguru import logger
 
 from laffyhand import setup_logging
-from laffyhand.agent.schemas import LLMProviderConfig
+from laffyhand.agent.llm.specs import LLMProviderConfig
 
 DB_PATH = os.environ['DB_PATH']
 

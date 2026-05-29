@@ -1,4 +1,5 @@
-from typing import Generator, Optional
+from collections.abc import AsyncIterator
+from typing import Optional
 
 from loguru import logger
 from laffyhand.agent.schemas import LLMRequest, Message, StreamEvent, ToolDefinition
@@ -10,9 +11,10 @@ class LLM:
         self.model = model
         self.route = route
 
-    def stream(
+    async def stream(
         self, messages: list[Message], tools: Optional[list[ToolDefinition]] = None
-    ) -> Generator[StreamEvent, None, None]:
+    ) -> AsyncIterator[StreamEvent]:
         request = LLMRequest(model=self.model, messages=messages, tools=tools)
         logger.info(f"Sending {len(messages)} messages to LLM ({self.model})")
-        yield from self.route.execute(request)
+        async for event in self.route.execute(request):
+            yield event

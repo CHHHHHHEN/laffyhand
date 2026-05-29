@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from typing import Any
 
 from loguru import logger
@@ -10,20 +11,29 @@ from laffyhand.agent.truncation import truncate_output
 class ToolRegistry:
     def __init__(self, permission: PermissionManager | None = None) -> None:
         self._tools: dict[str, BaseTool] = {}
-        self._defs: list[ToolDefinition] | None = None
+        self._defs: list[ToolDefinition] = []
+        self._dirty = True
         self.permission = permission or PermissionManager()
+        self._on_build_defs: list[Callable[[], None]] = []
+
+    def on_build_defs(self, callback: Callable[[], None]) -> None:
+        self._on_build_defs.append(callback)
 
     def register_tool(self, tool: BaseTool) -> None:
         self._tools[tool.name] = tool
-        self._defs = None
+        self._dirty = True
 
     def unregister_tool(self, name: str) -> None:
         self._tools.pop(name, None)
-        self._defs = None
+        self._dirty = True
 
     def build_tool_definitions(self) -> list[ToolDefinition]:
-        if self._defs is None:
+        if self._dirty:
+            for cb in self._on_build_defs:
+                cb()
             self._defs = [t.to_definition() for t in self._tools.values()]
+            self._dirty = False
+            logger.debug(f"Built {len(self._defs)} tool definition(s): {[d.name for d in self._defs]}")
         return self._defs
 
     def build_tool_prompt(self) -> str:
@@ -32,7 +42,7 @@ class ToolRegistry:
             lines.append(f"- **{tool.name}**: {tool.description}")
         return "\n".join(lines)
 
-    def run_tool(self, name: str, params: dict[str, Any]) -> str:
+    async def run_tool(self, name: str, params: dict[str, Any]) -> str:
         tool = self._tools.get(name)
         if tool is None:
             logger.warning(f"Tool '{name}' is not registered")
@@ -43,7 +53,7 @@ class ToolRegistry:
             return f"Tool '{name}' is not permitted."
 
         logger.info(f"Running tool: {name}")
-        result = tool.run(params)
+        result = await tool.run(params)
 
         if tool.max_result_size and len(result) > tool.max_result_size:
             result = truncate_output(result, tool.max_result_size)
