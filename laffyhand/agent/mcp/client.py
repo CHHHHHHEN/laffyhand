@@ -61,6 +61,10 @@ class MCPClient:
         transport = cfg.transport
         if transport is None:
             base = cfg.url.split("?")[0].rstrip("/")
+            # NOTE: Auto-detection heuristic — checks if URL path ends with "/sse".
+            # This is a best-effort guess and may not match all server implementations.
+            # Servers with custom paths (e.g. "/mcp/sse", "/v1/stream") may be misidentified.
+            # Explicitly set `transport` in MCP_SERVERS config to override.
             transport = "sse" if base.endswith("/sse") else "streamable-http"
             logger.debug(f"Auto-detected MCP transport '{transport}' for '{cfg.url}'")
 
@@ -113,7 +117,7 @@ class MCPClient:
             try:
                 await self._exit_stack.aclose()
             except Exception as e:
-                logger.warning(f"Error closing MCP client '{self.name}': {e}")
+                logger.warning(f"Error closing MCP client '{self.name}': {type(e).__name__}: {e}")
         self._session = None
         self._exit_stack = None
         logger.info(f"MCP client '{self.name}' disconnected")

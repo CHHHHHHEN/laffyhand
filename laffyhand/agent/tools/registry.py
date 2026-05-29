@@ -28,8 +28,8 @@ class ToolRegistry:
     def build_tool_definitions(self) -> list[ToolDefinition]:
         for cb in self._on_build_defs:
             cb()
-        if self._defs is None:
-            self._defs = [t.to_definition() for t in self._tools.values()]
+        self._defs = [t.to_definition() for t in self._tools.values()]
+        logger.debug(f"Built {len(self._defs)} tool definition(s): {[d.name for d in self._defs]}")
         return self._defs
 
     def build_tool_prompt(self) -> str:

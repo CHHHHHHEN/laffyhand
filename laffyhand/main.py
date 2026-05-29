@@ -101,29 +101,31 @@ async def main():
     state = AgentState(messages=history, turn_count=0, usage=SessionUsage(context_size=MODEL_CONTEXT_SIZE))
     max_steps = int(os.getenv("MAX_STEPS", "50"))
 
-    while True:
-        try:
-            user_prompt = await asyncio.to_thread(input, "\nYou: ")
-        except (EOFError, KeyboardInterrupt):
-            logger.info("Agent session ended")
-            break
-        if user_prompt.lower() in ("", "/exit", "quit", "exit"):
-            logger.info("Agent session ended")
-            break
+    try:
+        while True:
+            try:
+                user_prompt = await asyncio.to_thread(input, "\nYou: ")
+            except (EOFError, KeyboardInterrupt):
+                logger.info("Agent session ended")
+                break
+            if user_prompt.lower() in ("", "/exit", "quit", "exit"):
+                logger.info("Agent session ended")
+                break
 
-        state.step = 0
-        user_message = UserMessage(content=user_prompt)
-        state.messages.append(user_message)
+            state.step = 0
+            user_message = UserMessage(content=user_prompt)
+            state.messages.append(user_message)
 
-        async for event in agent_loop(state, llm, tool_registry, compaction_config, max_steps=max_steps):
-            if event.type == "content" and event.finish_reason is not None and event.usage:
-                print()
-                print(state.usage.display(event.usage))
-            else:
-                print(event.data, end="")
-        print()
-
-    await mcp_service.disconnect_all()
+            async for event in agent_loop(state, llm, tool_registry, compaction_config, max_steps=max_steps):
+                if event.type == "content" and event.finish_reason is not None and event.usage:
+                    print()
+                    print(state.usage.display(event.usage))
+                else:
+                    print(event.data, end="")
+            print()
+    finally:
+        await mcp_service.disconnect_all()
+        logger.info("Agent shutdown complete")
 
 
 if __name__ == "__main__":

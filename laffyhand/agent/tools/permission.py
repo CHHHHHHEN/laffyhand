@@ -32,11 +32,18 @@ class PermissionManager:
                 logger.info(f"Permission '{permission}:{pattern}' denied by rule")
                 return False
             if rule == "allow":
-                logger.debug(f"Permission '{permission}:{pattern}' allowed by rule")
+                logger.info(f"Permission '{permission}:{pattern}' allowed by rule")
                 continue
             prompt = f"\nAllow {permission} '{pattern}'? [y/N/a] "
             import asyncio
-            answer = (await asyncio.to_thread(input, prompt)).strip().lower()
+            try:
+                answer = (await asyncio.to_thread(input, prompt)).strip().lower()
+            except (EOFError, OSError):
+                logger.warning(
+                    f"Cannot prompt for permission '{permission}:{pattern}' — "
+                    "no interactive terminal available. Denying by default."
+                )
+                return False
             if answer == "a":
                 self._rules[f"{permission}:{pattern}"] = "allow"
                 logger.info(f"Permission '{permission}:{pattern}' always allowed")

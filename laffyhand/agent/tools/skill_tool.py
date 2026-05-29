@@ -8,6 +8,8 @@ from laffyhand.agent.skill.registry import SkillRegistry
 from laffyhand.agent.tools.base import BaseTool
 from laffyhand.agent.tools.permission import PermissionManager
 
+MAX_SKILL_FILE_SIZE = 1 * 1024 * 1024
+
 
 class SkillTool(BaseTool):
     name = "skill"
@@ -48,7 +50,13 @@ class SkillTool(BaseTool):
             return f"Skill '{name}' denied."
 
         content = skill.filepath.read_text(encoding="utf-8")
+        logger.debug(f"Skill '{name}' file size: {len(content)} bytes")
+        if len(content) > MAX_SKILL_FILE_SIZE:
+            logger.warning(f"Skill '{name}' file too large ({len(content)} bytes), truncating to {MAX_SKILL_FILE_SIZE}")
+            content = content[:MAX_SKILL_FILE_SIZE] + "\n...[truncated]"
+
         sibling_files = self._discover_siblings(skill.base_dir, max_files=10)
+        logger.debug(f"Skill '{name}' sibling files: {[f.name for f in sibling_files]}")
 
         parts: list[str] = [
             f"<skill_content name=\"{skill.name}\">",
@@ -69,7 +77,7 @@ class SkillTool(BaseTool):
     def _discover_siblings(base_dir: Path, max_files: int = 10) -> list[Path]:
         files: list[Path] = []
         for child in sorted(base_dir.iterdir()):
-            if child.name == "SKILL.md":
+            if child.name == "SKILL.md" or child.name.startswith("."):
                 continue
             if child.is_file():
                 files.append(child)

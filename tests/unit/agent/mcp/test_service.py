@@ -3,7 +3,7 @@ import unittest
 from unittest.mock import MagicMock, AsyncMock
 
 from laffyhand.agent.mcp.client import MCPClient, MCPToolDef
-from laffyhand.agent.mcp.service import MCPWrappedTool, _normalize_schema
+from laffyhand.agent.mcp.service import MCPService, MCPWrappedTool, _normalize_schema
 
 
 class TestMCPWrappedTool(unittest.TestCase):
@@ -11,8 +11,11 @@ class TestMCPWrappedTool(unittest.TestCase):
         self.client = MagicMock(spec=MCPClient)
         self.client.name = "test-server"
         self.client.call_tool = AsyncMock(return_value="result")
+        self.service = MagicMock(spec=MCPService)
+        self.service._get_client.return_value = self.client
+        self.service.reconnect = AsyncMock(return_value=True)
         td = MCPToolDef(name="list-files", description="List files in a directory", input_schema={"type": "object", "properties": {"path": {"type": "string"}}})
-        self.tool = MCPWrappedTool("test-server", td, self.client)
+        self.tool = MCPWrappedTool("test-server", td, self.service)
 
     def test_tool_name_mangled(self):
         self.assertEqual(self.tool.name, "mcp_test-server_list_files")
@@ -36,7 +39,7 @@ class TestMCPWrappedTool(unittest.TestCase):
 
     def test_missing_type_defaults_to_object(self):
         td = MCPToolDef(name="t", description="", input_schema={"properties": {}})
-        tool = MCPWrappedTool("srv", td, self.client)
+        tool = MCPWrappedTool("srv", td, self.service)
         schema = tool._input_schema()
         self.assertEqual(schema["type"], "object")
 

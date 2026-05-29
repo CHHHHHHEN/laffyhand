@@ -22,6 +22,7 @@ def discover_skills(dirs: list[str | Path]) -> dict[str, SkillInfo]:
             seen.add(skill_file)
             info = parse_skill_md(skill_file)
             if info is None:
+                logger.debug(f"parse_skill_md returned None for {skill_file}, skipping")
                 continue
             if info.name in skills:
                 logger.warning(f"Duplicate skill '{info.name}' from {info.filepath}, overwriting previous")
