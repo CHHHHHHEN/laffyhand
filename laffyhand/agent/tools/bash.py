@@ -6,9 +6,10 @@ from loguru import logger
 from laffyhand.agent.tools.base import BaseTool
 
 _SENSITIVE_PATTERNS = re.compile(
-    r"(?i)((?:api[_-]?key|token|secret|password|passwd|credential|auth[_-]?token|access[_-]?key|private[_-]?key|sk-[a-zA-Z0-9]{20,})"
-    r")(\s*[:=]\s*)(\S+)",
+    r"(?i)\b(api[_-]?key|token|secret|password|passwd|credential|auth[_-]?token|access[_-]?key|private[_-]?key)"
+    r"(\s*[:=]\s*)\S+",
 )
+_BEARER_PATTERN = re.compile(r"(?i)\bBearer\s+\S+")
 _ENV_VAR_PATTERN = re.compile(
     r"(?i)^\s*export\s+(?:[A-Z_]*API[_-]?KEY|[A-Z_]*TOKEN|[A-Z_]*SECRET|[A-Z_]*PASSWORD)\s*=\s*\S+",
 )
@@ -16,6 +17,7 @@ _ENV_VAR_PATTERN = re.compile(
 
 def _redact_command(command: str) -> str:
     redacted = _SENSITIVE_PATTERNS.sub(r"\1\2***", command)
+    redacted = _BEARER_PATTERN.sub("Bearer ***", redacted)
     if _ENV_VAR_PATTERN.search(redacted):
         redacted = "export <redacted env var>"
     return redacted

@@ -117,7 +117,6 @@ class SimpleHTTPHandler(BaseHTTPRequestHandler):
 
     def do_DELETE(self):
         if self.path.startswith("/api/v1/providers/"):
-            # TODO: 完成 re 匹配以及逻辑编写
             logger.warning(f"DELETE {self.path} not implemented")
             self.send_response(501)
             self.end_headers()

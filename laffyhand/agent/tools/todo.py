@@ -65,7 +65,7 @@ class TodoTool(BaseTool):
             with open(fd, "w", encoding="utf-8") as f:
                 f.write(data)
             Path(tmp).replace(path)
-        except:
+        except Exception:
             Path(tmp).unlink(missing_ok=True)
             raise
 
