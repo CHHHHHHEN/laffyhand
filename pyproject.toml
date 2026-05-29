@@ -1,3 +1,6 @@
+[tool.ruff.lint]
+ignore = ["E402"]
+
 [dependency-groups]
 dev = [
     "mypy>=1.15",
