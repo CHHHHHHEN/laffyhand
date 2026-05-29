@@ -1,7 +1,12 @@
+from __future__ import annotations
+
 import asyncio
-from typing import Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from loguru import logger
+
+if TYPE_CHECKING:
+    from laffyhand.agent.tools.registry import ToolRegistry
 
 
 Rule = Literal["allow", "deny"]
@@ -57,3 +62,41 @@ class PermissionManager:
                 logger.info(f"Permission '{permission}:{pattern}' denied")
                 return False
         return True
+
+
+class SubagentPermissions:
+    @staticmethod
+    def compose(
+        parent_permission: PermissionManager,
+        agent_permission: dict[str, Any],
+        parent_session_permission: PermissionManager | None = None,
+    ) -> PermissionManager:
+        combined = PermissionManager()
+        for name, rule in parent_permission._rules.items():
+            if rule == "allow":
+                combined.allow(name)
+            else:
+                combined.deny(name)
+        agent_deny = set(agent_permission.get("deny", []))
+        for name in agent_deny:
+            combined.deny(name)
+        if parent_session_permission is not None:
+            for name, rule in parent_session_permission._rules.items():
+                if rule == "deny":
+                    combined.deny(name)
+        return combined
+
+    @staticmethod
+    def filter_registry(
+        registry: ToolRegistry,
+        permission: PermissionManager,
+    ) -> ToolRegistry:
+        from laffyhand.agent.tools.registry import ToolRegistry as _ToolRegistry
+
+        filtered = _ToolRegistry(permission=permission)
+        for name, tool in registry._tools.items():
+            if name == "task":
+                continue
+            if permission.check(name):
+                filtered.register_tool(tool)
+        return filtered

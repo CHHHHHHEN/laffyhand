@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import AsyncIterator
-from typing import TYPE_CHECKING, Any, Optional, Literal
+from typing import TYPE_CHECKING, Optional, Literal
 
 from loguru import logger
 from pydantic import BaseModel
@@ -21,6 +21,7 @@ from laffyhand.agent.tools import ToolRegistry
 
 if TYPE_CHECKING:
     from laffyhand.agent.session import SessionManager
+    from laffyhand.agent.subagent.manager import SubagentManager
 
 
 class AgentEvent(BaseModel):
@@ -74,7 +75,7 @@ async def agent_loop(
     max_steps: int = 50,
     reminder: str | None = None,
     session_manager: SessionManager | None = None,
-    subagent_manager: Any | None = None,
+    subagent_manager: SubagentManager | None = None,
 ) -> AsyncIterator[AgentEvent]:
     messages = agent_state.messages
     context_size = agent_state.usage.context_size
@@ -105,18 +106,18 @@ async def agent_loop(
 
         # ── Mid-turn injection: drain background subagent results ──
         if subagent_manager is not None and agent_state.session_id:
-            results = await subagent_manager.poll_results(agent_state.session_id)
-            for result in results:
-                content = result.content or result.error or "[No output]"
+            bg_results = await subagent_manager.poll_results(agent_state.session_id)
+            for bg in bg_results:
+                content = bg.content or bg.error or "[No output]"
                 injected = UserMessage(
                     content=(
-                        f"[Background task '{result.agent_type}' (id: {result.task_id[:8]}) completed]\n\n"
+                        f"[Background task '{bg.agent_type}' (id: {bg.task_id[:8]}) completed]\n\n"
                         f"{content}"
                     ),
                 )
                 messages.append(injected)
                 agent_state.messages = messages
-                logger.info(f"Injected subagent result: {result.task_id[:8]}")
+                logger.info(f"Injected subagent result: {bg.task_id[:8]}")
 
         reasoning_buf: list[str] = []
         content_buf: list[str] = []
