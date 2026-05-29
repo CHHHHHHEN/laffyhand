@@ -36,7 +36,13 @@ class ToolRegistry:
     # TODO: 添加 ThreadPoolExecutor 并行执行，参考 hermes-agent tool_executor.py
 
     def run_tool(self, name: str, params: dict[str, Any], tool_call_id: str = "") -> ToolResultContent:
-        tool = self._tools[name]
+        tool = self._tools.get(name)
+        if tool is None:
+            return ToolResultContent(
+                tool_call_id=tool_call_id,
+                tool_name=name,
+                result=f"Tool '{name}' is not registered.",
+            )
 
         if not self.permission.check(name):
             return ToolResultContent(

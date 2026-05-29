@@ -56,3 +56,12 @@ class TestRegistry(unittest.TestCase):
         self.registry.register_tool(EchoTool())
         defs2 = self.registry.build_tool_definitions()
         self.assertIsNot(defs1, defs2)
+
+    def test_run_unknown_tool_returns_error_message(self):
+        result = self.registry.run_tool("nonexistent", {})
+        self.assertIn("not registered", result.result)
+
+    def test_run_unregistered_tool_after_unregister(self):
+        self.registry.unregister_tool("echo")
+        result = self.registry.run_tool("echo", {})
+        self.assertIn("not registered", result.result)
