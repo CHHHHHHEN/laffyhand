@@ -182,7 +182,7 @@ async def handle_repl_command(
             else:
                 print("No active session.")
         elif state.session_id:
-            from laffyhand.agent.context import generate_title
+            from laffyhand.agent.title import generate_title
             gen_title = await generate_title(
                 session_manager, state.session_id, llm, title_config,
             )
@@ -371,7 +371,7 @@ async def main():
 
             # ── Generate title on first user message ──────────
             if state.turn_count == 0 and title_config.mode in ("on_create", "auto"):
-                from laffyhand.agent.context import generate_title
+                from laffyhand.agent.title import generate_title
                 gen_title = await generate_title(
                     session_manager, state.session_id, llm, title_config,
                 )

@@ -7,7 +7,6 @@ from laffyhand.agent.schemas import (
     StreamError, StreamFinish, StreamText, SystemMessage, ToolMessage,
     UserMessage, estimate_tokens,
 )
-from laffyhand.agent.session.models import TitleConfig
 from laffyhand.agent.llm.facade import LLM
 from laffyhand.agent.truncation import truncate_output
 
@@ -80,9 +79,6 @@ def select_tail(
             user_turns += 1
 
         if user_turns >= config.tail_turns:
-            # Check if adding this message would exceed the preserve budget.
-            # tail_tokens reflects cumulative tokens of messages already
-            # assigned to tail (more recent than current message i).
             if tail_tokens + tokens > preserve_recent:
                 split_at = i + 1
                 break
@@ -175,47 +171,6 @@ def attach_reminder(messages: list[Message], reminder: str) -> list[Message]:
     return list(messages)
 
 
-PRUNE_PROTECT = 40_000
-PRUNE_MINIMUM = 20_000
-_PRUNE_MIN_SAVINGS = 50
-
-
-def prune(messages: list[Message]) -> list[Message]:
-    tool_indices: list[int] = []
-    total_tokens = 0
-    for i in range(len(messages) - 1, -1, -1):
-        msg = messages[i]
-        if isinstance(msg, ToolMessage):
-            total_tokens += estimate_tokens(msg.content)
-            tool_indices.append(i)
-    logger.trace(f"Prune: found {len(tool_indices)} ToolMessages, total_tokens={total_tokens}")
-    if total_tokens <= PRUNE_PROTECT:
-        logger.trace(f"Total tokens {total_tokens} <= PRUNE_PROTECT {PRUNE_PROTECT}, skipping")
-        return messages
-    target = max(PRUNE_MINIMUM, total_tokens // 2)
-    pruned = 0
-    result = list(messages)
-    for idx in reversed(tool_indices):
-        msg = result[idx]
-        if not isinstance(msg, ToolMessage):
-            continue
-        old_t = estimate_tokens(msg.content)
-        if old_t < _PRUNE_MIN_SAVINGS:
-            continue
-        if total_tokens - pruned <= target:
-            break
-        new_content = f"[Tool output pruned: {old_t} tokens]"
-        result[idx] = ToolMessage(
-            tool_call_id=msg.tool_call_id,
-            content=new_content,
-        )
-        pruned += old_t - estimate_tokens(new_content)
-        logger.trace(f"Pruned message at index {idx}: {old_t} -> {estimate_tokens(new_content)} tokens")
-    logger.info(f"Pruned {pruned} tokens from tool outputs")
-    return result
-
-
-
 async def _summarize(llm: LLM, head: Sequence[Message], tool_truncate: int = 500) -> str | None:
     head_text = build_summary_text(head, tool_truncate=tool_truncate)
     summary_prompt = SUMMARY_PROMPT_TEMPLATE.format(head_text=head_text)
@@ -297,38 +252,3 @@ async def compact_with_chain(
 
     logger.info(f"Chain compaction summary generated ({len(summary)} chars)")
     return summary, original_system, tail
-
-
-async def generate_title(
-    session_manager,
-    session_id: str,
-    llm: LLM,
-    config: TitleConfig = TitleConfig(),
-) -> str | None:
-    if config.mode == "off":
-        return None
-    messages = session_manager.get_messages(session_id, limit=10)
-    user_prompts = [m for m in messages if isinstance(m, UserMessage)]
-    if not user_prompts:
-        logger.debug("No user messages found for title generation")
-        return None
-    first_prompt = user_prompts[0].content[:500]
-    title_messages: list[Message] = [
-        SystemMessage(content="You are a helpful assistant. Generate a concise title."),
-        UserMessage(content=f"{config.prompt}\n\nConversation start:\n{first_prompt}"),
-    ]
-    parts: list[str] = []
-    async for event in llm.stream(title_messages):
-        if isinstance(event, StreamText):
-            parts.append(event.delta)
-        elif isinstance(event, StreamFinish):
-            break
-        elif isinstance(event, StreamError):
-            logger.error(f"Title generation stream error: {event.error}")
-            return None
-    title = "".join(parts).strip().strip('"').strip("'")
-    if not title:
-        return None
-    session_manager.set_title(session_id, title)
-    logger.info(f"Title generated for {session_id}: {title}")
-    return title

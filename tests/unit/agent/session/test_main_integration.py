@@ -210,14 +210,14 @@ class TestHandleReplCommand:
 class TestGenerateTitle:
     @pytest.mark.anyio
     async def test_mode_off_returns_none(self, manager: SessionManager) -> None:
-        from laffyhand.agent.context import generate_title
+        from laffyhand.agent.title import generate_title
         config = TitleConfig(mode="off")
         result = await generate_title(manager, "sid", MagicMock(), config)
         assert result is None
 
     @pytest.mark.anyio
     async def test_no_user_messages_returns_none(self, manager: SessionManager) -> None:
-        from laffyhand.agent.context import generate_title
+        from laffyhand.agent.title import generate_title
         session = manager.create(messages=[SystemMessage(content="sys")])
         config = TitleConfig(mode="auto")
         result = await generate_title(manager, session.id, MagicMock(), config)
@@ -225,7 +225,7 @@ class TestGenerateTitle:
 
     @pytest.mark.anyio
     async def test_generates_title(self, manager: SessionManager) -> None:
-        from laffyhand.agent.context import generate_title
+        from laffyhand.agent.title import generate_title
 
         async def mock_stream(messages, **kwargs):
             yield StreamText(delta="My Title")
@@ -244,7 +244,7 @@ class TestGenerateTitle:
 
     @pytest.mark.anyio
     async def test_stream_error_returns_none(self, manager: SessionManager) -> None:
-        from laffyhand.agent.context import generate_title
+        from laffyhand.agent.title import generate_title
 
         async def mock_stream(messages, **kwargs):
             yield StreamError(error="API error")
@@ -259,7 +259,7 @@ class TestGenerateTitle:
 
     @pytest.mark.anyio
     async def test_empty_title_returns_none(self, manager: SessionManager) -> None:
-        from laffyhand.agent.context import generate_title
+        from laffyhand.agent.title import generate_title
 
         async def mock_stream(messages, **kwargs):
             yield StreamText(delta="")

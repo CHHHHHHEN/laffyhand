@@ -12,10 +12,11 @@ from laffyhand.agent.schemas import (
     StreamToolCall, StreamFinish, StreamError, FinishReason,
     ToolCallContent, ToolMessage, Usage, UserMessage, estimate_tokens,
 )
-from laffyhand.agent.context import (
-    compact, compact_with_chain, prune, wrap_last_user, attach_reminder,
+from laffyhand.agent.compaction import (
+    compact, compact_with_chain, wrap_last_user, attach_reminder,
     estimate_messages_tokens, is_overflow,
 )
+from laffyhand.agent.prune import prune
 from laffyhand.agent.llm.facade import LLM
 from laffyhand.agent.tools import ToolRegistry
 

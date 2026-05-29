@@ -3,11 +3,11 @@ from laffyhand.agent.schemas import (
     SystemMessage, UserMessage, AssistantMessage, ToolMessage,
     ToolCallContent, CompactionConfig,
 )
-from laffyhand.agent.context import (
+from laffyhand.agent.compaction import (
     estimate_message_tokens, estimate_messages_tokens,
-    is_overflow, select_tail, build_summary_text, prune,
-    PRUNE_PROTECT,
+    is_overflow, select_tail, build_summary_text,
 )
+from laffyhand.agent.prune import prune, PRUNE_PROTECT
 
 
 class TestEstimateMessageTokens(unittest.TestCase):
