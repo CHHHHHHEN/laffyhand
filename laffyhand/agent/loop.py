@@ -13,7 +13,7 @@ from laffyhand.agent.schemas import (
     ToolCallContent, ToolMessage, Usage, UserMessage, estimate_tokens,
 )
 from laffyhand.agent.context import (
-    compact_with_chain, prune, wrap_last_user, attach_reminder,
+    compact, compact_with_chain, prune, wrap_last_user, attach_reminder,
     estimate_messages_tokens, is_overflow,
 )
 from laffyhand.agent.llm.facade import LLM
@@ -47,21 +47,18 @@ async def _compact_on_overflow(
         if result is None:
             return False
         summary, original_system, tail = result
-        child = session_manager.compact(
-            session_id=agent_state.session_id,
+        child = session_manager.create_compacted_child(
+            parent_id=agent_state.session_id,
             system_messages=original_system,
             summary_content=summary,
             tail_messages=tail,
-            model="",
         )
         summary_msg = UserMessage(content=summary.strip())
         agent_state.session_id = child.id
         agent_state.messages = original_system + [summary_msg] + tail
         agent_state.step = 0
-        logger.info(f"Chain compaction: new session {child.id}")
         return True
 
-    from laffyhand.agent.context import compact
     if await compact(agent_state, llm, compaction_config):
         logger.info("Compaction succeeded")
         return True
@@ -160,6 +157,7 @@ async def agent_loop(
                 try:
                     params = json.loads(tc.args)
                 except json.JSONDecodeError:
+                    logger.warning(f"Failed to parse tool args for {tc.tool_name}: {tc.args[:200]}")
                     messages.append(ToolMessage(
                         tool_call_id=tc.tool_call_id,
                         content=f"Error: failed to parse tool arguments for {tc.tool_name}: {tc.args}",

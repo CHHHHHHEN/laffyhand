@@ -75,27 +75,25 @@ async def resolve_session(
     system_message: SystemMessage,
 ) -> AgentState:
     if args.session:
-        tip = session_manager.get_compression_tip(args.session)
-        loaded = session_manager.load_state(tip)
+        loaded = session_manager.resolve(
+            args.session, system_message, MODEL_CONTEXT_SIZE,
+        )
         if loaded is not None:
-            loaded.usage.context_size = MODEL_CONTEXT_SIZE
-            logger.info(f"Loaded session {tip} ({len(loaded.messages)} messages)")
-            if not any(isinstance(m, SystemMessage) for m in loaded.messages):
-                loaded.messages.insert(0, system_message)
+            logger.info(f"Loaded session {args.session} ({len(loaded.messages)} messages)")
             return loaded
-        logger.warning(f"Session {args.session} not found, starting new")
+        logger.error(f"Session not found: {args.session}")
+        sys.exit(1)
 
     if args.resume:
         last_active = session_manager.get_active()
         if last_active is not None:
-            tip = session_manager.get_compression_tip(last_active.id)
-            loaded = session_manager.load_state(tip)
+            loaded = session_manager.resolve(
+                last_active.id, system_message, MODEL_CONTEXT_SIZE,
+            )
             if loaded is not None:
-                loaded.usage.context_size = MODEL_CONTEXT_SIZE
-                logger.info(f"Resumed session {tip} ({len(loaded.messages)} messages)")
-                if not any(isinstance(m, SystemMessage) for m in loaded.messages):
-                    loaded.messages.insert(0, system_message)
+                logger.info(f"Resumed session {loaded.session_id} ({len(loaded.messages)} messages)")
                 return loaded
+        logger.info("No active session to resume, starting new")
 
     session = session_manager.create(cwd=os.getcwd(), model=OPENCODE_MODEL_NAME)
     logger.info(f"New session created: {session.id}")
@@ -118,7 +116,9 @@ async def handle_repl_command(
     arg = parts[1] if len(parts) > 1 else ""
 
     if command == "/sessions":
-        print_sessions(session_manager.list_sessions(limit=20))
+        sessions = session_manager.list_sessions(limit=20)
+        print_sessions(sessions)
+        logger.info(f"Listed {len(sessions)} sessions")
         return True
 
     if command == "/session":
@@ -135,6 +135,7 @@ async def handle_repl_command(
         state.step = loaded.step
         state.usage = loaded.usage
         state.session_id = loaded.session_id
+        logger.info(f"Switched to session: {tip}")
         print(f"Switched to session: {tip}")
         return True
 
@@ -150,6 +151,7 @@ async def handle_repl_command(
         state.turn_count = 0
         state.step = 0
         state.usage = SessionUsage(context_size=MODEL_CONTEXT_SIZE)
+        logger.info(f"New session started: {session.id}")
         print(f"New session started: {session.id}")
         return True
 
@@ -157,12 +159,14 @@ async def handle_repl_command(
         if arg:
             if state.session_id:
                 session_manager.set_title(state.session_id, arg)
+                logger.info(f"Title set for {state.session_id}: {arg}")
                 print(f"Title set to: {arg}")
             else:
                 print("No active session.")
         elif state.session_id:
-            gen_title = await session_manager.generate_title(
-                state.session_id, llm, title_config,
+            from laffyhand.agent.context import generate_title
+            gen_title = await generate_title(
+                session_manager, state.session_id, llm, title_config,
             )
             if gen_title:
                 print(f"Generated title: {gen_title}")
@@ -176,6 +180,7 @@ async def handle_repl_command(
             return True
         child = session_manager.fork(state.session_id)
         state.session_id = child.id
+        logger.info(f"Forked to new session: {child.id}")
         print(f"Forked to new session: {child.id}")
         return True
 
@@ -183,6 +188,7 @@ async def handle_repl_command(
         target = arg or state.session_id
         if target:
             session_manager.archive(target)
+            logger.info(f"Archived session: {target}")
             print(f"Archived session: {target}")
         return True
 
@@ -295,6 +301,7 @@ async def main():
                 )
                 if handled:
                     continue
+                logger.warning(f"Unknown REPL command: {user_prompt.split()[0]}")
 
             # ── Append user message ───────────────────────────
             state.step = 0
@@ -307,8 +314,9 @@ async def main():
 
             # ── Generate title on first user message ──────────
             if state.turn_count == 0 and title_config.mode in ("on_create", "auto"):
-                gen_title = await session_manager.generate_title(
-                    state.session_id, llm, title_config,
+                from laffyhand.agent.context import generate_title
+                gen_title = await generate_title(
+                    session_manager, state.session_id, llm, title_config,
                 )
                 if gen_title:
                     logger.info(f"Generated session title: {gen_title}")

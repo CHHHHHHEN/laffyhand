@@ -9,8 +9,8 @@ from typing import Optional
 
 from loguru import logger
 
-from laffyhand.agent.session.models import MessageRecord, Session, TitleConfig
-from laffyhand.agent.session.schema import create_tables
+from laffyhand.agent.session.models import MessageRecord, Session
+from laffyhand.agent.session.schema import create_tables, has_fts5
 from laffyhand.agent.schemas import (
     AgentState, AssistantMessage, Message, SessionUsage, SystemMessage,
     ToolCallContent, ToolMessage, UserMessage,
@@ -21,12 +21,12 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _ts(dt: datetime | None) -> float | None:
-    return dt.timestamp() if dt is not None else None
+def _ts(dt: datetime | None) -> str | None:
+    return dt.isoformat() if dt is not None else None
 
 
-def _from_ts(ts: float | None) -> datetime | None:
-    return datetime.fromtimestamp(ts, tz=timezone.utc) if ts is not None else None
+def _from_ts(ts: str | None) -> datetime | None:
+    return datetime.fromisoformat(ts) if ts is not None else None
 
 
 def _serialize_metadata(meta: dict) -> str:
@@ -39,6 +39,7 @@ def _deserialize_metadata(raw: str) -> dict:
     try:
         return json.loads(raw)
     except json.JSONDecodeError:
+        logger.warning(f"Failed to parse session metadata JSON: {raw[:200]}")
         return {}
 
 
@@ -114,13 +115,12 @@ class SessionManager:
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA foreign_keys=ON")
         create_tables(self._conn)
+        self._fts5_available = has_fts5(self._conn)
+        if not self._fts5_available:
+            logger.warning("FTS5 unavailable; session search falls back to LIKE")
 
 
     # ── Connection ────────────────────────────────────────────
-
-    @property
-    def conn(self) -> sqlite3.Connection:
-        return self._conn
 
     def close(self) -> None:
         self._conn.close()
@@ -207,6 +207,7 @@ class SessionManager:
             ),
         )
         self._conn.commit()
+        logger.debug(f"Session updated: {session.id}")
 
     def complete(self, session_id: str, summary: Optional[str] = None) -> None:
         now = _utcnow()
@@ -215,6 +216,7 @@ class SessionManager:
             (summary, _ts(now), _ts(now), session_id),
         )
         self._conn.commit()
+        logger.info(f"Session completed: {session_id}")
 
     def archive(self, session_id: str) -> None:
         self._conn.execute(
@@ -222,20 +224,32 @@ class SessionManager:
             (_ts(_utcnow()), session_id),
         )
         self._conn.commit()
+        logger.info(f"Session archived: {session_id}")
 
     def delete(self, session_id: str) -> None:
         self._conn.execute("DELETE FROM session WHERE id=?", (session_id,))
         self._conn.commit()
+        logger.info(f"Session deleted: {session_id}")
 
     def search(self, query: str, limit: int = 20) -> list[Session]:
-        rows = self._conn.execute(
-            """SELECT DISTINCT s.* FROM session s
-               JOIN message m ON m.session_id = s.id
-               JOIN message_fts fts ON fts.rowid = m.id
-               WHERE message_fts MATCH ?
-               ORDER BY s.updated_at DESC LIMIT ?""",
-            (query, limit),
-        ).fetchall()
+        if self._fts5_available:
+            rows = self._conn.execute(
+                """SELECT DISTINCT s.* FROM session s
+                   JOIN message m ON m.session_id = s.id
+                   JOIN message_fts fts ON fts.rowid = m.id
+                   WHERE message_fts MATCH ?
+                   ORDER BY s.updated_at DESC LIMIT ?""",
+                (query, limit),
+            ).fetchall()
+        else:
+            like = f"%{query}%"
+            rows = self._conn.execute(
+                """SELECT DISTINCT s.* FROM session s
+                   JOIN message m ON m.session_id = s.id
+                   WHERE m.content LIKE ? OR m.reasoning LIKE ?
+                   ORDER BY s.updated_at DESC LIMIT ?""",
+                (like, like, limit),
+            ).fetchall()
         return [self._row_to_session(r) for r in rows]
 
     # ── Messages ──────────────────────────────────────────────
@@ -247,6 +261,12 @@ class SessionManager:
         if session is None:
             raise ValueError(f"Session not found: {session_id}")
         existing = session.message_count
+        if existing > len(messages):
+            logger.warning(
+                f"append_messages: session.message_count ({existing}) > "
+                f"len(messages) ({len(messages)}). Check caller logic."
+            )
+            return existing
         new_messages = messages[existing:]
         if not new_messages:
             return existing
@@ -254,8 +274,6 @@ class SessionManager:
         for msg in new_messages:
             rec = _message_to_record(session_id, msg, turn_index)
             self._insert_record(rec)
-            if isinstance(msg, AssistantMessage) and msg.tool_calls:
-                turn_index += 1
         count = session.message_count + len(new_messages)
         self._conn.execute(
             "UPDATE session SET message_count=?, updated_at=? WHERE id=?",
@@ -339,6 +357,23 @@ class SessionManager:
             ),
         )
 
+    # ── Session resolution (compression chain aware) ─────────
+
+    def resolve(
+        self,
+        session_id: str,
+        system_message: SystemMessage,
+        context_size: int = 0,
+    ) -> Optional[AgentState]:
+        tip = self.get_compression_tip(session_id)
+        loaded = self.load_state(tip)
+        if loaded is None:
+            return None
+        loaded.usage.context_size = context_size
+        if not any(isinstance(m, SystemMessage) for m in loaded.messages):
+            loaded.messages.insert(0, system_message)
+        return loaded
+
     # ── Compaction chain ──────────────────────────────────────
 
     def get_compression_tip(self, session_id: str) -> str:
@@ -363,28 +398,27 @@ class SessionManager:
             current = row["parent_id"] if row else None
         return ids
 
-    def compact(
+    def create_compacted_child(
         self,
-        session_id: str,
+        parent_id: str,
         system_messages: Sequence[Message],
         summary_content: str,
         tail_messages: Sequence[Message],
-        model: str = "",
-        agent_version: str = "",
     ) -> Session:
-        parent = self.get(session_id)
+        parent = self.get(parent_id)
         tail_all = list(system_messages) + [
             UserMessage(content=summary_content.strip()),
         ] + list(tail_messages)
         child = self.create(
             title=parent.title if parent else "",
             cwd=parent.cwd if parent else "",
-            model=model or (parent.model if parent else ""),
-            agent_version=agent_version or (parent.agent_version if parent else ""),
-            parent_id=session_id,
+            model=parent.model if parent else "",
+            agent_version=parent.agent_version if parent else "",
+            parent_id=parent_id,
             messages=tail_all,
         )
-        self.complete(session_id, summary=summary_content)
+        self.complete(parent_id, summary=summary_content)
+        logger.info(f"Compacted {parent_id} -> {child.id}")
         return child
 
     # ── Fork ──────────────────────────────────────────────────
@@ -407,6 +441,7 @@ class SessionManager:
             fork_id=session_id,
             messages=messages,
         )
+        logger.info(f"Forked {session_id} -> {child.id}")
         return child
 
     # ── Title ─────────────────────────────────────────────────
@@ -417,58 +452,6 @@ class SessionManager:
             (title, session_id),
         )
         self._conn.commit()
-
-    # ── Title generation ──────────────────────────────────────
-
-    async def generate_title(
-        self,
-        session_id: str,
-        llm,  # LLM facade
-        config: TitleConfig = TitleConfig(),
-    ) -> Optional[str]:
-        if config.mode == "off":
-            return None
-        session = self.get(session_id)
-        if session is None:
-            return None
-        messages = self.get_messages(session_id, limit=10)
-        user_prompts = [
-            m for m in messages
-            if isinstance(m, UserMessage)
-        ]
-        if not user_prompts:
-            return None
-        from laffyhand.agent.schemas import StreamText, StreamFinish, StreamError
-        first_prompt = user_prompts[0].content[:500]
-        title_messages = [
-            SystemMessage(
-                content="You are a helpful assistant. Generate a concise title.",
-            ),
-            UserMessage(
-                content=(
-                    f"{config.prompt}\n\n"
-                    f"Conversation start:\n{first_prompt}"
-                ),
-            ),
-        ]
-        parts: list[str] = []
-        async for event in llm.stream(title_messages):
-            if isinstance(event, StreamText):
-                parts.append(event.delta)
-            elif isinstance(event, StreamFinish):
-                break
-            elif isinstance(event, StreamError):
-                logger.error(f"Title generation error: {event.error}")
-                return None
-        title = "".join(parts).strip().strip('"').strip("'")
-        if not title:
-            return None
-        self._conn.execute(
-            "UPDATE session SET title=? WHERE id=?",
-            (title, session_id),
-        )
-        self._conn.commit()
-        return title
 
     # ── Internal helpers ─────────────────────────────────────
 

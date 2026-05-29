@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 import tempfile
-from datetime import datetime, timezone
 
 import pytest
 
@@ -54,7 +53,7 @@ class TestSessionCRUD:
         assert manager.get("nonexistent") is None
 
     def test_get_active(self, manager: SessionManager) -> None:
-        s1 = manager.create(model="gpt-4")
+        manager.create(model="gpt-4")
         s2 = manager.create(model="gpt-5")
         active = manager.get_active()
         assert active is not None
@@ -237,8 +236,8 @@ class TestCompactionChain:
         parent = manager.create(messages=msgs)
         system = [msgs[0]]
         tail = msgs[2:]
-        child = manager.compact(
-            session_id=parent.id,
+        child = manager.create_compacted_child(
+            parent_id=parent.id,
             system_messages=system,
             summary_content="Summarized conversation.",
             tail_messages=tail,
