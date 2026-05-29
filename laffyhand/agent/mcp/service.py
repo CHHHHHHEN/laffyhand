@@ -176,13 +176,12 @@ class MCPService:
         if not names:
             logger.debug("No MCP connections to clean up")
             return
-        results = await asyncio.gather(
-            *(self.disconnect(name) for name in names),
-            return_exceptions=True,
-        )
-        for name, res in zip(names, results):
-            if isinstance(res, Exception):
-                logger.warning(f"Error disconnecting MCP '{name}': {res}")
+        # Disconnect sequentially to avoid AsyncExitStack task-context errors
+        for name in names:
+            try:
+                await self.disconnect(name)
+            except Exception as e:
+                logger.warning(f"Error disconnecting MCP '{name}': {e}")
         logger.info(f"Disconnected all MCP clients: {names}")
 
     async def get_wrapped_tools(self) -> list[BaseTool]:
