@@ -6,7 +6,10 @@ import os
 from laffyhand.agent.schemas import CompactionConfig, SystemMessage, UserMessage, SessionUsage
 from laffyhand.agent.llm.builders import deepseek_route
 from laffyhand.agent.llm.facade import LLM
-from laffyhand.agent.tools import ToolRegistry, AddTool
+from laffyhand.agent.tools import ToolRegistry
+from laffyhand.agent.tools.file import ReadTool, WriteTool, EditTool, GlobTool, GrepTool
+from laffyhand.agent.tools.bash import BashTool
+from laffyhand.agent.tools.todo import TodoTool
 from laffyhand.agent.loop import AgentState, agent_loop
 
 OPENCODE_BASE_URL = os.environ['OPENCODE_BASE_URL']
@@ -31,7 +34,13 @@ def main():
     llm = LLM(model=OPENCODE_MODEL_NAME, route=route)
 
     tool_registry = ToolRegistry()
-    tool_registry.register_tool(AddTool())
+    tool_registry.register_tool(ReadTool())
+    tool_registry.register_tool(WriteTool())
+    tool_registry.register_tool(EditTool())
+    tool_registry.register_tool(GlobTool())
+    tool_registry.register_tool(GrepTool())
+    tool_registry.register_tool(BashTool())
+    tool_registry.register_tool(TodoTool(todo_path="/home/ch/src/laffyhand/.todos.json"))
 
     system_message = SystemMessage(content=SYSTEM_PROMPT + tool_registry.build_tool_prompt())
     history: list = [system_message]

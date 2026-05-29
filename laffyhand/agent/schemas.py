@@ -17,6 +17,9 @@ class ToolDefinition(BaseModel):
     input_schema: dict
 
 
+# TODO: 添加 ToolPart 增量状态 (pending→running→completed/error)，当前只有一次性 tool-call 事件
+# TODO: 添加 StepStartPart/StepFinishPart，包含 worktree 快照和 diff
+
 # ─── Content Parts ──────────────────────────────────────────────────
 
 class TextContent(BaseModel):

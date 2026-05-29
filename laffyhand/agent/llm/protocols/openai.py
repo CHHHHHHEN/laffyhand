@@ -118,6 +118,8 @@ def _tool_definitions_to_openai(definitions: list[ToolDefinition]) -> list[dict]
     ]
 
 
+# TODO: 实现增量 ToolPart 状态 (tool-input-start/delta/end)，当前只在 finish_reason 时发射完整 tool-call
+
 # ─── OpenAI Protocol ─────────────────────────────────────────────
 
 

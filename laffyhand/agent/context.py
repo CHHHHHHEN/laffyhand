@@ -135,6 +135,11 @@ def build_summary_text(messages: Sequence[Message], tool_truncate: int = 500) ->
     return "\n".join(lines)
 
 
+# TODO: 添加空闲会话主动压缩（nanobot AutoCompact 模式）
+# TODO: 添加图片占位符压缩（hermes ContextCompressor 图像剥离）
+# TODO: 增量摘要（每次在之前摘要基础上追加）
+
+
 def truncate_tool_output(text: str, max_chars: int = 2_000) -> str:
     if not text or len(text) <= max_chars:
         return text
