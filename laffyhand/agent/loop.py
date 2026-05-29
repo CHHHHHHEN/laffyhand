@@ -28,9 +28,13 @@ def _compact_on_overflow(
 ) -> bool:
     tokens = estimate_messages_tokens(agent_state.messages)
     if not is_overflow(tokens, agent_state.usage.context_size):
+        logger.debug(f"No compaction needed: {tokens} tokens within context limit")
         return False
+    logger.info(f"Compaction triggered: {tokens} tokens, attempting compact...")
     if compact(agent_state, llm, compaction_config):
+        logger.info("Compaction succeeded")
         return True
+    logger.warning("Compaction failed: could not compact conversation")
     return False
 
 

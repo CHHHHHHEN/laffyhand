@@ -10,6 +10,7 @@ from socketserver import BaseRequestHandler
 from typing import Callable, Any, Self, override
 from loguru import logger
 
+from laffyhand import setup_logging
 from laffyhand.agent.schemas import LLMProviderConfig
 
 DB_PATH = os.environ['DB_PATH']
@@ -31,6 +32,7 @@ class SimpleHTTPHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path == "/health":
+            logger.debug("Health check requested")
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
@@ -49,12 +51,19 @@ class SimpleHTTPHandler(BaseHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(json.dumps({"error": "Database query failed"}).encode())
                 return
-            providers = [
-                {"id": row[0], "name": row[1], 'base_url': row[2], 'api_key': row[3]} 
-                for row in rows
-            ]
-
-            response_body = json.dumps(providers).encode()
+            try:
+                providers = [
+                    {"id": row[0], "name": row[1], 'base_url': row[2], 'api_key': row[3]}
+                    for row in rows
+                ]
+                response_body = json.dumps(providers).encode()
+            except (TypeError, ValueError, OverflowError):
+                logger.error("Failed to serialize provider list to JSON")
+                self.send_response(500)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "Failed to serialize provider data"}).encode())
+                return
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
@@ -118,15 +127,19 @@ class SimpleHTTPHandler(BaseHTTPRequestHandler):
             self.end_headers()
 
     def do_PUT(self):
-        # TODO: 完成 providers 的单条修改端点
-        pass
+        logger.warning(f"PUT {self.path} not implemented")
+        self.send_response(501)
+        self.end_headers()
 
     def do_DELETE(self):
-        # TODO: 完成 providers 的单条删除端点
         if self.path.startswith("/api/v1/providers/"):
             # TODO: 完成 re 匹配以及逻辑编写
-            pass
-        pass
+            logger.warning(f"DELETE {self.path} not implemented")
+            self.send_response(501)
+            self.end_headers()
+            return
+        self.send_response(404)
+        self.end_headers()
             
 def init_db(db_conn: sqlite3.Connection) -> None:
     with db_conn: # with connection 能够自动完成 commit 和 rollback
@@ -140,6 +153,8 @@ def init_db(db_conn: sqlite3.Connection) -> None:
     )""")
         
 if __name__ == "__main__":
+    setup_logging()
+
     try:
         db_conn = sqlite3.connect(DB_PATH, timeout=3)
     except sqlite3.OperationalError:
