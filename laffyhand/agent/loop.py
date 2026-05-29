@@ -54,10 +54,12 @@ def agent_loop(
             break
 
         if reminder and agent_state.step == 1:
-            attach_reminder(messages, reminder)
+            messages = attach_reminder(messages, reminder)
+            agent_state.messages = messages
 
         if agent_state.step > 1:
-            wrap_last_user(messages)
+            messages = wrap_last_user(messages)
+            agent_state.messages = messages
 
         if agent_state.step > 1 and context_size:
             if _compact_on_overflow(agent_state, llm, compaction_config):
@@ -130,7 +132,8 @@ def agent_loop(
                 ))
                 yield AgentEvent("tool_result", result, None)
             if compaction_config.prune:
-                prune(messages)
+                messages = prune(messages)
+                agent_state.messages = messages
             continue
 
         if finish_reason is not None:

@@ -138,23 +138,28 @@ def build_summary_text(messages: Sequence[Message], tool_truncate: int = 500) ->
     return "\n".join(lines)
 
 
-def wrap_last_user(messages: list[Message]) -> None:
-    for i in range(len(messages) - 1, -1, -1):
-        msg = messages[i]
+def wrap_last_user(messages: list[Message]) -> list[Message]:
+    result = list(messages)
+    for i in range(len(result) - 1, -1, -1):
+        msg = result[i]
         if isinstance(msg, UserMessage):
             content = msg.content
             if content.startswith("<system-reminder>") and content.rstrip().endswith("</system-reminder>"):
-                return
-            messages[i] = UserMessage(content=f"<system-reminder>\n{content}\n</system-reminder>")
-            return
+                return result
+            result[i] = UserMessage(content=f"<system-reminder>\n{content}\n</system-reminder>")
+            return result
+    return result
 
 
-def attach_reminder(messages: list[Message], reminder: str) -> None:
-    for msg in messages:
+def attach_reminder(messages: list[Message], reminder: str) -> list[Message]:
+    for i, msg in enumerate(messages):
         if isinstance(msg, SystemMessage):
             if reminder not in msg.content:
-                msg.content += f"\n\n{reminder}"
-            return
+                result = list(messages)
+                result[i] = SystemMessage(content=msg.content + f"\n\n{reminder}")
+                return result
+            return list(messages)
+    return list(messages)
 
 
 PRUNE_PROTECT = 40_000
@@ -162,7 +167,7 @@ PRUNE_MINIMUM = 20_000
 _PRUNE_MIN_SAVINGS = 50
 
 
-def prune(messages: list[Message]) -> int:
+def prune(messages: list[Message]) -> list[Message]:
     tool_indices: list[int] = []
     total_tokens = 0
     for i in range(len(messages) - 1, -1, -1):
@@ -171,11 +176,12 @@ def prune(messages: list[Message]) -> int:
             total_tokens += estimate_tokens(msg.content)
             tool_indices.append(i)
     if total_tokens <= PRUNE_PROTECT:
-        return 0
+        return messages
     target = max(PRUNE_MINIMUM, total_tokens // 2)
     pruned = 0
+    result = list(messages)
     for idx in reversed(tool_indices):
-        msg = messages[idx]
+        msg = result[idx]
         if not isinstance(msg, ToolMessage):
             continue
         old_t = estimate_tokens(msg.content)
@@ -184,13 +190,13 @@ def prune(messages: list[Message]) -> int:
         if total_tokens - pruned <= target:
             break
         new_content = f"[Tool output pruned: {old_t} tokens]"
-        messages[idx] = ToolMessage(
+        result[idx] = ToolMessage(
             tool_call_id=msg.tool_call_id,
             content=new_content,
         )
         pruned += old_t - estimate_tokens(new_content)
     logger.info(f"Pruned {pruned} tokens from tool outputs")
-    return pruned
+    return result
 
 
 

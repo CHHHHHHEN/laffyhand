@@ -127,26 +127,26 @@ class TestPrune(unittest.TestCase):
     def test_no_prune_under_threshold(self):
         msgs = [ToolMessage(tool_call_id="c1", content="small")]
         result = prune(msgs)
-        self.assertEqual(result, 0)
-        self.assertEqual(msgs[0].content, "small")
+        self.assertIs(result[0].content, "small")
+        self.assertEqual(msgs[0].content, "small", "should not mutate original")
 
     def test_prune_large_tool_output(self):
         content = "x" * (PRUNE_PROTECT * 4 + 5)
         msgs = [ToolMessage(tool_call_id="c1", content=content)]
         result = prune(msgs)
-        self.assertGreater(result, 0)
-        self.assertTrue(msgs[0].content.startswith("[Tool output pruned:"))
+        self.assertTrue(result[0].content.startswith("[Tool output pruned:"))
+        self.assertEqual(msgs[0].content, content, "should not mutate original")
 
     def test_prune_multiple_messages_oldest_first(self):
         small = ToolMessage(tool_call_id="c1", content="small")
         large = ToolMessage(tool_call_id="c2", content="x" * (PRUNE_PROTECT * 4 + 5))
         msgs = [small, large]
         result = prune(msgs)
-        self.assertGreater(result, 0)
-        self.assertEqual(msgs[0].content, "small", "should not prune tiny messages")
-        self.assertTrue(msgs[1].content.startswith("[Tool output pruned:"))
+        self.assertEqual(result[0].content, "small", "should not prune tiny messages")
+        self.assertTrue(result[1].content.startswith("[Tool output pruned:"))
+        self.assertEqual(msgs[1].content, large.content, "should not mutate original")
 
     def test_prune_no_tool_messages(self):
         msgs = [SystemMessage(content="sys"), UserMessage(content="hi")]
         result = prune(msgs)
-        self.assertEqual(result, 0)
+        self.assertIs(result, msgs, "no tool messages -> return same list")
