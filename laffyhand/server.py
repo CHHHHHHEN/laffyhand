@@ -10,6 +10,8 @@ from socketserver import BaseRequestHandler
 from typing import Callable, Any, Self, override
 from loguru import logger as _logger
 
+from laffyhand.agent.schemas import LLMProviderConfig
+
 DB_PATH = os.environ['DB_PATH']
 
 class SimpleHTTPServer(HTTPServer):

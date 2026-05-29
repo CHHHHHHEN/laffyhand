@@ -2,12 +2,12 @@ from collections.abc import Sequence
 
 from loguru import logger
 
-from laffyhand.agent.models import (
+from laffyhand.agent.schemas import (
     AgentState, AssistantMessage, CompactionConfig, Message,
     StreamError, StreamFinish, StreamText, SystemMessage, ToolMessage,
     UserMessage, estimate_tokens,
 )
-from laffyhand.agent.llm import LLM
+from laffyhand.agent.llm.facade import LLM
 
 
 def estimate_message_tokens(msg: Message) -> int:

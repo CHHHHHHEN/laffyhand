@@ -1,7 +1,7 @@
-from typing import Dict, Any, List, Literal, override
+from typing import Dict, Any, List, override
 from abc import ABC, abstractmethod
 
-from laffyhand.agent.models import ToolDefinition, ToolCallContent, ToolResultContent
+from laffyhand.agent.schemas import ToolDefinition, ToolResultContent
 
 ToolResult = ToolResultContent
 

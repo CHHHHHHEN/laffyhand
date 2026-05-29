@@ -85,6 +85,22 @@ class CompactionConfig(BaseModel):
 Message = Union[SystemMessage, UserMessage, AssistantMessage, ToolMessage]
 
 
+# ─── LLM Request ─────────────────────────────────────────────────────
+
+class LLMRequest(BaseModel):
+    model: str
+    messages: list[Message]
+    tools: Optional[list[ToolDefinition]] = None
+
+
+# ─── Provider Config ─────────────────────────────────────────────────
+
+class LLMProviderConfig(BaseModel):
+    name: str
+    base_url: str
+    api_key: str
+
+
 # ─── Usage ──────────────────────────────────────────────────────────
 
 class Usage(BaseModel):

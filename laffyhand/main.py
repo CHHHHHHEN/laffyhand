@@ -2,11 +2,10 @@ from dotenv import load_dotenv
 load_dotenv()
 
 import os
-from loguru import logger as _logger
 
-from laffyhand.agent.models import CompactionConfig, SystemMessage, UserMessage, SessionUsage
-from laffyhand.agent.providers import LLMProviderConfig, OpenAIProvider, DeepseekProvider
-from laffyhand.agent.llm import LLM
+from laffyhand.agent.schemas import CompactionConfig, SystemMessage, UserMessage, SessionUsage
+from laffyhand.agent.llm.builders import deepseek_route
+from laffyhand.agent.llm.facade import LLM
 from laffyhand.agent.tools import ToolRegistry, AddTool
 from laffyhand.agent.loop import AgentState, agent_loop
 
@@ -28,9 +27,8 @@ If no tools present, skip tool use.
 
 
 def main():
-    provider_config = LLMProviderConfig(name="OpenCode Go", base_url=OPENCODE_BASE_URL, api_key=OPENCODE_API_KEY)
-    provider = DeepseekProvider(provider_config)
-    llm = LLM(model=OPENCODE_MODEL_NAME, provider=provider)
+    route = deepseek_route(base_url=OPENCODE_BASE_URL, api_key=OPENCODE_API_KEY)
+    llm = LLM(model=OPENCODE_MODEL_NAME, route=route)
 
     tool_registry = ToolRegistry()
     tool_registry.register_tool(AddTool())
