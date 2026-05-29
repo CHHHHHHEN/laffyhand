@@ -305,3 +305,184 @@ class TestTitle:
         fetched = manager.get(session.id)
         assert fetched is not None
         assert fetched.title == "My Title"
+
+
+class TestResolve:
+    def test_resolve_returns_state(self, manager: SessionManager) -> None:
+        session = manager.create(model="gpt-4")
+        sys_msg = SystemMessage(content="system")
+        state = manager.resolve(session.id, sys_msg, context_size=128000)
+        assert state is not None
+        assert state.session_id == session.id
+        assert state.usage.context_size == 128000
+        assert any(isinstance(m, SystemMessage) for m in state.messages)
+
+    def test_resolve_inserts_system_message(self, manager: SessionManager) -> None:
+        msgs = [UserMessage(content="hi")]
+        session = manager.create(messages=msgs)
+        sys_msg = SystemMessage(content="You are a helpful assistant.")
+        state = manager.resolve(session.id, sys_msg)
+        assert state is not None
+        assert state.messages[0].content == "You are a helpful assistant."
+        assert state.messages[1].content == "hi"
+
+    def test_resolve_follows_compression_chain(self, manager: SessionManager) -> None:
+        parent = manager.create()
+        child = manager.create_compacted_child(
+            parent_id=parent.id,
+            system_messages=[SystemMessage(content="sys")],
+            summary_content="summary",
+            tail_messages=[UserMessage(content="tail")],
+        )
+        sys_msg = SystemMessage(content="system")
+        state = manager.resolve(parent.id, sys_msg)
+        assert state is not None
+        assert state.session_id == child.id
+
+    def test_resolve_nonexistent(self, manager: SessionManager) -> None:
+        sys_msg = SystemMessage(content="system")
+        result = manager.resolve("nonexistent", sys_msg)
+        assert result is None
+
+
+class TestHelpers:
+    def test_ts_roundtrip(self) -> None:
+        from laffyhand.agent.session.manager import _ts, _from_ts
+        from datetime import datetime, timezone
+        dt = datetime(2026, 5, 29, 12, 30, 0, tzinfo=timezone.utc)
+        ts = _ts(dt)
+        assert isinstance(ts, str)
+        recovered = _from_ts(ts)
+        assert recovered == dt
+
+    def test_ts_none(self) -> None:
+        from laffyhand.agent.session.manager import _ts, _from_ts
+        assert _ts(None) is None
+        assert _from_ts(None) is None
+
+    def test_serialize_metadata_roundtrip(self) -> None:
+        from laffyhand.agent.session.manager import _serialize_metadata, _deserialize_metadata
+        meta = {"key": "value", "nested": {"a": 1}}
+        raw = _serialize_metadata(meta)
+        assert isinstance(raw, str)
+        recovered = _deserialize_metadata(raw)
+        assert recovered == meta
+
+    def test_deserialize_metadata_empty(self) -> None:
+        from laffyhand.agent.session.manager import _deserialize_metadata
+        assert _deserialize_metadata("") == {}
+
+    def test_deserialize_metadata_invalid_json(self) -> None:
+        from laffyhand.agent.session.manager import _deserialize_metadata
+        result = _deserialize_metadata("{invalid")
+        assert result == {}
+
+    def test_message_to_record_unknown_type(self) -> None:
+        from laffyhand.agent.session.manager import _message_to_record
+
+        class FakeMsg:
+            pass
+
+        with pytest.raises(TypeError, match="Unknown message type"):
+            _message_to_record("sid", FakeMsg(), 0)
+
+    def test_record_to_message_unknown_role(self) -> None:
+        from laffyhand.agent.session.manager import _record_to_message
+        from laffyhand.agent.session.models import MessageRecord
+        rec = MessageRecord(session_id="sid", role="unknown", content="x")
+        with pytest.raises(ValueError, match="Unknown role"):
+            _record_to_message(rec)
+
+    def test_message_to_record_assistant_with_tokens(self) -> None:
+        from laffyhand.agent.session.manager import _message_to_record
+        from laffyhand.agent.schemas import Usage
+        msg = AssistantMessage(content="Hello", tokens=Usage(input_tokens=10, output_tokens=5))
+        rec = _message_to_record("sid", msg, 1)
+        assert rec.role == "assistant"
+        assert rec.token_count == 15
+
+    def test_record_to_message_assistant_with_tool_calls(self) -> None:
+        from laffyhand.agent.session.manager import _record_to_message
+        from laffyhand.agent.session.models import MessageRecord
+        rec = MessageRecord(
+            session_id="sid", role="assistant", content="calling...",
+            tool_args='[{"tool_call_id": "c1", "tool_name": "t", "args": "{}", "type": "tool-call"}]',
+        )
+        msg = _record_to_message(rec)
+        assert isinstance(msg, AssistantMessage)
+        assert msg.tool_calls is not None
+        assert len(msg.tool_calls) == 1
+        assert msg.tool_calls[0].tool_call_id == "c1"
+
+
+class TestAdvancedCRUD:
+    def test_complete_without_summary(self, manager: SessionManager) -> None:
+        session = manager.create()
+        manager.complete(session.id)
+        fetched = manager.get(session.id)
+        assert fetched is not None
+        assert fetched.status == "completed"
+        assert fetched.summary is None
+
+    def test_complete_already_completed(self, manager: SessionManager) -> None:
+        session = manager.create()
+        manager.complete(session.id)
+        manager.complete(session.id)  # should not raise
+        fetched = manager.get(session.id)
+        assert fetched is not None
+        assert fetched.status == "completed"
+
+    def test_delete_nonexistent(self, manager: SessionManager) -> None:
+        manager.delete("nonexistent")  # should not raise
+
+    def test_get_messages_with_offset(self, manager: SessionManager) -> None:
+        msgs = [UserMessage(content=f"msg{i}") for i in range(5)]
+        session = manager.create(messages=msgs)
+        loaded = manager.get_messages(session.id, offset=2, limit=2)
+        assert len(loaded) == 2
+        assert loaded[0].content == "msg2"
+
+    def test_list_sessions_pagination(self, manager: SessionManager) -> None:
+        for i in range(5):
+            manager.create(model=f"model-{i}")
+        page1 = manager.list_sessions(limit=2)
+        assert len(page1) == 2
+        page2 = manager.list_sessions(limit=2, offset=2)
+        assert len(page2) == 2
+        assert page1[0].id != page2[0].id
+
+    def test_append_messages_error_nonexistent(self, manager: SessionManager) -> None:
+        with pytest.raises(ValueError, match="Session not found"):
+            manager.append_messages("nonexistent", [UserMessage(content="hi")])
+
+    def test_sync_messages_error_nonexistent(self, manager: SessionManager) -> None:
+        with pytest.raises(ValueError, match="Session not found"):
+            manager.sync_messages("nonexistent", [])
+
+    def test_fork_with_custom_title(self, manager: SessionManager) -> None:
+        msgs = [UserMessage(content="hi")]
+        parent = manager.create(title="Original", messages=msgs)
+        child = manager.fork(parent.id, title="Forked")
+        assert child.title == "Forked"
+        assert child.fork_id == parent.id
+
+
+class TestSchema:
+    def test_has_fts5_default(self, manager: SessionManager) -> None:
+        from laffyhand.agent.session.schema import has_fts5
+        assert has_fts5(manager._conn) is True
+
+    def test_create_tables_idempotent(self, manager: SessionManager) -> None:
+        from laffyhand.agent.session.schema import create_tables
+        create_tables(manager._conn)  # should not raise
+
+    def test_migrate_fresh_db(self, db_path: str) -> None:
+        import sqlite3
+        conn = sqlite3.connect(db_path)
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA foreign_keys=ON")
+        from laffyhand.agent.session.schema import create_tables
+        create_tables(conn)
+        row = conn.execute("SELECT MAX(version) FROM _schema_version").fetchone()
+        assert row[0] == 2
+        conn.close()
