@@ -120,6 +120,11 @@ class MCPClient:
         if self._exit_stack is not None:
             try:
                 await self._exit_stack.aclose()
+            except RuntimeError as e:
+                if "different task" in str(e):
+                    logger.debug(f"Ignoring task-context error on disconnect for '{self.name}': {e}")
+                else:
+                    logger.warning(f"Error closing MCP client '{self.name}': {type(e).__name__}: {e}")
             except Exception as e:
                 logger.warning(f"Error closing MCP client '{self.name}': {type(e).__name__}: {e}")
         self._session = None
