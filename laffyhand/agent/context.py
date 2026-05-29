@@ -263,3 +263,36 @@ async def compact(agent_state: AgentState, llm: LLM, config: CompactionConfig) -
     agent_state.messages = original_system + [summary_msg] + tail
     logger.info(f"Compaction complete: {len(head_to_summarize)} messages -> 1 summary message")
     return True
+
+
+async def compact_with_chain(
+    agent_state: AgentState,
+    llm: LLM,
+    config: CompactionConfig,
+) -> tuple[str, list[SystemMessage], list[Message]] | None:
+    head, tail = select_tail(
+        agent_state.messages, config, agent_state.usage.context_size,
+    )
+    if not head:
+        logger.info("No messages to compact")
+        return None
+
+    original_system = [m for m in head if isinstance(m, SystemMessage)]
+    head_to_summarize = [m for m in head if not isinstance(m, SystemMessage)]
+
+    if not head_to_summarize:
+        logger.info("Only system messages in head, nothing to compact")
+        return None
+
+    logger.info(
+        f"Chain-compacting {len(head_to_summarize)} messages into summary, "
+        f"keeping {len(tail)} messages verbatim"
+    )
+
+    summary = await _summarize(llm, head_to_summarize, tool_truncate=config.summary_tool_truncate)
+    if not summary:
+        logger.warning("Chain compaction failed: no summary generated")
+        return None
+
+    logger.info(f"Chain compaction summary generated ({len(summary)} chars)")
+    return summary, original_system, tail
