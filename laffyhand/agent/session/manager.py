@@ -4,6 +4,7 @@ import json
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
+from collections.abc import Sequence
 from typing import Optional
 
 from loguru import logger
@@ -113,7 +114,7 @@ class SessionManager:
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA foreign_keys=ON")
         create_tables(self._conn)
-        self._active_session: Optional[Session] = None
+
 
     # ── Connection ────────────────────────────────────────────
 
@@ -149,7 +150,6 @@ class SessionManager:
             self._insert_messages(session.id, messages)
             session.message_count = len(messages)
             self._update_counters(session.id, session.message_count)
-        self._active_session = session
         logger.debug(f"Session created: {session.id}")
         return session
 
@@ -366,16 +366,16 @@ class SessionManager:
     def compact(
         self,
         session_id: str,
-        system_messages: list[Message],
+        system_messages: Sequence[Message],
         summary_content: str,
-        tail_messages: list[Message],
+        tail_messages: Sequence[Message],
         model: str = "",
         agent_version: str = "",
     ) -> Session:
         parent = self.get(session_id)
-        tail_all = system_messages + [
+        tail_all = list(system_messages) + [
             UserMessage(content=summary_content.strip()),
-        ] + tail_messages
+        ] + list(tail_messages)
         child = self.create(
             title=parent.title if parent else "",
             cwd=parent.cwd if parent else "",
@@ -408,6 +408,15 @@ class SessionManager:
             messages=messages,
         )
         return child
+
+    # ── Title ─────────────────────────────────────────────────
+
+    def set_title(self, session_id: str, title: str) -> None:
+        self._conn.execute(
+            "UPDATE session SET title=? WHERE id=?",
+            (title, session_id),
+        )
+        self._conn.commit()
 
     # ── Title generation ──────────────────────────────────────
 

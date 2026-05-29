@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import AsyncIterator
-from typing import Optional, Literal
+from typing import TYPE_CHECKING, Optional, Literal
 
 from loguru import logger
 from pydantic import BaseModel
@@ -19,6 +19,9 @@ from laffyhand.agent.context import (
 from laffyhand.agent.llm.facade import LLM
 from laffyhand.agent.tools import ToolRegistry
 
+if TYPE_CHECKING:
+    from laffyhand.agent.session import SessionManager
+
 
 class AgentEvent(BaseModel):
     type: Literal["reasoning", "tool_calls", "content", "tool_result", "compacting"]
@@ -31,7 +34,7 @@ async def _compact_on_overflow(
     agent_state: AgentState,
     llm: LLM,
     compaction_config: CompactionConfig,
-    session_manager=None,
+    session_manager: SessionManager | None = None,
 ) -> bool:
     tokens = estimate_messages_tokens(agent_state.messages)
     if not is_overflow(tokens, agent_state.usage.context_size):
@@ -49,7 +52,7 @@ async def _compact_on_overflow(
             system_messages=original_system,
             summary_content=summary,
             tail_messages=tail,
-            model=agent_state.usage.context_size and "",
+            model="",
         )
         summary_msg = UserMessage(content=summary.strip())
         agent_state.session_id = child.id
@@ -73,7 +76,7 @@ async def agent_loop(
     compaction_config: CompactionConfig = CompactionConfig(),
     max_steps: int = 50,
     reminder: str | None = None,
-    session_manager=None,
+    session_manager: SessionManager | None = None,
 ) -> AsyncIterator[AgentEvent]:
     messages = agent_state.messages
     context_size = agent_state.usage.context_size

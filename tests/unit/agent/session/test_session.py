@@ -297,3 +297,12 @@ class TestMetadata:
         fetched = manager.get(session.id)
         assert fetched is not None
         assert fetched.metadata == {"key": "value", "nested": {"a": 1}}
+
+
+class TestTitle:
+    def test_set_title(self, manager: SessionManager) -> None:
+        session = manager.create()
+        manager.set_title(session.id, "My Title")
+        fetched = manager.get(session.id)
+        assert fetched is not None
+        assert fetched.title == "My Title"

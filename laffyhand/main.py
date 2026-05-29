@@ -56,43 +56,54 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def build_tool_system(tool_registry: ToolRegistry) -> str:
-    return tool_registry.build_tool_prompt()
-
-
-async def select_session_interactive(
-    session_manager: SessionManager,
-) -> str | None:
-    sessions = session_manager.list_sessions(limit=20)
+def print_sessions(sessions, session_manager: SessionManager | None = None) -> None:
     if not sessions:
-        logger.info("No saved sessions found. Starting a new session.")
-        return None
+        print("No sessions.")
+        return
+    print(f"{'ID':<30} {'Status':<12} {'Title':<40} {'Messages':<8} {'Cost':<8}")
+    print("-" * 100)
+    for s in sessions:
+        title = (s.title or "(untitled)")[:40]
+        cost = s.input_tokens + s.output_tokens
+        cost_str = f"{cost // 1000}k" if cost > 1000 else str(cost)
+        print(f"{s.id:<30} {s.status:<12} {title:<40} {s.message_count:<8} {cost_str:<8}")
 
-    print("\nSaved sessions:")
-    for i, s in enumerate(sessions, 1):
-        status_mark = "●" if s.status == "active" else "○"
-        title = s.title or "(untitled)"
-        print(f"  {i}. [{status_mark}] {s.id}  {title}")
-    print("  n. Start new session")
-    print("  q. Quit")
 
-    while True:
-        try:
-            choice = await asyncio.to_thread(input, "\nSelect session (1-{}): ".format(len(sessions)))
-            if choice.lower() in ("q", "quit"):
-                return None
-            if choice.lower() in ("n", "new", ""):
-                return None
-            idx = int(choice) - 1
-            if 0 <= idx < len(sessions):
-                session_id = sessions[idx].id
-                tip = session_manager.get_compression_tip(session_id)
-                if tip != session_id:
-                    logger.info(f"Resolving compression chain: {session_id} -> {tip}")
-                return tip
-            print(f"Invalid choice. Enter 1-{len(sessions)}, n, or q.")
-        except (ValueError, EOFError, KeyboardInterrupt):
-            return None
+async def resolve_session(
+    args: argparse.Namespace,
+    session_manager: SessionManager,
+    system_message: SystemMessage,
+) -> AgentState:
+    if args.session:
+        tip = session_manager.get_compression_tip(args.session)
+        loaded = session_manager.load_state(tip)
+        if loaded is not None:
+            loaded.usage.context_size = MODEL_CONTEXT_SIZE
+            logger.info(f"Loaded session {tip} ({len(loaded.messages)} messages)")
+            if not any(isinstance(m, SystemMessage) for m in loaded.messages):
+                loaded.messages.insert(0, system_message)
+            return loaded
+        logger.warning(f"Session {args.session} not found, starting new")
+
+    if args.resume:
+        last_active = session_manager.get_active()
+        if last_active is not None:
+            tip = session_manager.get_compression_tip(last_active.id)
+            loaded = session_manager.load_state(tip)
+            if loaded is not None:
+                loaded.usage.context_size = MODEL_CONTEXT_SIZE
+                logger.info(f"Resumed session {tip} ({len(loaded.messages)} messages)")
+                if not any(isinstance(m, SystemMessage) for m in loaded.messages):
+                    loaded.messages.insert(0, system_message)
+                return loaded
+
+    session = session_manager.create(cwd=os.getcwd(), model=OPENCODE_MODEL_NAME)
+    logger.info(f"New session created: {session.id}")
+    return AgentState(
+        messages=[system_message],
+        session_id=session.id,
+        usage=SessionUsage(context_size=MODEL_CONTEXT_SIZE),
+    )
 
 
 async def handle_repl_command(
@@ -107,15 +118,7 @@ async def handle_repl_command(
     arg = parts[1] if len(parts) > 1 else ""
 
     if command == "/sessions":
-        sessions = session_manager.list_sessions(limit=20)
-        if not sessions:
-            print("No sessions.")
-            return True
-        print(f"{'ID':<30} {'Status':<12} {'Title':<40} {'Messages':<8}")
-        print("-" * 90)
-        for s in sessions:
-            title = (s.title or "(untitled)")[:40]
-            print(f"{s.id:<30} {s.status:<12} {title:<40} {s.message_count:<8}")
+        print_sessions(session_manager.list_sessions(limit=20))
         return True
 
     if command == "/session":
@@ -152,12 +155,11 @@ async def handle_repl_command(
 
     if command == "/title":
         if arg:
-            session_manager._conn.execute(
-                "UPDATE session SET title=? WHERE id=?",
-                (arg, state.session_id),
-            )
-            session_manager._conn.commit()
-            print(f"Title set to: {arg}")
+            if state.session_id:
+                session_manager.set_title(state.session_id, arg)
+                print(f"Title set to: {arg}")
+            else:
+                print("No active session.")
         elif state.session_id:
             gen_title = await session_manager.generate_title(
                 state.session_id, llm, title_config,
@@ -257,75 +259,13 @@ async def main():
     system_message = SystemMessage(content=system_content)
 
     # ── Session resolution ────────────────────────────────────
-    session = None
-
     if args.list:
         sessions = session_manager.list_sessions(limit=20)
-        if not sessions:
-            print("No sessions.")
-        else:
-            print(f"{'ID':<30} {'Status':<12} {'Title':<40} {'Messages':<8}")
-            print("-" * 90)
-            for s in sessions:
-                title = (s.title or "(untitled)")[:40]
-                print(f"{s.id:<30} {s.status:<12} {title:<40} {s.message_count:<8}")
+        print_sessions(sessions)
         await mcp_service.disconnect_all()
         return
 
-    if args.session:
-        tip = session_manager.get_compression_tip(args.session)
-        loaded_agent_state = session_manager.load_state(tip)
-        if loaded_agent_state:
-            history = loaded_agent_state.messages
-            state = loaded_agent_state
-            state.usage.context_size = MODEL_CONTEXT_SIZE
-            logger.info(f"Loaded session {tip} ({len(history)} messages)")
-            if not history or not any(isinstance(m, SystemMessage) for m in history):
-                history.insert(0, system_message)
-                state.messages = history
-        else:
-            logger.warning(f"Session {args.session} not found, starting new")
-            session = session_manager.create(cwd=os.getcwd(), model=OPENCODE_MODEL_NAME)
-            history = [system_message]
-            state = AgentState(
-                messages=history, session_id=session.id,
-                usage=SessionUsage(context_size=MODEL_CONTEXT_SIZE),
-            )
-    elif args.resume:
-        last_active = session_manager.get_active()
-        if last_active:
-            tip = session_manager.get_compression_tip(last_active.id)
-            loaded_agent_state = session_manager.load_state(tip)
-            if loaded_agent_state:
-                history = loaded_agent_state.messages
-                state = loaded_agent_state
-                state.usage.context_size = MODEL_CONTEXT_SIZE
-                logger.info(f"Resumed session {tip} ({len(history)} messages)")
-                has_system = any(isinstance(m, SystemMessage) for m in history)
-                if not has_system:
-                    history.insert(0, system_message)
-                    state.messages = history
-            else:
-                session = session_manager.create(cwd=os.getcwd(), model=OPENCODE_MODEL_NAME)
-                history = [system_message]
-                state = AgentState(
-                    messages=history, session_id=session.id,
-                    usage=SessionUsage(context_size=MODEL_CONTEXT_SIZE),
-                )
-        else:
-            session = session_manager.create(cwd=os.getcwd(), model=OPENCODE_MODEL_NAME)
-            history = [system_message]
-            state = AgentState(
-                messages=history, session_id=session.id,
-                usage=SessionUsage(context_size=MODEL_CONTEXT_SIZE),
-            )
-    else:
-        session = session_manager.create(cwd=os.getcwd(), model=OPENCODE_MODEL_NAME)
-        history = [system_message]
-        state = AgentState(
-            messages=history, session_id=session.id,
-            usage=SessionUsage(context_size=MODEL_CONTEXT_SIZE),
-        )
+    state = await resolve_session(args, session_manager, system_message)
 
     compaction_config = CompactionConfig(
         tail_turns=int(os.getenv("COMPACTION_TAIL_TURNS", "2")),
@@ -356,19 +296,24 @@ async def main():
                 if handled:
                     continue
 
-            # ── Generate title on first user message ──────────
-            if state.turn_count == 0 and title_config.mode in ("on_create", "auto"):
-                title = await session_manager.generate_title(
-                    state.session_id, llm, title_config,
-                )
-                if title:
-                    logger.info(f"Generated session title: {title}")
-
-            # ── Run agent loop ────────────────────────────────
+            # ── Append user message ───────────────────────────
             state.step = 0
             user_message = UserMessage(content=user_prompt)
             state.messages.append(user_message)
 
+            # ── Persist user message immediately ──────────────
+            if state.session_id:
+                session_manager.append_messages(state.session_id, state.messages)
+
+            # ── Generate title on first user message ──────────
+            if state.turn_count == 0 and title_config.mode in ("on_create", "auto"):
+                gen_title = await session_manager.generate_title(
+                    state.session_id, llm, title_config,
+                )
+                if gen_title:
+                    logger.info(f"Generated session title: {gen_title}")
+
+            # ── Run agent loop ────────────────────────────────
             async for event in agent_loop(
                 state, llm, tool_registry, compaction_config,
                 max_steps=max_steps,
