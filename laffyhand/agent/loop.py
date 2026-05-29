@@ -131,7 +131,7 @@ def agent_loop(
         if finish_reason == "tool_calls" and tool_calls:
             for tc in tool_calls:
                 params = json.loads(tc.args)
-                result = tool_registry.run_tool(tc.tool_name, params)
+                result = tool_registry.run_tool(tc.tool_name, params, tool_call_id=tc.tool_call_id)
                 messages.append(ToolMessage(
                     tool_call_id=tc.tool_call_id,
                     content=result.result,

@@ -8,6 +8,7 @@ from laffyhand.agent.schemas import (
     UserMessage, estimate_tokens,
 )
 from laffyhand.agent.llm.facade import LLM
+from laffyhand.agent.tools.truncation import truncate_output
 
 
 def estimate_message_tokens(msg: Message) -> int:
@@ -131,7 +132,7 @@ def build_summary_text(messages: Sequence[Message], tool_truncate: int = 500) ->
                 for tc in msg.tool_calls:
                     lines.append(f"[Tool Call: {tc.tool_name}]: {tc.args}")
         elif isinstance(msg, ToolMessage):
-            lines.append(f"[Tool Result - {msg.tool_call_id}]: {truncate_tool_output(msg.content, tool_truncate)}")
+            lines.append(f"[Tool Result - {msg.tool_call_id}]: {truncate_output(msg.content, tool_truncate)}")
     return "\n".join(lines)
 
 
@@ -167,13 +168,6 @@ def prune(messages: list[Message]) -> int:
 # TODO: 添加空闲会话主动压缩（nanobot AutoCompact 模式）
 # TODO: 添加图片占位符压缩（hermes ContextCompressor 图像剥离）
 # TODO: 增量摘要（每次在之前摘要基础上追加）
-
-
-def truncate_tool_output(text: str, max_chars: int = 2_000) -> str:
-    if not text or len(text) <= max_chars:
-        return text
-    omitted = len(text) - max_chars
-    return f"{text[:max_chars]}\n[Tool output truncated: omitted {omitted} chars]"
 
 
 def _summarize(llm: LLM, head: Sequence[Message], tool_truncate: int = 500) -> str | None:
