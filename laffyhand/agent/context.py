@@ -173,10 +173,6 @@ def prune(messages: list[Message]) -> int:
     return pruned
 
 
-# TODO: 添加空闲会话主动压缩（nanobot AutoCompact 模式）
-# TODO: 添加图片占位符压缩（hermes ContextCompressor 图像剥离）
-# TODO: 增量摘要（每次在之前摘要基础上追加）
-
 
 def _summarize(llm: LLM, head: Sequence[Message], tool_truncate: int = 500) -> str | None:
     head_text = build_summary_text(head, tool_truncate=tool_truncate)

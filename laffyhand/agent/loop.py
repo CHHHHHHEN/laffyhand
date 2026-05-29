@@ -21,12 +21,6 @@ class AgentEvent:
     usage: Optional[Usage] = None
 
 
-# TODO: 添加 SUBTASK subagent 调用，通过 task tool 递归 agent_loop
-# TODO: 添加 StructuredOutput tool（response_format=json_schema 时注入）
-# TODO: 异步生成 session title（step 1 时另起 LLM 调用）
-# TODO: 异步计算 summary（step 1 时另起 LLM 调用）
-# TODO: 添加 StepStartPart/StepFinishPart 事件，含 worktree 快照和 diff
-
 
 def _wrap_last_user(messages: list[Message]) -> None:
     for i in range(len(messages) - 1, -1, -1):

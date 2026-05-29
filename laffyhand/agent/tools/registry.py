@@ -31,8 +31,6 @@ class ToolRegistry:
             lines.append(f"- **{tool.name}**: {tool.description}")
         return "\n".join(lines)
 
-    # TODO: 添加 ThreadPoolExecutor 并行执行，参考 hermes-agent tool_executor.py
-
     def run_tool(self, name: str, params: dict[str, Any], tool_call_id: str = "") -> ToolResultContent:
         tool = self._tools.get(name)
         if tool is None:
