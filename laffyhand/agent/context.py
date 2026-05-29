@@ -96,7 +96,7 @@ def select_tail(
     tail_content = content_msgs[split_at:]
     head = system_msgs + head_content
     tail = tail_content
-    logger.debug(f"select_tail: head={len(head)} messages, tail={len(tail)} messages")
+    logger.trace(f"select_tail: head={len(head)} messages, tail={len(tail)} messages")
     return head, tail
 
 
@@ -209,6 +209,7 @@ def prune(messages: list[Message]) -> list[Message]:
             content=new_content,
         )
         pruned += old_t - estimate_tokens(new_content)
+        logger.trace(f"Pruned message at index {idx}: {old_t} -> {estimate_tokens(new_content)} tokens")
     logger.info(f"Pruned {pruned} tokens from tool outputs")
     return result
 

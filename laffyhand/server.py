@@ -37,18 +37,22 @@ class SimpleHTTPHandler(BaseHTTPRequestHandler):
             response = {"messages": "Server is running."}
             self.wfile.write(json.dumps(response).encode())
         elif self.path == "/api/v1/providers":
-            with self.server.db_conn as db:
-                try:
+            try:
+                with self.server.db_conn as db:
                     cursor = db.cursor()
                     cursor.execute("""SELECT * FROM llm_providers""")
                     rows = cursor.fetchall()
-                except sqlite3.Error:
-                    logger.error("Database query failed in GET /api/v1/providers")
-                    raise
-                providers = [
-                    {"id": row[0], "name": row[1], 'base_url': row[2], 'api_key': row[3]} 
-                    for row in rows
-                ]
+            except sqlite3.Error:
+                logger.error("Database query failed in GET /api/v1/providers")
+                self.send_response(500)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "Database query failed"}).encode())
+                return
+            providers = [
+                {"id": row[0], "name": row[1], 'base_url': row[2], 'api_key': row[3]} 
+                for row in rows
+            ]
 
             response_body = json.dumps(providers).encode()
             self.send_response(200)
@@ -142,7 +146,11 @@ if __name__ == "__main__":
         logger.critical(f"Failed to connect to database at {DB_PATH}")
         raise
 
-    init_db(db_conn)
+    try:
+        init_db(db_conn)
+    except sqlite3.Error:
+        logger.critical("Failed to initialize database schema")
+        raise
 
     server = SimpleHTTPServer(("0.0.0.0", 8000), SimpleHTTPHandler, db_conn=db_conn)
     logger.info("Server is running at 0.0.0.0:8000.")

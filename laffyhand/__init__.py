@@ -12,6 +12,8 @@ def setup_logging(
     logger.remove()
     log_dir = os.getenv("LOG_DIR", log_dir)
     level = os.getenv("LOG_LEVEL", level)
+    retention = int(os.getenv("LOG_RETENTION", str(retention)))
+    console = os.getenv("LOG_CONSOLE", "false").lower() in ("1", "true", "yes")
     os.makedirs(log_dir, exist_ok=True)
 
     logger.add(

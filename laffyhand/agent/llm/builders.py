@@ -7,6 +7,7 @@ from laffyhand.agent.llm._route import Route
 
 
 def openai_route(base_url: str, api_key: str) -> Route:
+    # api_key is intentionally not logged to avoid credential leakage
     logger.debug(f"Building OpenAI route: base_url={base_url}")
     return Route(
         protocol=OpenAIProtocol(),
@@ -17,6 +18,7 @@ def openai_route(base_url: str, api_key: str) -> Route:
 
 
 def deepseek_route(base_url: str, api_key: str) -> Route:
+    # api_key is intentionally not logged to avoid credential leakage
     logger.debug(f"Building DeepSeek route: base_url={base_url}")
     return Route(
         protocol=DeepseekProtocol(),

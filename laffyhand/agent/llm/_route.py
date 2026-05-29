@@ -21,7 +21,7 @@ class HTTPClient:
         try:
             conn.request(method, path, body=body, headers=headers)
             response = conn.getresponse()
-            logger.debug(f"HTTP {response.status} from {url}")
+            logger.debug(f"HTTP {response.status} from {urlparse(url)._replace(query='').geturl()}")
             if response.status != 200:
                 error_body = response.read().decode("utf-8", errors="replace")
                 logger.error(f"HTTP {response.status}: {error_body}")
@@ -53,7 +53,7 @@ class Route:
         headers: dict[str, str] = {"Content-Type": "application/json"}
         self.auth.apply(headers)
 
-        logger.debug(f"Route POST {url}")
+        logger.debug(f"Route POST {urlparse(url)._replace(query='').geturl()}")
 
         response = self.http_client.stream("POST", url, headers, body)
         for frame in self.framing.frames(response):
