@@ -16,17 +16,17 @@ class TestTodoTool(unittest.TestCase):
 
     def test_read_empty(self):
         result = self.tool.run({"action": "read"})
-        self.assertIn("No todos", result.result)
+        self.assertIn("No todos", result)
 
     def test_add_and_read(self):
         self.tool.run({"action": "add", "content": "test task", "priority": "high"})
         result = self.tool.run({"action": "read"})
-        self.assertIn("test task", result.result)
-        self.assertIn("high", result.result)
+        self.assertIn("test task", result)
+        self.assertIn("high", result)
 
     def test_add_requires_content(self):
         result = self.tool.run({"action": "add"})
-        self.assertIn("content is required", result.result)
+        self.assertIn("content is required", result)
 
     def test_update_status(self):
         self.tool.run({"action": "add", "content": "task"})
@@ -38,7 +38,7 @@ class TestTodoTool(unittest.TestCase):
 
     def test_update_requires_id_and_status(self):
         result = self.tool.run({"action": "update", "id": "1"})
-        self.assertIn("id", result.result.lower() or "status" in result.result.lower())
+        self.assertIn("id", result.lower() or "status" in result.lower())
 
     def test_delete(self):
         self.tool.run({"action": "add", "content": "task"})
@@ -46,12 +46,12 @@ class TestTodoTool(unittest.TestCase):
         todo_id = items[0]["id"]
         self.tool.run({"action": "delete", "id": todo_id})
         result = self.tool.run({"action": "read"})
-        self.assertIn("No todos", result.result)
+        self.assertIn("No todos", result)
 
     def test_delete_unknown(self):
         result = self.tool.run({"action": "delete", "id": "999"})
-        self.assertIn("not found", result.result.lower())
+        self.assertIn("not found", result.lower())
 
     def test_unknown_action(self):
         result = self.tool.run({"action": "unknown"})
-        self.assertIn("Unknown action", result.result)
+        self.assertIn("Unknown action", result)

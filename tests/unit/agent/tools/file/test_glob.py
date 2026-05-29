@@ -19,17 +19,17 @@ class TestGlobTool(unittest.TestCase):
     def test_glob_top_level(self):
         tool = GlobTool()
         result = tool.run({"pattern": "*.py", "path": str(self.root)})
-        self.assertIn("a.py", result.result)
-        self.assertIn("b.py", result.result)
-        self.assertNotIn("sub/c.py", result.result)
+        self.assertIn("a.py", result)
+        self.assertIn("b.py", result)
+        self.assertNotIn("sub/c.py", result)
 
     def test_glob_recursive(self):
         tool = GlobTool()
         result = tool.run({"pattern": "**/*.py", "path": str(self.root)})
-        self.assertIn("a.py", result.result)
-        self.assertIn("sub/c.py", result.result)
+        self.assertIn("a.py", result)
+        self.assertIn("sub/c.py", result)
 
     def test_glob_no_match(self):
         tool = GlobTool()
         result = tool.run({"pattern": "*.rs", "path": str(self.root)})
-        self.assertIn("No files found", result.result)
+        self.assertIn("No files found", result)

@@ -1,6 +1,5 @@
 import unittest
 
-from laffyhand.agent.schemas import ToolResultContent
 from laffyhand.agent.tools.base import BaseTool
 from laffyhand.agent.tools.registry import ToolRegistry
 
@@ -17,8 +16,8 @@ class EchoTool(BaseTool):
             "required": ["text"],
         }
 
-    def run(self, params: dict) -> ToolResultContent:
-        return ToolResultContent(tool_call_id="", tool_name=self.name, result=params.get("text", ""))
+    def run(self, params: dict) -> str:
+        return params.get("text", "")
 
 
 class TestRegistry(unittest.TestCase):
@@ -35,12 +34,7 @@ class TestRegistry(unittest.TestCase):
 
     def test_run_tool(self):
         result = self.registry.run_tool("echo", {"text": "hello"})
-        self.assertEqual(result.result, "hello")
-        self.assertEqual(result.tool_name, "echo")
-
-    def test_run_tool_sets_call_id(self):
-        result = self.registry.run_tool("echo", {"text": "hi"}, tool_call_id="call_123")
-        self.assertEqual(result.tool_call_id, "call_123")
+        self.assertEqual(result, "hello")
 
     def test_build_tool_prompt(self):
         prompt = self.registry.build_tool_prompt()
@@ -59,9 +53,9 @@ class TestRegistry(unittest.TestCase):
 
     def test_run_unknown_tool_returns_error_message(self):
         result = self.registry.run_tool("nonexistent", {})
-        self.assertIn("not registered", result.result)
+        self.assertIn("not registered", result)
 
     def test_run_unregistered_tool_after_unregister(self):
         self.registry.unregister_tool("echo")
         result = self.registry.run_tool("echo", {})
-        self.assertIn("not registered", result.result)
+        self.assertIn("not registered", result)

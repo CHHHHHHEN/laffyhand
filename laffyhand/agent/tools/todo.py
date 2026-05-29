@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import Any
 from datetime import datetime
 
-from laffyhand.agent.schemas import ToolResultContent
 from laffyhand.agent.tools.base import BaseTool
 
 
@@ -69,23 +68,23 @@ class TodoTool(BaseTool):
             Path(tmp).unlink(missing_ok=True)
             raise
 
-    def run(self, params: dict[str, Any]) -> ToolResultContent:
+    def run(self, params: dict[str, Any]) -> str:
         action = params["action"]
         todos = self._load()
 
         if action == "read":
             if not todos:
-                return ToolResultContent(tool_call_id="", tool_name=self.name, result="No todos.")
+                return "No todos."
             lines = [
                 f"{t['id']} [{t['status']}] {t.get('priority', 'medium')}: {t['content']}"
                 for t in todos
             ]
-            return ToolResultContent(tool_call_id="", tool_name=self.name, result="\n".join(lines))
+            return "\n".join(lines)
 
         if action == "add":
             content = params.get("content")
             if not content:
-                return ToolResultContent(tool_call_id="", tool_name=self.name, result="content is required for add")
+                return "content is required for add"
             todo_id = uuid.uuid4().hex[:8]
             todos.append({
                 "id": todo_id,
@@ -95,28 +94,28 @@ class TodoTool(BaseTool):
                 "created": datetime.now().isoformat(),
             })
             self._save(todos)
-            return ToolResultContent(tool_call_id="", tool_name=self.name, result=f"Added todo #{todo_id}: {content}")
+            return f"Added todo #{todo_id}: {content}"
 
         if action == "update":
             uid = params.get("id")
             ust = params.get("status")
             if not uid or not ust:
-                return ToolResultContent(tool_call_id="", tool_name=self.name, result="id and status are required for update")
+                return "id and status are required for update"
             for t in todos:
                 if t["id"] == uid:
                     t["status"] = ust
                     self._save(todos)
-                    return ToolResultContent(tool_call_id="", tool_name=self.name, result=f"Updated todo #{uid} → {ust}")
-            return ToolResultContent(tool_call_id="", tool_name=self.name, result=f"Todo #{uid} not found")
+                    return f"Updated todo #{uid} → {ust}"
+            return f"Todo #{uid} not found"
 
         if action == "delete":
             did = params.get("id")
             if not did:
-                return ToolResultContent(tool_call_id="", tool_name=self.name, result="id is required for delete")
+                return "id is required for delete"
             new_todos = [t for t in todos if t["id"] != did]
             if len(new_todos) == len(todos):
-                return ToolResultContent(tool_call_id="", tool_name=self.name, result=f"Todo #{did} not found")
+                return f"Todo #{did} not found"
             self._save(new_todos)
-            return ToolResultContent(tool_call_id="", tool_name=self.name, result=f"Deleted todo #{did}")
+            return f"Deleted todo #{did}"
 
-        return ToolResultContent(tool_call_id="", tool_name=self.name, result=f"Unknown action: {action}")
+        return f"Unknown action: {action}"

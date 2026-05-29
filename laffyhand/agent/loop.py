@@ -135,12 +135,12 @@ def agent_loop(
                     ))
                     yield AgentEvent("tool_result", f"Error: invalid JSON args for {tc.tool_name}", None)
                     continue
-                result = tool_registry.run_tool(tc.tool_name, params, tool_call_id=tc.tool_call_id)
+                result = tool_registry.run_tool(tc.tool_name, params)
                 messages.append(ToolMessage(
                     tool_call_id=tc.tool_call_id,
-                    content=result.result,
+                    content=result,
                 ))
-                yield AgentEvent("tool_result", result.result, None)
+                yield AgentEvent("tool_result", result, None)
             if compaction_config.prune:
                 prune(messages)
             continue

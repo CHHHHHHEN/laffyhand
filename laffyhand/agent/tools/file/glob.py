@@ -2,7 +2,6 @@ import glob as glob_module
 from pathlib import Path
 from typing import Any
 
-from laffyhand.agent.schemas import ToolResultContent
 from laffyhand.agent.tools.base import BaseTool
 
 
@@ -27,16 +26,10 @@ class GlobTool(BaseTool):
             "required": ["pattern"],
         }
 
-    def run(self, params: dict[str, Any]) -> ToolResultContent:
+    def run(self, params: dict[str, Any]) -> str:
         root = Path(params.get("path", "."))
         pattern = params["pattern"]
         matches = sorted(glob_module.glob(pattern, root_dir=root, recursive=True))
         if not matches:
-            return ToolResultContent(
-                tool_call_id="", tool_name=self.name,
-                result=f"No files found matching `{pattern}` in {root}",
-            )
-        return ToolResultContent(
-            tool_call_id="", tool_name=self.name,
-            result="\n".join(matches),
-        )
+            return f"No files found matching `{pattern}` in {root}"
+        return "\n".join(matches)

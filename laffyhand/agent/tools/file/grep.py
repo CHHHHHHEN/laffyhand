@@ -3,7 +3,6 @@ import re
 from pathlib import Path
 from typing import Any
 
-from laffyhand.agent.schemas import ToolResultContent
 from laffyhand.agent.tools.base import BaseTool
 
 
@@ -32,7 +31,7 @@ class GrepTool(BaseTool):
             "required": ["pattern"],
         }
 
-    def run(self, params: dict[str, Any]) -> ToolResultContent:
+    def run(self, params: dict[str, Any]) -> str:
         root = Path(params.get("path", "."))
         pattern = re.compile(params["pattern"])
         include = params.get("include", "*")
@@ -56,11 +55,5 @@ class GrepTool(BaseTool):
                 matches.append(f"{fp}: error: {e}")
 
         if not matches:
-            return ToolResultContent(
-                tool_call_id="", tool_name=self.name,
-                result=f"No matches for `{params['pattern']}`",
-            )
-        return ToolResultContent(
-            tool_call_id="", tool_name=self.name,
-            result="\n".join(matches),
-        )
+            return f"No matches for `{params['pattern']}`"
+        return "\n".join(matches)

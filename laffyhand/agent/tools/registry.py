@@ -1,6 +1,6 @@
 from typing import Any
 
-from laffyhand.agent.schemas import ToolDefinition, ToolResultContent
+from laffyhand.agent.schemas import ToolDefinition
 from laffyhand.agent.tools.base import BaseTool
 from laffyhand.agent.tools.permission import PermissionManager
 from laffyhand.agent.truncation import truncate_output
@@ -31,27 +31,17 @@ class ToolRegistry:
             lines.append(f"- **{tool.name}**: {tool.description}")
         return "\n".join(lines)
 
-    def run_tool(self, name: str, params: dict[str, Any], tool_call_id: str = "") -> ToolResultContent:
+    def run_tool(self, name: str, params: dict[str, Any]) -> str:
         tool = self._tools.get(name)
         if tool is None:
-            return ToolResultContent(
-                tool_call_id=tool_call_id,
-                tool_name=name,
-                result=f"Tool '{name}' is not registered.",
-            )
+            return f"Tool '{name}' is not registered."
 
         if not self.permission.check(name):
-            return ToolResultContent(
-                tool_call_id=tool_call_id,
-                tool_name=name,
-                result=f"Tool '{name}' is not permitted.",
-            )
+            return f"Tool '{name}' is not permitted."
 
         result = tool.run(params)
-        result.tool_call_id = tool_call_id
-        result.tool_name = name
 
-        if tool.max_result_size and len(result.result) > tool.max_result_size:
-            result.result = truncate_output(result.result, tool.max_result_size)
+        if tool.max_result_size and len(result) > tool.max_result_size:
+            result = truncate_output(result, tool.max_result_size)
 
         return result

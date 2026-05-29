@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Any
 
-from laffyhand.agent.schemas import ToolDefinition, ToolResultContent
+from laffyhand.agent.schemas import ToolDefinition
 
 
 class BaseTool(ABC):
@@ -20,5 +20,5 @@ class BaseTool(ABC):
         return {"type": "object", "properties": {}}
 
     @abstractmethod
-    def run(self, params: dict[str, Any]) -> ToolResultContent:
+    def run(self, params: dict[str, Any]) -> str:
         ...

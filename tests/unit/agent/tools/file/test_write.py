@@ -16,13 +16,13 @@ class TestWriteTool(unittest.TestCase):
         f = self.root / "test.txt"
         tool = WriteTool()
         result = tool.run({"file_path": str(f), "content": "hello"})
-        self.assertIn("File written", result.result)
+        self.assertIn("File written", result)
         self.assertEqual(f.read_text(), "hello")
 
     def test_write_creates_parent_dirs(self):
         f = self.root / "sub" / "nested" / "test.txt"
         tool = WriteTool()
         result = tool.run({"file_path": str(f), "content": "nested"})
-        self.assertIn("File written", result.result)
+        self.assertIn("File written", result)
         self.assertTrue(f.exists())
         self.assertEqual(f.read_text(), "nested")

@@ -1,7 +1,6 @@
 import subprocess
 from typing import Any
 
-from laffyhand.agent.schemas import ToolResultContent
 from laffyhand.agent.tools.base import BaseTool
 
 
@@ -34,7 +33,7 @@ class BashTool(BaseTool):
             "required": ["command"],
         }
 
-    def run(self, params: dict[str, Any]) -> ToolResultContent:
+    def run(self, params: dict[str, Any]) -> str:
         command = params["command"]
         timeout = (params.get("timeout") or 120000) / 1000
         workdir = params.get("workdir")
@@ -53,17 +52,8 @@ class BashTool(BaseTool):
                 output += result.stderr
             if result.returncode != 0:
                 output = f"Exit code: {result.returncode}\n{output}"
-            return ToolResultContent(
-                tool_call_id="", tool_name=self.name,
-                result=output.strip(),
-            )
+            return output.strip()
         except subprocess.TimeoutExpired:
-            return ToolResultContent(
-                tool_call_id="", tool_name=self.name,
-                result=f"Command timed out after {timeout}s",
-            )
+            return f"Command timed out after {timeout}s"
         except Exception as e:
-            return ToolResultContent(
-                tool_call_id="", tool_name=self.name,
-                result=f"Error: {e}",
-            )
+            return f"Error: {e}"

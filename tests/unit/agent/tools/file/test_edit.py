@@ -17,7 +17,7 @@ class TestEditTool(unittest.TestCase):
         f.write_text("foo\nbar\nbaz")
         tool = EditTool()
         result = tool.run({"file_path": str(f), "old_string": "bar", "new_string": "qux"})
-        self.assertIn("Edited", result.result)
+        self.assertIn("Edited", result)
         self.assertEqual(f.read_text(), "foo\nqux\nbaz")
 
     def test_edit_file_not_found(self):
@@ -27,18 +27,18 @@ class TestEditTool(unittest.TestCase):
             "old_string": "a",
             "new_string": "b",
         })
-        self.assertIn("not found", result.result.lower())
+        self.assertIn("not found", result.lower())
 
     def test_edit_string_not_found(self):
         f = self.root / "test.txt"
         f.write_text("hello")
         tool = EditTool()
         result = tool.run({"file_path": str(f), "old_string": "zzz", "new_string": "xxx"})
-        self.assertIn("not found", result.result)
+        self.assertIn("not found", result)
 
     def test_edit_multiple_matches(self):
         f = self.root / "test.txt"
         f.write_text("foo\nfoo\nfoo")
         tool = EditTool()
         result = tool.run({"file_path": str(f), "old_string": "foo", "new_string": "bar"})
-        self.assertIn("3 matches", result.result.lower())
+        self.assertIn("3 matches", result.lower())

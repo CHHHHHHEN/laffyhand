@@ -2,7 +2,6 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from laffyhand.agent.schemas import ToolResultContent
 from laffyhand.agent.tools.base import BaseTool
 
 
@@ -26,7 +25,7 @@ class WriteTool(BaseTool):
             "required": ["file_path", "content"],
         }
 
-    def run(self, params: dict[str, Any]) -> ToolResultContent:
+    def run(self, params: dict[str, Any]) -> str:
         path = Path(params["file_path"])
         path.parent.mkdir(parents=True, exist_ok=True)
         content = params["content"]
@@ -38,8 +37,4 @@ class WriteTool(BaseTool):
         except:
             Path(tmp).unlink(missing_ok=True)
             raise
-        return ToolResultContent(
-            tool_call_id="",
-            tool_name=self.name,
-            result=f"File written: {path} ({len(content)} chars)",
-        )
+        return f"File written: {path} ({len(content)} chars)"

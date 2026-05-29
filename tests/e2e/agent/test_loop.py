@@ -2,7 +2,7 @@ import unittest
 from typing import Generator
 
 from laffyhand.agent.schemas import (
-    AgentState, CompactionConfig, SystemMessage, ToolMessage, Usage, SessionUsage, ToolResultContent,
+    AgentState, CompactionConfig, SystemMessage, ToolMessage, Usage, SessionUsage,
     StreamText, StreamToolCall, StreamFinish,
 )
 
@@ -23,8 +23,8 @@ class EchoTool(BaseTool):
             "required": ["text"],
         }
 
-    def run(self, params: dict) -> ToolResultContent:
-        return ToolResultContent(tool_call_id="", tool_name=self.name, result=params.get("text", ""))
+    def run(self, params: dict) -> str:
+        return params.get("text", "")
 
 
 class FakeLLM:

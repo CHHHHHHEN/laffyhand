@@ -11,28 +11,28 @@ class TestBashTool(unittest.TestCase):
 
     def test_echo(self):
         result = self.tool.run({"command": "echo hello"})
-        self.assertEqual(result.result, "hello")
+        self.assertEqual(result, "hello")
 
     def test_exit_code_nonzero(self):
         result = self.tool.run({"command": "false"})
-        self.assertIn("Exit code:", result.result)
+        self.assertIn("Exit code:", result)
 
     def test_timeout(self):
         result = self.tool.run({"command": "sleep 10", "timeout": 100})
-        self.assertIn("timed out", result.result.lower())
+        self.assertIn("timed out", result.lower())
 
     def test_stderr_included(self):
         result = self.tool.run({"command": "echo out && echo err >&2"})
-        self.assertIn("out", result.result)
-        self.assertIn("err", result.result)
+        self.assertIn("out", result)
+        self.assertIn("err", result)
 
     def test_workdir(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             result = self.tool.run({"command": "pwd", "workdir": tmpdir})
-            self.assertEqual(result.result.strip(), tmpdir)
+            self.assertEqual(result.strip(), tmpdir)
 
     def test_workdir_affects_file_operations(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             Path(tmpdir, "marker.txt").touch()
             result = self.tool.run({"command": "ls marker.txt", "workdir": tmpdir})
-            self.assertIn("marker.txt", result.result)
+            self.assertIn("marker.txt", result)
