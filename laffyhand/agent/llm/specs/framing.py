@@ -1,8 +1,8 @@
 from abc import ABC, abstractmethod
-from typing import Iterable, Generator
+from collections.abc import AsyncIterable, AsyncIterator
 
 
 class Framing(ABC):
     @abstractmethod
-    def frames(self, response: Iterable[bytes]) -> Generator[dict, None, None]:
+    def frames(self, response: AsyncIterable[bytes]) -> AsyncIterator[dict]:
         ...

@@ -26,7 +26,7 @@ class WriteTool(BaseTool):
             "required": ["file_path", "content"],
         }
 
-    def run(self, params: dict[str, Any]) -> str:
+    async def run(self, params: dict[str, Any]) -> str:
         path = Path(params["file_path"])
         path.parent.mkdir(parents=True, exist_ok=True)
         content = params["content"]

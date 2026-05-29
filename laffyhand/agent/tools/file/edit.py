@@ -29,7 +29,7 @@ class EditTool(BaseTool):
             "required": ["file_path", "old_string", "new_string"],
         }
 
-    def run(self, params: dict[str, Any]) -> str:
+    async def run(self, params: dict[str, Any]) -> str:
         path = Path(params["file_path"])
         if not path.exists():
             logger.warning(f"Edit: file not found {path}")

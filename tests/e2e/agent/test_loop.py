@@ -1,5 +1,5 @@
+import asyncio
 import unittest
-from typing import Generator
 
 from laffyhand.agent.schemas import (
     AgentState, CompactionConfig, SystemMessage, ToolMessage, Usage, SessionUsage,
@@ -23,7 +23,7 @@ class EchoTool(BaseTool):
             "required": ["text"],
         }
 
-    def run(self, params: dict) -> str:
+    async def run(self, params: dict) -> str:
         return params.get("text", "")
 
 
@@ -34,12 +34,13 @@ class FakeLLM:
         self._sequences = event_sequences
         self._call_count = 0
 
-    def stream(self, messages, tools=None):
+    async def stream(self, messages, tools=None):
         if self._call_count >= len(self._sequences):
             return
         events = self._sequences[self._call_count]
         self._call_count += 1
-        yield from events
+        for event in events:
+            yield event
 
 
 class TestAgentLoopE2E(unittest.TestCase):
@@ -53,8 +54,10 @@ class TestAgentLoopE2E(unittest.TestCase):
             usage=SessionUsage(context_size=context_size),
         )
 
-    def _collect(self, gen: Generator[AgentEvent, None, None]) -> list[AgentEvent]:
-        return list(gen)
+    def _collect(self, gen):
+        async def _run():
+            return [e async for e in gen]
+        return asyncio.run(_run())
 
     def test_simple_text_response(self):
         """LLM responds with text and finishes -> loop exits after one turn."""
@@ -101,7 +104,6 @@ class TestAgentLoopE2E(unittest.TestCase):
         llm = FakeLLM([tool_event, tool_event, tool_event])
         state = self._make_state()
         self._collect(agent_loop(state, llm, self.registry, CompactionConfig(prune=False), max_steps=2))
-        # max_steps=2: step increments before check, so step=3 breaks on entry
         self.assertEqual(state.step, 3)
         self.assertEqual(state.turn_count, 2)
 

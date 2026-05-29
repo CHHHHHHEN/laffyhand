@@ -20,6 +20,7 @@ description = "Laffyhand -- An AI Coding Agent"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
+    "httpx>=0.28",
     "loguru>=0.7.3",
     "pydantic>=2.13.4",
     "python-dotenv>=1.2.2",

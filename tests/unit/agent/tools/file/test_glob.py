@@ -1,3 +1,4 @@
+import asyncio
 import unittest
 import tempfile
 from pathlib import Path
@@ -18,18 +19,18 @@ class TestGlobTool(unittest.TestCase):
 
     def test_glob_top_level(self):
         tool = GlobTool()
-        result = tool.run({"pattern": "*.py", "path": str(self.root)})
+        result = asyncio.run(tool.run({"pattern": "*.py", "path": str(self.root)}))
         self.assertIn("a.py", result)
         self.assertIn("b.py", result)
         self.assertNotIn("sub/c.py", result)
 
     def test_glob_recursive(self):
         tool = GlobTool()
-        result = tool.run({"pattern": "**/*.py", "path": str(self.root)})
+        result = asyncio.run(tool.run({"pattern": "**/*.py", "path": str(self.root)}))
         self.assertIn("a.py", result)
         self.assertIn("sub/c.py", result)
 
     def test_glob_no_match(self):
         tool = GlobTool()
-        result = tool.run({"pattern": "*.rs", "path": str(self.root)})
+        result = asyncio.run(tool.run({"pattern": "*.rs", "path": str(self.root)}))
         self.assertIn("No files found", result)

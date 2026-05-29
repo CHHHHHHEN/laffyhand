@@ -32,7 +32,7 @@ class ToolRegistry:
             lines.append(f"- **{tool.name}**: {tool.description}")
         return "\n".join(lines)
 
-    def run_tool(self, name: str, params: dict[str, Any]) -> str:
+    async def run_tool(self, name: str, params: dict[str, Any]) -> str:
         tool = self._tools.get(name)
         if tool is None:
             logger.warning(f"Tool '{name}' is not registered")
@@ -43,7 +43,7 @@ class ToolRegistry:
             return f"Tool '{name}' is not permitted."
 
         logger.info(f"Running tool: {name}")
-        result = tool.run(params)
+        result = await tool.run(params)
 
         if tool.max_result_size and len(result) > tool.max_result_size:
             result = truncate_output(result, tool.max_result_size)

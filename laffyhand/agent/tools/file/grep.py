@@ -32,7 +32,7 @@ class GrepTool(BaseTool):
             "required": ["pattern"],
         }
 
-    def run(self, params: dict[str, Any]) -> str:
+    async def run(self, params: dict[str, Any]) -> str:
         root = Path(params.get("path", "."))
         try:
             pattern = re.compile(params["pattern"])

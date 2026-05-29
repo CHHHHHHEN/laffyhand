@@ -1,5 +1,5 @@
+import asyncio
 import re
-import subprocess
 from typing import Any
 
 from loguru import logger
@@ -52,7 +52,7 @@ class BashTool(BaseTool):
             "required": ["command"],
         }
 
-    def run(self, params: dict[str, Any]) -> str:
+    async def run(self, params: dict[str, Any]) -> str:
         command = params["command"]
         timeout_ms = params.get("timeout")
         if timeout_ms is None:
@@ -62,23 +62,26 @@ class BashTool(BaseTool):
         logger.info(f"Bash: {_redact_command(command)}")
 
         try:
-            result = subprocess.run(
+            proc = await asyncio.create_subprocess_shell(
                 command,
-                shell=True,
-                capture_output=True,
-                text=True,
-                timeout=timeout,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
                 cwd=workdir,
             )
-            output = result.stdout
-            if result.stderr:
-                output += result.stderr
-            if result.returncode != 0:
-                output = f"Exit code: {result.returncode}\n{output}"
+            try:
+                stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+            except asyncio.TimeoutError:
+                proc.kill()
+                await proc.wait()
+                logger.warning(f"Bash timed out after {timeout}s: {_redact_command(command)}")
+                return f"Command timed out after {timeout}s"
+
+            output = stdout.decode(errors="replace")
+            if stderr:
+                output += stderr.decode(errors="replace")
+            if proc.returncode != 0:
+                output = f"Exit code: {proc.returncode}\n{output}"
             return output.strip()
-        except subprocess.TimeoutExpired:
-            logger.warning(f"Bash timed out after {timeout}s: {_redact_command(command)}")
-            return f"Command timed out after {timeout}s"
         except Exception as e:
             logger.error(f"Bash exception on cmd={_redact_command(command)!r}, timeout={timeout}s, workdir={workdir!r}: {e}")
             return f"Error: {e}"

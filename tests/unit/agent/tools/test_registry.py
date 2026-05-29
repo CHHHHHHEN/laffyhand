@@ -1,3 +1,4 @@
+import asyncio
 import unittest
 
 from laffyhand.agent.tools.base import BaseTool
@@ -16,7 +17,7 @@ class EchoTool(BaseTool):
             "required": ["text"],
         }
 
-    def run(self, params: dict) -> str:
+    async def run(self, params: dict) -> str:
         return params.get("text", "")
 
 
@@ -33,7 +34,7 @@ class TestRegistry(unittest.TestCase):
         self.assertIn("text", str(defs[0].input_schema))
 
     def test_run_tool(self):
-        result = self.registry.run_tool("echo", {"text": "hello"})
+        result = asyncio.run(self.registry.run_tool("echo", {"text": "hello"}))
         self.assertEqual(result, "hello")
 
     def test_build_tool_prompt(self):
@@ -52,10 +53,10 @@ class TestRegistry(unittest.TestCase):
         self.assertIsNot(defs1, defs2)
 
     def test_run_unknown_tool_returns_error_message(self):
-        result = self.registry.run_tool("nonexistent", {})
+        result = asyncio.run(self.registry.run_tool("nonexistent", {}))
         self.assertIn("not registered", result)
 
     def test_run_unregistered_tool_after_unregister(self):
         self.registry.unregister_tool("echo")
-        result = self.registry.run_tool("echo", {})
+        result = asyncio.run(self.registry.run_tool("echo", {}))
         self.assertIn("not registered", result)

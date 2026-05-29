@@ -20,5 +20,5 @@ class BaseTool(ABC):
         return {"type": "object", "properties": {}}
 
     @abstractmethod
-    def run(self, params: dict[str, Any]) -> str:
+    async def run(self, params: dict[str, Any]) -> str:
         ...

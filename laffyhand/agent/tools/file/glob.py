@@ -27,7 +27,7 @@ class GlobTool(BaseTool):
             "required": ["pattern"],
         }
 
-    def run(self, params: dict[str, Any]) -> str:
+    async def run(self, params: dict[str, Any]) -> str:
         root = Path(params.get("path", "."))
         pattern = params["pattern"]
         matches = sorted(glob_module.glob(pattern, root_dir=root, recursive=True))

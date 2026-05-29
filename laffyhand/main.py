@@ -1,8 +1,8 @@
-from dotenv import load_dotenv
-load_dotenv()
-
+import asyncio
 import os
 import sys
+from dotenv import load_dotenv
+load_dotenv()
 
 from loguru import logger
 from laffyhand import setup_logging
@@ -32,7 +32,7 @@ If no tools present, skip tool use.
 """
 
 
-def main():
+async def main():
     setup_logging()
     route = deepseek_route(base_url=OPENCODE_BASE_URL, api_key=OPENCODE_API_KEY)
     llm = LLM(model=OPENCODE_MODEL_NAME, route=route)
@@ -57,7 +57,7 @@ def main():
 
     while True:
         try:
-            user_prompt = input("\nYou: ")
+            user_prompt = await asyncio.to_thread(input, "\nYou: ")
         except (EOFError, KeyboardInterrupt):
             logger.info("Agent session ended")
             break
@@ -69,7 +69,7 @@ def main():
         user_message = UserMessage(content=user_prompt)
         state.messages.append(user_message)
 
-        for event in agent_loop(state, llm, tool_registry, compaction_config, max_steps=max_steps):
+        async for event in agent_loop(state, llm, tool_registry, compaction_config, max_steps=max_steps):
             if event.type == "content" and event.finish_reason is not None and event.usage:
                 print()
                 print(state.usage.display(event.usage))
@@ -80,7 +80,7 @@ def main():
 
 if __name__ == "__main__":
     try:
-        main()
+        asyncio.run(main())
     except Exception:
         logger.exception("Unhandled exception")
         sys.exit(1)
