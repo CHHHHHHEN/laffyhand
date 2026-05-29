@@ -28,9 +28,7 @@ class ToolRegistry:
     def build_tool_prompt(self) -> str:
         lines = ["## Available tools"]
         for tool in self._tools.values():
-            lines.append(tool.name)
-            lines.append(tool.description)
-            lines.append("")
+            lines.append(f"- **{tool.name}**: {tool.description}")
         return "\n".join(lines)
 
     # TODO: 添加 ThreadPoolExecutor 并行执行，参考 hermes-agent tool_executor.py
