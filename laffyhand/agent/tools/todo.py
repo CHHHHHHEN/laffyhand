@@ -1,4 +1,5 @@
 import json
+import uuid
 from pathlib import Path
 from typing import Any
 from datetime import datetime
@@ -75,7 +76,7 @@ class TodoTool(BaseTool):
             content = params.get("content")
             if not content:
                 return ToolResultContent(tool_call_id="", tool_name=self.name, result="content is required for add")
-            todo_id = str(len(todos) + 1)
+            todo_id = uuid.uuid4().hex[:8]
             todos.append({
                 "id": todo_id,
                 "content": content,

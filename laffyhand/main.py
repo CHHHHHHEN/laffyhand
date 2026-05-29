@@ -40,7 +40,7 @@ def main():
     tool_registry.register_tool(GlobTool())
     tool_registry.register_tool(GrepTool())
     tool_registry.register_tool(BashTool())
-    tool_registry.register_tool(TodoTool(todo_path="/home/ch/src/laffyhand/.todos.json"))
+    tool_registry.register_tool(TodoTool(todo_path=os.getenv("TODOS_PATH", ".todos.json")))
 
     system_message = SystemMessage(content=SYSTEM_PROMPT + tool_registry.build_tool_prompt())
     history: list = [system_message]
