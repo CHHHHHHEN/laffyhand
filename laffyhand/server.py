@@ -66,34 +66,49 @@ class SimpleHTTPHandler(BaseHTTPRequestHandler):
             data = json.loads(body)
         except json.JSONDecodeError:
             logger.warning("Invalid JSON in POST body")
-            raise
+            self.send_response(400)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": "Invalid JSON"}).encode())
+            return
         if self.path == "/echo":
             self.send_response(200)
             self.send_header('Content-Type', 'application/json')
             self.end_headers()
             self.wfile.write(json.dumps({'Received': data}).encode())
         elif self.path == "/api/v1/providers":
-            logger.info(f"Received: {data}")
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
+            logger.info(f"Received POST /api/v1/providers: name={data.get('name')}, base_url={data.get('base_url')}")
 
             try:
                 config = LLMProviderConfig.model_validate(data)
             except Exception:
                 logger.warning("Provider config validation failed")
-                raise
-            with self.server.db_conn as conn:
-                try:
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "Invalid provider config"}).encode())
+                return
+
+            try:
+                with self.server.db_conn as conn:
                     cursor = conn.cursor()
                     cursor.execute(
                         """Insert INTO llm_providers (name, base_url, api_key) VALUES (?, ?, ?)""",
-                        (config.name, config.base_url, config.api_key)
+                        (config.name, config.base_url, config.api_key),
                     )
-                except sqlite3.Error:
-                    logger.error("Database insert failed in POST /api/v1/providers")
-                    raise
-                logger.info(f'Inserted {config}')
+            except sqlite3.Error:
+                logger.error("Database insert failed in POST /api/v1/providers")
+                self.send_response(500)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "Database insert failed"}).encode())
+                return
+
+            logger.info(f"Inserted provider: name={config.name}, base_url={config.base_url}")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"status": "ok"}).encode())
         else:
             self.send_response(404)
             self.end_headers()

@@ -35,7 +35,7 @@ class WriteTool(BaseTool):
             with open(fd, "w", encoding="utf-8") as f:
                 f.write(content)
             Path(tmp).replace(path)
-        except:
+        except Exception:
             Path(tmp).unlink(missing_ok=True)
             logger.error(f"Write failed for {path}")
             raise

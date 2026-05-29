@@ -1,4 +1,5 @@
 import os
+import sys
 from loguru import logger
 
 
@@ -6,6 +7,7 @@ def setup_logging(
     log_dir: str = "logs",
     level: str = "INFO",
     retention: int = 10,
+    console: bool = False,
 ) -> None:
     logger.remove()
     log_dir = os.getenv("LOG_DIR", log_dir)
@@ -13,10 +15,17 @@ def setup_logging(
     os.makedirs(log_dir, exist_ok=True)
 
     logger.add(
-        os.path.join(log_dir, "laffyhand_{time:YYYY-MM-DD_HH-mm-ss}.log"),
+        os.path.join(log_dir, "laffyhand_{time:YYYY-MM-DD}.log"),
         level=level,
         retention=f"{retention} files",
         format="{time:YYYY-MM-DD HH:mm:ss.SSS} | {level:<7} | {module}:{function}:{line} | {message}",
         encoding="utf-8",
         enqueue=True,
     )
+
+    if console:
+        logger.add(
+            sys.stderr,
+            level=level,
+            format="<level>{level:<7}</level> | <cyan>{module}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> | <level>{message}</level>",
+        )

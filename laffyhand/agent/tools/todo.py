@@ -96,7 +96,7 @@ class TodoTool(BaseTool):
                 "created": datetime.now().isoformat(),
             })
             self._save(todos)
-            logger.info(f"Added todo #{todo_id}: {content[:50]}")
+            logger.info(f"Added todo #{todo_id}")
             return f"Added todo #{todo_id}: {content}"
 
         if action == "update":
