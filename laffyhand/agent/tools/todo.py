@@ -59,6 +59,7 @@ class TodoTool(BaseTool):
 
     def _save(self, todos: list[dict]) -> None:
         path = Path(self._todo_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
         data = json.dumps(todos, indent=2, ensure_ascii=False)
         fd, tmp = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
         try:
