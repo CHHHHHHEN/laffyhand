@@ -164,7 +164,10 @@ def prune(messages: list[Message]) -> int:
             continue
         if total_tokens - pruned <= target:
             break
-        msg.content = f"[Tool output pruned: {old_t} tokens]"
+        messages[idx] = ToolMessage(
+            tool_call_id=msg.tool_call_id,
+            content=f"[Tool output pruned: {old_t} tokens]",
+        )
         pruned += old_t - estimate_tokens(msg.content)
     logger.info(f"Pruned {pruned} tokens from tool outputs")
     return pruned

@@ -31,8 +31,11 @@ class AgentEvent:
 def _wrap_last_user(messages: list[Message]) -> None:
     for i in range(len(messages) - 1, -1, -1):
         msg = messages[i]
-        if isinstance(msg, UserMessage) and not msg.content.startswith("<system-reminder>"):
-            msg.content = f"<system-reminder>\n{msg.content}\n</system-reminder>"
+        if isinstance(msg, UserMessage):
+            content = msg.content
+            if content.startswith("<system-reminder>") and content.rstrip().endswith("</system-reminder>"):
+                return
+            messages[i] = UserMessage(content=f"<system-reminder>\n{content}\n</system-reminder>")
             return
 
 
