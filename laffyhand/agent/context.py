@@ -33,8 +33,10 @@ def estimate_messages_tokens(messages: list[Message]) -> int:
 
 
 def is_overflow(tokens: int, context_size: int, reserved: int = 20_000) -> bool:
-    usable = context_size - reserved
-    return usable > 0 and tokens >= usable
+    if context_size <= 0:
+        return False
+    usable = max(context_size - reserved, context_size // 10)
+    return tokens >= usable
 
 
 def select_tail(

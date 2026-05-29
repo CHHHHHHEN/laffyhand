@@ -58,6 +58,12 @@ class TestIsOverflow(unittest.TestCase):
     def test_small_buffer(self):
         self.assertTrue(is_overflow(25_000, 30_000, reserved=5_000))
 
+    def test_context_smaller_than_reserved_uses_floor(self):
+        self.assertTrue(is_overflow(3000, 15_000, reserved=20_000))
+
+    def test_context_smaller_than_reserved_no_overflow(self):
+        self.assertFalse(is_overflow(500, 15_000, reserved=20_000))
+
 
 class TestSelectTail(unittest.TestCase):
     def test_empty_messages(self):
