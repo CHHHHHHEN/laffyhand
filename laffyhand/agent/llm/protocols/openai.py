@@ -1,4 +1,4 @@
-from typing import Optional, Literal, cast
+from typing import Optional, Literal, cast, get_args
 from pydantic import BaseModel, Field as F
 from loguru import logger
 
@@ -190,6 +190,9 @@ class OpenAIProtocol(Protocol):
                         args=acc["args"],
                     ))
             usage = self._openai_usage_to_internal(chunk.usage) if chunk.usage else None
+            if finish_reason not in get_args(FinishReason):
+                logger.warning(f"Unknown finish_reason '{finish_reason}', mapping to 'other'")
+                finish_reason = "other"
             logger.debug(f"Finish reason: {finish_reason}, usage={usage}")
             events.append(StreamFinish(finish_reason=cast(FinishReason, finish_reason), usage=usage))
 

@@ -26,7 +26,7 @@ class MCPWrappedTool(BaseTool):
         return _normalize_schema(schema)
 
     async def run(self, params: dict[str, Any]) -> str:
-        client = self._service._get_client(self._server_name)
+        client = self._service.get_client(self._server_name)
         if client is None:
             logger.warning(f"MCP server '{self._server_name}' not connected for tool '{self.name}'")
             return f"[MCP Error: server '{self._server_name}' is not connected]"
@@ -34,12 +34,12 @@ class MCPWrappedTool(BaseTool):
         try:
             logger.info(f"MCP tool call: {self.name}")
             return await client.call_tool(self._tool_def.name, params)
-        except (RuntimeError, ConnectionError, OSError) as e:
+        except Exception as e:
             logger.warning(f"MCP tool call '{self.name}' failed: {e}, attempting reconnect...")
             ok = await self._service.reconnect(self._server_name)
             if not ok:
                 return f"[MCP Error: server '{self._server_name}' reconnection failed]"
-            client = self._service._get_client(self._server_name)
+            client = self._service.get_client(self._server_name)
             if client is None:
                 return f"[MCP Error: server '{self._server_name}' not available after reconnect]"
             logger.info(f"MCP retrying tool call '{self._tool_def.name}' after reconnect")
@@ -135,7 +135,7 @@ class MCPService:
         self._reconnect_cfgs: dict[str, MCPConfig] = {}
         self._reconnect_attempts: dict[str, int] = {}
 
-    def _get_client(self, name: str) -> MCPClient | None:
+    def get_client(self, name: str) -> MCPClient | None:
         return self._clients.get(name)
 
     async def connect_all(self, configs: dict[str, MCPConfig]) -> None:
@@ -173,8 +173,13 @@ class MCPService:
         if not names:
             logger.debug("No MCP connections to clean up")
             return
-        for name in names:
-            await self.disconnect(name)
+        results = await asyncio.gather(
+            *(self.disconnect(name) for name in names),
+            return_exceptions=True,
+        )
+        for name, res in zip(names, results):
+            if isinstance(res, Exception):
+                logger.warning(f"Error disconnecting MCP '{name}': {res}")
         logger.info(f"Disconnected all MCP clients: {names}")
 
     async def get_wrapped_tools(self) -> list[BaseTool]:

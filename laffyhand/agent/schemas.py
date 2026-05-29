@@ -149,7 +149,7 @@ class StreamToolCall(BaseModel):
     args: str
 
 
-FinishReason = Literal['stop', 'length', 'tool_calls', 'error', 'other']
+FinishReason = Literal['stop', 'length', 'content_filter', 'tool_calls', 'error', 'other']
 
 class StreamFinish(BaseModel):
     type: Literal['finish'] = 'finish'

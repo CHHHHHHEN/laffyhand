@@ -12,7 +12,7 @@ class TestMCPWrappedTool(unittest.TestCase):
         self.client.name = "test-server"
         self.client.call_tool = AsyncMock(return_value="result")
         self.service = MagicMock(spec=MCPService)
-        self.service._get_client.return_value = self.client
+        self.service.get_client.return_value = self.client
         self.service.reconnect = AsyncMock(return_value=True)
         td = MCPToolDef(name="list-files", description="List files in a directory", input_schema={"type": "object", "properties": {"path": {"type": "string"}}})
         self.tool = MCPWrappedTool("test-server", td, self.service)
