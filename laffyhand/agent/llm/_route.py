@@ -4,6 +4,16 @@ from urllib.parse import urlparse
 from typing import Generator, Optional
 from loguru import logger
 
+
+def _redact_url(url: str) -> str:
+    parsed = urlparse(url)
+    redacted = parsed._replace(
+        netloc=parsed.hostname if parsed.hostname else parsed.netloc,
+        query="",
+        fragment="",
+    )
+    return redacted.geturl()
+
 from laffyhand.agent.schemas import LLMRequest, StreamEvent, StreamFinish
 from laffyhand.agent.llm.specs import Protocol, Endpoint, Auth, Framing
 
@@ -21,7 +31,7 @@ class HTTPClient:
         try:
             conn.request(method, path, body=body, headers=headers)
             response = conn.getresponse()
-            logger.debug(f"HTTP {response.status} from {urlparse(url)._replace(query='').geturl()}")
+            logger.debug(f"HTTP {response.status} from {_redact_url(url)}")
             if response.status != 200:
                 error_body = response.read().decode("utf-8", errors="replace")
                 logger.error(f"HTTP {response.status}: {error_body}")
@@ -53,7 +63,7 @@ class Route:
         headers: dict[str, str] = {"Content-Type": "application/json"}
         self.auth.apply(headers)
 
-        logger.debug(f"Route POST {urlparse(url)._replace(query='').geturl()}")
+        logger.debug(f"Route POST {_redact_url(url)}")
 
         response = self.http_client.stream("POST", url, headers, body)
         for frame in self.framing.frames(response):

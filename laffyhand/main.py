@@ -2,6 +2,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 import os
+import sys
 
 from loguru import logger
 from laffyhand import setup_logging
@@ -82,4 +83,4 @@ if __name__ == "__main__":
         main()
     except Exception:
         logger.exception("Unhandled exception")
-        raise
+        sys.exit(1)

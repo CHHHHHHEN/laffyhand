@@ -19,6 +19,6 @@ class SSEFraming(Framing):
                 logger.debug(f"SSE frame: {len(decoded)} chars")
                 try:
                     yield json.loads(decoded[6:])
-                except Exception as e:
+                except json.JSONDecodeError as e:
                     logger.warning(f"Line: {decoded}\nUnexpected error: {e}\n{traceback.format_exc()}")
                     return

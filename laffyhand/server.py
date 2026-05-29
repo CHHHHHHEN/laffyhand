@@ -2,6 +2,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 import os
+import sys
 import json
 import sqlite3
 
@@ -30,14 +31,22 @@ class SimpleHTTPServer(HTTPServer):
 class SimpleHTTPHandler(BaseHTTPRequestHandler):
     server: SimpleHTTPServer # FIXME: 暂时找不到更好的 db 注入方法
 
+    def _send_json(self, status: int, data: dict | list) -> None:
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.end_headers()
+        self.wfile.write(json.dumps(data, default=str).encode())
+
+    def _safe_log(self, action: str, data: dict, safe_keys: tuple[str, ...] = ("name", "base_url")) -> str:
+        safe = {k: v for k, v in data.items() if k in safe_keys}
+        safe["action"] = action
+        logger.info(f"Provider {action}: {safe}")
+        return action
+
     def do_GET(self):
         if self.path == "/health":
             logger.debug("Health check requested")
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-            response = {"messages": "Server is running."}
-            self.wfile.write(json.dumps(response).encode())
+            self._send_json(200, {"messages": "Server is running."})
         elif self.path == "/api/v1/providers":
             try:
                 with self.server.db_conn as db:
@@ -46,28 +55,18 @@ class SimpleHTTPHandler(BaseHTTPRequestHandler):
                     rows = cursor.fetchall()
             except sqlite3.Error:
                 logger.error("Database query failed in GET /api/v1/providers")
-                self.send_response(500)
-                self.send_header("Content-Type", "application/json")
-                self.end_headers()
-                self.wfile.write(json.dumps({"error": "Database query failed"}).encode())
+                self._send_json(500, {"error": "Database query failed"})
                 return
             try:
                 providers = [
-                    {"id": row[0], "name": row[1], 'base_url': row[2], 'api_key': row[3]}
+                    {"id": row[0], "name": row[1], 'base_url': row[2]}
                     for row in rows
                 ]
-                response_body = json.dumps(providers).encode()
             except (TypeError, ValueError, OverflowError):
                 logger.error("Failed to serialize provider list to JSON")
-                self.send_response(500)
-                self.send_header("Content-Type", "application/json")
-                self.end_headers()
-                self.wfile.write(json.dumps({"error": "Failed to serialize provider data"}).encode())
+                self._send_json(500, {"error": "Failed to serialize provider data"})
                 return
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-            self.wfile.write(response_body)
+            self._send_json(200, providers)
         else:
             self.send_response(404)
             self.end_headers()
@@ -79,27 +78,18 @@ class SimpleHTTPHandler(BaseHTTPRequestHandler):
             data = json.loads(body)
         except json.JSONDecodeError:
             logger.warning("Invalid JSON in POST body")
-            self.send_response(400)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-            self.wfile.write(json.dumps({"error": "Invalid JSON"}).encode())
+            self._send_json(400, {"error": "Invalid JSON"})
             return
         if self.path == "/echo":
-            self.send_response(200)
-            self.send_header('Content-Type', 'application/json')
-            self.end_headers()
-            self.wfile.write(json.dumps({'Received': data}).encode())
+            self._send_json(200, {'Received': data})
         elif self.path == "/api/v1/providers":
-            logger.info(f"Received POST /api/v1/providers: name={data.get('name')}, base_url={data.get('base_url')}")
+            self._safe_log("received", data)
 
             try:
                 config = LLMProviderConfig.model_validate(data)
             except Exception:
                 logger.warning("Provider config validation failed")
-                self.send_response(400)
-                self.send_header("Content-Type", "application/json")
-                self.end_headers()
-                self.wfile.write(json.dumps({"error": "Invalid provider config"}).encode())
+                self._send_json(400, {"error": "Invalid provider config"})
                 return
 
             try:
@@ -111,17 +101,11 @@ class SimpleHTTPHandler(BaseHTTPRequestHandler):
                     )
             except sqlite3.Error:
                 logger.error("Database insert failed in POST /api/v1/providers")
-                self.send_response(500)
-                self.send_header("Content-Type", "application/json")
-                self.end_headers()
-                self.wfile.write(json.dumps({"error": "Database insert failed"}).encode())
+                self._send_json(500, {"error": "Database insert failed"})
                 return
 
             logger.info(f"Inserted provider: name={config.name}, base_url={config.base_url}")
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-            self.wfile.write(json.dumps({"status": "ok"}).encode())
+            self._send_json(200, {"status": "ok"})
         else:
             self.send_response(404)
             self.end_headers()
@@ -173,3 +157,6 @@ if __name__ == "__main__":
         server.serve_forever()
     except KeyboardInterrupt:
         logger.info("Received keyboard interrupt, exiting...")
+    except Exception:
+        logger.exception("Server crashed")
+        sys.exit(1)

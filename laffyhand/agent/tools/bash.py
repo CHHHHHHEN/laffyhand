@@ -6,13 +6,19 @@ from loguru import logger
 from laffyhand.agent.tools.base import BaseTool
 
 _SENSITIVE_PATTERNS = re.compile(
-    r"(?i)((?:api[_-]?key|token|secret|password|passwd|credential|auth[_-]?token|access[_-]?key|private[_-]?key)"
+    r"(?i)((?:api[_-]?key|token|secret|password|passwd|credential|auth[_-]?token|access[_-]?key|private[_-]?key|sk-[a-zA-Z0-9]{20,})"
     r")(\s*[:=]\s*)(\S+)",
+)
+_ENV_VAR_PATTERN = re.compile(
+    r"(?i)^\s*export\s+(?:[A-Z_]*API[_-]?KEY|[A-Z_]*TOKEN|[A-Z_]*SECRET|[A-Z_]*PASSWORD)\s*=\s*\S+",
 )
 
 
 def _redact_command(command: str) -> str:
-    return _SENSITIVE_PATTERNS.sub(r"\1\2***", command)
+    redacted = _SENSITIVE_PATTERNS.sub(r"\1\2***", command)
+    if _ENV_VAR_PATTERN.search(redacted):
+        redacted = "export <redacted env var>"
+    return redacted
 
 
 class BashTool(BaseTool):
@@ -69,5 +75,5 @@ class BashTool(BaseTool):
             logger.warning(f"Bash timed out after {timeout}s: {_redact_command(command)}")
             return f"Command timed out after {timeout}s"
         except Exception as e:
-            logger.error(f"Bash exception: {e}")
+            logger.error(f"Bash exception on cmd={_redact_command(command)!r}, timeout={timeout}s, workdir={workdir!r}: {e}")
             return f"Error: {e}"

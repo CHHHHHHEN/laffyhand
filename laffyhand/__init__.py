@@ -2,6 +2,8 @@ import os
 import sys
 from loguru import logger
 
+_LOGGING_INITIALIZED = False
+
 
 def setup_logging(
     log_dir: str = "logs",
@@ -9,10 +11,16 @@ def setup_logging(
     retention: int = 10,
     console: bool = False,
 ) -> None:
+    global _LOGGING_INITIALIZED
+    if _LOGGING_INITIALIZED:
+        return
     logger.remove()
     log_dir = os.getenv("LOG_DIR", log_dir)
     level = os.getenv("LOG_LEVEL", level)
-    retention = int(os.getenv("LOG_RETENTION", str(retention)))
+    try:
+        retention = int(os.getenv("LOG_RETENTION", str(retention)))
+    except (TypeError, ValueError):
+        retention = 10
     console = os.getenv("LOG_CONSOLE", "false").lower() in ("1", "true", "yes")
     os.makedirs(log_dir, exist_ok=True)
 
@@ -31,3 +39,4 @@ def setup_logging(
             level=level,
             format="<level>{level:<7}</level> | <cyan>{module}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> | <level>{message}</level>",
         )
+    _LOGGING_INITIALIZED = True

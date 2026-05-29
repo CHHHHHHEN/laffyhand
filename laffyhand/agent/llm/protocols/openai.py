@@ -164,13 +164,13 @@ class OpenAIProtocol(Protocol):
         if delta.content:
             events.append(StreamText(delta=delta.content))
         if delta.reasoning_content:
-            logger.debug(f"Reasoning delta: {len(delta.reasoning_content)} chars")
+            logger.trace(f"Reasoning delta: {len(delta.reasoning_content)} chars")
             events.append(StreamReasoning(delta=delta.reasoning_content))
         if delta.tool_calls:
             for tc in delta.tool_calls:
                 idx = tc.index
                 if tc.id is not None:
-                    logger.debug(f"Tool call start: idx={idx}, id={tc.id}, name={tc.function.name if tc.function else '?'}")
+                    logger.trace(f"Tool call start: idx={idx}, id={tc.id}, name={tc.function.name if tc.function else '?'}")
                     self._tool_call_acc[idx] = {
                         "tool_call_id": tc.id,
                         "tool_name": tc.function.name if tc.function else "",
