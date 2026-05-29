@@ -8,7 +8,7 @@ from laffyhand.agent.schemas import (
     UserMessage, estimate_tokens,
 )
 from laffyhand.agent.llm.facade import LLM
-from laffyhand.agent.tools.truncation import truncate_output
+from laffyhand.agent.truncation import truncate_output
 
 
 def estimate_message_tokens(msg: Message) -> int:
