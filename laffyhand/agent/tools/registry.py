@@ -42,6 +42,7 @@ class ToolRegistry:
             logger.warning(f"Tool '{name}' is not permitted")
             return f"Tool '{name}' is not permitted."
 
+        logger.info(f"Running tool: {name}")
         result = tool.run(params)
 
         if tool.max_result_size and len(result) > tool.max_result_size:

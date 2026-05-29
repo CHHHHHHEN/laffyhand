@@ -47,6 +47,7 @@ def agent_loop(
 
     while True:
         agent_state.step += 1
+        logger.debug(f"Agent loop step {agent_state.step}")
 
         if agent_state.step > max_steps:
             logger.info(f"Reached max steps ({max_steps}), stopping")
@@ -72,6 +73,7 @@ def agent_loop(
         finish_reason: FinishReason | None = None
         usage: Usage | None = None
         tool_definitions = tool_registry.build_tool_definitions()
+        logger.debug(f"Sending {len(messages)} messages to LLM, {len(tool_definitions)} tools")
 
         for event in llm.stream(messages, tools=tool_definitions):
             if isinstance(event, StreamReasoning):
@@ -95,6 +97,7 @@ def agent_loop(
                 finish_reason = "error"
 
         agent_state.turn_count += 1
+        logger.debug(f"Turn {agent_state.turn_count} complete, finish_reason={finish_reason}")
 
         if usage is None:
             logger.warning("API did not return usage, falling back to estimate_tokens")
@@ -114,6 +117,7 @@ def agent_loop(
         yield AgentEvent(type="content", data="", finish_reason=finish_reason, usage=usage)
 
         if finish_reason == "tool_calls" and tool_calls:
+            logger.debug(f"Executing {len(tool_calls)} tool call(s)")
             for tc in tool_calls:
                 try:
                     params = json.loads(tc.args)
@@ -131,6 +135,7 @@ def agent_loop(
                 ))
                 yield AgentEvent(type="tool_result", data=result)
             if compaction_config.prune:
+                logger.debug("Pruning after tool calls")
                 messages = prune(messages)
                 agent_state.messages = messages
             continue

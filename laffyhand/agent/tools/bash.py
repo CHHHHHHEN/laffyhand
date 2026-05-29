@@ -38,6 +38,7 @@ class BashTool(BaseTool):
         command = params["command"]
         timeout = (params.get("timeout") or 120000) / 1000
         workdir = params.get("workdir")
+        logger.info(f"Bash: {command}")
 
         try:
             result = subprocess.run(
