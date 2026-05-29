@@ -58,3 +58,14 @@ class TestPermissionAsk(unittest.TestCase):
             asyncio.run(self.pm.ask("skill", ["test"]))
         # The rule should be stored
         self.assertTrue(self.pm.check("skill:test"))
+
+    def test_ask_no_tty_raises(self):
+        with patch("asyncio.to_thread", side_effect=EOFError):
+            with self.assertRaises(RuntimeError) as ctx:
+                asyncio.run(self.pm.ask("skill", ["test"]))
+        self.assertIn("no interactive terminal", str(ctx.exception).lower())
+
+    def test_ask_no_tty_oserror_raises(self):
+        with patch("asyncio.to_thread", side_effect=OSError):
+            with self.assertRaises(RuntimeError):
+                asyncio.run(self.pm.ask("skill", ["test"]))

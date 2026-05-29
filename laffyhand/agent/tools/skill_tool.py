@@ -45,9 +45,13 @@ class SkillTool(BaseTool):
             logger.warning(f"Skill not found: {name}")
             return str(e)
 
-        allowed = await self._permission.ask("skill", [name])
-        if not allowed:
-            return f"Skill '{name}' denied."
+        try:
+            allowed = await self._permission.ask("skill", [name])
+            if not allowed:
+                return f"Skill '{name}' denied."
+        except RuntimeError as e:
+            logger.warning(f"Permission check failed for skill '{name}': {e}")
+            return f"Skill '{name}' cannot be loaded: {e}"
 
         content = skill.filepath.read_text(encoding="utf-8")
         logger.debug(f"Skill '{name}' file size: {len(content)} bytes")
