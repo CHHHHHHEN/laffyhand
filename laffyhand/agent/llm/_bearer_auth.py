@@ -1,3 +1,4 @@
+from loguru import logger
 from laffyhand.agent.llm.specs import Auth
 
 
@@ -7,3 +8,4 @@ class BearerAuth(Auth):
 
     def apply(self, headers: dict[str, str]) -> None:
         headers["Authorization"] = f"Bearer {self.api_key}"
+        logger.debug("Bearer auth: Authorization header set")

@@ -13,8 +13,10 @@ class SSEFraming(Framing):
             if not decoded:
                 continue
             if decoded == "data: [DONE]":
+                logger.debug("SSE: [DONE] received, stopping")
                 return
             if decoded.startswith("data: "):
+                logger.debug(f"SSE frame: {len(decoded)} chars")
                 try:
                     yield json.loads(decoded[6:])
                 except Exception as e:

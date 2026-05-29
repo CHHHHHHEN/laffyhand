@@ -36,7 +36,10 @@ def is_overflow(tokens: int, context_size: int, reserved: int = 20_000) -> bool:
     if context_size <= 0:
         return False
     usable = max(context_size - reserved, context_size // 10)
-    return tokens >= usable
+    overflow = tokens >= usable
+    if overflow:
+        logger.debug(f"Overflow: {tokens} tokens vs usable {usable} (context_size={context_size})")
+    return overflow
 
 
 def select_tail(
@@ -61,6 +64,7 @@ def select_tail(
 
     content_msgs = messages[content_start:]
     if not content_msgs:
+        logger.debug("No content messages to split, returning full list")
         return [], messages
 
     tail_tokens = 0
@@ -85,12 +89,14 @@ def select_tail(
         tail_tokens += tokens
 
     if split_at == len(content_msgs):
+        logger.debug("Tail covers all content messages, no split needed")
         return [], messages
 
     head_content = content_msgs[:split_at]
     tail_content = content_msgs[split_at:]
     head = system_msgs + head_content
     tail = tail_content
+    logger.debug(f"select_tail: head={len(head)} messages, tail={len(tail)} messages")
     return head, tail
 
 
@@ -145,9 +151,12 @@ def wrap_last_user(messages: list[Message]) -> list[Message]:
         if isinstance(msg, UserMessage):
             content = msg.content
             if content.startswith("<system-reminder>") and content.rstrip().endswith("</system-reminder>"):
+                logger.debug("User message already wrapped, skipping")
                 return result
             result[i] = UserMessage(content=f"<system-reminder>\n{content}\n</system-reminder>")
+            logger.debug("Last user message wrapped with system-reminder tags")
             return result
+    logger.warning("No UserMessage found to wrap")
     return result
 
 
@@ -157,8 +166,11 @@ def attach_reminder(messages: list[Message], reminder: str) -> list[Message]:
             if reminder not in msg.content:
                 result = list(messages)
                 result[i] = SystemMessage(content=msg.content + f"\n\n{reminder}")
+                logger.debug("Reminder attached to system message")
                 return result
+            logger.debug("Reminder already present, not re-attaching")
             return list(messages)
+    logger.warning("No SystemMessage found, cannot attach reminder")
     return list(messages)
 
 
@@ -175,7 +187,9 @@ def prune(messages: list[Message]) -> list[Message]:
         if isinstance(msg, ToolMessage):
             total_tokens += estimate_tokens(msg.content)
             tool_indices.append(i)
+    logger.debug(f"Prune: found {len(tool_indices)} ToolMessages, total_tokens={total_tokens}")
     if total_tokens <= PRUNE_PROTECT:
+        logger.debug(f"Total tokens {total_tokens} <= PRUNE_PROTECT {PRUNE_PROTECT}, skipping")
         return messages
     target = max(PRUNE_MINIMUM, total_tokens // 2)
     pruned = 0

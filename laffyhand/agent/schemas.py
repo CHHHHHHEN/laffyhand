@@ -1,3 +1,4 @@
+from loguru import logger
 from pydantic import BaseModel
 from typing import Optional, Literal, List, Union
 
@@ -130,6 +131,7 @@ class SessionUsage(BaseModel):
         self.total_output += usage.output_tokens or 0
         self.total_reasoning += usage.reasoning_tokens or 0
         self.total_cache_read += usage.cache_read_tokens or 0
+        logger.debug(f"Usage added: +{usage.input_tokens or 0} in, +{usage.output_tokens or 0} out")
 
     def display(self, usage: Usage) -> str:
         inp = usage.input_tokens or 0
