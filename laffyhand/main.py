@@ -3,6 +3,8 @@ load_dotenv()
 
 import os
 
+from loguru import logger
+from laffyhand import setup_logging
 from laffyhand.agent.schemas import CompactionConfig, SystemMessage, UserMessage, SessionUsage
 from laffyhand.agent.llm.builders import deepseek_route
 from laffyhand.agent.llm.facade import LLM
@@ -30,8 +32,10 @@ If no tools present, skip tool use.
 
 
 def main():
+    setup_logging()
     route = deepseek_route(base_url=OPENCODE_BASE_URL, api_key=OPENCODE_API_KEY)
     llm = LLM(model=OPENCODE_MODEL_NAME, route=route)
+    logger.info(f"Agent session started, model={OPENCODE_MODEL_NAME}")
 
     tool_registry = ToolRegistry()
     tool_registry.register_tool(ReadTool())
@@ -54,8 +58,10 @@ def main():
         try:
             user_prompt = input("\nYou: ")
         except (EOFError, KeyboardInterrupt):
+            logger.info("Agent session ended")
             break
         if user_prompt.lower() in ("", "/exit", "quit", "exit"):
+            logger.info("Agent session ended")
             break
 
         state.step = 0
@@ -72,4 +78,8 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception:
+        logger.exception("Unhandled exception")
+        raise

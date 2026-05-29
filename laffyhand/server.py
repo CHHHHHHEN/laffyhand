@@ -8,7 +8,7 @@ import sqlite3
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from socketserver import BaseRequestHandler
 from typing import Callable, Any, Self, override
-from loguru import logger as _logger
+from loguru import logger
 
 from laffyhand.agent.schemas import LLMProviderConfig
 
@@ -65,7 +65,7 @@ class SimpleHTTPHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(json.dumps({'Received': data}).encode())
         elif self.path == "/api/v1/providers":
-            _logger.info(f"Received: {data}")
+            logger.info(f"Received: {data}")
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
@@ -77,7 +77,7 @@ class SimpleHTTPHandler(BaseHTTPRequestHandler):
                     """Insert INTO llm_providers (name, base_url, api_key) VALUES (?, ?, ?)""",
                     (config.name, config.base_url, config.api_key)
                 )
-                _logger.info(f'Inserted {config}')
+                logger.info(f'Inserted {config}')
         else:
             self.send_response(404)
             self.end_headers()
@@ -110,8 +110,8 @@ if __name__ == "__main__":
     init_db(db_conn)
 
     server = SimpleHTTPServer(("0.0.0.0", 8000), SimpleHTTPHandler, db_conn=db_conn)
-    _logger.info("Server is running at 0.0.0.0:8000.")
+    logger.info("Server is running at 0.0.0.0:8000.")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
-        _logger.info("Received keyboard interrupt, exiting...")
+        logger.info("Received keyboard interrupt, exiting...")

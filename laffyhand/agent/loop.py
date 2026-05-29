@@ -1,6 +1,6 @@
 import json
 from typing import Optional, Literal, Generator
-from loguru import logger as _logger
+from loguru import logger
 from pydantic import BaseModel
 
 from laffyhand.agent.schemas import (
@@ -49,7 +49,7 @@ def agent_loop(
         agent_state.step += 1
 
         if agent_state.step > max_steps:
-            _logger.info(f"Reached max steps ({max_steps}), stopping")
+            logger.info(f"Reached max steps ({max_steps}), stopping")
             break
 
         if reminder and agent_state.step == 1:
@@ -91,13 +91,13 @@ def agent_loop(
                 finish_reason = event.finish_reason
                 usage = event.usage
             elif isinstance(event, StreamError):
-                _logger.error(f"Stream error: {event.error}")
+                logger.error(f"Stream error: {event.error}")
                 finish_reason = "error"
 
         agent_state.turn_count += 1
 
         if usage is None:
-            _logger.warning("API did not return usage, falling back to estimate_tokens")
+            logger.warning("API did not return usage, falling back to estimate_tokens")
             usage = Usage(
                 input_tokens=estimate_messages_tokens(messages),
                 output_tokens=estimate_tokens("".join(content_buf)),

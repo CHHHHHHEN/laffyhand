@@ -1,6 +1,6 @@
 from typing import Optional, Literal, cast
 from pydantic import BaseModel, Field as F
-from loguru import logger as _logger
+from loguru import logger
 
 from laffyhand.agent.schemas import (
     LLMRequest, Message, AssistantMessage, ToolDefinition, StreamEvent,
@@ -100,7 +100,7 @@ def _message_to_openai(msg: Message) -> dict:
         return d
     if msg.role == "tool":
         return {"role": "tool", "tool_call_id": msg.tool_call_id, "content": msg.content}
-    _logger.warning(f"Unknown message role: {msg.role}")
+    logger.warning(f"Unknown message role: {msg.role}")
     return {}
 
 

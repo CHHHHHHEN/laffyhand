@@ -2,7 +2,7 @@ import http.client as client
 import json
 from urllib.parse import urlparse
 from typing import Generator, Optional
-from loguru import logger as _logger
+from loguru import logger
 
 from laffyhand.agent.schemas import LLMRequest, StreamEvent, StreamFinish
 from laffyhand.agent.llm.specs import Protocol, Endpoint, Auth, Framing
@@ -51,7 +51,7 @@ class Route:
         headers: dict[str, str] = {"Content-Type": "application/json"}
         self.auth.apply(headers)
 
-        _logger.debug(f"Route POST {url}")
+        logger.debug(f"Route POST {url}")
 
         response = self.http_client.stream("POST", url, headers, body)
         for frame in self.framing.frames(response):
