@@ -138,6 +138,25 @@ def build_summary_text(messages: Sequence[Message], tool_truncate: int = 500) ->
     return "\n".join(lines)
 
 
+def wrap_last_user(messages: list[Message]) -> None:
+    for i in range(len(messages) - 1, -1, -1):
+        msg = messages[i]
+        if isinstance(msg, UserMessage):
+            content = msg.content
+            if content.startswith("<system-reminder>") and content.rstrip().endswith("</system-reminder>"):
+                return
+            messages[i] = UserMessage(content=f"<system-reminder>\n{content}\n</system-reminder>")
+            return
+
+
+def attach_reminder(messages: list[Message], reminder: str) -> None:
+    for msg in messages:
+        if isinstance(msg, SystemMessage):
+            if reminder not in msg.content:
+                msg.content += f"\n\n{reminder}"
+            return
+
+
 PRUNE_PROTECT = 40_000
 PRUNE_MINIMUM = 20_000
 _PRUNE_MIN_SAVINGS = 50

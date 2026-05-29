@@ -4,11 +4,11 @@ from loguru import logger as _logger
 from dataclasses import dataclass
 
 from laffyhand.agent.schemas import (
-    AgentState, AssistantMessage, CompactionConfig, Message, StreamText, StreamReasoning,
-    StreamToolCall, StreamFinish, StreamError, FinishReason, SystemMessage,
+    AgentState, AssistantMessage, CompactionConfig, StreamText, StreamReasoning,
+    StreamToolCall, StreamFinish, StreamError, FinishReason,
     ToolCallContent, ToolMessage, Usage, UserMessage, estimate_tokens,
 )
-from laffyhand.agent.context import compact, prune, estimate_messages_tokens, is_overflow
+from laffyhand.agent.context import compact, prune, wrap_last_user, attach_reminder, estimate_messages_tokens, is_overflow
 from laffyhand.agent.llm.facade import LLM
 from laffyhand.agent.tools import ToolRegistry
 
@@ -22,23 +22,17 @@ class AgentEvent:
 
 
 
-def _wrap_last_user(messages: list[Message]) -> None:
-    for i in range(len(messages) - 1, -1, -1):
-        msg = messages[i]
-        if isinstance(msg, UserMessage):
-            content = msg.content
-            if content.startswith("<system-reminder>") and content.rstrip().endswith("</system-reminder>"):
-                return
-            messages[i] = UserMessage(content=f"<system-reminder>\n{content}\n</system-reminder>")
-            return
-
-
-def _attach_reminder(messages: list[Message], reminder: str) -> None:
-    for msg in messages:
-        if isinstance(msg, SystemMessage):
-            if reminder not in msg.content:
-                msg.content += f"\n\n{reminder}"
-            return
+def _compact_on_overflow(
+    agent_state: AgentState,
+    llm: LLM,
+    compaction_config: CompactionConfig,
+) -> bool:
+    tokens = estimate_messages_tokens(agent_state.messages)
+    if not is_overflow(tokens, agent_state.usage.context_size):
+        return False
+    if compact(agent_state, llm, compaction_config):
+        return True
+    return False
 
 
 def agent_loop(
@@ -60,22 +54,16 @@ def agent_loop(
             break
 
         if reminder and agent_state.step == 1:
-            _attach_reminder(messages, reminder)
+            attach_reminder(messages, reminder)
 
         if agent_state.step > 1:
-            _wrap_last_user(messages)
+            wrap_last_user(messages)
 
         if agent_state.step > 1 and context_size:
-            _tokens = estimate_messages_tokens(messages)
-            if is_overflow(_tokens, context_size):
-                _logger.info("Overflow before LLM call, compacting...")
+            if _compact_on_overflow(agent_state, llm, compaction_config):
+                messages = agent_state.messages
                 yield AgentEvent("compacting", "Compacting conversation history...", None)
-                if compact(agent_state, llm, compaction_config):
-                    messages = agent_state.messages
-                    continue
-                else:
-                    _logger.warning("Compaction failed, stopping")
-                    break
+                continue
 
         reasoning_buf: list[str] = []
         content_buf: list[str] = []
@@ -146,19 +134,13 @@ def agent_loop(
             continue
 
         if finish_reason is not None:
-            if context_size:
-                _curr_tokens = estimate_messages_tokens(messages)
-                if is_overflow(_curr_tokens, context_size):
-                    _logger.info("Context overflow detected, compacting...")
-                    yield AgentEvent("compacting", "Compacting conversation history...", None)
-                    if compact(agent_state, llm, compaction_config):
-                        messages = agent_state.messages
-                        if compaction_config.auto_continue:
-                            messages.append(UserMessage(
-                                content="Continue if you have next steps, or stop and ask for clarification if you are unsure how to proceed.",
-                            ))
-                            yield AgentEvent("compacting", "Continuing after compaction...", None)
-                            continue
-                    else:
-                        _logger.warning("Context compaction failed, stopping to avoid overflow")
+            if context_size and _compact_on_overflow(agent_state, llm, compaction_config):
+                messages = agent_state.messages
+                yield AgentEvent("compacting", "Compacting conversation history...", None)
+                if compaction_config.auto_continue:
+                    messages.append(UserMessage(
+                        content="Continue if you have next steps, or stop and ask for clarification if you are unsure how to proceed.",
+                    ))
+                    yield AgentEvent("compacting", "Continuing after compaction...", None)
+                    continue
             break
