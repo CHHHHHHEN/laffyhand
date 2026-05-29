@@ -1,7 +1,26 @@
+import re
 import subprocess
 from typing import Any
 
+from loguru import logger
 from laffyhand.agent.tools.base import BaseTool
+
+_SENSITIVE_PATTERNS = re.compile(
+    r"(?i)\b(api[_-]?key|token|secret|password|passwd|credential|auth[_-]?token|access[_-]?key|private[_-]?key)"
+    r"(\s*[:=]\s*)\S+",
+)
+_BEARER_PATTERN = re.compile(r"(?i)\bBearer\s+\S+")
+_ENV_VAR_PATTERN = re.compile(
+    r"(?i)^\s*export\s+(?:[A-Z_]*API[_-]?KEY|[A-Z_]*TOKEN|[A-Z_]*SECRET|[A-Z_]*PASSWORD)\s*=\s*\S+",
+)
+
+
+def _redact_command(command: str) -> str:
+    redacted = _SENSITIVE_PATTERNS.sub(r"\1\2***", command)
+    redacted = _BEARER_PATTERN.sub("Bearer ***", redacted)
+    if _ENV_VAR_PATTERN.search(redacted):
+        redacted = "export <redacted env var>"
+    return redacted
 
 
 class BashTool(BaseTool):
@@ -37,6 +56,7 @@ class BashTool(BaseTool):
         command = params["command"]
         timeout = (params.get("timeout") or 120000) / 1000
         workdir = params.get("workdir")
+        logger.info(f"Bash: {_redact_command(command)}")
 
         try:
             result = subprocess.run(
@@ -54,6 +74,8 @@ class BashTool(BaseTool):
                 output = f"Exit code: {result.returncode}\n{output}"
             return output.strip()
         except subprocess.TimeoutExpired:
+            logger.warning(f"Bash timed out after {timeout}s: {_redact_command(command)}")
             return f"Command timed out after {timeout}s"
         except Exception as e:
+            logger.error(f"Bash exception on cmd={_redact_command(command)!r}, timeout={timeout}s, workdir={workdir!r}: {e}")
             return f"Error: {e}"

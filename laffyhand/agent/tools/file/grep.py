@@ -3,6 +3,7 @@ import re
 from pathlib import Path
 from typing import Any
 
+from loguru import logger
 from laffyhand.agent.tools.base import BaseTool
 
 
@@ -38,6 +39,7 @@ class GrepTool(BaseTool):
         max_size = 1_000_000
 
         matched_files = sorted(glob_module.glob(include, root_dir=root, recursive=True))
+        logger.info(f"Grep: pattern='{params['pattern']}' in {root}, {len(matched_files)} files to search")
         matches: list[str] = []
         for rel_path in matched_files:
             fp = root / rel_path

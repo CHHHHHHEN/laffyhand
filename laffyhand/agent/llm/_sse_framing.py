@@ -1,7 +1,7 @@
 import json
 import traceback
 from typing import Iterable, Generator
-from loguru import logger as _logger
+from loguru import logger
 
 from laffyhand.agent.llm.specs import Framing
 
@@ -13,10 +13,12 @@ class SSEFraming(Framing):
             if not decoded:
                 continue
             if decoded == "data: [DONE]":
+                logger.debug("SSE: [DONE] received, stopping")
                 return
             if decoded.startswith("data: "):
+                logger.debug(f"SSE frame: {len(decoded)} chars")
                 try:
                     yield json.loads(decoded[6:])
-                except Exception as e:
-                    _logger.warning(f"Line: {decoded}\nUnexpected error: {e}\n{traceback.format_exc()}")
+                except json.JSONDecodeError as e:
+                    logger.warning(f"Line: {decoded}\nUnexpected error: {e}\n{traceback.format_exc()}")
                     return

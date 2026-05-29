@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 from datetime import datetime
 
+from loguru import logger
 from laffyhand.agent.tools.base import BaseTool
 
 
@@ -64,7 +65,7 @@ class TodoTool(BaseTool):
             with open(fd, "w", encoding="utf-8") as f:
                 f.write(data)
             Path(tmp).replace(path)
-        except:
+        except Exception:
             Path(tmp).unlink(missing_ok=True)
             raise
 
@@ -84,6 +85,7 @@ class TodoTool(BaseTool):
         if action == "add":
             content = params.get("content")
             if not content:
+                logger.warning("Todo add: content is required")
                 return "content is required for add"
             todo_id = uuid.uuid4().hex[:8]
             todos.append({
@@ -94,28 +96,36 @@ class TodoTool(BaseTool):
                 "created": datetime.now().isoformat(),
             })
             self._save(todos)
+            logger.info(f"Added todo #{todo_id}")
             return f"Added todo #{todo_id}: {content}"
 
         if action == "update":
             uid = params.get("id")
             ust = params.get("status")
             if not uid or not ust:
+                logger.warning("Todo update: id or status missing")
                 return "id and status are required for update"
             for t in todos:
                 if t["id"] == uid:
                     t["status"] = ust
                     self._save(todos)
+                    logger.info(f"Updated todo #{uid} → {ust}")
                     return f"Updated todo #{uid} → {ust}"
+            logger.warning(f"Todo #{uid} not found for update")
             return f"Todo #{uid} not found"
 
         if action == "delete":
             did = params.get("id")
             if not did:
+                logger.warning("Todo delete: id is required")
                 return "id is required for delete"
             new_todos = [t for t in todos if t["id"] != did]
             if len(new_todos) == len(todos):
+                logger.warning(f"Todo #{did} not found for delete")
                 return f"Todo #{did} not found"
             self._save(new_todos)
+            logger.info(f"Deleted todo #{did}")
             return f"Deleted todo #{did}"
 
+        logger.warning(f"Unknown todo action: {action}")
         return f"Unknown action: {action}"

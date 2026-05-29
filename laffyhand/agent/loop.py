@@ -1,6 +1,6 @@
 import json
 from typing import Optional, Literal, Generator
-from loguru import logger as _logger
+from loguru import logger
 from pydantic import BaseModel
 
 from laffyhand.agent.schemas import (
@@ -28,9 +28,13 @@ def _compact_on_overflow(
 ) -> bool:
     tokens = estimate_messages_tokens(agent_state.messages)
     if not is_overflow(tokens, agent_state.usage.context_size):
+        logger.debug(f"No compaction needed: {tokens} tokens within context limit")
         return False
+    logger.info(f"Compaction triggered: {tokens} tokens, attempting compact...")
     if compact(agent_state, llm, compaction_config):
+        logger.info("Compaction succeeded")
         return True
+    logger.warning("Compaction failed: could not compact conversation")
     return False
 
 
@@ -47,9 +51,10 @@ def agent_loop(
 
     while True:
         agent_state.step += 1
+        logger.debug(f"Agent loop step {agent_state.step}")
 
         if agent_state.step > max_steps:
-            _logger.info(f"Reached max steps ({max_steps}), stopping")
+            logger.info(f"Reached max steps ({max_steps}), stopping")
             break
 
         if reminder and agent_state.step == 1:
@@ -72,6 +77,7 @@ def agent_loop(
         finish_reason: FinishReason | None = None
         usage: Usage | None = None
         tool_definitions = tool_registry.build_tool_definitions()
+        logger.debug(f"Sending {len(messages)} messages to LLM, {len(tool_definitions)} tools")
 
         for event in llm.stream(messages, tools=tool_definitions):
             if isinstance(event, StreamReasoning):
@@ -91,13 +97,14 @@ def agent_loop(
                 finish_reason = event.finish_reason
                 usage = event.usage
             elif isinstance(event, StreamError):
-                _logger.error(f"Stream error: {event.error}")
+                logger.error(f"Stream error: {event.error}")
                 finish_reason = "error"
 
         agent_state.turn_count += 1
+        logger.debug(f"Turn {agent_state.turn_count} complete, finish_reason={finish_reason}")
 
         if usage is None:
-            _logger.warning("API did not return usage, falling back to estimate_tokens")
+            logger.warning("API did not return usage, falling back to estimate_tokens")
             usage = Usage(
                 input_tokens=estimate_messages_tokens(messages),
                 output_tokens=estimate_tokens("".join(content_buf)),
@@ -114,6 +121,7 @@ def agent_loop(
         yield AgentEvent(type="content", data="", finish_reason=finish_reason, usage=usage)
 
         if finish_reason == "tool_calls" and tool_calls:
+            logger.debug(f"Executing {len(tool_calls)} tool call(s)")
             for tc in tool_calls:
                 try:
                     params = json.loads(tc.args)
@@ -131,6 +139,7 @@ def agent_loop(
                 ))
                 yield AgentEvent(type="tool_result", data=result)
             if compaction_config.prune:
+                logger.debug("Pruning after tool calls")
                 messages = prune(messages)
                 agent_state.messages = messages
             continue

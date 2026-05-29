@@ -1,5 +1,7 @@
 from typing import Literal
 
+from loguru import logger
+
 
 Rule = Literal["allow", "deny"]
 
@@ -15,4 +17,6 @@ class PermissionManager:
         self._rules[tool_name] = "deny"
 
     def check(self, tool_name: str) -> bool:
-        return self._rules.get(tool_name, "allow") == "allow"
+        result = self._rules.get(tool_name, "allow") == "allow"
+        logger.trace(f"Permission check {tool_name}: {'allowed' if result else 'denied'}")
+        return result

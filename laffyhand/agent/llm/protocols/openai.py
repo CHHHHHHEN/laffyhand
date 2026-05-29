@@ -1,6 +1,6 @@
 from typing import Optional, Literal, cast
 from pydantic import BaseModel, Field as F
-from loguru import logger as _logger
+from loguru import logger
 
 from laffyhand.agent.schemas import (
     LLMRequest, Message, AssistantMessage, ToolDefinition, StreamEvent,
@@ -100,7 +100,7 @@ def _message_to_openai(msg: Message) -> dict:
         return d
     if msg.role == "tool":
         return {"role": "tool", "tool_call_id": msg.tool_call_id, "content": msg.content}
-    _logger.warning(f"Unknown message role: {msg.role}")
+    logger.warning(f"Unknown message role: {msg.role}")
     return {}
 
 
@@ -135,6 +135,7 @@ class OpenAIProtocol(Protocol):
         }
         if request.tools:
             body["tools"] = _tool_definitions_to_openai(request.tools)
+        logger.debug(f"OpenAI request: model={request.model}, {len(messages)} messages, tools={bool(request.tools)}")
         return body
 
     @staticmethod
@@ -163,11 +164,13 @@ class OpenAIProtocol(Protocol):
         if delta.content:
             events.append(StreamText(delta=delta.content))
         if delta.reasoning_content:
+            logger.trace(f"Reasoning delta: {len(delta.reasoning_content)} chars")
             events.append(StreamReasoning(delta=delta.reasoning_content))
         if delta.tool_calls:
             for tc in delta.tool_calls:
                 idx = tc.index
                 if tc.id is not None:
+                    logger.trace(f"Tool call start: idx={idx}, id={tc.id}, name={tc.function.name if tc.function else '?'}")
                     self._tool_call_acc[idx] = {
                         "tool_call_id": tc.id,
                         "tool_name": tc.function.name if tc.function else "",
@@ -186,6 +189,7 @@ class OpenAIProtocol(Protocol):
                         args=acc["args"],
                     ))
             usage = self._openai_usage_to_internal(chunk.usage) if chunk.usage else None
+            logger.debug(f"Finish reason: {finish_reason}, usage={usage}")
             events.append(StreamFinish(finish_reason=cast(FinishReason, finish_reason), usage=usage))
 
         return events

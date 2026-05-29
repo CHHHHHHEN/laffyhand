@@ -2,14 +2,16 @@ from dotenv import load_dotenv
 load_dotenv()
 
 import os
+import sys
 import json
 import sqlite3
 
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from socketserver import BaseRequestHandler
 from typing import Callable, Any, Self, override
-from loguru import logger as _logger
+from loguru import logger
 
+from laffyhand import setup_logging
 from laffyhand.agent.schemas import LLMProviderConfig
 
 DB_PATH = os.environ['DB_PATH']
@@ -29,28 +31,42 @@ class SimpleHTTPServer(HTTPServer):
 class SimpleHTTPHandler(BaseHTTPRequestHandler):
     server: SimpleHTTPServer # FIXME: 暂时找不到更好的 db 注入方法
 
+    def _send_json(self, status: int, data: dict | list) -> None:
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.end_headers()
+        self.wfile.write(json.dumps(data, default=str).encode())
+
+    def _safe_log(self, action: str, data: dict, safe_keys: tuple[str, ...] = ("name", "base_url")) -> str:
+        safe = {k: v for k, v in data.items() if k in safe_keys}
+        safe["action"] = action
+        logger.info(f"Provider {action}: {safe}")
+        return action
+
     def do_GET(self):
         if self.path == "/health":
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-            response = {"messages": "Server is running."}
-            self.wfile.write(json.dumps(response).encode())
+            logger.debug("Health check requested")
+            self._send_json(200, {"messages": "Server is running."})
         elif self.path == "/api/v1/providers":
-            with self.server.db_conn as db:
-                cursor = db.cursor()
-                cursor.execute("""SELECT * FROM llm_providers""")
-                rows = cursor.fetchall()
+            try:
+                with self.server.db_conn as db:
+                    cursor = db.cursor()
+                    cursor.execute("""SELECT * FROM llm_providers""")
+                    rows = cursor.fetchall()
+            except sqlite3.Error:
+                logger.error("Database query failed in GET /api/v1/providers")
+                self._send_json(500, {"error": "Database query failed"})
+                return
+            try:
                 providers = [
-                    {"id": row[0], "name": row[1], 'base_url': row[2], 'api_key': row[3]} 
+                    {"id": row[0], "name": row[1], 'base_url': row[2]}
                     for row in rows
                 ]
-
-            response_body = json.dumps(providers).encode()
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-            self.wfile.write(response_body)
+            except (TypeError, ValueError, OverflowError):
+                logger.error("Failed to serialize provider list to JSON")
+                self._send_json(500, {"error": "Failed to serialize provider data"})
+                return
+            self._send_json(200, providers)
         else:
             self.send_response(404)
             self.end_headers()
@@ -58,40 +74,55 @@ class SimpleHTTPHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         content_length = int(self.headers['Content-Length'])
         body = self.rfile.read(content_length)
-        data = json.loads(body)
+        try:
+            data = json.loads(body)
+        except json.JSONDecodeError:
+            logger.warning("Invalid JSON in POST body")
+            self._send_json(400, {"error": "Invalid JSON"})
+            return
         if self.path == "/echo":
-            self.send_response(200)
-            self.send_header('Content-Type', 'application/json')
-            self.end_headers()
-            self.wfile.write(json.dumps({'Received': data}).encode())
+            self._send_json(200, {'Received': data})
         elif self.path == "/api/v1/providers":
-            _logger.info(f"Received: {data}")
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
+            self._safe_log("received", data)
 
-            config = LLMProviderConfig.model_validate(data)
-            with self.server.db_conn as conn:
-                cursor = conn.cursor()
-                cursor.execute(
-                    """Insert INTO llm_providers (name, base_url, api_key) VALUES (?, ?, ?)""",
-                    (config.name, config.base_url, config.api_key)
-                )
-                _logger.info(f'Inserted {config}')
+            try:
+                config = LLMProviderConfig.model_validate(data)
+            except Exception:
+                logger.warning("Provider config validation failed")
+                self._send_json(400, {"error": "Invalid provider config"})
+                return
+
+            try:
+                with self.server.db_conn as conn:
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        """Insert INTO llm_providers (name, base_url, api_key) VALUES (?, ?, ?)""",
+                        (config.name, config.base_url, config.api_key),
+                    )
+            except sqlite3.Error:
+                logger.error("Database insert failed in POST /api/v1/providers")
+                self._send_json(500, {"error": "Database insert failed"})
+                return
+
+            logger.info(f"Inserted provider: name={config.name}, base_url={config.base_url}")
+            self._send_json(200, {"status": "ok"})
         else:
             self.send_response(404)
             self.end_headers()
 
     def do_PUT(self):
-        # TODO: 完成 providers 的单条修改端点
-        pass
+        logger.warning(f"PUT {self.path} not implemented")
+        self.send_response(501)
+        self.end_headers()
 
     def do_DELETE(self):
-        # TODO: 完成 providers 的单条删除端点
         if self.path.startswith("/api/v1/providers/"):
-            # TODO: 完成 re 匹配以及逻辑编写
-            pass
-        pass
+            logger.warning(f"DELETE {self.path} not implemented")
+            self.send_response(501)
+            self.end_headers()
+            return
+        self.send_response(404)
+        self.end_headers()
             
 def init_db(db_conn: sqlite3.Connection) -> None:
     with db_conn: # with connection 能够自动完成 commit 和 rollback
@@ -105,13 +136,26 @@ def init_db(db_conn: sqlite3.Connection) -> None:
     )""")
         
 if __name__ == "__main__":
-    db_conn = sqlite3.connect(DB_PATH, timeout=3)
+    setup_logging()
 
-    init_db(db_conn)
+    try:
+        db_conn = sqlite3.connect(DB_PATH, timeout=3)
+    except sqlite3.OperationalError:
+        logger.critical(f"Failed to connect to database at {DB_PATH}")
+        raise
+
+    try:
+        init_db(db_conn)
+    except sqlite3.Error:
+        logger.critical("Failed to initialize database schema")
+        raise
 
     server = SimpleHTTPServer(("0.0.0.0", 8000), SimpleHTTPHandler, db_conn=db_conn)
-    _logger.info("Server is running at 0.0.0.0:8000.")
+    logger.info("Server is running at 0.0.0.0:8000.")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
-        _logger.info("Received keyboard interrupt, exiting...")
+        logger.info("Received keyboard interrupt, exiting...")
+    except Exception:
+        logger.exception("Server crashed")
+        sys.exit(1)

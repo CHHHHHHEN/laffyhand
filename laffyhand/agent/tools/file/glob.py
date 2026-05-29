@@ -2,6 +2,7 @@ import glob as glob_module
 from pathlib import Path
 from typing import Any
 
+from loguru import logger
 from laffyhand.agent.tools.base import BaseTool
 
 
@@ -30,6 +31,7 @@ class GlobTool(BaseTool):
         root = Path(params.get("path", "."))
         pattern = params["pattern"]
         matches = sorted(glob_module.glob(pattern, root_dir=root, recursive=True))
+        logger.info(f"Glob: pattern='{pattern}' in {root}, {len(matches)} matches")
         if not matches:
             return f"No files found matching `{pattern}` in {root}"
         return "\n".join(matches)
