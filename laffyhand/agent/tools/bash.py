@@ -1,6 +1,7 @@
 import subprocess
 from typing import Any
 
+from loguru import logger
 from laffyhand.agent.tools.base import BaseTool
 
 
@@ -54,6 +55,8 @@ class BashTool(BaseTool):
                 output = f"Exit code: {result.returncode}\n{output}"
             return output.strip()
         except subprocess.TimeoutExpired:
+            logger.warning(f"Bash timed out after {timeout}s: {command}")
             return f"Command timed out after {timeout}s"
         except Exception as e:
+            logger.error(f"Bash exception: {e}")
             return f"Error: {e}"

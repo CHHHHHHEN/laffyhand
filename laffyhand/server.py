@@ -38,9 +38,13 @@ class SimpleHTTPHandler(BaseHTTPRequestHandler):
             self.wfile.write(json.dumps(response).encode())
         elif self.path == "/api/v1/providers":
             with self.server.db_conn as db:
-                cursor = db.cursor()
-                cursor.execute("""SELECT * FROM llm_providers""")
-                rows = cursor.fetchall()
+                try:
+                    cursor = db.cursor()
+                    cursor.execute("""SELECT * FROM llm_providers""")
+                    rows = cursor.fetchall()
+                except sqlite3.Error:
+                    logger.error("Database query failed in GET /api/v1/providers")
+                    raise
                 providers = [
                     {"id": row[0], "name": row[1], 'base_url': row[2], 'api_key': row[3]} 
                     for row in rows
@@ -58,7 +62,11 @@ class SimpleHTTPHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         content_length = int(self.headers['Content-Length'])
         body = self.rfile.read(content_length)
-        data = json.loads(body)
+        try:
+            data = json.loads(body)
+        except json.JSONDecodeError:
+            logger.warning("Invalid JSON in POST body")
+            raise
         if self.path == "/echo":
             self.send_response(200)
             self.send_header('Content-Type', 'application/json')
@@ -70,13 +78,21 @@ class SimpleHTTPHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/json")
             self.end_headers()
 
-            config = LLMProviderConfig.model_validate(data)
+            try:
+                config = LLMProviderConfig.model_validate(data)
+            except Exception:
+                logger.warning("Provider config validation failed")
+                raise
             with self.server.db_conn as conn:
-                cursor = conn.cursor()
-                cursor.execute(
-                    """Insert INTO llm_providers (name, base_url, api_key) VALUES (?, ?, ?)""",
-                    (config.name, config.base_url, config.api_key)
-                )
+                try:
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        """Insert INTO llm_providers (name, base_url, api_key) VALUES (?, ?, ?)""",
+                        (config.name, config.base_url, config.api_key)
+                    )
+                except sqlite3.Error:
+                    logger.error("Database insert failed in POST /api/v1/providers")
+                    raise
                 logger.info(f'Inserted {config}')
         else:
             self.send_response(404)
@@ -105,7 +121,11 @@ def init_db(db_conn: sqlite3.Connection) -> None:
     )""")
         
 if __name__ == "__main__":
-    db_conn = sqlite3.connect(DB_PATH, timeout=3)
+    try:
+        db_conn = sqlite3.connect(DB_PATH, timeout=3)
+    except sqlite3.OperationalError:
+        logger.critical(f"Failed to connect to database at {DB_PATH}")
+        raise
 
     init_db(db_conn)
 

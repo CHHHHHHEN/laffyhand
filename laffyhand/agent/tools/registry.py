@@ -1,5 +1,6 @@
 from typing import Any
 
+from loguru import logger
 from laffyhand.agent.schemas import ToolDefinition
 from laffyhand.agent.tools.base import BaseTool
 from laffyhand.agent.tools.permission import PermissionManager
@@ -34,9 +35,11 @@ class ToolRegistry:
     def run_tool(self, name: str, params: dict[str, Any]) -> str:
         tool = self._tools.get(name)
         if tool is None:
+            logger.warning(f"Tool '{name}' is not registered")
             return f"Tool '{name}' is not registered."
 
         if not self.permission.check(name):
+            logger.warning(f"Tool '{name}' is not permitted")
             return f"Tool '{name}' is not permitted."
 
         result = tool.run(params)

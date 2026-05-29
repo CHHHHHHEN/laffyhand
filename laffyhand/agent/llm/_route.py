@@ -21,8 +21,10 @@ class HTTPClient:
         try:
             conn.request(method, path, body=body, headers=headers)
             response = conn.getresponse()
+            logger.debug(f"HTTP {response.status} from {url}")
             if response.status != 200:
                 error_body = response.read().decode("utf-8", errors="replace")
+                logger.error(f"HTTP {response.status}: {error_body}")
                 raise RuntimeError(f"HTTP {response.status}: {error_body}")
             yield from response
         finally:

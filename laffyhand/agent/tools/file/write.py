@@ -2,6 +2,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+from loguru import logger
 from laffyhand.agent.tools.base import BaseTool
 
 
@@ -36,5 +37,6 @@ class WriteTool(BaseTool):
             Path(tmp).replace(path)
         except:
             Path(tmp).unlink(missing_ok=True)
+            logger.error(f"Write failed for {path}")
             raise
         return f"File written: {path} ({len(content)} chars)"
