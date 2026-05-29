@@ -5,19 +5,22 @@ import asyncio
 import json
 import os
 import sys
+from typing import Any
 from dotenv import load_dotenv
 load_dotenv()
 
 from loguru import logger
 from laffyhand import setup_logging
 from laffyhand.agent.schemas import CompactionConfig, SystemMessage, UserMessage, SessionUsage
+from laffyhand.agent.agent import AgentRegistry
 from laffyhand.agent.skill import SkillRegistry
 from laffyhand.agent.llm.builders import deepseek_route
 from laffyhand.agent.llm.facade import LLM
-from laffyhand.agent.tools import ToolRegistry, SkillTool
+from laffyhand.agent.tools import ToolRegistry, SkillTool, TaskTool
 from laffyhand.agent.tools.file import ReadTool, WriteTool, EditTool, GlobTool, GrepTool
 from laffyhand.agent.tools.bash import BashTool
 from laffyhand.agent.tools.todo import TodoTool
+from laffyhand.agent.subagent.manager import SubagentManager
 from laffyhand.agent.mcp import MCPService, LocalMCPConfig, RemoteMCPConfig
 from laffyhand.agent.loop import AgentState, agent_loop
 from laffyhand.agent.session import SessionManager, TitleConfig
@@ -110,6 +113,8 @@ async def handle_repl_command(
     session_manager: SessionManager,
     llm: LLM,
     title_config: TitleConfig,
+    task_tool: Any = None,
+    tool_registry: Any = None,
 ) -> bool:
     parts = cmd.strip().split(maxsplit=1)
     command = parts[0].lower()
@@ -138,6 +143,10 @@ async def handle_repl_command(
         state.step = loaded.step
         state.usage = loaded.usage
         state.session_id = loaded.session_id
+        if task_tool is not None and tool_registry is not None:
+            task_tool._parent_session_id = state.session_id
+            tool_registry.unregister_tool("task")
+            tool_registry.register_tool(task_tool)
         logger.info(f"Switched to session: {tip}")
         print(f"Switched to session: {tip}")
         return True
@@ -156,6 +165,10 @@ async def handle_repl_command(
         state.turn_count = 0
         state.step = 0
         state.usage = SessionUsage(context_size=MODEL_CONTEXT_SIZE)
+        if task_tool is not None and tool_registry is not None:
+            task_tool._parent_session_id = state.session_id
+            tool_registry.unregister_tool("task")
+            tool_registry.register_tool(task_tool)
         logger.info(f"New session started: {session.id}")
         print(f"New session started: {session.id}")
         return True
@@ -185,6 +198,10 @@ async def handle_repl_command(
             return True
         child = session_manager.fork(state.session_id)
         state.session_id = child.id
+        if task_tool is not None and tool_registry is not None:
+            task_tool._parent_session_id = state.session_id
+            tool_registry.unregister_tool("task")
+            tool_registry.register_tool(task_tool)
         logger.info(f"Forked to new session: {child.id}")
         print(f"Forked to new session: {child.id}")
         return True
@@ -254,6 +271,15 @@ async def main():
     skill_tool = SkillTool(skill_registry, tool_registry.permission)
     tool_registry.register_tool(skill_tool)
 
+    # ── Agent registry ──────────────────────────────────────────
+    agent_registry = AgentRegistry()
+    agent_paths_env = os.getenv("AGENTS_PATHS", "")
+    if agent_paths_env:
+        agent_dirs = [d.strip() for d in agent_paths_env.split(":") if d.strip()]
+    else:
+        agent_dirs = []
+    agent_registry.discover(agent_dirs)
+
     def _update_skill_description():
         summary = skill_registry.build_skills_summary()
         if summary:
@@ -262,6 +288,20 @@ async def main():
             skill_tool.description = "Load and inject a skill into context."
     tool_registry.on_build_defs(_update_skill_description)
     _update_skill_description()
+
+    def _register_task_tool(session_id: str) -> TaskTool:
+        tt = TaskTool(
+            agent_registry=agent_registry,
+            llm=llm,
+            session_manager=session_manager,
+            tool_registry=tool_registry,
+            parent_session_id=session_id,
+            parent_permission=tool_registry.permission,
+            compaction_config=compaction_config,
+            subagent_manager=subagent_manager,
+        )
+        tool_registry.register_tool(tt)
+        return tt
 
     # ── System prompt ─────────────────────────────────────────
     system_content = SYSTEM_PROMPT + tool_registry.build_tool_prompt()
@@ -283,12 +323,23 @@ async def main():
     )
     max_steps = int(os.getenv("MAX_STEPS", "50"))
 
+    max_subagents = int(os.getenv("MAX_CONCURRENT_SUBAGENTS", "2"))
+    subagent_manager = SubagentManager(max_concurrent=max_subagents)
+
+    task_tool = _register_task_tool(state.session_id)
+
     print(f"\nSession: {state.session_id}")
     if state.turn_count > 0:
         print(f"Resuming conversation ({state.turn_count} previous turns)")
 
     try:
         while True:
+            # ── Show active subagents ─────────────────────────
+            if state.session_id and subagent_manager.active_count(state.session_id) > 0:
+                active = subagent_manager.list_active(state.session_id)
+                for sa in active:
+                    print(f"  ⚙  subagent [{sa['agent_type']}] {sa['task_id'][:8]} — {sa['status']}")
+
             try:
                 user_prompt = await asyncio.to_thread(input, "\nYou: ")
             except (EOFError, KeyboardInterrupt):
@@ -303,6 +354,7 @@ async def main():
             if user_prompt.startswith("/"):
                 handled = await handle_repl_command(
                     user_prompt, state, session_manager, llm, title_config,
+                    task_tool=task_tool, tool_registry=tool_registry,
                 )
                 if handled:
                     continue
@@ -331,6 +383,7 @@ async def main():
                 state, llm, tool_registry, compaction_config,
                 max_steps=max_steps,
                 session_manager=session_manager,
+                subagent_manager=subagent_manager,
             ):
                 if event.type == "content" and event.finish_reason is not None and event.usage:
                     print()

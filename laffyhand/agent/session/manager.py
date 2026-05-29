@@ -444,6 +444,58 @@ class SessionManager:
         logger.info(f"Forked {session_id} -> {child.id}")
         return child
 
+    # ── Subagent session ──────────────────────────────────────
+
+    def create_child(
+        self,
+        parent_id: str,
+        model: str = "",
+        messages: Optional[list[Message]] = None,
+    ) -> Session:
+        parent = self.get(parent_id)
+        child = self.create(
+            title="",
+            cwd=parent.cwd if parent else "",
+            model=model or (parent.model if parent else ""),
+            agent_version=parent.agent_version if parent else "",
+            parent_id=parent_id,
+            messages=messages,
+        )
+        logger.debug(f"Child session created: {child.id} (parent={parent_id})")
+        return child
+
+    def get_parent(self, session_id: str) -> Optional[str]:
+        row = self._conn.execute(
+            "SELECT parent_id FROM session WHERE id=?", (session_id,),
+        ).fetchone()
+        return row["parent_id"] if row else None
+
+    def get_depth(self, session_id: str) -> int:
+        depth = 0
+        current: Optional[str] = session_id
+        while current:
+            current = self.get_parent(current)
+            depth += 1
+        return depth
+
+    def get_children(self, session_id: str) -> list[Session]:
+        rows = self._conn.execute(
+            "SELECT * FROM session WHERE parent_id=? ORDER BY created_at",
+            (session_id,),
+        ).fetchall()
+        return [self._row_to_session(r) for r in rows]
+
+    def get_descendants(self, session_id: str) -> list[Session]:
+        result: list[Session] = []
+        queue = [session_id]
+        while queue:
+            current = queue.pop(0)
+            children = self.get_children(current)
+            for child in children:
+                result.append(child)
+                queue.append(child.id)
+        return result
+
     # ── Title ─────────────────────────────────────────────────
 
     def set_title(self, session_id: str, title: str) -> None:
