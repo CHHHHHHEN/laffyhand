@@ -194,7 +194,7 @@ async def async_input(prompt: str = "") -> str:
         _stdin_transport, _ = await loop.connect_read_pipe(lambda: protocol, sys.stdin)
         _stdin_reader = reader
     line = await _stdin_reader.readline()
-    return line.decode().rstrip("\n")
+    return line.decode(errors="replace").rstrip("\n")
 
 
 async def _close_stdin_reader() -> None:
