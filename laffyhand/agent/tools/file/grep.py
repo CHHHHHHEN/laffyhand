@@ -86,6 +86,27 @@ class GrepTool(BaseTool):
 
         return await self._search_directory(root, pattern_str, include, output_mode, context, offset, limit)
 
+    @staticmethod
+    def _truncate_line(line: str) -> str:
+        display = line.rstrip("\n\r")
+        if len(display) > MAX_LINE_LENGTH:
+            display = display[:MAX_LINE_LENGTH] + "... (truncated)"
+        return display
+
+    def _format_match_with_context(
+        self, file_label: str, lines: list[str], idx: int,
+        context: int, prev_idx: int | None = None,
+    ) -> list[str]:
+        result: list[str] = []
+        if context and prev_idx is not None and idx - prev_idx > 1:
+            result.append("--")
+        for ci in range(max(0, idx - context), idx):
+            result.append(f"{file_label}:{ci + 1}- {self._truncate_line(lines[ci])}")
+        result.append(f"{file_label}:{idx + 1}: {self._truncate_line(lines[idx])}")
+        for ci in range(idx + 1, min(len(lines), idx + context + 1)):
+            result.append(f"{file_label}:{ci + 1}- {self._truncate_line(lines[ci])}")
+        return result
+
     async def _search_single_file(self, path: Path, pattern_str: str,
                                    context: int, offset: int, limit: int) -> str:
         if not path.is_file():
@@ -111,22 +132,14 @@ class GrepTool(BaseTool):
         total_matches = len(match_indices)
         selected_indices = match_indices[offset:offset + limit] if offset else match_indices[:limit]
 
+        file_label = str(path)
         result_lines: list[str] = []
+        prev_idx: int | None = None
         for idx in selected_indices:
-            display = lines[idx].rstrip("\n\r")
-            if len(display) > MAX_LINE_LENGTH:
-                display = display[:MAX_LINE_LENGTH] + "... (truncated)"
-            result_lines.append(f"{path}:{idx + 1}: {display}")
-            for ci in range(max(0, idx - context), idx):
-                ctx = lines[ci].rstrip("\n\r")
-                if len(ctx) > MAX_LINE_LENGTH:
-                    ctx = ctx[:MAX_LINE_LENGTH] + "... (truncated)"
-                result_lines.append(f"{path}:{ci + 1}- {ctx}")
-            for ci in range(idx + 1, min(len(lines), idx + context + 1)):
-                ctx = lines[ci].rstrip("\n\r")
-                if len(ctx) > MAX_LINE_LENGTH:
-                    ctx = ctx[:MAX_LINE_LENGTH] + "... (truncated)"
-                result_lines.append(f"{path}:{ci + 1}- {ctx}")
+            result_lines.extend(self._format_match_with_context(
+                file_label, lines, idx, context, prev_idx,
+            ))
+            prev_idx = idx
 
         result = "\n".join(result_lines)
         if len(selected_indices) < total_matches:
@@ -259,7 +272,6 @@ class GrepTool(BaseTool):
         include_glob = include or "*"
         matched_files = sorted(glob_module.glob(include_glob, root_dir=root, recursive=True))
 
-        # Collect (file_path, [match_line_index, ...]) for each file
         file_match_indices: list[tuple[Path, list[int]]] = []
         lines_cache: dict[str, list[str]] = {}
 
@@ -285,7 +297,6 @@ class GrepTool(BaseTool):
 
         file_match_indices.sort(key=lambda x: x[0].stat().st_mtime, reverse=True)
 
-        # Build flat match list: (file_rel, line_index) pairs
         flat_matches: list[tuple[Path, int]] = []
         for fp, indices in file_match_indices:
             for idx in indices:
@@ -297,23 +308,18 @@ class GrepTool(BaseTool):
             return f"No matches for `{pattern_str}`"
 
         result_lines: list[str] = []
+        prev_file: str | None = None
+        prev_idx: int | None = None
         for fp, idx in selected:
-            rel = str(fp.relative_to(root))
+            label = str(fp.relative_to(root))
             lines = lines_cache[str(fp)]
-            display = lines[idx].rstrip("\n\r")
-            if len(display) > MAX_LINE_LENGTH:
-                display = display[:MAX_LINE_LENGTH] + "... (truncated)"
-            result_lines.append(f"{rel}:{idx + 1}: {display}")
-            for ci in range(max(0, idx - context), idx):
-                ctx = lines[ci].rstrip("\n\r")
-                if len(ctx) > MAX_LINE_LENGTH:
-                    ctx = ctx[:MAX_LINE_LENGTH] + "... (truncated)"
-                result_lines.append(f"{rel}:{ci + 1}- {ctx}")
-            for ci in range(idx + 1, min(len(lines), idx + context + 1)):
-                ctx = lines[ci].rstrip("\n\r")
-                if len(ctx) > MAX_LINE_LENGTH:
-                    ctx = ctx[:MAX_LINE_LENGTH] + "... (truncated)"
-                result_lines.append(f"{rel}:{ci + 1}- {ctx}")
+            if prev_file is not None and prev_file != label:
+                prev_idx = None
+            result_lines.extend(self._format_match_with_context(
+                label, lines, idx, context, prev_idx,
+            ))
+            prev_file = label
+            prev_idx = idx
 
         result = "\n".join(result_lines)
         if len(selected) < total_matches:
