@@ -32,3 +32,37 @@ class TestGrepTool(unittest.TestCase):
         result = asyncio.run(tool.run({"pattern": r"\d+", "path": str(self.root), "include": "*.py"}))
         self.assertIn("abc123", result)
         self.assertIn("def456", result)
+
+    def test_grep_files_only(self):
+        (self.root / "a.py").write_text("match")
+        (self.root / "b.txt").write_text("match")
+        (self.root / "c.py").write_text("no")
+        tool = GrepTool()
+        result = asyncio.run(tool.run({
+            "pattern": "match", "path": str(self.root),
+            "output_mode": "files_only",
+        }))
+        self.assertIn("a.py", result)
+        self.assertIn("b.txt", result)
+
+    def test_grep_limit(self):
+        (self.root / "test.py").write_text("\n".join(f"line{i}" for i in range(20)))
+        tool = GrepTool()
+        result = asyncio.run(tool.run({
+            "pattern": "line", "path": str(self.root),
+            "include": "*.py", "limit": 5,
+        }))
+        lines = result.strip().split("\n")
+        self.assertLessEqual(len(lines), 6)  # 5 matches + optional footer
+
+    def test_grep_single_file(self):
+        f = self.root / "target.py"
+        f.write_text("hello\nworld\n")
+        tool = GrepTool()
+        result = asyncio.run(tool.run({"pattern": "world", "path": str(f)}))
+        self.assertIn("world", result)
+
+    def test_grep_invalid_regex(self):
+        tool = GrepTool()
+        result = asyncio.run(tool.run({"pattern": r"[invalid", "path": str(self.root)}))
+        self.assertIn("Invalid regex", result)
