@@ -12,11 +12,9 @@ from laffyhand.gateway.handlers import (
     handle_session_delete,
     handle_session_fork,
     handle_chat,
-    handle_chat_stream,
     handle_chat_cancel,
     handle_tools_list,
 )
-from laffyhand.gateway.protocol import SESSION_CREATE, CHAT_CANCEL
 
 
 @pytest.fixture

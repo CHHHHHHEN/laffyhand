@@ -32,6 +32,7 @@ class GatewayServer:
         self._running = True
         transport = self.transport
         conn_id = transport.connection_id
+        transport._dispatcher = self.dispatcher  # type: ignore[attr-defined]
         logger.info(f"Gateway serving on {type(transport).__name__} ({conn_id})")
 
         try:

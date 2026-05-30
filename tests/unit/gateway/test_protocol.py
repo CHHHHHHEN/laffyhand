@@ -6,7 +6,7 @@ import pytest
 
 from laffyhand.gateway.protocol import (
     Request, Response, Notification, ErrorResponse, Error,
-    from_json, to_json, to_dict,
+    from_json,
     PARSE_ERROR, INVALID_REQUEST, METHOD_NOT_FOUND, INVALID_PARAMS,
     INTERNAL_ERROR, OVERLOADED, STREAM_CANCELLED, MAX_MESSAGE_SIZE,
     GatewayConfig,

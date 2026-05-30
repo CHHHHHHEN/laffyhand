@@ -9,9 +9,9 @@ from laffyhand.agent.schemas import (
     SystemMessage, UserMessage, AgentState, SessionUsage,
 )
 from laffyhand.gateway.protocol import (
-    SHUTDOWN, SESSION_CREATE, SESSION_LIST, SESSION_LOAD,
+    INITIALIZE, SHUTDOWN, SESSION_CREATE, SESSION_LIST, SESSION_LOAD,
     SESSION_DELETE, SESSION_FORK, CHAT, CHAT_STREAM,
-    CHAT_CANCEL, TOOLS_LIST,
+    CHAT_CANCEL, TOOLS_LIST, Notification,
 )
 
 if TYPE_CHECKING:
@@ -141,13 +141,10 @@ async def handle_session_fork(
     return {"session_id": child_id}
 
 
-async def handle_chat(
+async def _prepare_chat(
     runtime: AgentRuntime,
     params: dict[str, Any],
-    transport: Transport,
-    request_id: str | int | None,
-    conn_id: str,
-) -> dict[str, Any]:
+) -> str:
     message: str = params.get("message", "")
     if not message:
         raise ValueError("message is required")
@@ -165,6 +162,17 @@ async def handle_chat(
     state.step = 0
     user_message = UserMessage(content=message)
     state.messages.append(user_message)
+    return session_id
+
+
+async def handle_chat(
+    runtime: AgentRuntime,
+    params: dict[str, Any],
+    transport: Transport,
+    request_id: str | int | None,
+    conn_id: str,
+) -> dict[str, Any]:
+    session_id = await _prepare_chat(runtime, params)
 
     last_content = ""
     finish_reason = ""
@@ -195,25 +203,7 @@ async def handle_chat_stream(
     _request_id: str | int | None,
     conn_id: str,
 ) -> None:
-    from laffyhand.gateway.protocol import Notification
-
-    message: str = params.get("message", "")
-    if not message:
-        raise ValueError("message is required")
-
-    session_id: str | None
-    if runtime.state is None:
-        session_id = await _ensure_session(runtime, params)
-    else:
-        session_id = runtime.current_session_id
-
-    assert session_id is not None
-    state = runtime.get_state(session_id)
-    if state is None:
-        raise RuntimeError(f"Session state not found: {session_id}")
-    state.step = 0
-    user_message = UserMessage(content=message)
-    state.messages.append(user_message)
+    session_id = await _prepare_chat(runtime, params)
 
     finish_reason = ""
     usage_info = None
@@ -254,7 +244,7 @@ async def handle_chat_cancel(
     _request_id: str | int | None,
     conn_id: str,
 ) -> dict[str, Any]:
-    dispatcher = getattr(transport, "_dispatcher", None) or getattr(runtime, "_current_dispatcher", None)
+    dispatcher: Dispatcher | None = getattr(transport, "_dispatcher", None)
     if dispatcher is None:
         logger.warning(f"Cancellation requested for connection {conn_id}, but no dispatcher reference found")
         return {"status": "cancelled"}
@@ -302,7 +292,7 @@ async def _ensure_session(
 
 
 def register_all_handlers(dispatcher: Dispatcher) -> None:
-    dispatcher.register("initialize", handle_initialize)
+    dispatcher.register(INITIALIZE, handle_initialize)
     dispatcher.register(SHUTDOWN, handle_shutdown)
     dispatcher.register(SESSION_CREATE, handle_session_create)
     dispatcher.register(SESSION_LIST, handle_session_list)

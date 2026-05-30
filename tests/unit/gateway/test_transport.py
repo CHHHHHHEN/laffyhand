@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 from asyncio import timeout as asyncio_timeout
 
 import pytest
