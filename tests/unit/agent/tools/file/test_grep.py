@@ -66,3 +66,48 @@ class TestGrepTool(unittest.TestCase):
         tool = GrepTool()
         result = asyncio.run(tool.run({"pattern": r"[invalid", "path": str(self.root)}))
         self.assertIn("Invalid regex", result)
+
+    def test_grep_context_before(self):
+        (self.root / "test.py").write_text("a\nb\nc\nmatch\nd\n")
+        tool = GrepTool()
+        result = asyncio.run(tool.run({
+            "pattern": "match", "path": str(self.root),
+            "include": "*.py", "context": 2,
+        }))
+        self.assertIn("match", result)
+        self.assertIn("b", result)
+        self.assertIn("c", result)
+
+    def test_grep_context_after(self):
+        (self.root / "test.py").write_text("match\na\nb\nc\nd\n")
+        tool = GrepTool()
+        result = asyncio.run(tool.run({
+            "pattern": "match", "path": str(self.root),
+            "include": "*.py", "context": 3,
+        }))
+        self.assertIn("match", result)
+        self.assertIn("a", result)
+        self.assertIn("c", result)
+
+    def test_grep_offset(self):
+        (self.root / "test.py").write_text("\n".join(f"line{i}" for i in range(20)))
+        tool = GrepTool()
+        result = asyncio.run(tool.run({
+            "pattern": r"line\d", "path": str(self.root),
+            "include": "*.py", "offset": 10,
+        }))
+        self.assertNotIn("line0", result)
+        self.assertIn("line10", result)
+
+    def test_grep_count_mode(self):
+        (self.root / "a.py").write_text("match\nmatch\n")
+        (self.root / "b.py").write_text("match")
+        tool = GrepTool()
+        result = asyncio.run(tool.run({
+            "pattern": "match", "path": str(self.root),
+            "output_mode": "count",
+        }))
+        lines = result.strip().split("\n")
+        self.assertEqual(len(lines), 2)
+        self.assertIn("2", lines[0])
+        self.assertIn("1", lines[1])

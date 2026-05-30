@@ -99,22 +99,34 @@ class GrepTool(BaseTool):
 
         pattern = re.compile(pattern_str)
         lines = text.splitlines(keepends=True)
-        matches: list[str] = []
-        for i, line in enumerate(lines):
-            if pattern.search(line):
-                display = line.rstrip("\n\r")
-                if len(display) > MAX_LINE_LENGTH:
-                    display = display[:MAX_LINE_LENGTH] + "... (truncated)"
-                matches.append(f"{path}:{i + 1}: {display}")
+        match_indices = [i for i, line in enumerate(lines) if pattern.search(line)]
 
-        if not matches:
+        if not match_indices:
             return f"No matches for `{pattern_str}` in {path}"
 
-        total = len(matches)
-        selected = matches[offset:offset + limit] if offset else matches[:limit]
-        result = "\n".join(selected)
-        if len(selected) < total:
-            result += f"\n[Showing {len(selected)} of {total} matches]"
+        total_matches = len(match_indices)
+        selected_indices = match_indices[offset:offset + limit] if offset else match_indices[:limit]
+
+        result_lines: list[str] = []
+        for idx in selected_indices:
+            display = lines[idx].rstrip("\n\r")
+            if len(display) > MAX_LINE_LENGTH:
+                display = display[:MAX_LINE_LENGTH] + "... (truncated)"
+            result_lines.append(f"{path}:{idx + 1}: {display}")
+            for ci in range(max(0, idx - context), idx):
+                ctx = lines[ci].rstrip("\n\r")
+                if len(ctx) > MAX_LINE_LENGTH:
+                    ctx = ctx[:MAX_LINE_LENGTH] + "... (truncated)"
+                result_lines.append(f"{path}:{ci + 1}- {ctx}")
+            for ci in range(idx + 1, min(len(lines), idx + context + 1)):
+                ctx = lines[ci].rstrip("\n\r")
+                if len(ctx) > MAX_LINE_LENGTH:
+                    ctx = ctx[:MAX_LINE_LENGTH] + "... (truncated)"
+                result_lines.append(f"{path}:{ci + 1}- {ctx}")
+
+        result = "\n".join(result_lines)
+        if len(selected_indices) < total_matches:
+            result += f"\n[Showing {len(selected_indices)} of {total_matches} matches]"
         return result
 
     async def _search_directory(self, root: Path, pattern_str: str,
@@ -135,7 +147,11 @@ class GrepTool(BaseTool):
             if result is not None:
                 return result
 
-        return self._py_search(root, pattern_str, include, output_mode, context, offset, limit)
+        if output_mode == "files_only":
+            return self._py_search_files_only(root, pattern_str, include, offset, limit)
+        if output_mode == "count":
+            return self._py_search_count(root, pattern_str, include, offset, limit)
+        return self._py_search_content(root, pattern_str, include, context, offset, limit)
 
     def _rg_files_only(self, root: Path, pattern_str: str,
                         include: str | None, offset: int, limit: int) -> str | None:
@@ -193,9 +209,41 @@ class GrepTool(BaseTool):
             result += f"\n[Showing {len(selected)} of {total} lines]"
         return result
 
-    def _py_search(self, root: Path, pattern_str: str,
-                    include: str | None, output_mode: str,
-                    context: int, offset: int, limit: int) -> str:
+    def _py_search_files_only(self, root: Path, pattern_str: str,
+                               include: str | None, offset: int, limit: int) -> str:
+        files_with_matches = self._collect_matches(root, pattern_str, include)
+        if not files_with_matches:
+            return f"No matches for `{pattern_str}`"
+
+        paths = [str(f.relative_to(root)) for f, _ in files_with_matches]
+        total = len(paths)
+        selected = paths[offset:offset + limit] if offset else paths[:limit]
+        if not selected:
+            return f"No matches for `{pattern_str}`"
+        result = "\n".join(selected)
+        if len(selected) < total:
+            result += f"\n[Showing {len(selected)} of {total} files]"
+        return result
+
+    def _py_search_count(self, root: Path, pattern_str: str,
+                          include: str | None, offset: int, limit: int) -> str:
+        files_with_matches = self._collect_matches(root, pattern_str, include)
+        if not files_with_matches:
+            return f"No matches for `{pattern_str}`"
+
+        result_lines = [f"{f.relative_to(root)}: {len(m)}" for f, m in files_with_matches]
+        total = len(result_lines)
+        selected = result_lines[offset:offset + limit] if offset else result_lines[:limit]
+        if not selected:
+            return f"No matches for `{pattern_str}`"
+        result = "\n".join(selected)
+        if len(selected) < total:
+            result += f"\n[Showing {len(selected)} of {total} files]"
+        return result
+
+    def _py_search_content(self, root: Path, pattern_str: str,
+                            include: str | None, context: int,
+                            offset: int, limit: int) -> str:
         try:
             pattern = re.compile(pattern_str)
         except re.error as e:
@@ -204,7 +252,9 @@ class GrepTool(BaseTool):
         include_glob = include or "*"
         matched_files = sorted(glob_module.glob(include_glob, root_dir=root, recursive=True))
 
-        files_with_matches: list[tuple[Path, list[str]]] = []
+        # Collect (file_path, [match_line_index, ...]) for each file
+        file_match_indices: list[tuple[Path, list[int]]] = []
+        lines_cache: dict[str, list[str]] = {}
 
         for rel_path in matched_files:
             fp = root / rel_path
@@ -218,67 +268,80 @@ class GrepTool(BaseTool):
                 continue
 
             lines = text.splitlines(keepends=True)
-            file_matches: list[str] = []
-            for i, line in enumerate(lines):
-                if pattern.search(line):
-                    display = line.rstrip("\n\r")
-                    if len(display) > MAX_LINE_LENGTH:
-                        display = display[:MAX_LINE_LENGTH] + "... (truncated)"
-                    file_matches.append(f"{rel_path}:{i + 1}: {display}")
-                    if context:
-                        for ci in range(max(0, i - context), i):
-                            ctx_line = lines[ci].rstrip("\n\r")
-                            if len(ctx_line) > MAX_LINE_LENGTH:
-                                ctx_line = ctx_line[:MAX_LINE_LENGTH] + "... (truncated)"
-                            file_matches.append(f"{rel_path}:{ci + 1}- {ctx_line}")
-                        for ci in range(i + 1, min(len(lines), i + context + 1)):
-                            ctx_line = lines[ci].rstrip("\n\r")
-                            if len(ctx_line) > MAX_LINE_LENGTH:
-                                ctx_line = ctx_line[:MAX_LINE_LENGTH] + "... (truncated)"
-                            file_matches.append(f"{rel_path}:{ci + 1}- {ctx_line}")
+            match_indices = [i for i, line in enumerate(lines) if pattern.search(line)]
+            if match_indices:
+                file_match_indices.append((fp, match_indices))
+                lines_cache[str(fp)] = lines
 
-            if file_matches:
-                files_with_matches.append((fp, file_matches))
-
-        if not files_with_matches:
+        if not file_match_indices:
             return f"No matches for `{pattern_str}`"
 
-        files_with_matches.sort(key=lambda x: x[0].stat().st_mtime, reverse=True)
+        file_match_indices.sort(key=lambda x: x[0].stat().st_mtime, reverse=True)
 
-        if output_mode == "files_only":
-            paths = [str(f.relative_to(root)) for f, _ in files_with_matches]
-            total = len(paths)
-            selected = paths[offset:offset + limit] if offset else paths[:limit]
-            if not selected:
-                return f"No matches for `{pattern_str}`"
-            result = "\n".join(selected)
-            if len(selected) < total:
-                result += f"\n[Showing {len(selected)} of {total} files]"
-            return result
+        # Build flat match list: (file_rel, line_index) pairs
+        flat_matches: list[tuple[Path, int]] = []
+        for fp, indices in file_match_indices:
+            for idx in indices:
+                flat_matches.append((fp, idx))
 
-        if output_mode == "count":
-            result_lines = [f"{f.relative_to(root)}: {len(m)}" for f, m in files_with_matches]
-            total = len(result_lines)
-            selected = result_lines[offset:offset + limit] if offset else result_lines[:limit]
-            if not selected:
-                return f"No matches for `{pattern_str}`"
-            result = "\n".join(selected)
-            if len(selected) < total:
-                result += f"\n[Showing {len(selected)} of {total} files]"
-            return result
-
-        all_matches: list[str] = []
-        for _, file_matches in files_with_matches:
-            for m in file_matches:
-                if len(m) > MAX_LINE_LENGTH:
-                    m = m[:MAX_LINE_LENGTH] + "... (truncated)"
-            all_matches.extend(file_matches)
-
-        total = len(all_matches)
-        selected = all_matches[offset:offset + limit] if offset else all_matches[:limit]
+        total_matches = len(flat_matches)
+        selected = flat_matches[offset:offset + limit] if offset else flat_matches[:limit]
         if not selected:
             return f"No matches for `{pattern_str}`"
-        result = "\n".join(selected)
-        if len(selected) < total:
-            result += f"\n[Showing {len(selected)} of {total} lines]"
+
+        result_lines: list[str] = []
+        for fp, idx in selected:
+            rel = str(fp.relative_to(root))
+            lines = lines_cache[str(fp)]
+            display = lines[idx].rstrip("\n\r")
+            if len(display) > MAX_LINE_LENGTH:
+                display = display[:MAX_LINE_LENGTH] + "... (truncated)"
+            result_lines.append(f"{rel}:{idx + 1}: {display}")
+            for ci in range(max(0, idx - context), idx):
+                ctx = lines[ci].rstrip("\n\r")
+                if len(ctx) > MAX_LINE_LENGTH:
+                    ctx = ctx[:MAX_LINE_LENGTH] + "... (truncated)"
+                result_lines.append(f"{rel}:{ci + 1}- {ctx}")
+            for ci in range(idx + 1, min(len(lines), idx + context + 1)):
+                ctx = lines[ci].rstrip("\n\r")
+                if len(ctx) > MAX_LINE_LENGTH:
+                    ctx = ctx[:MAX_LINE_LENGTH] + "... (truncated)"
+                result_lines.append(f"{rel}:{ci + 1}- {ctx}")
+
+        result = "\n".join(result_lines)
+        if len(selected) < total_matches:
+            result += f"\n[Showing {len(selected)} of {total_matches} matches]"
+        return result
+
+    def _collect_matches(self, root: Path, pattern_str: str,
+                          include: str | None) -> list[tuple[Path, list[int]]]:
+        """Scan files and return (file_path, [match_line_index, ...]) pairs.
+        Used by _py_search_files_only and _py_search_count.
+        """
+        try:
+            pattern = re.compile(pattern_str)
+        except re.error:
+            return []
+
+        include_glob = include or "*"
+        matched_files = sorted(glob_module.glob(include_glob, root_dir=root, recursive=True))
+
+        result: list[tuple[Path, list[int]]] = []
+        for rel_path in matched_files:
+            fp = root / rel_path
+            if not fp.is_file():
+                continue
+            if fp.stat().st_size > MAX_FILE_SIZE:
+                continue
+            try:
+                text = fp.read_text(encoding="utf-8", errors="replace")
+            except Exception:
+                continue
+
+            lines = text.splitlines(keepends=True)
+            indices = [i for i, line in enumerate(lines) if pattern.search(line)]
+            if indices:
+                result.append((fp, indices))
+
+        result.sort(key=lambda x: x[0].stat().st_mtime, reverse=True)
         return result
