@@ -257,49 +257,59 @@ class SessionManager:
     def append_messages(
         self, session_id: str, messages: list[Message],
     ) -> int:
-        session = self.get(session_id)
-        if session is None:
-            raise ValueError(f"Session not found: {session_id}")
-        existing = session.message_count
-        if existing > len(messages):
-            logger.warning(
-                f"append_messages: session.message_count ({existing}) > "
-                f"len(messages) ({len(messages)}). Check caller logic."
+        self._conn.execute("BEGIN IMMEDIATE")
+        try:
+            session = self.get(session_id)
+            if session is None:
+                raise ValueError(f"Session not found: {session_id}")
+            existing = session.message_count
+            if existing > len(messages):
+                logger.warning(
+                    f"append_messages: session.message_count ({existing}) > "
+                    f"len(messages) ({len(messages)}). Check caller logic."
+                )
+                return existing
+            new_messages = messages[existing:]
+            if not new_messages:
+                return existing
+            turn_index = session.turn_count
+            for msg in new_messages:
+                rec = _message_to_record(session_id, msg, turn_index)
+                self._insert_record(rec)
+            count = session.message_count + len(new_messages)
+            self._conn.execute(
+                "UPDATE session SET message_count=?, updated_at=? WHERE id=?",
+                (count, _ts(_utcnow()), session_id),
             )
-            return existing
-        new_messages = messages[existing:]
-        if not new_messages:
-            return existing
-        turn_index = session.turn_count
-        for msg in new_messages:
-            rec = _message_to_record(session_id, msg, turn_index)
-            self._insert_record(rec)
-        count = session.message_count + len(new_messages)
-        self._conn.execute(
-            "UPDATE session SET message_count=?, updated_at=? WHERE id=?",
-            (count, _ts(_utcnow()), session_id),
-        )
-        self._conn.commit()
+            self._conn.commit()
+        except Exception:
+            self._conn.rollback()
+            raise
         return count
 
     def sync_messages(
         self, session_id: str, messages: list[Message],
     ) -> int:
-        session = self.get(session_id)
-        if session is None:
-            raise ValueError(f"Session not found: {session_id}")
-        self._conn.execute("DELETE FROM message WHERE session_id=?", (session_id,))
-        turn_index = 0
-        for msg in messages:
-            rec = _message_to_record(session_id, msg, turn_index)
-            self._insert_record(rec)
-            if isinstance(msg, UserMessage):
-                turn_index += 1
-        self._conn.execute(
-            "UPDATE session SET message_count=?, updated_at=? WHERE id=?",
-            (len(messages), _ts(_utcnow()), session_id),
-        )
-        self._conn.commit()
+        self._conn.execute("BEGIN IMMEDIATE")
+        try:
+            session = self.get(session_id)
+            if session is None:
+                raise ValueError(f"Session not found: {session_id}")
+            self._conn.execute("DELETE FROM message WHERE session_id=?", (session_id,))
+            turn_index = 0
+            for msg in messages:
+                rec = _message_to_record(session_id, msg, turn_index)
+                self._insert_record(rec)
+                if isinstance(msg, UserMessage):
+                    turn_index += 1
+            self._conn.execute(
+                "UPDATE session SET message_count=?, updated_at=? WHERE id=?",
+                (len(messages), _ts(_utcnow()), session_id),
+            )
+            self._conn.commit()
+        except Exception:
+            self._conn.rollback()
+            raise
         return len(messages)
 
     def get_messages(

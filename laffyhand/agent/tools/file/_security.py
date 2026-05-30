@@ -42,30 +42,12 @@ BLOCKED_WRITE_PATTERNS: list[tuple[re.Pattern, str]] = [
 
 
 def blocked_write_path(path: Path) -> str | None:
-    spath = str(path)
+    resolved = path.resolve()
+    spath = str(resolved)
     for pattern, msg in BLOCKED_WRITE_PATTERNS:
         if pattern.search(spath):
             return msg
     return None
-
-
-def detect_line_ending(path: Path, sample_size: int = 4096) -> str:
-    """Detect whether a file uses \\r\\n or \\n line endings."""
-    try:
-        with path.open("rb") as f:
-            sample = f.read(sample_size)
-        crlf = sample.count(b"\r\n")
-        lf = sample.count(b"\n") - crlf
-        return "\r\n" if crlf > lf else "\n"
-    except Exception:
-        return "\n"
-
-
-def normalize_newlines(text: str, line_ending: str) -> str:
-    """Normalize internal newlines to the target line ending."""
-    if line_ending == "\n":
-        return text.replace("\r\n", "\n")
-    return text.replace("\r\n", "\n").replace("\n", "\r\n")
 
 
 def atomic_write(path: Path, content: str) -> None:

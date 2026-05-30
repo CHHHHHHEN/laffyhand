@@ -249,9 +249,7 @@ async def handle_chat_cancel(
         logger.warning(f"Cancellation requested for connection {conn_id}, but no dispatcher reference found")
         return {"status": "cancelled"}
 
-    task = dispatcher._active_tasks.get(conn_id)
-    if task is not None and not task.done():
-        task.cancel()
+    if dispatcher.cancel_connection(conn_id):
         logger.info(f"Streaming task cancelled for connection {conn_id}")
         return {"status": "cancelled"}
 
@@ -286,7 +284,7 @@ async def _ensure_session(
     runtime.state = AgentState(
         messages=[system_message],
         session_id=session.id,
-        usage=SessionUsage(context_size=runtime._context_size),
+        usage=SessionUsage(context_size=runtime.context_size),
     )
     return session.id
 

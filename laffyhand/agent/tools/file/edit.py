@@ -7,6 +7,8 @@ from laffyhand.agent.tools.file._fuzzy import STRATEGIES, count_diff
 from laffyhand.agent.tools.file._security import (
     atomic_write,
     blocked_write_path,
+)
+from laffyhand.agent.tools.file._text_utils import (
     detect_line_ending,
     normalize_newlines,
 )

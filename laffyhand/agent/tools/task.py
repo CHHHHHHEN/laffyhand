@@ -14,11 +14,14 @@ class TaskTool(BaseTool):
 
     def __init__(self, runtime: AgentRuntime) -> None:
         self._runtime = runtime
+        self._cached_schema: dict | None = None
 
     def _input_schema(self) -> dict:
+        if self._cached_schema is not None:
+            return self._cached_schema
         agents = self._runtime.agent_registry.list_subagents()
         enum_agents = [a.name for a in agents]
-        return {
+        schema = {
             "type": "object",
             "properties": {
                 "subagent_type": {
@@ -43,6 +46,8 @@ class TaskTool(BaseTool):
             },
             "required": ["subagent_type", "prompt"],
         }
+        self._cached_schema = schema
+        return schema
 
     async def run(self, params: dict[str, Any]) -> str:
         subagent_type = params["subagent_type"]

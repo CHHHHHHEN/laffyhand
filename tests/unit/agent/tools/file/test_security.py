@@ -5,9 +5,11 @@ from pathlib import Path
 from laffyhand.agent.tools.file._security import (
     looks_binary,
     blocked_write_path,
+    atomic_write,
+)
+from laffyhand.agent.tools.file._text_utils import (
     detect_line_ending,
     normalize_newlines,
-    atomic_write,
 )
 
 
