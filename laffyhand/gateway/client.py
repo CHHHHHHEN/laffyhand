@@ -142,7 +142,7 @@ class GatewayClient:
         await self._request("session/archive", params)
 
     async def chat_stream(self, message: str) -> AsyncIterator[AgentEvent]:
-        async for params in self._request_stream("chat_stream", {"message": message}):
+        async for params in self._request_stream("chat/stream", {"message": message}):
             if params.get("type") == "finish":
                 yield AgentEvent(
                     type="content",
