@@ -4,11 +4,18 @@ from typing import Any
 
 from loguru import logger
 from laffyhand.agent.tools.base import BaseTool
+from laffyhand.agent.tools.file._ripgrep import rg_available, glob as rg_glob
+
+
+MAX_RESULTS = 100
 
 
 class GlobTool(BaseTool):
     name = "glob"
-    description = "Find files matching a glob pattern."
+    description = (
+        "Find files matching a glob pattern. Results are sorted by modification time (newest first) "
+        "and limited to 100 files. Uses ripgrep when available for faster results with .gitignore support."
+    )
     max_result_size = 50000
 
     def _input_schema(self) -> dict:
@@ -30,8 +37,45 @@ class GlobTool(BaseTool):
     async def run(self, params: dict[str, Any]) -> str:
         root = Path(params.get("path", "."))
         pattern = params["pattern"]
-        matches = sorted(glob_module.glob(pattern, root_dir=root, recursive=True))
-        logger.info(f"Glob: pattern='{pattern}' in {root}, {len(matches)} matches")
+
+        matches: list[Path] = []
+
+        if rg_available():
+            rg_results = rg_glob(root, pattern)
+            if rg_results is not None:
+                matches = [root / p for p in rg_results if p]
+                logger.debug(f"Glob: ripgrep returned {len(matches)} results for {pattern} in {root}")
+
+        if not matches:
+            for p in glob_module.glob(pattern, root_dir=root, recursive=True):
+                p_obj = root / p if root != Path(".") else Path(p)
+                if p_obj.is_file():
+                    matches.append(p_obj)
+            logger.debug(f"Glob: Python glob returned {len(matches)} results for {pattern} in {root}")
+
         if not matches:
             return f"No files found matching `{pattern}` in {root}"
-        return "\n".join(matches)
+
+        def _mtime(p: Path) -> float:
+            try:
+                return p.stat().st_mtime
+            except OSError:
+                return 0.0
+        matches.sort(key=_mtime, reverse=True)
+
+        truncated = len(matches) > MAX_RESULTS
+        if truncated:
+            matches = matches[:MAX_RESULTS]
+
+        root_display = root.resolve()
+        try:
+            relative_matches = [str(p.relative_to(root_display)) for p in matches]
+        except ValueError:
+            relative_matches = [str(p) for p in matches]
+
+        result = "\n".join(relative_matches)
+        if truncated:
+            result += f"\n[Results limited to {MAX_RESULTS} files]"
+
+        logger.info(f"Glob: {pattern} in {root} -> {len(matches)} file(s)")
+        return result

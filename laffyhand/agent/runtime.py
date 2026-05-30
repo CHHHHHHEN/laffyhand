@@ -61,7 +61,7 @@ class AgentRuntime:
         for mcp_tool in await self.mcp_service.get_wrapped_tools():
             self.tool_registry.register_tool(mcp_tool)
         self.tool_registry.register_tool(ReadTool())
-        self.tool_registry.register_tool(WriteTool())
+        self.tool_registry.register_tool(WriteTool(permission_manager=self.tool_registry.permission))
         self.tool_registry.register_tool(EditTool())
         self.tool_registry.register_tool(GlobTool())
         self.tool_registry.register_tool(GrepTool())

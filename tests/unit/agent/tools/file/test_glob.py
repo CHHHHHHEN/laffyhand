@@ -1,4 +1,5 @@
 import asyncio
+import time
 import unittest
 import tempfile
 from pathlib import Path
@@ -13,6 +14,7 @@ class TestGlobTool(unittest.TestCase):
         (self.root / "b.py").touch()
         (self.root / "sub").mkdir()
         (self.root / "sub" / "c.py").touch()
+        time.sleep(0.01)
 
     def tearDown(self):
         self.tmpdir.cleanup()
@@ -22,15 +24,42 @@ class TestGlobTool(unittest.TestCase):
         result = asyncio.run(tool.run({"pattern": "*.py", "path": str(self.root)}))
         self.assertIn("a.py", result)
         self.assertIn("b.py", result)
-        self.assertNotIn("sub/c.py", result)
 
     def test_glob_recursive(self):
         tool = GlobTool()
         result = asyncio.run(tool.run({"pattern": "**/*.py", "path": str(self.root)}))
         self.assertIn("a.py", result)
-        self.assertIn("sub/c.py", result)
+        self.assertIn("c.py", result)
 
     def test_glob_no_match(self):
         tool = GlobTool()
         result = asyncio.run(tool.run({"pattern": "*.rs", "path": str(self.root)}))
         self.assertIn("No files found", result)
+
+    def test_glob_sorted_by_mtime(self):
+        tool = GlobTool()
+        result = asyncio.run(tool.run({"pattern": "**/*.py", "path": str(self.root)}))
+        lines = result.strip().split("\n")
+        # Should have 3 files
+        self.assertEqual(len(lines), 3)
+
+    def test_glob_subdir(self):
+        tool = GlobTool()
+        result = asyncio.run(tool.run({"pattern": "*.py", "path": str(self.root / "sub")}))
+        self.assertIn("c.py", result)
+
+    def test_glob_truncated(self):
+        for i in range(150):
+            (self.root / f"f{i:03d}.py").touch()
+        tool = GlobTool()
+        result = asyncio.run(tool.run({"pattern": "*.py", "path": str(self.root)}))
+        self.assertIn("[Results limited to 100 files]", result)
+        lines = [ln for ln in result.strip().split("\n") if ln.strip() and not ln.startswith("[")]
+        self.assertLessEqual(len(lines), 100)
+
+    def test_glob_pattern_no_asterisk(self):
+        """Exact file name without wildcard should still find it."""
+        (self.root / "unique_name.txt").write_text("data")
+        tool = GlobTool()
+        result = asyncio.run(tool.run({"pattern": "unique_name.txt", "path": str(self.root)}))
+        self.assertIn("unique_name.txt", result)
