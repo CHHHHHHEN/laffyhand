@@ -75,9 +75,9 @@ export const useChatStore = create<ChatState>((set) => ({
     })),
 
   setReasoning: (text) =>
-    set({
-      streamReasoning: text,
-    }),
+    set((state) => ({
+      streamReasoning: state.streamReasoning + text,
+    })),
 
   addToolCall: (toolCall) =>
     set((state) => ({
