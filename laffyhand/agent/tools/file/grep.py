@@ -3,6 +3,7 @@ import re
 from pathlib import Path
 from typing import Any
 
+from loguru import logger
 from laffyhand.agent.tools.base import BaseTool
 from laffyhand.agent.tools.file._ripgrep import (
     rg_available, grep as rg_grep,
@@ -90,11 +91,13 @@ class GrepTool(BaseTool):
         if not path.is_file():
             return f"Not a file: {path}"
         if path.stat().st_size > MAX_FILE_SIZE:
+            logger.info(f"Grep: skipped large file {path}")
             return f"Skipped (file too large): {path}"
 
         try:
             text = path.read_text(encoding="utf-8", errors="replace")
         except Exception as e:
+            logger.warning(f"Grep: failed to read {path}: {e}")
             return f"{path}: error: {e}"
 
         pattern = re.compile(pattern_str)
@@ -102,6 +105,7 @@ class GrepTool(BaseTool):
         match_indices = [i for i, line in enumerate(lines) if pattern.search(line)]
 
         if not match_indices:
+            logger.info(f"Grep: no matches for `{pattern_str}` in {path}")
             return f"No matches for `{pattern_str}` in {path}"
 
         total_matches = len(match_indices)
@@ -211,6 +215,7 @@ class GrepTool(BaseTool):
 
     def _py_search_files_only(self, root: Path, pattern_str: str,
                                include: str | None, offset: int, limit: int) -> str:
+        logger.debug(f"Grep: Python fallback files_only for `{pattern_str}` in {root}")
         files_with_matches = self._collect_matches(root, pattern_str, include)
         if not files_with_matches:
             return f"No matches for `{pattern_str}`"
@@ -226,7 +231,8 @@ class GrepTool(BaseTool):
         return result
 
     def _py_search_count(self, root: Path, pattern_str: str,
-                          include: str | None, offset: int, limit: int) -> str:
+                           include: str | None, offset: int, limit: int) -> str:
+        logger.debug(f"Grep: Python fallback count for `{pattern_str}` in {root}")
         files_with_matches = self._collect_matches(root, pattern_str, include)
         if not files_with_matches:
             return f"No matches for `{pattern_str}`"
@@ -244,6 +250,7 @@ class GrepTool(BaseTool):
     def _py_search_content(self, root: Path, pattern_str: str,
                             include: str | None, context: int,
                             offset: int, limit: int) -> str:
+        logger.debug(f"Grep: Python fallback content for `{pattern_str}` in {root}")
         try:
             pattern = re.compile(pattern_str)
         except re.error as e:

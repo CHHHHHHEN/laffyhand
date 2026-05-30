@@ -2,6 +2,8 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from loguru import logger
+
 _RG_CACHE: bool | None = None
 
 
@@ -21,7 +23,8 @@ def glob(cwd: Path, pattern: str) -> list[str] | None:
         )
         if result.returncode == 0:
             return result.stdout.splitlines()
-    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as e:
+        logger.debug(f"ripgrep glob failed for {pattern} in {cwd}: {e}")
         pass
     return None
 
@@ -44,7 +47,8 @@ def grep(cwd: Path, pattern: str, include: str | None = None,
         )
         if result.returncode in (0, 1):
             return result.stdout
-    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as e:
+        logger.debug(f"ripgrep grep failed for {pattern} in {cwd}: {e}")
         pass
     return None
 
@@ -64,7 +68,8 @@ def grep_files(cwd: Path, pattern: str, include: str | None = None) -> list[str]
         )
         if result.returncode in (0, 1):
             return result.stdout.splitlines()
-    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as e:
+        logger.debug(f"ripgrep grep_files failed for {pattern} in {cwd}: {e}")
         pass
     return None
 
@@ -81,6 +86,7 @@ def grep_count(cwd: Path, pattern: str, include: str | None = None) -> str | Non
         )
         if result.returncode in (0, 1):
             return result.stdout
-    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as e:
+        logger.debug(f"ripgrep grep_count failed for {pattern} in {cwd}: {e}")
         pass
     return None

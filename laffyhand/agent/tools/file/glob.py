@@ -2,6 +2,7 @@ import glob as glob_module
 from pathlib import Path
 from typing import Any
 
+from loguru import logger
 from laffyhand.agent.tools.base import BaseTool
 from laffyhand.agent.tools.file._ripgrep import rg_available, glob as rg_glob
 
@@ -43,12 +44,14 @@ class GlobTool(BaseTool):
             rg_results = rg_glob(root, pattern)
             if rg_results is not None:
                 matches = [root / p for p in rg_results if p]
+                logger.debug(f"Glob: ripgrep returned {len(matches)} results for {pattern} in {root}")
 
         if not matches:
             for p in glob_module.glob(pattern, root_dir=root, recursive=True):
                 p_obj = root / p if root != Path(".") else Path(p)
                 if p_obj.is_file():
                     matches.append(p_obj)
+            logger.debug(f"Glob: Python glob returned {len(matches)} results for {pattern} in {root}")
 
         if not matches:
             return f"No files found matching `{pattern}` in {root}"
@@ -73,4 +76,6 @@ class GlobTool(BaseTool):
         result = "\n".join(relative_matches)
         if truncated:
             result += f"\n[Results limited to {MAX_RESULTS} files]"
+
+        logger.info(f"Glob: {pattern} in {root} -> {len(matches)} file(s)")
         return result

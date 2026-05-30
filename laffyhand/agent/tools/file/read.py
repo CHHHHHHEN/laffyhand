@@ -2,6 +2,7 @@ import difflib
 from pathlib import Path
 from typing import Any
 
+from loguru import logger
 from laffyhand.agent.tools.base import BaseTool
 from laffyhand.agent.tools.file._security import looks_binary
 
@@ -93,9 +94,12 @@ class ReadTool(BaseTool):
             return msg
 
         if path.is_dir():
-            return self._list_directory(path, params.get("offset"), params.get("limit"))
+            result = self._list_directory(path, params.get("offset"), params.get("limit"))
+            logger.info(f"Read: listed directory {path}")
+            return result
 
         if looks_binary(path):
+            logger.info(f"Read: skipped binary file {path}")
             return f"File appears to be binary and cannot be read as text: {path}"
 
         offset = params.get("offset")
@@ -157,6 +161,7 @@ class ReadTool(BaseTool):
         if offset is None and limit is None and len(text) > 512 * 1024:
             result += f"\n[File is large ({len(text)} bytes). Use offset and limit to read specific sections.]"
 
+        logger.info(f"Read: {path} ({total_lines} lines, offset={offset}, limit={limit})")
         self._read_cache[key] = (current_mtime, result)
         if len(self._read_cache) > MAX_CACHE_SIZE:
             oldest = next(iter(self._read_cache))
