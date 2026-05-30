@@ -3,10 +3,11 @@ import { Button } from "@/components/ui/Button"
 
 interface ChatInputProps {
   onSend: (content: string) => void
+  onCancel?: () => void
   disabled?: boolean
 }
 
-export function ChatInput({ onSend, disabled }: ChatInputProps) {
+export function ChatInput({ onSend, onCancel, disabled }: ChatInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
@@ -50,9 +51,15 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
         rows={1}
         className="flex-1 resize-none rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
       />
-      <Button onClick={handleSubmit} disabled={disabled || undefined}>
-        Send
-      </Button>
+      {disabled && onCancel ? (
+        <Button variant="danger" onClick={onCancel}>
+          Cancel
+        </Button>
+      ) : (
+        <Button onClick={handleSubmit}>
+          Send
+        </Button>
+      )}
     </div>
   )
 }
