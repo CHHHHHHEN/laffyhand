@@ -231,6 +231,6 @@ class TestMethodConstants:
         assert SESSION_DELETE == "session/delete"
         assert SESSION_FORK == "session/fork"
         assert CHAT == "chat"
-        assert CHAT_STREAM == "chat_stream"
+        assert CHAT_STREAM == "chat/stream"
         assert CHAT_CANCEL == "chat/cancel"
         assert TOOLS_LIST == "tools/list"

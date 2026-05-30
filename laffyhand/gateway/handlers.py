@@ -1,12 +1,16 @@
 from __future__ import annotations
 
+import asyncio
+import itertools
 import os
+import time
 from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
 from laffyhand.agent.schemas import (
-    SystemMessage, UserMessage, AgentState, SessionUsage,
+    SystemMessage, UserMessage, AssistantMessage, ToolMessage,
+    AgentState, SessionUsage,
 )
 from laffyhand.gateway.protocol import (
     INITIALIZE, SHUTDOWN, SESSION_CREATE, SESSION_LIST, SESSION_LOAD,
@@ -18,6 +22,61 @@ if TYPE_CHECKING:
     from laffyhand.agent.runtime import AgentRuntime
     from laffyhand.gateway.dispatcher import Dispatcher
     from laffyhand.gateway.transport import Transport
+
+
+_MESSAGE_COUNTER = itertools.count(1)
+
+
+def _next_msg_id() -> str:
+    return f"msg-{int(time.time() * 1000)}-{next(_MESSAGE_COUNTER)}"
+
+
+def _serialize_messages(messages: list) -> list[dict[str, Any]]:
+    result: list[dict[str, Any]] = []
+    for msg in messages:
+        if isinstance(msg, SystemMessage):
+            result.append({
+                "id": _next_msg_id(),
+                "role": "system",
+                "content": msg.content,
+                "createdAt": int(time.time() * 1000),
+            })
+        elif isinstance(msg, UserMessage):
+            result.append({
+                "id": _next_msg_id(),
+                "role": "user",
+                "content": msg.content,
+                "createdAt": int(time.time() * 1000),
+            })
+        elif isinstance(msg, AssistantMessage):
+            entry: dict[str, Any] = {
+                "id": _next_msg_id(),
+                "role": "assistant",
+                "content": msg.content or "",
+                "createdAt": int(time.time() * 1000),
+            }
+            if msg.reasoning:
+                entry["reasoning"] = msg.reasoning
+            if msg.tool_calls:
+                entry["toolCalls"] = [
+                    {"id": tc.tool_call_id, "name": tc.tool_name, "arguments": tc.args}
+                    for tc in msg.tool_calls
+                ]
+            if msg.tokens:
+                entry["usage"] = {
+                    "inputTokens": msg.tokens.input_tokens,
+                    "outputTokens": msg.tokens.output_tokens,
+                }
+            result.append(entry)
+        elif isinstance(msg, ToolMessage):
+            result.append({
+                "id": _next_msg_id(),
+                "role": "tool",
+                "content": msg.content,
+                "tool_call_id": msg.tool_call_id,
+                "createdAt": int(time.time() * 1000),
+            })
+    return result
 
 
 def _system_prompt(runtime: AgentRuntime, base: str = "") -> str:
@@ -111,6 +170,7 @@ async def handle_session_load(
         "session_id": runtime.state.session_id,
         "messages_count": len(runtime.state.messages),
         "turn_count": runtime.state.turn_count,
+        "messages": _serialize_messages(runtime.state.messages),
     }
 
 
@@ -141,6 +201,15 @@ async def handle_session_fork(
     return {"session_id": child_id}
 
 
+_session_locks: dict[str, asyncio.Lock] = {}
+
+
+def _get_session_lock(session_id: str) -> asyncio.Lock:
+    if session_id not in _session_locks:
+        _session_locks[session_id] = asyncio.Lock()
+    return _session_locks[session_id]
+
+
 async def _prepare_chat(
     runtime: AgentRuntime,
     params: dict[str, Any],
@@ -149,19 +218,24 @@ async def _prepare_chat(
     if not message:
         raise ValueError("message is required")
 
-    session_id: str | None
-    if runtime.state is None:
+    session_id: str | None = params.get("session_id")
+    if session_id:
+        if not runtime.switch_session(session_id):
+            raise ValueError(f"Session not found: {session_id}")
+    elif runtime.state is None:
         session_id = await _ensure_session(runtime, params)
     else:
         session_id = runtime.current_session_id
 
-    assert session_id is not None
+    if session_id is None:
+        raise RuntimeError("Session ID is None after preparation")
     state = runtime.get_state(session_id)
     if state is None:
         raise RuntimeError(f"Session state not found: {session_id}")
     state.step = 0
     user_message = UserMessage(content=message)
-    state.messages.append(user_message)
+    async with _get_session_lock(session_id):
+        state.messages.append(user_message)
     return session_id
 
 
@@ -207,34 +281,54 @@ async def handle_chat_stream(
 
     finish_reason = ""
     usage_info = None
+    last_content = ""
 
-    async for event in runtime.run_agent_turn(session_id=session_id):
-        notif = Notification(
-            method="event",
-            params={
-                "type": event.type,
-                "data": event.data,
-                "finish_reason": event.finish_reason,
-                "usage": event.usage.model_dump() if event.usage else None,
-            },
-        )
-        await transport.send(notif.json())
-        if event.finish_reason:
-            finish_reason = event.finish_reason
-        if event.usage:
-            usage_info = event.usage
+    try:
+        async for event in runtime.run_agent_turn(session_id=session_id):
+            notif = Notification(
+                method="event",
+                params={
+                    "type": event.type,
+                    "data": event.data,
+                    "finish_reason": event.finish_reason,
+                    "usage": event.usage.model_dump() if event.usage else None,
+                },
+            )
+            await transport.send(notif.json())
+            if event.finish_reason:
+                finish_reason = event.finish_reason
+            if event.usage:
+                usage_info = event.usage
+            if event.type == "content" and event.data:
+                last_content += event.data
+    except Exception:
+        logger.exception(f"Chat stream error for session {session_id} (conn={conn_id})")
+        try:
+            err_notif = Notification(
+                method="event",
+                params={
+                    "type": "error",
+                    "data": "Internal error during streaming",
+                },
+            )
+            await transport.send(err_notif.json())
+        except Exception:
+            logger.warning("Failed to send error event to client in chat stream")
 
     done = Notification(
         method="event",
         params={
             "type": "finish",
-            "data": "",
+            "data": last_content,
             "finish_reason": finish_reason,
             "usage": usage_info.model_dump() if usage_info else None,
             "session_id": session_id,
         },
     )
-    await transport.send(done.json())
+    try:
+        await transport.send(done.json())
+    except Exception:
+        pass
 
 
 async def handle_chat_cancel(
@@ -244,17 +338,27 @@ async def handle_chat_cancel(
     _request_id: str | int | None,
     conn_id: str,
 ) -> dict[str, Any]:
+    # 1. Try dispatcher-based cancellation (WS/stdio transports)
     dispatcher: Dispatcher | None = getattr(transport, "_dispatcher", None)
-    if dispatcher is None:
-        logger.warning(f"Cancellation requested for connection {conn_id}, but no dispatcher reference found")
-        return {"status": "cancelled"}
+    if dispatcher is not None:
+        if dispatcher.cancel_connection(conn_id):
+            logger.info(f"Streaming task cancelled for connection {conn_id}")
+            return {"status": "cancelled"}
+        logger.debug(f"No active streaming task for connection {conn_id}")
+        return {"status": "no_active_stream"}
 
-    if dispatcher.cancel_connection(conn_id):
-        logger.info(f"Streaming task cancelled for connection {conn_id}")
-        return {"status": "cancelled"}
+    # 2. Try HTTP SSE transport cancellation
+    sse_canceller = getattr(transport, "_sse_canceller", None)
+    if sse_canceller is not None:
+        if sse_canceller(conn_id):
+            logger.info(f"SSE stream cancelled for connection {conn_id}")
+            return {"status": "cancelled"}
+        logger.debug(f"No active SSE stream for connection {conn_id}")
+        return {"status": "no_active_stream"}
 
-    logger.debug(f"No active streaming task for connection {conn_id}")
-    return {"status": "no_active_stream"}
+    # 3. No cancellation mechanism available
+    logger.warning(f"Cancellation not supported for transport {type(transport).__name__} (conn={conn_id})")
+    return {"status": "cancellation_not_supported"}
 
 
 async def handle_tools_list(

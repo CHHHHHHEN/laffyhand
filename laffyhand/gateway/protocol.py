@@ -8,6 +8,11 @@ from typing import Any
 _JSONRPC_VERSION = "2.0"
 MAX_MESSAGE_SIZE = 16 * 1024 * 1024  # 16 MB
 
+
+def _validate_id(raw_id: Any) -> None:
+    if not isinstance(raw_id, (str, int, float)) or isinstance(raw_id, bool):
+        raise ValueError("JSON-RPC id must be a string or number")
+
 # RPC method names
 INITIALIZE = "initialize"
 SHUTDOWN = "shutdown"
@@ -17,7 +22,7 @@ SESSION_LOAD = "session/load"
 SESSION_DELETE = "session/delete"
 SESSION_FORK = "session/fork"
 CHAT = "chat"
-CHAT_STREAM = "chat_stream"
+CHAT_STREAM = "chat/stream"
 CHAT_CANCEL = "chat/cancel"
 TOOLS_LIST = "tools/list"
 
@@ -98,7 +103,7 @@ def from_json(data: str) -> JSONRPCMessage:
         )
     obj = json.loads(data)
     if not isinstance(obj, dict):
-        raise ValueError(f"Invalid JSON-RPC message: {data!r}")
+        raise ValueError(f"Invalid JSON-RPC message: {data!r:.200}")
     jsonrpc = obj.get("jsonrpc", _JSONRPC_VERSION)
     if jsonrpc != _JSONRPC_VERSION:
         raise ValueError(f"Unsupported JSON-RPC version: {jsonrpc}")
@@ -107,6 +112,7 @@ def from_json(data: str) -> JSONRPCMessage:
     has_result = "result" in obj
     has_error = "error" in obj
     if has_method and has_id:
+        _validate_id(obj["id"])
         return Request(
             id=obj["id"],
             method=obj["method"],
@@ -118,6 +124,7 @@ def from_json(data: str) -> JSONRPCMessage:
             params=obj.get("params"),
         )
     if has_result and has_id:
+        _validate_id(obj["id"])
         return Response(
             id=obj["id"],
             result=obj["result"],
@@ -132,7 +139,7 @@ def from_json(data: str) -> JSONRPCMessage:
                 data=err.get("data"),
             ),
         )
-    raise ValueError(f"Cannot classify JSON-RPC message: {data!r}")
+    raise ValueError(f"Cannot classify JSON-RPC message: {data!r:.200}")
 
 
 @dataclass

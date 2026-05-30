@@ -1,0 +1,187 @@
+import { describe, it, expect, vi, beforeEach } from "vitest"
+import { renderHook, act, waitFor } from "@testing-library/react"
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import type { ReactNode } from "react"
+import { useSessions, useCurrentSession } from "./use-sessions"
+import { useChatStore, resetMessageCounter } from "@/stores/chat-store"
+import { useSessionStore } from "@/stores/session-store"
+
+// Mock rpcClient
+const mockSessionList = vi.fn()
+const mockSessionCreate = vi.fn()
+const mockSessionDelete = vi.fn()
+const mockSessionFork = vi.fn()
+const mockSessionLoad = vi.fn()
+
+vi.mock("@/lib/rpc", () => ({
+  rpcClient: {
+    sessionList: (...args: unknown[]) => mockSessionList(...args),
+    sessionCreate: (...args: unknown[]) => mockSessionCreate(...args),
+    sessionDelete: (...args: unknown[]) => mockSessionDelete(...args),
+    sessionFork: (...args: unknown[]) => mockSessionFork(...args),
+    sessionLoad: (...args: unknown[]) => mockSessionLoad(...args),
+  },
+  RpcError: class extends Error {
+    constructor(
+      public code: number,
+      message: string,
+      public data?: unknown,
+    ) {
+      super(message)
+      this.name = "RpcError"
+    }
+  },
+}))
+
+function createWrapper() {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false, gcTime: 0 },
+      mutations: { retry: false },
+    },
+  })
+  return function Wrapper({ children }: { children: ReactNode }) {
+    return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  }
+}
+
+const mockSessions = [
+  {
+    id: "sess-1",
+    status: "active",
+    title: "Test Session",
+    message_count: 5,
+    turn_count: 3,
+    created_at: 1000,
+    updated_at: 2000,
+  },
+  {
+    id: "sess-2",
+    status: "archived",
+    title: "Old Session",
+    message_count: 2,
+    turn_count: 1,
+    created_at: 500,
+    updated_at: 1500,
+  },
+]
+
+beforeEach(() => {
+  vi.clearAllMocks()
+  resetMessageCounter()
+  useChatStore.setState({
+    messages: [], isStreaming: false, streamContent: "", streamReasoning: "",
+    streamToolCalls: [], streamToolResults: [], currentAssistantMessageId: null, error: null,
+  })
+  useSessionStore.setState({ currentSessionId: null })
+})
+
+describe("useSessions", () => {
+  it("returns session list", async () => {
+    mockSessionList.mockResolvedValue({ sessions: mockSessions })
+
+    const { result } = renderHook(() => useSessions(), { wrapper: createWrapper() })
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    expect(result.current.sessions).toHaveLength(2)
+    expect(result.current.sessions[0]?.id).toBe("sess-1")
+    expect(result.current.sessions[0]?.title).toBe("Test Session")
+  })
+
+  it("creates a new session", async () => {
+    mockSessionList.mockResolvedValue({ sessions: [] })
+    mockSessionCreate.mockResolvedValue({ session_id: "sess-new" })
+
+    const { result } = renderHook(() => useSessions(), { wrapper: createWrapper() })
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    let newId: string
+    await act(async () => {
+      newId = await result.current.createSession("New Chat")
+    })
+
+    expect(newId!).toBe("sess-new")
+    expect(mockSessionCreate).toHaveBeenCalledWith({ title: "New Chat" })
+  })
+
+  it("deletes a session", async () => {
+    mockSessionList.mockResolvedValue({ sessions: mockSessions })
+    mockSessionDelete.mockResolvedValue({ status: "deleted", session_id: "sess-1" })
+
+    const { result } = renderHook(() => useSessions(), { wrapper: createWrapper() })
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    await act(async () => {
+      await result.current.deleteSession("sess-1")
+    })
+
+    expect(mockSessionDelete).toHaveBeenCalledWith("sess-1")
+  })
+
+  it("forks the current session", async () => {
+    mockSessionList.mockResolvedValue({ sessions: mockSessions })
+    mockSessionFork.mockResolvedValue({ session_id: "sess-forked" })
+
+    const { result } = renderHook(() => useSessions(), { wrapper: createWrapper() })
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    let forkedId: string
+    await act(async () => {
+      forkedId = await result.current.forkSession()
+    })
+
+    expect(forkedId!).toBe("sess-forked")
+    expect(mockSessionFork).toHaveBeenCalled()
+  })
+})
+
+describe("useCurrentSession", () => {
+  it("loads and sets messages for a session", async () => {
+    mockSessionLoad.mockResolvedValue({
+      session_id: "sess-1",
+      messages_count: 2,
+      turn_count: 2,
+      messages: [
+        { id: "m1", role: "user" as const, content: "hello", createdAt: 100 },
+        { id: "m2", role: "assistant" as const, content: "hi", createdAt: 200, usage: { inputTokens: 10, outputTokens: 5 } },
+      ],
+    })
+
+    const { result } = renderHook(() => useCurrentSession("sess-1"), { wrapper: createWrapper() })
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    expect(mockSessionLoad).toHaveBeenCalledWith("sess-1")
+    const state = useChatStore.getState()
+    expect(state.messages).toHaveLength(2)
+    expect(state.messages[0]?.content).toBe("hello")
+    expect(state.messages[1]?.content).toBe("hi")
+  })
+
+  it("sets current session ID in store", async () => {
+    mockSessionLoad.mockResolvedValue({
+      session_id: "sess-target",
+      messages_count: 0,
+      turn_count: 0,
+      messages: [],
+    })
+
+    const { result } = renderHook(() => useCurrentSession("sess-target"), { wrapper: createWrapper() })
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    expect(useSessionStore.getState().currentSessionId).toBe("sess-target")
+  })
+
+  it("returns null for undefined sessionId", async () => {
+    const { result } = renderHook(() => useCurrentSession(undefined), { wrapper: createWrapper() })
+
+    expect(result.current.session).toBeUndefined()
+    expect(result.current.isLoading).toBe(false)
+    expect(mockSessionLoad).not.toHaveBeenCalled()
+  })
+})
