@@ -7,6 +7,19 @@ from loguru import logger
 from laffyhand.gateway.transport import Transport, _NullTransport
 
 
+_CORS_HEADERS = {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Accept",
+    "Access-Control-Max-Age": "86400",
+}
+
+
+def _json_response(data: dict[str, Any], status: int = 200) -> Any:
+    import aiohttp.web
+    return aiohttp.web.json_response(data, status=status, headers=_CORS_HEADERS)
+
+
 class _WSConnection(Transport):
     def __init__(self, ws: Any, conn_id: str) -> None:
         from aiohttp import WSMsgType
@@ -97,9 +110,7 @@ class WSTransport:
         return ws
 
     async def _handle_health(self, request: Any) -> Any:
-        import aiohttp.web
-
-        return aiohttp.web.json_response({"status": "ok"})
+        return _json_response({"status": "ok"})
 
     async def close(self) -> None:
         for g in self._gateway_servers:
@@ -109,10 +120,11 @@ class WSTransport:
 
 
 class _HTTPStreamTransport(Transport):
-    def __init__(self, response: Any, conn_id: str) -> None:
+    def __init__(self, response: Any, conn_id: str, dispatcher: Any = None) -> None:
         self._response = response
         self.connection_id = conn_id
         self._closed = False
+        self._dispatcher = dispatcher
 
     async def send(self, data: str) -> None:
         if self._closed:
@@ -142,12 +154,21 @@ class HTTPTransport:
         self.port = port
         self._runner: Any = None
 
+        from laffyhand.gateway.dispatcher import Dispatcher
+        from laffyhand.gateway.handlers import register_all_handlers
+
+        self._dispatcher = Dispatcher(runtime=runtime)
+        register_all_handlers(self._dispatcher)
+        if runtime is not None:
+            runtime._http_dispatcher = self._dispatcher
+
     async def start(self) -> None:
         import aiohttp.web
 
         app = aiohttp.web.Application()
         app.router.add_post("/rpc", self._handle_rpc)
         app.router.add_get("/health", self._handle_health)
+        app.router.add_options("/rpc", self._handle_cors_preflight)
         runner = aiohttp.web.AppRunner(app)
         await runner.setup()
         site = aiohttp.web.TCPSite(runner, self.host, self.port)
@@ -155,12 +176,13 @@ class HTTPTransport:
         self._runner = runner
         logger.info(f"HTTP transport listening on http://{self.host}:{self.port}/rpc")
 
-    async def _handle_rpc(self, request: Any) -> Any:
-        import aiohttp.web
+    async def _handle_cors_preflight(self, request: Any) -> Any:
+        return _json_response({}, status=204)
 
+    async def _handle_rpc(self, request: Any) -> Any:
         body = await request.text()
         if not body:
-            return aiohttp.web.json_response(
+            return _json_response(
                 {"jsonrpc": "2.0", "error": {"code": -32700, "message": "Parse error"}, "id": None},
                 status=400,
             )
@@ -168,35 +190,28 @@ class HTTPTransport:
         return await self._handle_rpc_inner(request, body)
 
     async def _handle_rpc_inner(self, request: Any, body: str) -> Any:
-        import aiohttp.web
-
         from laffyhand.gateway.protocol import from_json, Request
 
         try:
             message = from_json(body)
         except Exception:
-            return aiohttp.web.json_response(
+            return _json_response(
                 {"jsonrpc": "2.0", "error": {"code": -32700, "message": "Parse error"}, "id": None},
                 status=400,
             )
 
         if not isinstance(message, Request):
-            return aiohttp.web.json_response(
+            return _json_response(
                 {"jsonrpc": "2.0", "error": {"code": -32600, "message": "Invalid request"}, "id": None},
                 status=400,
             )
 
         wants_sse = request.headers.get("Accept", "") == "text/event-stream"
 
-        from laffyhand.gateway.dispatcher import Dispatcher
-        from laffyhand.gateway.handlers import register_all_handlers
-
-        dispatcher = Dispatcher(runtime=self.runtime)
-        register_all_handlers(dispatcher)
-
+        dispatcher = self._dispatcher
         entry = dispatcher.handlers.get(message.method)
         if entry is None:
-            return aiohttp.web.json_response(
+            return _json_response(
                 {"jsonrpc": "2.0", "error": {"code": -32601, "message": f"Method not found: {message.method}"}, "id": message.id},
                 status=404,
             )
@@ -218,40 +233,40 @@ class HTTPTransport:
             headers={
                 "Content-Type": "text/event-stream",
                 "Cache-Control": "no-cache",
+                **_CORS_HEADERS,
             },
         )
         await response.prepare(request)
-        transport = _HTTPStreamTransport(response, f"http_{id(response):x}")
+        transport = _HTTPStreamTransport(response, f"http_{id(response):x}", dispatcher=dispatcher)
         try:
             await entry.func(self.runtime, message.params or {}, transport, message.id, transport.connection_id)
             await transport.send(RpcResponse(id=message.id, result={"status": "completed"}).json())
         except Exception:
             logger.error(f"SSE stream error for method={message.method}")
-            await transport.send(ErrorResponse(id=message.id, error=Error(code=-32603, message="Internal error")).json())
+            try:
+                await transport.send(ErrorResponse(id=message.id, error=Error(code=-32603, message="Internal error")).json())
+            except Exception:
+                pass
         await response.write_eof()
         return response
 
     async def _handle_rpc_call(
         self, message: Any, entry: Any, dispatcher: Any,
     ) -> Any:
-        import aiohttp.web
-
         try:
             result = await entry.func(self.runtime, message.params or {}, _NullTransport(), message.id, "http")
-            return aiohttp.web.json_response(
+            return _json_response(
                 {"jsonrpc": "2.0", "id": message.id, "result": result},
             )
         except Exception:
             logger.error(f"HTTP RPC error for method={message.method}")
-            return aiohttp.web.json_response(
+            return _json_response(
                 {"jsonrpc": "2.0", "error": {"code": -32603, "message": "Internal error"}, "id": message.id},
                 status=500,
             )
 
     async def _handle_health(self, request: Any) -> Any:
-        import aiohttp.web
-
-        return aiohttp.web.json_response({"status": "ok"})
+        return _json_response({"status": "ok"})
 
     async def close(self) -> None:
         if self._runner:

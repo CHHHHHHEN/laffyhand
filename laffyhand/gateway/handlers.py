@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import os
+import time
 from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
 from laffyhand.agent.schemas import (
-    SystemMessage, UserMessage, AgentState, SessionUsage,
+    SystemMessage, UserMessage, AssistantMessage, ToolMessage,
+    AgentState, SessionUsage,
 )
 from laffyhand.gateway.protocol import (
     INITIALIZE, SHUTDOWN, SESSION_CREATE, SESSION_LIST, SESSION_LOAD,
@@ -18,6 +20,63 @@ if TYPE_CHECKING:
     from laffyhand.agent.runtime import AgentRuntime
     from laffyhand.gateway.dispatcher import Dispatcher
     from laffyhand.gateway.transport import Transport
+
+
+_MESSAGE_COUNTER: int = 0
+
+
+def _next_msg_id() -> str:
+    global _MESSAGE_COUNTER
+    _MESSAGE_COUNTER += 1
+    return f"msg-{int(time.time() * 1000)}-{_MESSAGE_COUNTER}"
+
+
+def _serialize_messages(messages: list) -> list[dict[str, Any]]:
+    result: list[dict[str, Any]] = []
+    for msg in messages:
+        if isinstance(msg, SystemMessage):
+            result.append({
+                "id": _next_msg_id(),
+                "role": "system",
+                "content": msg.content,
+                "createdAt": int(time.time() * 1000),
+            })
+        elif isinstance(msg, UserMessage):
+            result.append({
+                "id": _next_msg_id(),
+                "role": "user",
+                "content": msg.content,
+                "createdAt": int(time.time() * 1000),
+            })
+        elif isinstance(msg, AssistantMessage):
+            entry: dict[str, Any] = {
+                "id": _next_msg_id(),
+                "role": "assistant",
+                "content": msg.content or "",
+                "createdAt": int(time.time() * 1000),
+            }
+            if msg.reasoning:
+                entry["reasoning"] = msg.reasoning
+            if msg.tool_calls:
+                entry["toolCalls"] = [
+                    {"id": tc.tool_call_id, "name": tc.tool_name, "arguments": tc.args}
+                    for tc in msg.tool_calls
+                ]
+            if msg.tokens:
+                entry["usage"] = {
+                    "inputTokens": msg.tokens.input_tokens,
+                    "outputTokens": msg.tokens.output_tokens,
+                }
+            result.append(entry)
+        elif isinstance(msg, ToolMessage):
+            result.append({
+                "id": _next_msg_id(),
+                "role": "tool",
+                "content": msg.content,
+                "tool_call_id": msg.tool_call_id,
+                "createdAt": int(time.time() * 1000),
+            })
+    return result
 
 
 def _system_prompt(runtime: AgentRuntime, base: str = "") -> str:
@@ -111,6 +170,7 @@ async def handle_session_load(
         "session_id": runtime.state.session_id,
         "messages_count": len(runtime.state.messages),
         "turn_count": runtime.state.turn_count,
+        "messages": _serialize_messages(runtime.state.messages),
     }
 
 
@@ -149,8 +209,11 @@ async def _prepare_chat(
     if not message:
         raise ValueError("message is required")
 
-    session_id: str | None
-    if runtime.state is None:
+    session_id: str | None = params.get("session_id")
+    if session_id:
+        if not runtime.switch_session(session_id):
+            raise ValueError(f"Session not found: {session_id}")
+    elif runtime.state is None:
         session_id = await _ensure_session(runtime, params)
     else:
         session_id = runtime.current_session_id
@@ -245,6 +308,8 @@ async def handle_chat_cancel(
     conn_id: str,
 ) -> dict[str, Any]:
     dispatcher: Dispatcher | None = getattr(transport, "_dispatcher", None)
+    if dispatcher is None:
+        dispatcher = getattr(runtime, "_http_dispatcher", None)
     if dispatcher is None:
         logger.warning(f"Cancellation requested for connection {conn_id}, but no dispatcher reference found")
         return {"status": "cancelled"}

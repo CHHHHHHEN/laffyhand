@@ -1,8 +1,9 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { rpcClient } from "@/lib/rpc"
 import { useSessionStore } from "@/stores/session-store"
-import type { Session } from "@/types/session"
-import type { SessionInfo } from "@/types/rpc"
+import { useChatStore } from "@/stores/chat-store"
+import type { Session, Message } from "@/types/session"
+import type { SessionInfo, MessageData } from "@/types/rpc"
 
 function toSession(rpc: SessionInfo): Session {
   return {
@@ -70,8 +71,35 @@ export function useSessions() {
   }
 }
 
+function toStoreMessage(m: MessageData): Message {
+  const msg: Message = {
+    id: m.id,
+    role: m.role,
+    content: m.content,
+    createdAt: m.createdAt,
+  }
+  if (m.toolCalls) {
+    msg.toolCalls = m.toolCalls.map((tc) => ({
+      id: tc.id,
+      name: tc.name,
+      arguments:
+        typeof tc.arguments === "string"
+          ? (tc.arguments as unknown as Record<string, unknown>)
+          : (tc.arguments as Record<string, unknown>),
+    }))
+  }
+  if (m.usage) {
+    msg.usage = {
+      inputTokens: m.usage.inputTokens ?? 0,
+      outputTokens: m.usage.outputTokens ?? 0,
+    }
+  }
+  return msg
+}
+
 export function useCurrentSession(sessionId: string | undefined) {
   const setCurrentSessionId = useSessionStore((s) => s.setCurrentSessionId)
+  const loadMessages = useChatStore((s) => s.loadMessages)
 
   const { data: session, isLoading } = useQuery({
     queryKey: ["session", sessionId],
@@ -79,6 +107,9 @@ export function useCurrentSession(sessionId: string | undefined) {
       if (!sessionId) return null
       setCurrentSessionId(sessionId)
       const result = await rpcClient.sessionLoad(sessionId)
+      if (result.messages) {
+        loadMessages(result.messages.map(toStoreMessage))
+      }
       return result
     },
     enabled: !!sessionId,

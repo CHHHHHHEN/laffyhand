@@ -1,9 +1,11 @@
 import { useCallback, useRef } from "react"
+import { useParams } from "react-router-dom"
 import { rpcClient } from "@/lib/rpc"
 import { useChatStore } from "@/stores/chat-store"
 
 export function useChat() {
   const abortRef = useRef<AbortController | null>(null)
+  const { sessionId: urlSessionId } = useParams()
 
   const sendMessage = useCallback(
     async (content: string) => {
@@ -84,6 +86,7 @@ export function useChat() {
             },
           },
           abortController.signal,
+          urlSessionId,
         )
       } catch (err) {
         if (abortController.signal.aborted) return
@@ -93,7 +96,7 @@ export function useChat() {
         )
       }
     },
-    [],
+    [urlSessionId],
   )
 
   const cancelStream = useCallback(async () => {

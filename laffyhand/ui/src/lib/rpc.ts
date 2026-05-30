@@ -6,6 +6,7 @@ import type {
   SessionListResult,
   SessionCreateParams,
   SessionCreateResult,
+  SessionLoadResult,
   SessionDeleteResult,
   SessionForkResult,
   CancelResult,
@@ -107,8 +108,13 @@ export async function chatStream(
   message: string,
   callbacks: ChatStreamCallbacks,
   signal?: AbortSignal,
+  sessionId?: string,
 ): Promise<void> {
-  const stream = await callStream("chat_stream", { message }, signal)
+  const params: Record<string, unknown> = { message }
+  if (sessionId) {
+    params.session_id = sessionId
+  }
+  const stream = await callStream("chat_stream", params, signal)
   const reader = stream.getReader()
   const decoder = new TextDecoder()
   let buffer = ""
@@ -172,12 +178,8 @@ export const rpcClient = {
 
   sessionLoad(
     sessionId: string,
-  ): Promise<{
-    session_id: string
-    messages_count: number
-    turn_count: number
-  }> {
-    return call("session/load", { session_id: sessionId })
+  ): Promise<SessionLoadResult> {
+    return call<SessionLoadResult>("session/load", { session_id: sessionId })
   },
 
   sessionDelete(sessionId: string): Promise<SessionDeleteResult> {
@@ -198,5 +200,10 @@ export const rpcClient = {
     return call<CancelResult>("chat/cancel")
   },
 
-  chatStream,
+  chatStream: (
+    message: string,
+    callbacks: ChatStreamCallbacks,
+    signal?: AbortSignal,
+    sessionId?: string,
+  ) => chatStream(message, callbacks, signal, sessionId),
 }

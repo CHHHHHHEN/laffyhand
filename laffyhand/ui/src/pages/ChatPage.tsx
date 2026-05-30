@@ -15,9 +15,7 @@ export function ChatPage() {
   const clearMessages = useChatStore((s) => s.clearMessages)
 
   useEffect(() => {
-    if (!sessionId) {
-      clearMessages()
-    }
+    clearMessages()
   }, [sessionId, clearMessages])
 
   if (!sessionId) {

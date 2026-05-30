@@ -65,10 +65,21 @@ export interface SessionCreateResult {
   session_id: string
 }
 
+export interface MessageData {
+  id: string
+  role: "user" | "assistant" | "system" | "tool"
+  content: string
+  reasoning?: string
+  toolCalls?: { id: string; name: string; arguments: unknown }[]
+  usage?: { inputTokens?: number; outputTokens?: number }
+  createdAt: number
+}
+
 export interface SessionLoadResult {
   session_id: string
   messages_count: number
   turn_count: number
+  messages: MessageData[]
 }
 
 export interface SessionDeleteResult {
@@ -82,6 +93,7 @@ export interface SessionForkResult {
 
 export interface ChatParams {
   message: string
+  session_id?: string
   system_prompt?: string
   title?: string
   cwd?: string
