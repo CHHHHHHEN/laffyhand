@@ -1,0 +1,305 @@
+from __future__ import annotations
+
+import os
+from typing import TYPE_CHECKING, Any
+
+from loguru import logger
+
+from laffyhand.agent.schemas import (
+    SystemMessage, UserMessage, AgentState, SessionUsage,
+)
+from laffyhand.gateway.protocol import (
+    INITIALIZE, SHUTDOWN, SESSION_CREATE, SESSION_LIST, SESSION_LOAD,
+    SESSION_DELETE, SESSION_FORK, CHAT, CHAT_STREAM,
+    CHAT_CANCEL, TOOLS_LIST, Notification,
+)
+
+if TYPE_CHECKING:
+    from laffyhand.agent.runtime import AgentRuntime
+    from laffyhand.gateway.dispatcher import Dispatcher
+    from laffyhand.gateway.transport import Transport
+
+
+def _system_prompt(runtime: AgentRuntime, base: str = "") -> str:
+    return runtime.build_system_prompt(base or "You are a helpful assistant.")
+
+
+async def handle_initialize(
+    runtime: AgentRuntime,
+    params: dict[str, Any],
+    transport: Transport,
+    _request_id: str | int | None,
+    conn_id: str,
+) -> dict[str, Any]:
+    return {
+        "protocol_version": "2.0",
+        "server_info": {
+            "name": "laffyhand",
+            "version": "0.1.0",
+        },
+        "session_id": runtime.current_session_id,
+    }
+
+
+async def handle_shutdown(
+    runtime: AgentRuntime,
+    params: dict[str, Any],
+    transport: Transport,
+    _request_id: str | int | None,
+    conn_id: str,
+) -> None:
+    await runtime.shutdown()
+
+
+async def handle_session_create(
+    runtime: AgentRuntime,
+    params: dict[str, Any],
+    transport: Transport,
+    _request_id: str | int | None,
+    conn_id: str,
+) -> dict[str, Any]:
+    await _ensure_session(runtime, params)
+    if runtime.state is None:
+        raise RuntimeError("Session creation failed")
+    return {"session_id": runtime.state.session_id}
+
+
+async def handle_session_list(
+    runtime: AgentRuntime,
+    params: dict[str, Any],
+    transport: Transport,
+    _request_id: str | int | None,
+    conn_id: str,
+) -> dict[str, Any]:
+    sessions = runtime.session_manager.list_sessions(
+        status=params.get("status"),
+        limit=params.get("limit", 20),
+        offset=params.get("offset", 0),
+    )
+    return {
+        "sessions": [
+            {
+                "id": s.id,
+                "status": s.status,
+                "title": s.title,
+                "message_count": s.message_count,
+                "turn_count": s.turn_count,
+                "created_at": s.created_at.isoformat(),
+                "updated_at": s.updated_at.isoformat(),
+            }
+            for s in sessions
+        ],
+    }
+
+
+async def handle_session_load(
+    runtime: AgentRuntime,
+    params: dict[str, Any],
+    transport: Transport,
+    _request_id: str | int | None,
+    conn_id: str,
+) -> dict[str, Any]:
+    session_id: str = params.get("session_id", "")
+    if not session_id:
+        raise ValueError("session_id is required")
+    ok = runtime.switch_session(session_id)
+    if not ok:
+        raise ValueError(f"Session not found: {session_id}")
+    if runtime.state is None:
+        raise RuntimeError("Session load failed")
+    return {
+        "session_id": runtime.state.session_id,
+        "messages_count": len(runtime.state.messages),
+        "turn_count": runtime.state.turn_count,
+    }
+
+
+async def handle_session_delete(
+    runtime: AgentRuntime,
+    params: dict[str, Any],
+    transport: Transport,
+    _request_id: str | int | None,
+    conn_id: str,
+) -> dict[str, Any]:
+    session_id: str = params.get("session_id", "")
+    if not session_id:
+        raise ValueError("session_id is required")
+    runtime.session_manager.delete(session_id)
+    return {"status": "deleted", "session_id": session_id}
+
+
+async def handle_session_fork(
+    runtime: AgentRuntime,
+    params: dict[str, Any],
+    transport: Transport,
+    _request_id: str | int | None,
+    conn_id: str,
+) -> dict[str, Any]:
+    child_id = runtime.fork_session()
+    if child_id is None:
+        raise ValueError("No active session to fork")
+    return {"session_id": child_id}
+
+
+async def _prepare_chat(
+    runtime: AgentRuntime,
+    params: dict[str, Any],
+) -> str:
+    message: str = params.get("message", "")
+    if not message:
+        raise ValueError("message is required")
+
+    session_id: str | None
+    if runtime.state is None:
+        session_id = await _ensure_session(runtime, params)
+    else:
+        session_id = runtime.current_session_id
+
+    assert session_id is not None
+    state = runtime.get_state(session_id)
+    if state is None:
+        raise RuntimeError(f"Session state not found: {session_id}")
+    state.step = 0
+    user_message = UserMessage(content=message)
+    state.messages.append(user_message)
+    return session_id
+
+
+async def handle_chat(
+    runtime: AgentRuntime,
+    params: dict[str, Any],
+    transport: Transport,
+    request_id: str | int | None,
+    conn_id: str,
+) -> dict[str, Any]:
+    session_id = await _prepare_chat(runtime, params)
+
+    last_content = ""
+    finish_reason = ""
+    usage_info = None
+    logger.debug(f"Chat started (id={request_id}, conn={conn_id})")
+
+    async for event in runtime.run_agent_turn(session_id=session_id):
+        if event.type == "content" and event.data:
+            last_content += event.data
+        if event.finish_reason:
+            finish_reason = event.finish_reason
+        if event.usage:
+            usage_info = event.usage
+
+    logger.debug(f"Chat finished (id={request_id}, conn={conn_id}, finish={finish_reason})")
+    return {
+        "content": last_content,
+        "finish_reason": finish_reason,
+        "usage": usage_info.model_dump() if usage_info else None,
+        "session_id": session_id,
+    }
+
+
+async def handle_chat_stream(
+    runtime: AgentRuntime,
+    params: dict[str, Any],
+    transport: Transport,
+    _request_id: str | int | None,
+    conn_id: str,
+) -> None:
+    session_id = await _prepare_chat(runtime, params)
+
+    finish_reason = ""
+    usage_info = None
+
+    async for event in runtime.run_agent_turn(session_id=session_id):
+        notif = Notification(
+            method="event",
+            params={
+                "type": event.type,
+                "data": event.data,
+                "finish_reason": event.finish_reason,
+                "usage": event.usage.model_dump() if event.usage else None,
+            },
+        )
+        await transport.send(notif.json())
+        if event.finish_reason:
+            finish_reason = event.finish_reason
+        if event.usage:
+            usage_info = event.usage
+
+    done = Notification(
+        method="event",
+        params={
+            "type": "finish",
+            "data": "",
+            "finish_reason": finish_reason,
+            "usage": usage_info.model_dump() if usage_info else None,
+            "session_id": session_id,
+        },
+    )
+    await transport.send(done.json())
+
+
+async def handle_chat_cancel(
+    runtime: AgentRuntime,
+    params: dict[str, Any],
+    transport: Transport,
+    _request_id: str | int | None,
+    conn_id: str,
+) -> dict[str, Any]:
+    dispatcher: Dispatcher | None = getattr(transport, "_dispatcher", None)
+    if dispatcher is None:
+        logger.warning(f"Cancellation requested for connection {conn_id}, but no dispatcher reference found")
+        return {"status": "cancelled"}
+
+    task = dispatcher._active_tasks.get(conn_id)
+    if task is not None and not task.done():
+        task.cancel()
+        logger.info(f"Streaming task cancelled for connection {conn_id}")
+        return {"status": "cancelled"}
+
+    logger.debug(f"No active streaming task for connection {conn_id}")
+    return {"status": "no_active_stream"}
+
+
+async def handle_tools_list(
+    runtime: AgentRuntime,
+    params: dict[str, Any],
+    transport: Transport,
+    _request_id: str | int | None,
+    conn_id: str,
+) -> dict[str, Any]:
+    tools = runtime.tool_registry.build_tool_definitions()
+    return {
+        "tools": [t.model_dump() for t in tools],
+    }
+
+
+async def _ensure_session(
+    runtime: AgentRuntime,
+    params: dict[str, Any],
+) -> str:
+    system_content = _system_prompt(runtime, params.get("system_prompt", ""))
+    system_message = SystemMessage(content=system_content)
+    session = runtime.session_manager.create(
+        title=params.get("title", ""),
+        cwd=params.get("cwd", os.getcwd()),
+        model=params.get("model", ""),
+    )
+    runtime.state = AgentState(
+        messages=[system_message],
+        session_id=session.id,
+        usage=SessionUsage(context_size=runtime._context_size),
+    )
+    return session.id
+
+
+def register_all_handlers(dispatcher: Dispatcher) -> None:
+    dispatcher.register(INITIALIZE, handle_initialize)
+    dispatcher.register(SHUTDOWN, handle_shutdown)
+    dispatcher.register(SESSION_CREATE, handle_session_create)
+    dispatcher.register(SESSION_LIST, handle_session_list)
+    dispatcher.register(SESSION_LOAD, handle_session_load)
+    dispatcher.register(SESSION_DELETE, handle_session_delete)
+    dispatcher.register(SESSION_FORK, handle_session_fork)
+    dispatcher.register(CHAT, handle_chat)
+    dispatcher.register(CHAT_STREAM, handle_chat_stream, streaming=True)
+    dispatcher.register(CHAT_CANCEL, handle_chat_cancel)
+    dispatcher.register(TOOLS_LIST, handle_tools_list)

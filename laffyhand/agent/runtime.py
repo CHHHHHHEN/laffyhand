@@ -57,7 +57,9 @@ class AgentRuntime:
         self.skill_registry = SkillRegistry()
         self.subagent_manager = SubagentManager(max_concurrent=max_subagents)
 
-        self._state: AgentState | None = None
+        self._states: dict[str, AgentState] = {}
+        self._session_id: str | None = None
+        self._active_session_id: str | None = None
         self._task_tool: TaskTool | None = None
 
     async def init_tools(self) -> None:
@@ -97,15 +99,22 @@ class AgentRuntime:
 
     @property
     def state(self) -> AgentState | None:
-        return self._state
+        if self._session_id is None:
+            return None
+        return self._states.get(self._session_id)
 
     @state.setter
     def state(self, new_state: AgentState) -> None:
-        self._state = new_state
+        if new_state.session_id:
+            self._session_id = new_state.session_id
+            self._states[new_state.session_id] = new_state
 
     @property
     def current_session_id(self) -> str | None:
-        return self._state.session_id if self._state else None
+        return self._session_id
+
+    def get_state(self, session_id: str) -> AgentState | None:
+        return self._states.get(session_id)
 
     def load_agents(self, agent_dirs: Sequence[str | Path]) -> None:
         self.agent_registry.discover(list(agent_dirs))
@@ -121,23 +130,31 @@ class AgentRuntime:
 
     def create_initial_state(self, system_message: SystemMessage) -> AgentState:
         session = self.session_manager.create(cwd=os.getcwd(), model="")
-        self._state = AgentState(
+        state = AgentState(
             messages=[system_message],
             session_id=session.id,
             usage=SessionUsage(context_size=self._context_size),
         )
-        return self._state
+        self._states[session.id] = state
+        self._session_id = session.id
+        return state
 
     def save_current_state(self) -> None:
-        if self._state and self._state.session_id:
-            if self.session_manager.get(self._state.session_id):
-                self.session_manager.save_state(self._state.session_id, self._state)
+        if self._session_id is not None:
+            state = self._states.get(self._session_id)
+            if state is not None:
+                sid = state.session_id or self._session_id
+                if self.session_manager.get(sid):
+                    self.session_manager.save_state(sid, state)
 
     def complete_current_session(self) -> None:
-        if self._state and self._state.session_id:
-            if self.session_manager.get(self._state.session_id):
-                self.session_manager.save_state(self._state.session_id, self._state)
-            self.session_manager.complete(self._state.session_id)
+        if self._session_id is not None:
+            state = self._states.get(self._session_id)
+            if state is not None:
+                sid = state.session_id or self._session_id
+                if self.session_manager.get(sid):
+                    self.session_manager.save_state(sid, state)
+                self.session_manager.complete(sid)
 
     def switch_session(self, session_id: str) -> bool:
         self.save_current_state()
@@ -146,41 +163,57 @@ class AgentRuntime:
         if loaded is None:
             return False
         loaded.usage.context_size = self._context_size
-        self._state = loaded
+        self._states[session_id] = loaded
+        self._session_id = session_id
         return True
 
     def new_session(self, system_message: SystemMessage) -> AgentState:
         self.complete_current_session()
         session = self.session_manager.create(cwd=os.getcwd(), model="")
-        self._state = AgentState(
+        state = AgentState(
             messages=[system_message] if system_message else [],
             session_id=session.id,
             turn_count=0,
             step=0,
             usage=SessionUsage(context_size=self._context_size),
         )
-        return self._state
+        self._states[session.id] = state
+        self._session_id = session.id
+        return state
 
     def fork_session(self) -> str | None:
-        if not self._state or not self._state.session_id:
+        if self._session_id is None:
+            return None
+        state = self._states.get(self._session_id)
+        if state is None or not state.session_id:
             return None
         self.save_current_state()
-        child = self.session_manager.fork(self._state.session_id)
-        self._state.session_id = child.id
+        child = self.session_manager.fork(state.session_id)
+        forked = state.model_copy()
+        forked.session_id = child.id
+        self._states[child.id] = forked
+        self._session_id = child.id
         return child.id
 
-    async def run_agent_turn(self) -> Any:
-        assert self._state is not None
-        async for event in agent_loop(
-            self._state,
-            self.llm,
-            self.tool_registry,
-            compaction_config=self.compaction_config,
-            max_steps=self.max_steps,
-            session_manager=self.session_manager,
-            subagent_manager=self.subagent_manager,
-        ):
-            yield event
+    async def run_agent_turn(self, session_id: str | None = None) -> Any:
+        sid = session_id or self._session_id
+        assert sid is not None
+        state = self._states.get(sid)
+        assert state is not None, f"state not found for session {sid}"
+        self._active_session_id = sid
+        try:
+            async for event in agent_loop(
+                state,
+                self.llm,
+                self.tool_registry,
+                compaction_config=self.compaction_config,
+                max_steps=self.max_steps,
+                session_manager=self.session_manager,
+                subagent_manager=self.subagent_manager,
+            ):
+                yield event
+        finally:
+            self._active_session_id = None
 
     async def create_subagent(
         self,
@@ -189,8 +222,7 @@ class AgentRuntime:
         description: str = "",
         background: bool = False,
     ) -> str:
-        assert self._state is not None
-        parent_session_id = self._state.session_id
+        parent_session_id = self._active_session_id or self._session_id
         assert parent_session_id is not None
 
         depth = self.session_manager.get_depth(parent_session_id)
@@ -258,17 +290,21 @@ class AgentRuntime:
     async def generate_title_for_current(self) -> str | None:
         if self.title_config.mode == "off":
             return None
-        if not self._state or not self._state.session_id:
+        if self._session_id is None:
             return None
+        state = self._states.get(self._session_id)
+        sid = state.session_id if state and state.session_id else self._session_id
         from laffyhand.agent.title import generate_title
         return await generate_title(
-            self.session_manager, self._state.session_id, self.llm, self.title_config,
+            self.session_manager, sid, self.llm, self.title_config,
         )
 
     async def shutdown(self) -> None:
-        self.save_current_state()
-        if self._state and self._state.session_id:
-            logger.info(f"Session state saved: {self._state.session_id}")
+        for sid, state in list(self._states.items()):
+            if state.session_id and self.session_manager.get(sid):
+                self.session_manager.save_state(sid, state)
+                logger.info(f"Session state saved: {sid}")
+        self._states.clear()
         await self.mcp_service.disconnect_all()
         self.session_manager.close()
         logger.info("Agent shutdown complete")
