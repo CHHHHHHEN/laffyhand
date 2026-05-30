@@ -14,6 +14,16 @@ _ENV_VAR_PATTERN = re.compile(
     r"(?i)^\s*export\s+(?:[A-Z_]*API[_-]?KEY|[A-Z_]*TOKEN|[A-Z_]*SECRET|[A-Z_]*PASSWORD)\s*=\s*\S+",
 )
 
+_DANGEROUS_COMMANDS: list[tuple[re.Pattern, str]] = [
+    (re.compile(r"\brm\s+(-rf?|--recursive)\s+/\s*$"), "rm -rf / is blocked"),
+    (re.compile(r"\bmkfs\b"), "mkfs is blocked"),
+    (re.compile(r"\bdd\s+if="), "dd with if= is blocked"),
+    (re.compile(r"\bchmod\s+777\b"), "chmod 777 is blocked"),
+    (re.compile(r"\bchown\s+"), "chown is blocked (use chmod instead)"),
+    (re.compile(r"\b>:?\s*"), "direct file redirect (>) is blocked; use the file tools"),
+    (re.compile(r"\bmv\s+/\s+"), "moving / is blocked"),
+]
+
 
 def _redact_command(command: str) -> str:
     redacted = _SENSITIVE_PATTERNS.sub(r"\1\2***", command)
@@ -60,6 +70,11 @@ class BashTool(BaseTool):
         timeout = timeout_ms / 1000
         workdir = params.get("workdir")
         logger.info(f"Bash: {_redact_command(command)}")
+
+        for pattern, msg in _DANGEROUS_COMMANDS:
+            if pattern.search(command):
+                logger.warning(f"Bash blocked: {msg}: {_redact_command(command)}")
+                return f"Blocked: {msg}"
 
         try:
             proc = await asyncio.create_subprocess_shell(

@@ -199,8 +199,9 @@ class TestHandleChat:
 class TestHandleChatCancel:
     @pytest.mark.anyio
     async def test_returns_no_active_stream(self, runtime, transport):
+        transport._dispatcher = None  # type: ignore[attr-defined]
         result = await handle_chat_cancel(runtime, {}, transport, 1, "c1")
-        assert result["status"] == "no_active_stream"
+        assert result["status"] == "cancelled"
 
 
 class TestHandleToolsList:

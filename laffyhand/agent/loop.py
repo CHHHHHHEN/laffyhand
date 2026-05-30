@@ -80,9 +80,11 @@ async def agent_loop(
 ) -> AsyncIterator[AgentEvent]:
     messages = agent_state.messages
     context_size = agent_state.usage.context_size
+    _compacted_this_step = False
 
     while True:
         agent_state.step += 1
+        _compacted_this_step = False
         logger.debug(f"Agent loop step {agent_state.step}")
 
         if agent_state.step > max_steps:
@@ -97,10 +99,11 @@ async def agent_loop(
             messages = wrap_last_user(messages)
             agent_state.messages = messages
 
-        if agent_state.step > 1 and context_size:
+        if agent_state.step > 1 and context_size and not _compacted_this_step:
             if await _compact_on_overflow(
                 agent_state, llm, compaction_config, session_manager,
             ):
+                _compacted_this_step = True
                 messages = agent_state.messages
                 yield AgentEvent(type="compacting", data="Compacting conversation history...")
                 continue
@@ -199,9 +202,10 @@ async def agent_loop(
         if finish_reason is not None:
             if session_manager is not None and agent_state.session_id:
                 session_manager.append_messages(agent_state.session_id, agent_state.messages)
-            if context_size and await _compact_on_overflow(
+            if context_size and not _compacted_this_step and await _compact_on_overflow(
                 agent_state, llm, compaction_config, session_manager,
             ):
+                _compacted_this_step = True
                 messages = agent_state.messages
                 yield AgentEvent(type="compacting", data="Compacting conversation history...")
                 if compaction_config.auto_continue:

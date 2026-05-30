@@ -112,6 +112,10 @@ class AgentRuntime:
         _update_skill_description()
 
     @property
+    def context_size(self) -> int:
+        return self._context_size
+
+    @property
     def state(self) -> AgentState | None:
         if self._session_id is None:
             return None

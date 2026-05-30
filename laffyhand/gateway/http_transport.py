@@ -226,7 +226,7 @@ class HTTPTransport:
             await entry.func(self.runtime, message.params or {}, transport, message.id, transport.connection_id)
             await transport.send(RpcResponse(id=message.id, result={"status": "completed"}).json())
         except Exception:
-            logger.exception("SSE stream error")
+            logger.error(f"SSE stream error for method={message.method}")
             await transport.send(ErrorResponse(id=message.id, error=Error(code=-32603, message="Internal error")).json())
         await response.write_eof()
         return response
@@ -242,7 +242,7 @@ class HTTPTransport:
                 {"jsonrpc": "2.0", "id": message.id, "result": result},
             )
         except Exception:
-            logger.exception("HTTP RPC error")
+            logger.error(f"HTTP RPC error for method={message.method}")
             return aiohttp.web.json_response(
                 {"jsonrpc": "2.0", "error": {"code": -32603, "message": "Internal error"}, "id": message.id},
                 status=500,

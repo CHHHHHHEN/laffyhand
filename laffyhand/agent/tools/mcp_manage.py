@@ -8,6 +8,10 @@ from laffyhand.agent.mcp.config import LocalMCPConfig, RemoteMCPConfig
 from laffyhand.agent.mcp.service import MCPWrappedTool
 from laffyhand.agent.tools.base import BaseTool
 
+_ALLOWED_MCP_COMMANDS: frozenset[str] = frozenset({
+    "npx", "uv", "uvx", "python", "python3", "node", "deno", "bun",
+})
+
 if TYPE_CHECKING:
     from laffyhand.agent.mcp import MCPService
     from laffyhand.agent.tools.registry import ToolRegistry
@@ -88,6 +92,12 @@ class MCPConnectTool(BaseTool):
         url = params.get("url")
 
         if command:
+            if not command or command[0] not in _ALLOWED_MCP_COMMANDS:
+                allowed = ", ".join(sorted(_ALLOWED_MCP_COMMANDS))
+                return (
+                    f"Command '{command[0] if command else ''}' is not allowed. "
+                    f"Allowed commands: {allowed}"
+                )
             cfg: LocalMCPConfig | RemoteMCPConfig = LocalMCPConfig(
                 command=command,
             )

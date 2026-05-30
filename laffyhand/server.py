@@ -61,7 +61,7 @@ class SimpleHTTPHandler(BaseHTTPRequestHandler):
                 providers = [
                     {"id": row[0], "name": row[1], "base_url": row[2]} for row in rows
                 ]
-            except TypeError, ValueError, OverflowError:
+            except (TypeError, ValueError, OverflowError):
                 logger.error("Failed to serialize provider list to JSON")
                 self._send_json(500, {"error": "Failed to serialize provider data"})
                 return
@@ -141,6 +141,10 @@ def init_db(db_conn: sqlite3.Connection) -> None:
 
 if __name__ == "__main__":
     config = load_config()
+    logger.warning(
+        "SECURITY: API keys are stored in SQLite in plaintext. "
+        "This server is intended for development/testing only."
+    )
     setup_logging(
         log_dir=config.logging.dir,
         level=config.logging.level,

@@ -41,6 +41,13 @@ class Dispatcher:
     ) -> None:
         self.handlers[method] = RegisteredHandler(func=handler, streaming=streaming)
 
+    def cancel_connection(self, conn_id: str) -> bool:
+        task = self._active_tasks.get(conn_id)
+        if task is not None and not task.done():
+            task.cancel()
+            return True
+        return False
+
     async def dispatch(
         self,
         request: Request,
@@ -63,8 +70,8 @@ class Dispatcher:
             )
             self._active_tasks[conn_id] = task
             task.add_done_callback(lambda _: self._active_tasks.pop(conn_id, None))
-            elapsed = time.monotonic() - t0
-            logger.debug(f"Handler {request.method} (id={request.id}) started in {elapsed*1000:.1f}ms")
+            elapsed_ms = (time.monotonic() - t0) * 1000
+            logger.debug(f"Handler {request.method} (id={request.id}) started in {elapsed_ms:.1f}ms")
             return
 
         try:
@@ -74,8 +81,8 @@ class Dispatcher:
             error = Error(code=INTERNAL_ERROR, message="Internal error")
             await transport.send(ErrorResponse(id=request.id, error=error).json())
             return
-        elapsed = time.monotonic() - t0
-        logger.debug(f"Handler {request.method} (id={request.id}) completed in {elapsed*1000:.1f}ms")
+        elapsed_ms = (time.monotonic() - t0) * 1000
+        logger.debug(f"Handler {request.method} (id={request.id}) completed in {elapsed_ms:.1f}ms")
 
         if request.method == SHUTDOWN:
             self.shutdown_requested = True

@@ -52,7 +52,7 @@ class ReadTool(BaseTool):
             resolved = path.resolve()
         except Exception:
             resolved = path
-        return f"{resolved}:{offset}:{limit}"
+        return f"{resolved}:{offset or ''}:{limit or ''}"
 
     def _suggest_similar(self, path: Path) -> list[str]:
         if not path.parent.exists():

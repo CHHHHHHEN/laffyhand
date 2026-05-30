@@ -295,7 +295,7 @@ async def main():
 
             try:
                 user_prompt = await async_input("\nYou: ")
-            except EOFError, KeyboardInterrupt, asyncio.CancelledError:
+            except (EOFError, KeyboardInterrupt, asyncio.CancelledError):
                 logger.info("Agent session ended")
                 break
 
