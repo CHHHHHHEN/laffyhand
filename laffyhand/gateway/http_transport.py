@@ -159,7 +159,7 @@ class _HTTPStreamTransport(Transport):
         try:
             payload = f"data: {data}\n\n"
             await self._response.write(payload.encode())
-        except Exception:
+        except (Exception, asyncio.CancelledError):
             self._closed = True
 
     async def recv(self) -> str:
@@ -234,7 +234,15 @@ class HTTPTransport:
         return _json_response({}, status=204, origin=origin)
 
     async def _handle_rpc(self, request: Any) -> Any:
-        body = await request.text(max_size=MAX_MESSAGE_SIZE)
+        body_bytes = await request.read()
+        if len(body_bytes) > MAX_MESSAGE_SIZE:
+            origin = _resolve_cors_origin(request.headers.get("Origin"))
+            return _json_response(
+                {"jsonrpc": "2.0", "error": {"code": -32700, "message": "Request too large"}, "id": None},
+                status=413,
+                origin=origin,
+            )
+        body = body_bytes.decode("utf-8")
         if not body:
             origin = _resolve_cors_origin(request.headers.get("Origin"))
             return _json_response(

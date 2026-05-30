@@ -90,7 +90,7 @@ JSONRPCMessage = Request | Response | ErrorResponse | Notification
 
 def to_dict(msg: JSONRPCMessage | Error) -> dict[str, Any]:
     if isinstance(msg, Notification):
-        d: dict[str, Any] = {"method": msg.method}
+        d: dict[str, Any] = {"method": msg.method, "jsonrpc": msg.jsonrpc}
         if msg.params is not None:
             d["params"] = msg.params
         return d

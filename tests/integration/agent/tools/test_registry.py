@@ -46,9 +46,9 @@ class TestRegistryIntegration(unittest.TestCase):
     def test_new_tool_available_immediately(self):
         registry = ToolRegistry()
         registry.register_tool(CountTool())
-        self.assertEqual(len(registry.build_tool_definitions()), 1)
+        self.assertEqual(len(asyncio.run(registry.build_tool_definitions())), 1)
         registry.register_tool(CountTool())
-        self.assertEqual(len(registry.build_tool_definitions()), 1)
+        self.assertEqual(len(asyncio.run(registry.build_tool_definitions())), 1)
 
     def test_error_propagation(self):
         registry = ToolRegistry()

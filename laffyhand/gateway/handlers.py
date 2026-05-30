@@ -325,9 +325,11 @@ async def handle_chat_stream(
     # Check for leftover steer that wasn't consumed by tool batch
     leftover_steer: str | None = None
     state = runtime.get_state(session_id)
-    if state is not None and state.pending_steer:
-        leftover_steer = state.pending_steer
-        state.pending_steer = None
+    if state is not None:
+        async with _get_session_lock(session_id):
+            if state.pending_steer:
+                leftover_steer = state.pending_steer
+                state.pending_steer = None
 
     done = Notification(
         method="event",
@@ -344,7 +346,7 @@ async def handle_chat_stream(
     try:
         await transport.send(done.json())
     except Exception:
-        pass
+        logger.warning("Failed to send finish event to client (connection may be closed)")
 
 
 async def handle_chat_steer(
@@ -416,7 +418,7 @@ async def handle_tools_list(
     _request_id: str | int | None,
     conn_id: str,
 ) -> dict[str, Any]:
-    tools = runtime.tool_registry.build_tool_definitions()
+    tools = await runtime.tool_registry.build_tool_definitions()
     return {
         "tools": [t.model_dump() for t in tools],
     }
@@ -506,10 +508,11 @@ async def handle_session_archive(
     _request_id: str | int | None,
     conn_id: str,
 ) -> dict[str, Any]:
-    session_id: str = params.get("session_id") or runtime.current_session_id or ""
+    session_id: str | None = params.get("session_id") or runtime.current_session_id
     if not session_id:
-        raise ValueError("session_id is required")
+        raise ValueError("No active session")
     runtime.session_manager.archive(session_id)
+    _session_locks.pop(session_id, None)
     return {"status": "archived", "session_id": session_id}
 
 
@@ -520,11 +523,10 @@ async def handle_subagent_list_active(
     _request_id: str | int | None,
     conn_id: str,
 ) -> dict[str, Any]:
-    session_id: str | None = runtime.current_session_id
+    session_id: str | None = params.get("session_id") or runtime.current_session_id
     if not session_id:
         return {"subagents": []}
-    active = runtime.subagent_manager.list_active(session_id)
-    return {"subagents": active}
+    return {"subagents": runtime.subagent_manager.list_active(session_id)}
 
 
 async def handle_usage_get(
@@ -534,18 +536,11 @@ async def handle_usage_get(
     _request_id: str | int | None,
     conn_id: str,
 ) -> dict[str, Any]:
-    if runtime.state is None:
-        return {"usage": None, "session_id": None}
-    usage = runtime.state.usage
     return {
-        "usage": {
-            "total_input": usage.total_input,
-            "total_output": usage.total_output,
-            "total_reasoning": usage.total_reasoning,
-            "total_cache_read": usage.total_cache_read,
-            "context_size": usage.context_size,
-        },
-        "session_id": runtime.current_session_id,
+        "total_input": runtime.state.usage.total_input if runtime.state else 0,
+        "total_output": runtime.state.usage.total_output if runtime.state else 0,
+        "total_reasoning": runtime.state.usage.total_reasoning if runtime.state else 0,
+        "context_size": runtime.state.usage.context_size if runtime.state else 0,
     }
 
 
@@ -557,14 +552,14 @@ def register_all_handlers(dispatcher: Dispatcher) -> None:
     dispatcher.register(SESSION_LOAD, handle_session_load)
     dispatcher.register(SESSION_DELETE, handle_session_delete)
     dispatcher.register(SESSION_FORK, handle_session_fork)
-    dispatcher.register(CHAT, handle_chat)
-    dispatcher.register(CHAT_STREAM, handle_chat_stream, streaming=True)
-    dispatcher.register(CHAT_CANCEL, handle_chat_cancel)
-    dispatcher.register(CHAT_STEER, handle_chat_steer)
-    dispatcher.register(TOOLS_LIST, handle_tools_list)
     dispatcher.register(SESSION_SEARCH, handle_session_search)
     dispatcher.register(SESSION_SET_TITLE, handle_session_set_title)
     dispatcher.register(SESSION_GENERATE_TITLE, handle_session_generate_title)
     dispatcher.register(SESSION_ARCHIVE, handle_session_archive)
     dispatcher.register(SUBAGENT_LIST_ACTIVE, handle_subagent_list_active)
     dispatcher.register(USAGE_GET, handle_usage_get)
+    dispatcher.register(CHAT, handle_chat)
+    dispatcher.register(CHAT_STREAM, handle_chat_stream, streaming=True)
+    dispatcher.register(CHAT_CANCEL, handle_chat_cancel)
+    dispatcher.register(CHAT_STEER, handle_chat_steer)
+    dispatcher.register(TOOLS_LIST, handle_tools_list)

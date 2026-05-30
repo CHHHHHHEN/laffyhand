@@ -71,8 +71,20 @@ async def run_ui_server(
         async def _serve_index(request: Request) -> Response:
             import aiohttp.web
             return aiohttp.web.FileResponse(os.path.join(ui_dir, "index.html"))
+
+        async def _spa_fallback(request: Request) -> Response:
+            import aiohttp.web
+            # Don't intercept RPC or health endpoints
+            if request.path.startswith(("/rpc", "/health")):
+                raise aiohttp.web.HTTPNotFound()
+            return aiohttp.web.FileResponse(os.path.join(ui_dir, "index.html"))
+
+        # Static assets under /assets/
+        app.router.add_static("/assets", os.path.join(ui_dir, "assets"), show_index=False)
+        # Root serves index.html
         app.router.add_get("/", _serve_index)
-        app.router.add_static("/", ui_dir, show_index=False)
+        # SPA fallback: anything else serves index.html (for client-side routing)
+        app.router.add_get("/{tail:.*}", _spa_fallback)
         logger.info(f"Serving UI static files from {ui_dir}")
     else:
         logger.warning(f"UI dist directory not found at {ui_dir}")

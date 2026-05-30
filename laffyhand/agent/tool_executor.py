@@ -38,7 +38,19 @@ class ToolExecutor:
                 is_error=True,
             )
 
-        result = await tool_registry.run_tool(tool_call.tool_name, params)
+        try:
+            result = await tool_registry.run_tool(tool_call.tool_name, params)
+        except Exception as e:
+            logger.exception(f"Tool execution failed for {tool_call.tool_name}: {e}")
+            return ToolExecutionResult(
+                message=ToolMessage(
+                    tool_call_id=tool_call.tool_call_id,
+                    content=f"Error executing tool {tool_call.tool_name}: {e}",
+                ),
+                event_data=f"Error: {tool_call.tool_name} failed: {e}",
+                is_error=True,
+            )
+
         return ToolExecutionResult(
             message=ToolMessage(
                 tool_call_id=tool_call.tool_call_id,

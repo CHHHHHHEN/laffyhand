@@ -440,7 +440,7 @@ class TestHandleToolsList:
         tool1.model_dump.return_value = {"name": "read"}
         tool2 = MagicMock()
         tool2.model_dump.return_value = {"name": "write"}
-        runtime.tool_registry.build_tool_definitions = MagicMock(return_value=[tool1, tool2])
+        runtime.tool_registry.build_tool_definitions = AsyncMock(return_value=[tool1, tool2])
 
         result = await handle_tools_list(runtime, {}, transport, 1, "c1")
 
@@ -545,7 +545,7 @@ class TestHandleSessionArchive:
     @pytest.mark.anyio
     async def test_requires_session_id(self, runtime, transport):
         runtime.current_session_id = None
-        with pytest.raises(ValueError, match="session_id is required"):
+        with pytest.raises(ValueError, match="No active session"):
             await handlers.handle_session_archive(runtime, {}, transport, 1, "c1")
 
 
@@ -581,17 +581,17 @@ class TestHandleUsageGet:
         runtime.state.usage.context_size = 8192
 
         result = await handlers.handle_usage_get(runtime, {}, transport, 1, "c1")
-        assert result["usage"]["total_input"] == 100
-        assert result["usage"]["total_output"] == 50
-        assert result["usage"]["context_size"] == 8192
-        assert result["session_id"] == "sess-1"
+        assert result["total_input"] == 100
+        assert result["total_output"] == 50
+        assert result["context_size"] == 8192
 
     @pytest.mark.anyio
     async def test_returns_none_when_no_state(self, runtime, transport):
         runtime.state = None
         result = await handlers.handle_usage_get(runtime, {}, transport, 1, "c1")
-        assert result["usage"] is None
-        assert result["session_id"] is None
+        assert result["total_input"] == 0
+        assert result["total_output"] == 0
+        assert result["context_size"] == 0
 
 
 def _async_gen(items):

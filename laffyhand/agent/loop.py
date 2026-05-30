@@ -135,7 +135,7 @@ async def agent_loop(
         tool_calls: list[ToolCallContent] = []
         finish_reason: FinishReason | None = None
         usage: Usage | None = None
-        tool_definitions = tool_registry.build_tool_definitions()
+        tool_definitions = await tool_registry.build_tool_definitions()
         logger.debug(f"Sending {len(messages)} messages to LLM, {len(tool_definitions)} tools")
 
         async for event in llm.stream(messages, tools=tool_definitions):

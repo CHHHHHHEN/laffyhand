@@ -1,3 +1,4 @@
+import asyncio
 import unittest
 from pathlib import Path
 
@@ -14,7 +15,7 @@ class TestSkillToolInRegistry(unittest.TestCase):
         self.tool_registry.register_tool(self.skill_tool)
 
     def test_tool_definitions_includes_skill(self):
-        defs = self.tool_registry.build_tool_definitions()
+        defs = asyncio.run(self.tool_registry.build_tool_definitions())
         names = [d.name for d in defs]
         self.assertIn("skill", names)
 
@@ -35,6 +36,6 @@ class TestSkillToolInRegistry(unittest.TestCase):
             self.skill_tool.description = f"Load skill.\n\n{summary}" if summary else "Load skill."
 
         self.tool_registry.on_build_defs(_update)
-        self.tool_registry.build_tool_definitions()
+        asyncio.run(self.tool_registry.build_tool_definitions())
         self.assertTrue(callback_called)
         self.assertIn("Available skills", self.skill_tool.description)
