@@ -14,8 +14,9 @@ from laffyhand.agent.schemas import (
 )
 from laffyhand.gateway.protocol import (
     INITIALIZE, SHUTDOWN, SESSION_CREATE, SESSION_LIST, SESSION_LOAD,
-    SESSION_DELETE, SESSION_FORK, CHAT, CHAT_STREAM,
-    CHAT_CANCEL, TOOLS_LIST, Notification,
+    SESSION_DELETE, SESSION_FORK, SESSION_SEARCH, SESSION_SET_TITLE,
+    SESSION_GENERATE_TITLE, SESSION_ARCHIVE, SUBAGENT_LIST_ACTIVE,
+    USAGE_GET, CHAT, CHAT_STREAM, CHAT_CANCEL, CHAT_STEER, TOOLS_LIST, Notification,
 )
 
 if TYPE_CHECKING:
@@ -143,6 +144,8 @@ async def handle_session_list(
                 "title": s.title,
                 "message_count": s.message_count,
                 "turn_count": s.turn_count,
+                "input_tokens": s.input_tokens,
+                "output_tokens": s.output_tokens,
                 "created_at": s.created_at.isoformat(),
                 "updated_at": s.updated_at.isoformat(),
             }
@@ -185,6 +188,7 @@ async def handle_session_delete(
     if not session_id:
         raise ValueError("session_id is required")
     runtime.session_manager.delete(session_id)
+    _session_locks.pop(session_id, None)
     return {"status": "deleted", "session_id": session_id}
 
 
@@ -301,6 +305,9 @@ async def handle_chat_stream(
                 usage_info = event.usage
             if event.type == "content" and event.data:
                 last_content += event.data
+    except asyncio.CancelledError:
+        finish_reason = "cancelled"
+        logger.info(f"Chat stream cancelled for session {session_id} (conn={conn_id})")
     except Exception:
         logger.exception(f"Chat stream error for session {session_id} (conn={conn_id})")
         try:
@@ -315,6 +322,13 @@ async def handle_chat_stream(
         except Exception:
             logger.warning("Failed to send error event to client in chat stream")
 
+    # Check for leftover steer that wasn't consumed by tool batch
+    leftover_steer: str | None = None
+    state = runtime.get_state(session_id)
+    if state is not None and state.pending_steer:
+        leftover_steer = state.pending_steer
+        state.pending_steer = None
+
     done = Notification(
         method="event",
         params={
@@ -323,12 +337,37 @@ async def handle_chat_stream(
             "finish_reason": finish_reason,
             "usage": usage_info.model_dump() if usage_info else None,
             "session_id": session_id,
+            "session_usage": runtime.state.usage.model_dump() if runtime.state else None,
+            "leftover_steer": leftover_steer,
         },
     )
     try:
         await transport.send(done.json())
     except Exception:
         pass
+
+
+async def handle_chat_steer(
+    runtime: AgentRuntime,
+    params: dict[str, Any],
+    transport: Transport,
+    _request_id: str | int | None,
+    conn_id: str,
+) -> dict[str, Any]:
+    message: str = params.get("message", "")
+    if not message:
+        raise ValueError("message is required")
+
+    session_id: str | None = params.get("session_id")
+    if not session_id:
+        session_id = runtime.current_session_id
+
+    if session_id is None:
+        raise RuntimeError("No active session to steer")
+    ok = runtime.steer_session(session_id, message)
+    if not ok:
+        raise RuntimeError(f"Session state not found: {session_id}")
+    return {"status": "steered", "session_id": session_id}
 
 
 async def handle_chat_cancel(
@@ -338,6 +377,15 @@ async def handle_chat_cancel(
     _request_id: str | int | None,
     conn_id: str,
 ) -> dict[str, Any]:
+    # 0. Signal interrupt to the agent state if we can identify the session
+    session_id: str | None = params.get("session_id")
+    if session_id:
+        runtime.interrupt_session(session_id)
+    else:
+        current = runtime.current_session_id
+        if current:
+            runtime.interrupt_session(current)
+
     # 1. Try dispatcher-based cancellation (WS/stdio transports)
     dispatcher: Dispatcher | None = getattr(transport, "_dispatcher", None)
     if dispatcher is not None:
@@ -393,6 +441,114 @@ async def _ensure_session(
     return session.id
 
 
+async def handle_session_search(
+    runtime: AgentRuntime,
+    params: dict[str, Any],
+    transport: Transport,
+    _request_id: str | int | None,
+    conn_id: str,
+) -> dict[str, Any]:
+    query: str = params.get("query", "")
+    if not query:
+        raise ValueError("query is required")
+    limit = params.get("limit", 20)
+    sessions = runtime.session_manager.search(query, limit=limit)
+    return {
+        "sessions": [
+            {
+                "id": s.id,
+                "status": s.status,
+                "title": s.title,
+                "message_count": s.message_count,
+                "turn_count": s.turn_count,
+                "input_tokens": s.input_tokens,
+                "output_tokens": s.output_tokens,
+                "created_at": s.created_at.isoformat(),
+                "updated_at": s.updated_at.isoformat(),
+            }
+            for s in sessions
+        ],
+    }
+
+
+async def handle_session_set_title(
+    runtime: AgentRuntime,
+    params: dict[str, Any],
+    transport: Transport,
+    _request_id: str | int | None,
+    conn_id: str,
+) -> dict[str, Any]:
+    title: str = params.get("title", "")
+    if not title:
+        raise ValueError("title is required")
+    session_id: str | None = params.get("session_id") or runtime.current_session_id
+    if not session_id:
+        raise ValueError("No active session")
+    runtime.session_manager.set_title(session_id, title)
+    return {"status": "ok", "session_id": session_id, "title": title}
+
+
+async def handle_session_generate_title(
+    runtime: AgentRuntime,
+    params: dict[str, Any],
+    transport: Transport,
+    _request_id: str | int | None,
+    conn_id: str,
+) -> dict[str, Any]:
+    title = await runtime.generate_title_for_current()
+    return {"title": title}
+
+
+async def handle_session_archive(
+    runtime: AgentRuntime,
+    params: dict[str, Any],
+    transport: Transport,
+    _request_id: str | int | None,
+    conn_id: str,
+) -> dict[str, Any]:
+    session_id: str = params.get("session_id") or runtime.current_session_id or ""
+    if not session_id:
+        raise ValueError("session_id is required")
+    runtime.session_manager.archive(session_id)
+    return {"status": "archived", "session_id": session_id}
+
+
+async def handle_subagent_list_active(
+    runtime: AgentRuntime,
+    params: dict[str, Any],
+    transport: Transport,
+    _request_id: str | int | None,
+    conn_id: str,
+) -> dict[str, Any]:
+    session_id: str | None = runtime.current_session_id
+    if not session_id:
+        return {"subagents": []}
+    active = runtime.subagent_manager.list_active(session_id)
+    return {"subagents": active}
+
+
+async def handle_usage_get(
+    runtime: AgentRuntime,
+    params: dict[str, Any],
+    transport: Transport,
+    _request_id: str | int | None,
+    conn_id: str,
+) -> dict[str, Any]:
+    if runtime.state is None:
+        return {"usage": None, "session_id": None}
+    usage = runtime.state.usage
+    return {
+        "usage": {
+            "total_input": usage.total_input,
+            "total_output": usage.total_output,
+            "total_reasoning": usage.total_reasoning,
+            "total_cache_read": usage.total_cache_read,
+            "context_size": usage.context_size,
+        },
+        "session_id": runtime.current_session_id,
+    }
+
+
 def register_all_handlers(dispatcher: Dispatcher) -> None:
     dispatcher.register(INITIALIZE, handle_initialize)
     dispatcher.register(SHUTDOWN, handle_shutdown)
@@ -404,4 +560,11 @@ def register_all_handlers(dispatcher: Dispatcher) -> None:
     dispatcher.register(CHAT, handle_chat)
     dispatcher.register(CHAT_STREAM, handle_chat_stream, streaming=True)
     dispatcher.register(CHAT_CANCEL, handle_chat_cancel)
+    dispatcher.register(CHAT_STEER, handle_chat_steer)
     dispatcher.register(TOOLS_LIST, handle_tools_list)
+    dispatcher.register(SESSION_SEARCH, handle_session_search)
+    dispatcher.register(SESSION_SET_TITLE, handle_session_set_title)
+    dispatcher.register(SESSION_GENERATE_TITLE, handle_session_generate_title)
+    dispatcher.register(SESSION_ARCHIVE, handle_session_archive)
+    dispatcher.register(SUBAGENT_LIST_ACTIVE, handle_subagent_list_active)
+    dispatcher.register(USAGE_GET, handle_usage_get)

@@ -24,7 +24,14 @@ SESSION_FORK = "session/fork"
 CHAT = "chat"
 CHAT_STREAM = "chat/stream"
 CHAT_CANCEL = "chat/cancel"
+CHAT_STEER = "chat/steer"
 TOOLS_LIST = "tools/list"
+SESSION_SEARCH = "session/search"
+SESSION_SET_TITLE = "session/set_title"
+SESSION_GENERATE_TITLE = "session/generate_title"
+SESSION_ARCHIVE = "session/archive"
+SUBAGENT_LIST_ACTIVE = "subagent/list_active"
+USAGE_GET = "usage/get"
 
 
 @dataclass
@@ -81,14 +88,13 @@ class Notification:
 JSONRPCMessage = Request | Response | ErrorResponse | Notification
 
 
-def _omit(d: dict, keys: set[str]) -> dict:
-    return {k: v for k, v in d.items() if k not in keys}
-
-
 def to_dict(msg: JSONRPCMessage | Error) -> dict[str, Any]:
-    d = asdict(msg)
     if isinstance(msg, Notification):
-        return _omit(d, {"jsonrpc"})
+        d: dict[str, Any] = {"method": msg.method}
+        if msg.params is not None:
+            d["params"] = msg.params
+        return d
+    d = asdict(msg)
     return d
 
 

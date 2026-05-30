@@ -327,6 +327,25 @@ class AgentRuntime:
             self.title_config,
         )
 
+    def interrupt_session(self, session_id: str) -> bool:
+        state = self._states.get(session_id)
+        if state is None:
+            return False
+        state.interrupt_requested = True
+        logger.debug(f"Interrupt requested for session {session_id}")
+        return True
+
+    def steer_session(self, session_id: str, text: str) -> bool:
+        state = self._states.get(session_id)
+        if state is None:
+            return False
+        if state.pending_steer:
+            state.pending_steer += "\n" + text
+        else:
+            state.pending_steer = text
+        logger.debug(f"Steer text set for session {session_id}")
+        return True
+
     async def shutdown(self) -> None:
         for sid, state in list(self._states.items()):
             if state.session_id and self.session_manager.get(sid):
