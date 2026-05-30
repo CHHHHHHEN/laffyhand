@@ -56,11 +56,20 @@ class ReadTool(BaseTool):
     def _suggest_similar(self, path: Path) -> list[str]:
         if not path.parent.exists():
             return []
-        candidates = [p.name for p in path.parent.iterdir() if p.is_file()]
+        try:
+            candidates = [
+                p.name for p in path.parent.iterdir()
+                if p.is_file()
+            ]
+        except PermissionError:
+            return []
         return difflib.get_close_matches(path.name, candidates, n=5, cutoff=0.3)
 
     def _list_directory(self, path: Path, offset: int | None, limit: int | None) -> str:
-        entries = sorted(path.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower()))
+        try:
+            entries = sorted(path.iterdir(), key=lambda p: (0 if p.is_dir() else 1, p.name.lower()))
+        except PermissionError:
+            return f"Permission denied: {path}"
         total = len(entries)
         start = (offset - 1) if offset is not None else 0
         if offset is not None and offset > total:

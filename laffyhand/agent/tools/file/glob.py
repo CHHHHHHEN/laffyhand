@@ -53,7 +53,12 @@ class GlobTool(BaseTool):
         if not matches:
             return f"No files found matching `{pattern}` in {root}"
 
-        matches.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+        def _mtime(p: Path) -> float:
+            try:
+                return p.stat().st_mtime
+            except OSError:
+                return 0.0
+        matches.sort(key=_mtime, reverse=True)
 
         truncated = len(matches) > MAX_RESULTS
         if truncated:
