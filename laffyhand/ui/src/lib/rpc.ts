@@ -114,7 +114,7 @@ export async function chatStream(
   if (sessionId) {
     params.session_id = sessionId
   }
-  const stream = await callStream("chat_stream", params, signal)
+  const stream = await callStream("chat/stream", params, signal)
   const reader = stream.getReader()
   const decoder = new TextDecoder()
   let buffer = ""

@@ -4,8 +4,8 @@ export interface Session {
   status: SessionStatus
   messageCount: number
   turnCount: number
-  createdAt: number
-  updatedAt?: number
+  createdAt: string
+  updatedAt?: string
 }
 
 export type SessionStatus = "active" | "archived" | "deleted"

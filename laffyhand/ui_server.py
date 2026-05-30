@@ -36,12 +36,9 @@ async def run_ui_server(
 
     ui_dir = _get_ui_dir()
 
-    app = aiohttp.web.Application()
-
     transport = HTTPTransport(runtime=runtime)
-    app.router.add_post("/rpc", transport._handle_rpc)
-    app.router.add_options("/rpc", transport._handle_cors_preflight)
-    app.router.add_get("/health", transport._handle_health)
+    app = aiohttp.web.Application()
+    transport.setup_routes(app)
 
     if os.path.isdir(ui_dir):
         app.router.add_static("/", ui_dir, show_index=False)

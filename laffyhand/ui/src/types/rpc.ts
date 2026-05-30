@@ -35,7 +35,7 @@ export type JsonRpcMessage =
 
 export interface ServerInfo {
   protocol_version: string
-  server_info: string
+  server_info: { name: string; version: string }
   session_id: string | null
 }
 
@@ -46,8 +46,8 @@ export interface SessionInfo {
   message_count: number
   turn_count: number
   usage?: { input_tokens: number; output_tokens: number }
-  created_at: number
-  updated_at?: number
+  created_at: string
+  updated_at?: string
 }
 
 export interface SessionListResult {

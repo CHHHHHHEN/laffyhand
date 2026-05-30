@@ -17,7 +17,6 @@ from laffyhand.gateway.handlers import (
     handle_tools_list,
     _serialize_messages,
     _next_msg_id,
-    _set_http_dispatcher,
 )
 from laffyhand.agent.schemas import (
     SystemMessage, UserMessage, AssistantMessage, ToolMessage,
@@ -204,40 +203,30 @@ class TestHandleChat:
         assert result["session_id"] == "sess-new"
 
 
-class TestHandleChatCancelWithHTTPDispatcher:
+class TestHandleChatCancel:
     @pytest.mark.anyio
-    async def test_cancels_via_http_dispatcher_fallback(self, runtime, transport):
-        """transport._dispatcher is None, should fall back to _HTTP_DISPATCHER."""
+    async def test_cancels_when_dispatcher_on_transport(self, runtime, transport):
+        """transport._dispatcher is set -> used directly."""
         dispatcher = MagicMock()
         dispatcher.cancel_connection = MagicMock(return_value=True)
-        _set_http_dispatcher(dispatcher)
-        try:
-            transport._dispatcher = None  # type: ignore[attr-defined]
-            result = await handle_chat_cancel(runtime, {}, transport, 1, "c1")
-            assert result["status"] == "cancelled"
-            dispatcher.cancel_connection.assert_called_once_with("c1")
-        finally:
-            _set_http_dispatcher(None)
+        transport._dispatcher = dispatcher  # type: ignore[attr-defined]
+        result = await handle_chat_cancel(runtime, {}, transport, 1, "c1")
+        assert result["status"] == "cancelled"
+        dispatcher.cancel_connection.assert_called_once_with("c1")
 
     @pytest.mark.anyio
     async def test_no_active_stream_when_cancel_fails(self, runtime, transport):
         """cancel_connection returns False -> no_active_stream."""
         dispatcher = MagicMock()
         dispatcher.cancel_connection = MagicMock(return_value=False)
-        _set_http_dispatcher(dispatcher)
-        try:
-            transport._dispatcher = None  # type: ignore[attr-defined]
-            result = await handle_chat_cancel(runtime, {}, transport, 1, "c1")
-            assert result["status"] == "no_active_stream"
-        finally:
-            _set_http_dispatcher(None)
+        transport._dispatcher = dispatcher  # type: ignore[attr-defined]
+        result = await handle_chat_cancel(runtime, {}, transport, 1, "c1")
+        assert result["status"] == "no_active_stream"
 
     @pytest.mark.anyio
-    async def test_cancels_via_transport_dispatcher(self, runtime, transport):
-        """transport._dispatcher is set, used directly (no fallback)."""
-        dispatcher = MagicMock()
-        dispatcher.cancel_connection = MagicMock(return_value=True)
-        transport._dispatcher = dispatcher  # type: ignore[attr-defined]
+    async def test_graceful_when_no_dispatcher(self, runtime, transport):
+        """No dispatcher on transport -> graceful cancellation (returns cancelled)."""
+        transport._dispatcher = None  # type: ignore[attr-defined]
         result = await handle_chat_cancel(runtime, {}, transport, 1, "c1")
         assert result["status"] == "cancelled"
 

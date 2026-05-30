@@ -17,7 +17,7 @@ SESSION_LOAD = "session/load"
 SESSION_DELETE = "session/delete"
 SESSION_FORK = "session/fork"
 CHAT = "chat"
-CHAT_STREAM = "chat_stream"
+CHAT_STREAM = "chat/stream"
 CHAT_CANCEL = "chat/cancel"
 TOOLS_LIST = "tools/list"
 
