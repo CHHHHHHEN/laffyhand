@@ -80,6 +80,8 @@ class Dispatcher:
             logger.exception(f"Handler error for {request.method} (id={request.id})")
             error = Error(code=INTERNAL_ERROR, message="Internal error")
             await transport.send(ErrorResponse(id=request.id, error=error).json())
+            if request.method == SHUTDOWN:
+                self.shutdown_requested = True
             return
         elapsed_ms = (time.monotonic() - t0) * 1000
         logger.debug(f"Handler {request.method} (id={request.id}) completed in {elapsed_ms:.1f}ms")
