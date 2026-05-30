@@ -39,6 +39,24 @@ If no tools present, skip tool use.
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Laffyhand -- An AI Coding Agent")
+    sub = parser.add_subparsers(dest="command")
+
+    gateway_parser = sub.add_parser("gateway", help="Gateway server commands")
+    gateway_sub = gateway_parser.add_subparsers(dest="gateway_command")
+    serve_parser = gateway_sub.add_parser("serve", help="Start the gateway server")
+    serve_parser.add_argument(
+        "--listen", type=str, default="stdio://",
+        help="Transport to listen on: stdio://, ws://HOST:PORT, http://HOST:PORT",
+    )
+    serve_parser.add_argument(
+        "--host", type=str, default="127.0.0.1",
+        help="Host to bind (for ws/http transports)",
+    )
+    serve_parser.add_argument(
+        "--port", type=int, default=9090,
+        help="Port to bind (for ws/http transports)",
+    )
+
     parser.add_argument(
         "--resume", action="store_true",
         help="Resume the most recent active session if one exists",
@@ -193,9 +211,50 @@ async def _close_stdin_reader() -> None:
     _stdin_reader = None
 
 
+async def _run_gateway_serve(args: argparse.Namespace) -> None:
+    from laffyhand.gateway import GatewayServer, StdioTransport
+
+    runtime = await create_runtime(args)
+    listen = args.listen
+
+    if listen.startswith("ws://"):
+        host = args.host
+        port = args.port
+        from laffyhand.gateway.transport import WSTransport
+        ws_mgr = WSTransport(runtime=runtime, host=host, port=port)
+        await ws_mgr.start()
+        logger.info(f"WebSocket gateway running on ws://{host}:{port}/ws")
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            pass
+    elif listen.startswith("http://"):
+        host = args.host
+        port = args.port
+        from laffyhand.gateway.transport import HTTPTransport
+        http_mgr = HTTPTransport(runtime=runtime, host=host, port=port)
+        await http_mgr.start()
+        logger.info(f"HTTP gateway running on http://{host}:{port}/rpc")
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            pass
+    else:
+        transport = StdioTransport()
+        gateway = GatewayServer(runtime, transport)
+        await gateway.serve()
+
+
 async def main():
     args = parse_args()
     setup_logging()
+
+    if args.command == "gateway":
+        if args.gateway_command == "serve":
+            await _run_gateway_serve(args)
+        else:
+            print("Usage: laffyhand gateway serve [--listen ...]")
+        return
 
     runtime = await create_runtime(args)
 
