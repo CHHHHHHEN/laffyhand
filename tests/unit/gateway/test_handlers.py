@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
+from laffyhand.gateway import handlers
 from laffyhand.gateway.handlers import (
     handle_initialize,
     handle_shutdown,
@@ -435,3 +436,156 @@ class TestHandleToolsList:
 
         assert len(result["tools"]) == 2
         assert result["tools"][0]["name"] == "read"
+
+
+class TestHandleSessionSearch:
+    @pytest.mark.anyio
+    async def test_returns_matching_sessions(self, runtime, transport):
+        s = MagicMock()
+        s.id = "s1"
+        s.status = "active"
+        s.title = "test"
+        s.message_count = 3
+        s.turn_count = 1
+        s.input_tokens = 100
+        s.output_tokens = 200
+        s.created_at.isoformat.return_value = "2025-01-01T00:00:00"
+        s.updated_at.isoformat.return_value = "2025-01-01T01:00:00"
+        runtime.session_manager.search = MagicMock(return_value=[s])
+
+        result = await handlers.handle_session_search(
+            runtime, {"query": "test", "limit": 10}, transport, 1, "c1"
+        )
+        assert len(result["sessions"]) == 1
+        assert result["sessions"][0]["id"] == "s1"
+        assert result["sessions"][0]["input_tokens"] == 100
+
+    @pytest.mark.anyio
+    async def test_requires_query(self, runtime, transport):
+        with pytest.raises(ValueError, match="query is required"):
+            await handlers.handle_session_search(runtime, {}, transport, 1, "c1")
+
+
+class TestHandleSessionSetTitle:
+    @pytest.mark.anyio
+    async def test_sets_title_with_session_id(self, runtime, transport):
+        result = await handlers.handle_session_set_title(
+            runtime, {"title": "New Title", "session_id": "sess-1"}, transport, 1, "c1"
+        )
+        assert result["status"] == "ok"
+        assert result["title"] == "New Title"
+        runtime.session_manager.set_title.assert_called_once_with("sess-1", "New Title")
+
+    @pytest.mark.anyio
+    async def test_uses_current_session(self, runtime, transport):
+        result = await handlers.handle_session_set_title(
+            runtime, {"title": "Auto"}, transport, 1, "c1"
+        )
+        runtime.session_manager.set_title.assert_called_once_with("sess-1", "Auto")
+
+    @pytest.mark.anyio
+    async def test_requires_title(self, runtime, transport):
+        with pytest.raises(ValueError, match="title is required"):
+            await handlers.handle_session_set_title(runtime, {}, transport, 1, "c1")
+
+    @pytest.mark.anyio
+    async def test_requires_active_session(self, runtime, transport):
+        runtime.current_session_id = None
+        with pytest.raises(ValueError, match="No active session"):
+            await handlers.handle_session_set_title(
+                runtime, {"title": "T"}, transport, 1, "c1"
+            )
+
+
+class TestHandleSessionGenerateTitle:
+    @pytest.mark.anyio
+    async def test_returns_title(self, runtime, transport):
+        runtime.generate_title_for_current = AsyncMock(return_value="Generated")
+        result = await handlers.handle_session_generate_title(
+            runtime, {}, transport, 1, "c1"
+        )
+        assert result["title"] == "Generated"
+
+    @pytest.mark.anyio
+    async def test_returns_none(self, runtime, transport):
+        runtime.generate_title_for_current = AsyncMock(return_value=None)
+        result = await handlers.handle_session_generate_title(
+            runtime, {}, transport, 1, "c1"
+        )
+        assert result["title"] is None
+
+
+class TestHandleSessionArchive:
+    @pytest.mark.anyio
+    async def test_archives_with_session_id(self, runtime, transport):
+        result = await handlers.handle_session_archive(
+            runtime, {"session_id": "sess-target"}, transport, 1, "c1"
+        )
+        assert result["status"] == "archived"
+        assert result["session_id"] == "sess-target"
+        runtime.session_manager.archive.assert_called_once_with("sess-target")
+
+    @pytest.mark.anyio
+    async def test_archives_current(self, runtime, transport):
+        result = await handlers.handle_session_archive(
+            runtime, {}, transport, 1, "c1"
+        )
+        runtime.session_manager.archive.assert_called_once_with("sess-1")
+
+    @pytest.mark.anyio
+    async def test_requires_session_id(self, runtime, transport):
+        runtime.current_session_id = None
+        with pytest.raises(ValueError, match="session_id is required"):
+            await handlers.handle_session_archive(runtime, {}, transport, 1, "c1")
+
+
+class TestHandleSubagentListActive:
+    @pytest.mark.anyio
+    async def test_returns_active_subagents(self, runtime, transport):
+        runtime.subagent_manager = MagicMock()
+        runtime.subagent_manager.list_active = MagicMock(return_value=[
+            {"task_id": "t1", "agent_type": "explore", "status": "running"},
+        ])
+        result = await handlers.handle_subagent_list_active(
+            runtime, {}, transport, 1, "c1"
+        )
+        assert len(result["subagents"]) == 1
+        assert result["subagents"][0]["task_id"] == "t1"
+
+    @pytest.mark.anyio
+    async def test_returns_empty_when_no_session(self, runtime, transport):
+        runtime.current_session_id = None
+        result = await handlers.handle_subagent_list_active(
+            runtime, {}, transport, 1, "c1"
+        )
+        assert result["subagents"] == []
+
+
+class TestHandleUsageGet:
+    @pytest.mark.anyio
+    async def test_returns_usage(self, runtime, transport):
+        runtime.state.usage.total_input = 100
+        runtime.state.usage.total_output = 50
+        runtime.state.usage.total_reasoning = 10
+        runtime.state.usage.total_cache_read = 5
+        runtime.state.usage.context_size = 8192
+
+        result = await handlers.handle_usage_get(runtime, {}, transport, 1, "c1")
+        assert result["usage"]["total_input"] == 100
+        assert result["usage"]["total_output"] == 50
+        assert result["usage"]["context_size"] == 8192
+        assert result["session_id"] == "sess-1"
+
+    @pytest.mark.anyio
+    async def test_returns_none_when_no_state(self, runtime, transport):
+        runtime.state = None
+        result = await handlers.handle_usage_get(runtime, {}, transport, 1, "c1")
+        assert result["usage"] is None
+        assert result["session_id"] is None
+
+
+def _async_gen(items):
+    async def gen():
+        for item in items:
+            yield item
+    return gen()

@@ -249,11 +249,13 @@ async def main():
 
     # Resolve or create session
     is_resumed = False
+    current_session_id: str | None = None
     if args.session:
         try:
             info = await client.load_session(args.session)
+            current_session_id = info.get("session_id", args.session)
             logger.info(
-                f"Loaded session {args.session} ({info.get('messages_count', 0)} messages)"
+                f"Loaded session {current_session_id} ({info.get('messages_count', 0)} messages)"
             )
             is_resumed = info.get("turn_count", 0) > 0
         except Exception:
@@ -265,18 +267,19 @@ async def main():
         sessions = await client.list_sessions(status="active", limit=1)
         if sessions:
             info = await client.load_session(sessions[0]["id"])
+            current_session_id = info.get("session_id", sessions[0]["id"])
             logger.info(
-                f"Resumed session {sessions[0]['id']} ({info.get('messages_count', 0)} messages)"
+                f"Resumed session {current_session_id} ({info.get('messages_count', 0)} messages)"
             )
             is_resumed = info.get("turn_count", 0) > 0
         else:
-            session_id = await client.create_session(system_prompt=SYSTEM_PROMPT)
-            logger.info(f"No active session to resume, starting new: {session_id}")
+            current_session_id = await client.create_session(system_prompt=SYSTEM_PROMPT)
+            logger.info(f"No active session to resume, starting new: {current_session_id}")
     else:
-        session_id = await client.create_session(system_prompt=SYSTEM_PROMPT)
-        logger.info(f"New session created: {session_id}")
+        current_session_id = await client.create_session(system_prompt=SYSTEM_PROMPT)
+        logger.info(f"New session created: {current_session_id}")
 
-    print(f"\nSession: {runtime.current_session_id}")
+    print(f"\nSession: {current_session_id}")
     if is_resumed:
         print("Resuming conversation")
 
@@ -317,9 +320,8 @@ async def main():
                     and event.finish_reason is not None
                     and event.usage
                 ):
-                    usage_info = await client.get_usage()
-                    session_usage = SessionUsage(**usage_info["usage"])
                     print()
+                    session_usage = SessionUsage(**(event.session_usage or {}))
                     print(session_usage.display(event.usage))
                 else:
                     print(event.data, end="")
@@ -332,7 +334,6 @@ async def main():
             is_first_turn = False
     finally:
         await _shutdown_gateway(client, gateway_task)
-        await runtime.shutdown()
         await _close_stdin_reader()
 
 
@@ -380,16 +381,19 @@ async def handle_repl_command(
         return True
 
     if command == "/title":
-        if arg:
-            await client.set_session_title(title=arg)
-            logger.info(f"Title set to: {arg}")
-            print(f"Title set to: {arg}")
-        else:
-            gen_title = await client.generate_session_title()
-            if gen_title:
-                print(f"Generated title: {gen_title}")
+        try:
+            if arg:
+                await client.set_session_title(title=arg)
+                logger.info(f"Title set to: {arg}")
+                print(f"Title set to: {arg}")
             else:
-                print("Could not generate title.")
+                gen_title = await client.generate_session_title()
+                if gen_title:
+                    print(f"Generated title: {gen_title}")
+                else:
+                    print("Could not generate title.")
+        except Exception:
+            print("No active session.")
         return True
 
     if command == "/fork":
@@ -402,10 +406,13 @@ async def handle_repl_command(
         return True
 
     if command == "/archive":
-        target = arg
-        await client.archive_session(session_id=target)
-        logger.info(f"Archived session: {target or '(current)'}")
-        print(f"Archived session: {target or '(current)'}")
+        try:
+            target = arg
+            await client.archive_session(session_id=target)
+            logger.info(f"Archived session: {target or '(current)'}")
+            print(f"Archived session: {target or '(current)'}")
+        except Exception:
+            print("No active session.")
         return True
 
     if command == "/search":

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -43,6 +43,16 @@ async def _run_gateway(gateway: GatewayServer) -> None:
 async def _shutdown_gateway(client_t: InProcessTransport) -> None:
     req = Request(id=99, method="shutdown", params={})
     await client_t.send(req.json())
+
+
+async def _mock_run_agent_turn(**kwargs):
+    from laffyhand.agent.loop import AgentEvent
+    from laffyhand.agent.schemas import Usage
+    yield AgentEvent(type="content", data="Hello from LLM")
+    yield AgentEvent(
+        type="content", data="", finish_reason="stop",
+        usage=Usage(input_tokens=10, output_tokens=5),
+    )
 
 
 @pytest.mark.anyio
@@ -164,6 +174,115 @@ async def test_session_lifecycle(runtime, transport_pair):
     raw = await asyncio.wait_for(client_t.recv(), timeout=2)
     resp = json.loads(raw)
     assert resp["id"] == 2
+
+    await _shutdown_gateway(client_t)
+    await task
+
+
+@pytest.mark.anyio
+async def test_chat_stream_via_gateway(transport_pair):
+    """End-to-end chat_stream: sends message, receives streamed notifications, then finish."""
+    server_t, client_t = transport_pair
+    runtime = MagicMock()
+    runtime.current_session_id = None
+    runtime.state = None
+    runtime.context_size = 128000
+    runtime.tool_registry.build_tool_definitions = MagicMock(return_value=[])
+    runtime.tool_registry.build_tool_prompt = MagicMock(return_value="")
+    runtime.skill_registry.all = MagicMock(return_value=[])
+    runtime.build_system_prompt = MagicMock(return_value="You are helpful.")
+    runtime.session_manager = MagicMock()
+    runtime.session_manager.create = MagicMock(return_value=MagicMock(id="sess-stream"))
+    runtime.run_agent_turn = _mock_run_agent_turn
+
+    import asyncio
+    gateway = GatewayServer(runtime, server_t)
+    task = asyncio.create_task(_run_gateway(gateway))
+    await asyncio.sleep(0.05)
+
+    # First create a session so there's a state
+    runtime.state = MagicMock()
+    runtime.state.session_id = "sess-stream"
+    runtime.state.messages = []
+    runtime.state.step = 0
+    runtime.state.usage = MagicMock()
+    runtime.state.usage.model_dump.return_value = {"total_input": 10, "total_output": 5}
+    runtime.current_session_id = "sess-stream"
+    runtime.get_state = MagicMock(return_value=runtime.state)
+
+    req = Request(id=1, method="chat_stream", params={"message": "hello"})
+    await client_t.send(req.json())
+
+    notifications = []
+    while True:
+        raw = await asyncio.wait_for(client_t.recv(), timeout=5)
+        from laffyhand.gateway.protocol import from_json, Notification
+        msg = from_json(raw)
+        if isinstance(msg, Notification) and msg.method == "event":
+            notifications.append(msg.params)
+            if msg.params and msg.params.get("type") == "finish":
+                break
+
+    assert len(notifications) >= 2
+    content_notif = notifications[0]
+    assert content_notif["type"] == "content"
+    assert "Hello" in content_notif["data"]
+    finish_notif = notifications[-1]
+    assert finish_notif["type"] == "finish"
+    assert finish_notif["finish_reason"] == "stop"
+    assert finish_notif["session_id"] == "sess-stream"
+    assert finish_notif["session_usage"] == {"total_input": 10, "total_output": 5}
+
+    await _shutdown_gateway(client_t)
+    await task
+
+
+@pytest.mark.anyio
+async def test_session_set_title_via_gateway(transport_pair):
+    server_t, client_t = transport_pair
+    runtime = MagicMock()
+    runtime.current_session_id = "sess-1"
+    runtime.session_manager = MagicMock()
+    gateway = GatewayServer(runtime, server_t)
+
+    import asyncio
+    task = asyncio.create_task(_run_gateway(gateway))
+    await asyncio.sleep(0.05)
+
+    req = Request(id=1, method="session/set_title", params={"title": "Custom Title"})
+    await client_t.send(req.json())
+    raw = await asyncio.wait_for(client_t.recv(), timeout=2)
+    resp = json.loads(raw)
+    assert resp["result"]["title"] == "Custom Title"
+    runtime.session_manager.set_title.assert_called_once_with("sess-1", "Custom Title")
+
+    await _shutdown_gateway(client_t)
+    await task
+
+
+@pytest.mark.anyio
+async def test_usage_get_via_gateway(transport_pair):
+    server_t, client_t = transport_pair
+    runtime = MagicMock()
+    runtime.current_session_id = "sess-1"
+    runtime.state = MagicMock()
+    runtime.state.usage.total_input = 100
+    runtime.state.usage.total_output = 50
+    runtime.state.usage.total_reasoning = 10
+    runtime.state.usage.total_cache_read = 5
+    runtime.state.usage.context_size = 8192
+    gateway = GatewayServer(runtime, server_t)
+
+    import asyncio
+    task = asyncio.create_task(_run_gateway(gateway))
+    await asyncio.sleep(0.05)
+
+    req = Request(id=1, method="usage/get", params={})
+    await client_t.send(req.json())
+    raw = await asyncio.wait_for(client_t.recv(), timeout=2)
+    resp = json.loads(raw)
+    assert resp["result"]["usage"]["total_input"] == 100
+    assert resp["result"]["session_id"] == "sess-1"
 
     await _shutdown_gateway(client_t)
     await task

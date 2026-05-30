@@ -326,6 +326,7 @@ async def handle_chat_stream(
             "finish_reason": finish_reason,
             "usage": usage_info.model_dump() if usage_info else None,
             "session_id": session_id,
+            "session_usage": runtime.state.usage.model_dump() if runtime.state else None,
         },
     )
     try:

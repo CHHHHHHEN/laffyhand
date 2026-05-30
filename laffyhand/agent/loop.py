@@ -30,6 +30,7 @@ class AgentEvent(BaseModel):
     data: str
     finish_reason: Optional[FinishReason] = None
     usage: Optional[Usage] = None
+    session_usage: Optional[dict] = None
 
 
 async def _compact_on_overflow(
