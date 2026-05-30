@@ -18,4 +18,5 @@ laffybot.db*
 skills/
 .todos.json
 test.txt
+test_*.txt
 *.tmp

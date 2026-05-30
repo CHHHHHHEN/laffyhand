@@ -112,15 +112,19 @@ async def create_runtime(args: argparse.Namespace) -> AgentRuntime:
     if mcp_servers_json:
         try:
             raw: dict = json.loads(mcp_servers_json)
-            mcp_configs: dict[str, LocalMCPConfig | RemoteMCPConfig] = {}
-            for name, cfg in raw.items():
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse MCP_SERVERS JSON: {e}")
+            raw = {}
+        mcp_configs: dict[str, LocalMCPConfig | RemoteMCPConfig] = {}
+        for name, cfg in raw.items():
+            try:
                 if "command" in cfg:
                     mcp_configs[name] = LocalMCPConfig.model_validate(cfg)
                 else:
                     mcp_configs[name] = RemoteMCPConfig.model_validate(cfg)
-            await mcp_service.connect_all(mcp_configs)
-        except Exception as e:
-            logger.error(f"Failed to load MCP servers: {e}")
+            except Exception as e:
+                logger.error(f"Failed to parse MCP server '{name}': {e}")
+        await mcp_service.connect_all(mcp_configs)
 
     db_path = os.getenv("DB_PATH", "./laffyhand.db")
     session_manager = SessionManager(db_path)
@@ -140,6 +144,7 @@ async def create_runtime(args: argparse.Namespace) -> AgentRuntime:
         max_steps=max_steps,
         max_subagents=max_subagents,
         db_path=db_path,
+        context_size=MODEL_CONTEXT_SIZE,
     )
 
     skill_paths_env = os.getenv("SKILLS_PATHS", "")
@@ -160,6 +165,34 @@ async def create_runtime(args: argparse.Namespace) -> AgentRuntime:
     return runtime
 
 
+_stdin_reader: asyncio.StreamReader | None = None
+_stdin_transport: asyncio.ReadTransport | None = None
+
+
+async def async_input(prompt: str = "") -> str:
+    global _stdin_reader, _stdin_transport
+    if prompt:
+        print(prompt, end="", flush=True)
+    if _stdin_reader is None:
+        loop = asyncio.get_running_loop()
+        reader = asyncio.StreamReader()
+        protocol = asyncio.StreamReaderProtocol(reader)
+        _stdin_transport, _ = await loop.connect_read_pipe(
+            lambda: protocol, sys.stdin
+        )
+        _stdin_reader = reader
+    line = await _stdin_reader.readline()
+    return line.decode().rstrip("\n")
+
+
+async def _close_stdin_reader() -> None:
+    global _stdin_reader, _stdin_transport
+    if _stdin_transport is not None:
+        _stdin_transport.close()
+        _stdin_transport = None
+    _stdin_reader = None
+
+
 async def main():
     args = parse_args()
     setup_logging()
@@ -170,6 +203,7 @@ async def main():
         sessions = runtime.session_manager.list_sessions(limit=20)
         print_sessions(sessions)
         await runtime.shutdown()
+        await _close_stdin_reader()
         return
 
     system_content = runtime.build_system_prompt(SYSTEM_PROMPT)
@@ -178,6 +212,7 @@ async def main():
     state = await resolve_session(args, runtime.session_manager, system_message)
     if state is None:
         await runtime.shutdown()
+        await _close_stdin_reader()
         return
     runtime.state = state
 
@@ -193,8 +228,8 @@ async def main():
                     print(f"  ⚙  subagent [{sa['agent_type']}] {sa['task_id'][:8]} — {sa['status']}")
 
             try:
-                user_prompt = await asyncio.to_thread(input, "\nYou: ")
-            except (EOFError, KeyboardInterrupt):
+                user_prompt = await async_input("\nYou: ")
+            except (EOFError, KeyboardInterrupt, asyncio.CancelledError):
                 logger.info("Agent session ended")
                 break
 
@@ -206,7 +241,10 @@ async def main():
                 handled = await _handle_command(user_prompt, runtime)
                 if handled:
                     continue
-                logger.warning(f"Unknown REPL command: {user_prompt.split()[0]}")
+                cmd_name = user_prompt.split()[0]
+                logger.warning(f"Unknown REPL command: {cmd_name}")
+                print(f"Unknown command: {cmd_name}")
+                continue
 
             if runtime.state is None:
                 continue
@@ -232,6 +270,7 @@ async def main():
             print()
     finally:
         await runtime.shutdown()
+        await _close_stdin_reader()
 
 
 async def handle_repl_command(
@@ -300,6 +339,21 @@ async def handle_repl_command(
             print(f"Archived session: {target}")
         return True
 
+    if command == "/search":
+        if not arg:
+            print("Usage: /search <query>")
+            print("  Search session messages. Supports FTS5 syntax if available")
+            print("  (quotes for phrase, AND/OR, prefix*, etc.)")
+            return True
+        sessions = runtime.session_manager.search(arg, limit=20)
+        if not sessions:
+            print(f"No sessions found for query: {arg}")
+        else:
+            print(f"Found {len(sessions)} session(s) for query: {arg}")
+            print_sessions(sessions, runtime.session_manager)
+        logger.info(f"Searched for '{arg}', found {len(sessions)} session(s)")
+        return True
+
     return False
 
 
@@ -311,4 +365,5 @@ if __name__ == "__main__":
         asyncio.run(main())
     except Exception:
         logger.exception("Unhandled exception")
+        print("\nError: Laffyhand encountered an unexpected error. Check logs/ for details.", file=sys.stderr)
         sys.exit(1)

@@ -20,6 +20,7 @@ from laffyhand.agent.tools.bash import BashTool
 from laffyhand.agent.tools.todo import TodoTool
 from laffyhand.agent.tools.skill_tool import SkillTool
 from laffyhand.agent.tools.task import TaskTool
+from laffyhand.agent.tools.mcp_manage import MCPListTool, MCPConnectTool, MCPDisconnectTool
 from laffyhand.agent.mcp import MCPService
 from laffyhand.agent.loop import agent_loop
 
@@ -41,6 +42,7 @@ class AgentRuntime:
         max_steps: int,
         max_subagents: int,
         db_path: str,
+        context_size: int = 0,
     ) -> None:
         self.llm = llm
         self.session_manager = session_manager
@@ -48,6 +50,7 @@ class AgentRuntime:
         self.compaction_config = compaction_config
         self.title_config = title_config
         self.max_steps = max_steps
+        self._context_size = context_size
 
         self.tool_registry = ToolRegistry()
         self.agent_registry = AgentRegistry()
@@ -75,6 +78,11 @@ class AgentRuntime:
 
         self._task_tool = TaskTool(runtime=self)
         self.tool_registry.register_tool(self._task_tool)
+
+        # MCP management tools
+        self.tool_registry.register_tool(MCPListTool(self.mcp_service))
+        self.tool_registry.register_tool(MCPConnectTool(self.mcp_service, self.tool_registry))
+        self.tool_registry.register_tool(MCPDisconnectTool(self.mcp_service, self.tool_registry))
 
         def _update_skill_description():
             summary = self.skill_registry.build_skills_summary()
@@ -116,7 +124,7 @@ class AgentRuntime:
         self._state = AgentState(
             messages=[system_message],
             session_id=session.id,
-            usage=SessionUsage(context_size=0),
+            usage=SessionUsage(context_size=self._context_size),
         )
         return self._state
 
@@ -137,7 +145,7 @@ class AgentRuntime:
         loaded = self.session_manager.load_state(tip)
         if loaded is None:
             return False
-        loaded.usage.context_size = 0
+        loaded.usage.context_size = self._context_size
         self._state = loaded
         return True
 
@@ -149,7 +157,7 @@ class AgentRuntime:
             session_id=session.id,
             turn_count=0,
             step=0,
-            usage=SessionUsage(context_size=0),
+            usage=SessionUsage(context_size=self._context_size),
         )
         return self._state
 
