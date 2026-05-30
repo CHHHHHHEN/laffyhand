@@ -31,13 +31,6 @@ def runtime():
     return r
 
 
-@pytest.fixture
-def transport():
-    t = MagicMock()
-    t.send = AsyncMock()
-    return t
-
-
 class TestHandleInitialize:
     @pytest.mark.anyio
     async def test_returns_server_info(self, runtime, transport):

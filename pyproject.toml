@@ -1,5 +1,9 @@
 [tool.pytest.ini_options]
 timeout = 60
+testpaths = ["tests"]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]
 
 [tool.ruff.lint]
 ignore = ["E402"]
