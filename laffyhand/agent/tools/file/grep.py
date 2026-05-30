@@ -264,41 +264,12 @@ class GrepTool(BaseTool):
                             include: str | None, context: int,
                             offset: int, limit: int) -> str:
         logger.debug(f"Grep: Python fallback content for `{pattern_str}` in {root}")
-        try:
-            pattern = re.compile(pattern_str)
-        except re.error as e:
-            return f"Invalid regex pattern: {e}"
-
-        include_glob = include or "*"
-        matched_files = sorted(glob_module.glob(include_glob, root_dir=root, recursive=True))
-
-        file_match_indices: list[tuple[Path, list[int]]] = []
-        lines_cache: dict[str, list[str]] = {}
-
-        for rel_path in matched_files:
-            fp = root / rel_path
-            if not fp.is_file():
-                continue
-            if fp.stat().st_size > MAX_FILE_SIZE:
-                continue
-            try:
-                text = fp.read_text(encoding="utf-8", errors="replace")
-            except Exception:
-                continue
-
-            lines = text.splitlines(keepends=True)
-            match_indices = [i for i, line in enumerate(lines) if pattern.search(line)]
-            if match_indices:
-                file_match_indices.append((fp, match_indices))
-                lines_cache[str(fp)] = lines
-
-        if not file_match_indices:
+        files_with_matches = self._collect_matches(root, pattern_str, include)
+        if not files_with_matches:
             return f"No matches for `{pattern_str}`"
 
-        file_match_indices.sort(key=lambda x: x[0].stat().st_mtime, reverse=True)
-
         flat_matches: list[tuple[Path, int]] = []
-        for fp, indices in file_match_indices:
+        for fp, indices in files_with_matches:
             for idx in indices:
                 flat_matches.append((fp, idx))
 
@@ -307,12 +278,19 @@ class GrepTool(BaseTool):
         if not selected:
             return f"No matches for `{pattern_str}`"
 
+        lines_cache: dict[str, list[str]] = {}
         result_lines: list[str] = []
         prev_file: str | None = None
         prev_idx: int | None = None
         for fp, idx in selected:
             label = str(fp.relative_to(root))
-            lines = lines_cache[str(fp)]
+            if label not in lines_cache:
+                try:
+                    text = fp.read_text(encoding="utf-8", errors="replace")
+                except Exception:
+                    continue
+                lines_cache[label] = text.splitlines(keepends=True)
+            lines = lines_cache[label]
             if prev_file is not None and prev_file != label:
                 prev_idx = None
             result_lines.extend(self._format_match_with_context(

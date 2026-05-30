@@ -1,4 +1,5 @@
 import asyncio
+import time
 import unittest
 import tempfile
 from pathlib import Path
@@ -48,6 +49,7 @@ class TestFileToolsE2E(unittest.TestCase):
         self.assertIn("helper", read_result)
 
         # Step 3: edit utils.py to add a new function
+        time.sleep(0.02)
         edit_result = asyncio.run(edit_tool.run({
             "file_path": str(src / "utils.py"),
             "old_string": "def helper():\n    return 42",
