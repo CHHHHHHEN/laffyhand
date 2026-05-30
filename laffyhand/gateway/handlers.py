@@ -8,6 +8,11 @@ from loguru import logger
 from laffyhand.agent.schemas import (
     SystemMessage, UserMessage, AgentState, SessionUsage,
 )
+from laffyhand.gateway.protocol import (
+    SHUTDOWN, SESSION_CREATE, SESSION_LIST, SESSION_LOAD,
+    SESSION_DELETE, SESSION_FORK, CHAT, CHAT_STREAM,
+    CHAT_CANCEL, TOOLS_LIST,
+)
 
 if TYPE_CHECKING:
     from laffyhand.agent.runtime import AgentRuntime
@@ -54,7 +59,8 @@ async def handle_session_create(
     conn_id: str,
 ) -> dict[str, Any]:
     await _ensure_session(runtime, params)
-    assert runtime.state is not None
+    if runtime.state is None:
+        raise RuntimeError("Session creation failed")
     return {"session_id": runtime.state.session_id}
 
 
@@ -99,7 +105,8 @@ async def handle_session_load(
     ok = runtime.switch_session(session_id)
     if not ok:
         raise ValueError(f"Session not found: {session_id}")
-    assert runtime.state is not None
+    if runtime.state is None:
+        raise RuntimeError("Session load failed")
     return {
         "session_id": runtime.state.session_id,
         "messages_count": len(runtime.state.messages),
@@ -153,13 +160,14 @@ async def handle_chat(
 
     assert session_id is not None
     state = runtime.get_state(session_id)
-    assert state is not None
+    if state is None:
+        raise RuntimeError(f"Session state not found: {session_id}")
     state.step = 0
     user_message = UserMessage(content=message)
     state.messages.append(user_message)
 
     last_content = ""
-    finish = ""
+    finish_reason = ""
     usage_info = None
     logger.debug(f"Chat started (id={request_id}, conn={conn_id})")
 
@@ -167,14 +175,14 @@ async def handle_chat(
         if event.type == "content" and event.data:
             last_content += event.data
         if event.finish_reason:
-            finish = event.finish_reason
+            finish_reason = event.finish_reason
         if event.usage:
             usage_info = event.usage
 
-    logger.debug(f"Chat finished (id={request_id}, conn={conn_id}, finish={finish})")
+    logger.debug(f"Chat finished (id={request_id}, conn={conn_id}, finish={finish_reason})")
     return {
         "content": last_content,
-        "finish_reason": finish,
+        "finish_reason": finish_reason,
         "usage": usage_info.model_dump() if usage_info else None,
         "session_id": session_id,
     }
@@ -201,12 +209,13 @@ async def handle_chat_stream(
 
     assert session_id is not None
     state = runtime.get_state(session_id)
-    assert state is not None
+    if state is None:
+        raise RuntimeError(f"Session state not found: {session_id}")
     state.step = 0
     user_message = UserMessage(content=message)
     state.messages.append(user_message)
 
-    finish = ""
+    finish_reason = ""
     usage_info = None
 
     async for event in runtime.run_agent_turn(session_id=session_id):
@@ -221,7 +230,7 @@ async def handle_chat_stream(
         )
         await transport.send(notif.json())
         if event.finish_reason:
-            finish = event.finish_reason
+            finish_reason = event.finish_reason
         if event.usage:
             usage_info = event.usage
 
@@ -230,7 +239,7 @@ async def handle_chat_stream(
         params={
             "type": "finish",
             "data": "",
-            "finish_reason": finish,
+            "finish_reason": finish_reason,
             "usage": usage_info.model_dump() if usage_info else None,
             "session_id": session_id,
         },
@@ -245,8 +254,19 @@ async def handle_chat_cancel(
     _request_id: str | int | None,
     conn_id: str,
 ) -> dict[str, Any]:
-    logger.warning(f"Cancellation requested for connection {conn_id}, but streaming task cancellation is not yet implemented")
-    return {"status": "cancelled"}
+    dispatcher = getattr(transport, "_dispatcher", None) or getattr(runtime, "_current_dispatcher", None)
+    if dispatcher is None:
+        logger.warning(f"Cancellation requested for connection {conn_id}, but no dispatcher reference found")
+        return {"status": "cancelled"}
+
+    task = dispatcher._active_tasks.get(conn_id)
+    if task is not None and not task.done():
+        task.cancel()
+        logger.info(f"Streaming task cancelled for connection {conn_id}")
+        return {"status": "cancelled"}
+
+    logger.debug(f"No active streaming task for connection {conn_id}")
+    return {"status": "no_active_stream"}
 
 
 async def handle_tools_list(
@@ -282,15 +302,14 @@ async def _ensure_session(
 
 
 def register_all_handlers(dispatcher: Dispatcher) -> None:
-    """Register all RPC handlers on a dispatcher."""
     dispatcher.register("initialize", handle_initialize)
-    dispatcher.register("shutdown", handle_shutdown)
-    dispatcher.register("session/create", handle_session_create)
-    dispatcher.register("session/list", handle_session_list)
-    dispatcher.register("session/load", handle_session_load)
-    dispatcher.register("session/delete", handle_session_delete)
-    dispatcher.register("session/fork", handle_session_fork)
-    dispatcher.register("chat", handle_chat)
-    dispatcher.register("chat_stream", handle_chat_stream, streaming=True)
-    dispatcher.register("chat/cancel", handle_chat_cancel)
-    dispatcher.register("tools/list", handle_tools_list)
+    dispatcher.register(SHUTDOWN, handle_shutdown)
+    dispatcher.register(SESSION_CREATE, handle_session_create)
+    dispatcher.register(SESSION_LIST, handle_session_list)
+    dispatcher.register(SESSION_LOAD, handle_session_load)
+    dispatcher.register(SESSION_DELETE, handle_session_delete)
+    dispatcher.register(SESSION_FORK, handle_session_fork)
+    dispatcher.register(CHAT, handle_chat)
+    dispatcher.register(CHAT_STREAM, handle_chat_stream, streaming=True)
+    dispatcher.register(CHAT_CANCEL, handle_chat_cancel)
+    dispatcher.register(TOOLS_LIST, handle_tools_list)

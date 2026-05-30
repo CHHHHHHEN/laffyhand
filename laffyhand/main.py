@@ -220,7 +220,7 @@ async def _run_gateway_serve(args: argparse.Namespace) -> None:
     if listen.startswith("ws://"):
         host = args.host
         port = args.port
-        from laffyhand.gateway.transport import WSTransport
+        from laffyhand.gateway.http_transport import WSTransport
         ws_mgr = WSTransport(runtime=runtime, host=host, port=port)
         await ws_mgr.start()
         logger.info(f"WebSocket gateway running on ws://{host}:{port}/ws")
@@ -231,7 +231,7 @@ async def _run_gateway_serve(args: argparse.Namespace) -> None:
     elif listen.startswith("http://"):
         host = args.host
         port = args.port
-        from laffyhand.gateway.transport import HTTPTransport
+        from laffyhand.gateway.http_transport import HTTPTransport
         http_mgr = HTTPTransport(runtime=runtime, host=host, port=port)
         await http_mgr.start()
         logger.info(f"HTTP gateway running on http://{host}:{port}/rpc")

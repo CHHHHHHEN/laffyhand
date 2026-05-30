@@ -44,8 +44,8 @@ class GatewayServer:
                 try:
                     message = from_json(raw)
                 except Exception as e:
-                    logger.warning(f"Failed to parse message ({conn_id}): {e}")
-                    err = Error(code=PARSE_ERROR, message=f"Parse error: {e}")
+                    logger.warning(f"Failed to parse message ({conn_id}): {e} raw={raw!r:.200}")
+                    err = Error(code=PARSE_ERROR, message="Parse error")
                     await transport.send(ErrorResponse(id=None, error=err).json())
                     continue
 

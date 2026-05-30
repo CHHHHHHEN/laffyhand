@@ -8,6 +8,19 @@ from typing import Any
 _JSONRPC_VERSION = "2.0"
 MAX_MESSAGE_SIZE = 16 * 1024 * 1024  # 16 MB
 
+# RPC method names
+INITIALIZE = "initialize"
+SHUTDOWN = "shutdown"
+SESSION_CREATE = "session/create"
+SESSION_LIST = "session/list"
+SESSION_LOAD = "session/load"
+SESSION_DELETE = "session/delete"
+SESSION_FORK = "session/fork"
+CHAT = "chat"
+CHAT_STREAM = "chat_stream"
+CHAT_CANCEL = "chat/cancel"
+TOOLS_LIST = "tools/list"
+
 
 @dataclass
 class Error:
@@ -120,6 +133,13 @@ def from_json(data: str) -> JSONRPCMessage:
             ),
         )
     raise ValueError(f"Cannot classify JSON-RPC message: {data!r}")
+
+
+@dataclass
+class GatewayConfig:
+    host: str = "127.0.0.1"
+    port: int = 9090
+    max_message_size: int = MAX_MESSAGE_SIZE
 
 
 # Standard JSON-RPC error codes

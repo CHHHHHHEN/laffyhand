@@ -115,7 +115,7 @@ class TestDispatch:
         transport.send.assert_awaited_once()
         sent = json.loads(transport.send.call_args[0][0])
         assert sent["error"]["code"] == -32603
-        assert "boom" in sent["error"]["message"]
+        assert sent["error"]["message"] == "Internal error"
 
     @pytest.mark.anyio
     async def test_sets_shutdown_requested(self, dispatcher, transport):
