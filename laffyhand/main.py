@@ -339,6 +339,21 @@ async def handle_repl_command(
             print(f"Archived session: {target}")
         return True
 
+    if command == "/search":
+        if not arg:
+            print("Usage: /search <query>")
+            print("  Search session messages. Supports FTS5 syntax if available")
+            print("  (quotes for phrase, AND/OR, prefix*, etc.)")
+            return True
+        sessions = runtime.session_manager.search(arg, limit=20)
+        if not sessions:
+            print(f"No sessions found for query: {arg}")
+        else:
+            print(f"Found {len(sessions)} session(s) for query: {arg}")
+            print_sessions(sessions, runtime.session_manager)
+        logger.info(f"Searched for '{arg}', found {len(sessions)} session(s)")
+        return True
+
     return False
 
 
