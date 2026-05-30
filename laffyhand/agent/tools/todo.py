@@ -50,6 +50,9 @@ class TodoTool(BaseTool):
 
     def _load(self) -> list[dict]:
         path = Path(self._todo_path)
+        if not path.is_absolute():
+            path = Path.cwd() / path
+        path = path.resolve()
         if path.exists():
             try:
                 return json.loads(path.read_text(encoding="utf-8"))
