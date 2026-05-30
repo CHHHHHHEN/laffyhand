@@ -87,7 +87,10 @@ class BashTool(BaseTool):
                 stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
             except asyncio.TimeoutError:
                 proc.kill()
-                await proc.wait()
+                try:
+                    await asyncio.wait_for(proc.communicate(), timeout=2)
+                except asyncio.TimeoutError:
+                    pass
                 logger.warning(f"Bash timed out after {timeout}s: {_redact_command(command)}")
                 return f"Command timed out after {timeout}s"
 
