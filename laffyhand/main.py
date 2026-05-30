@@ -112,15 +112,19 @@ async def create_runtime(args: argparse.Namespace) -> AgentRuntime:
     if mcp_servers_json:
         try:
             raw: dict = json.loads(mcp_servers_json)
-            mcp_configs: dict[str, LocalMCPConfig | RemoteMCPConfig] = {}
-            for name, cfg in raw.items():
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse MCP_SERVERS JSON: {e}")
+            raw = {}
+        mcp_configs: dict[str, LocalMCPConfig | RemoteMCPConfig] = {}
+        for name, cfg in raw.items():
+            try:
                 if "command" in cfg:
                     mcp_configs[name] = LocalMCPConfig.model_validate(cfg)
                 else:
                     mcp_configs[name] = RemoteMCPConfig.model_validate(cfg)
-            await mcp_service.connect_all(mcp_configs)
-        except Exception as e:
-            logger.error(f"Failed to load MCP servers: {e}")
+            except Exception as e:
+                logger.error(f"Failed to parse MCP server '{name}': {e}")
+        await mcp_service.connect_all(mcp_configs)
 
     db_path = os.getenv("DB_PATH", "./laffyhand.db")
     session_manager = SessionManager(db_path)

@@ -20,6 +20,7 @@ from laffyhand.agent.tools.bash import BashTool
 from laffyhand.agent.tools.todo import TodoTool
 from laffyhand.agent.tools.skill_tool import SkillTool
 from laffyhand.agent.tools.task import TaskTool
+from laffyhand.agent.tools.mcp_manage import MCPListTool, MCPConnectTool, MCPDisconnectTool
 from laffyhand.agent.mcp import MCPService
 from laffyhand.agent.loop import agent_loop
 
@@ -77,6 +78,11 @@ class AgentRuntime:
 
         self._task_tool = TaskTool(runtime=self)
         self.tool_registry.register_tool(self._task_tool)
+
+        # MCP management tools
+        self.tool_registry.register_tool(MCPListTool(self.mcp_service))
+        self.tool_registry.register_tool(MCPConnectTool(self.mcp_service, self.tool_registry))
+        self.tool_registry.register_tool(MCPDisconnectTool(self.mcp_service, self.tool_registry))
 
         def _update_skill_description():
             summary = self.skill_registry.build_skills_summary()

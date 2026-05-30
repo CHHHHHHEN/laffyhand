@@ -147,6 +147,29 @@ class MCPService:
             for name, cfg in configs.items():
                 tg.create_task(self._connect_one(name, cfg))
 
+    async def connect_server(self, name: str, cfg: MCPConfig) -> list[MCPToolDef]:
+        """Connect a single MCP server and return its tools.
+
+        This is the public API for runtime MCP connection.
+        Returns a description of discovered tools.
+        """
+        if name in self._clients:
+            raise ValueError(f"MCP server '{name}' is already connected")
+        self._reconnect_cfgs[name] = cfg
+        client = MCPClient(name, cfg)
+        try:
+            await client.connect()
+        except Exception as e:
+            self._status[name] = f"failed: {e}"
+            self._reconnect_attempts[name] = 0
+            raise
+        self._clients[name] = client
+        self._status[name] = "connected"
+        self._reconnect_attempts[name] = 0
+        defs = await client.list_tools()
+        logger.info(f"MCP '{name}' connected with {len(defs)} tool(s)")
+        return defs
+
     async def _connect_one(self, name: str, cfg: MCPConfig) -> None:
         cfg_display = str(cfg.command if isinstance(cfg, LocalMCPConfig) else cfg.url)
         logger.debug(f"Connecting MCP '{name}': {cfg_display}")

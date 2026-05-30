@@ -1,0 +1,160 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
+
+from loguru import logger
+
+from laffyhand.agent.mcp.config import LocalMCPConfig, RemoteMCPConfig
+from laffyhand.agent.mcp.service import MCPWrappedTool
+from laffyhand.agent.tools.base import BaseTool
+
+if TYPE_CHECKING:
+    from laffyhand.agent.mcp import MCPService
+    from laffyhand.agent.tools.registry import ToolRegistry
+
+
+class MCPListTool(BaseTool):
+    name = "mcp_list"
+    description = "List all MCP server connections and their status."
+
+    def __init__(self, mcp_service: MCPService) -> None:
+        super().__init__()
+        self._mcp_service = mcp_service
+
+    def _input_schema(self) -> dict:
+        return {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        }
+
+    async def run(self, params: dict[str, Any]) -> str:
+        statuses = self._mcp_service.get_status()
+        if not statuses:
+            return "No MCP servers configured or connected."
+
+        lines = ["## MCP Servers"]
+        for name, status in statuses.items():
+            lines.append(f"- **{name}**: {status}")
+        return "\n".join(lines)
+
+
+class MCPConnectTool(BaseTool):
+    name = "mcp_connect"
+    description = "Connect to a new MCP server at runtime and register its tools."
+
+    def __init__(self, mcp_service: MCPService, tool_registry: ToolRegistry) -> None:
+        super().__init__()
+        self._mcp_service = mcp_service
+        self._tool_registry = tool_registry
+
+    def _input_schema(self) -> dict:
+        return {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": "A unique name for this MCP server",
+                },
+                "url": {
+                    "type": "string",
+                    "description": "URL of the remote MCP server (required for remote servers, e.g. https://example.com/mcp)",
+                },
+                "command": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Command and arguments for a local MCP server (e.g. [\"npx\", \"-y\", \"@modelcontextprotocol/server-everything\"])",
+                },
+                "transport": {
+                    "type": "string",
+                    "enum": ["sse", "streamable-http"],
+                    "description": "Transport for remote servers (default: auto-detect)",
+                },
+                "headers": {
+                    "type": "object",
+                    "description": "Optional HTTP headers for remote MCP servers",
+                },
+            },
+            "required": ["name"],
+        }
+
+    async def run(self, params: dict[str, Any]) -> str:
+        name = params["name"]
+
+        if self._mcp_service.get_client(name) is not None:
+            return f"MCP server '{name}' is already connected."
+
+        command = params.get("command")
+        url = params.get("url")
+
+        if command:
+            cfg: LocalMCPConfig | RemoteMCPConfig = LocalMCPConfig(
+                command=command,
+            )
+        elif url:
+            cfg = RemoteMCPConfig(
+                url=url,
+                transport=params.get("transport"),
+                headers=params.get("headers", {}),
+            )
+        else:
+            return "Either 'url' (remote) or 'command' (local) must be provided."
+
+        try:
+            tool_defs = await self._mcp_service.connect_server(name, cfg)
+        except Exception as e:
+            logger.error(f"MCP '{name}' connection failed: {e}")
+            return f"Failed to connect to MCP server '{name}': {e}"
+
+        # Register discovered tools with the tool registry
+        for td in tool_defs:
+            wrapper = MCPWrappedTool(name, td, self._mcp_service)
+            self._tool_registry.register_tool(wrapper)
+            logger.info(f"MCP tool registered: mcp_{name}_{td.name}")
+
+        tool_names = [f"mcp_{name}_{td.name}" for td in tool_defs]
+        return (
+            f"Connected to MCP server '{name}' and registered {len(tool_defs)} tool(s): "
+            f"{', '.join(tool_names)}"
+        )
+
+
+class MCPDisconnectTool(BaseTool):
+    name = "mcp_disconnect"
+    description = "Disconnect a running MCP server and unregister its tools."
+
+    def __init__(self, mcp_service: MCPService, tool_registry: ToolRegistry) -> None:
+        super().__init__()
+        self._mcp_service = mcp_service
+        self._tool_registry = tool_registry
+
+    def _input_schema(self) -> dict:
+        return {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": "Name of the MCP server to disconnect",
+                },
+            },
+            "required": ["name"],
+        }
+
+    async def run(self, params: dict[str, Any]) -> str:
+        name = params["name"]
+        if self._mcp_service.get_client(name) is None:
+            return f"MCP server '{name}' is not connected."
+
+        # Unregister tools from this server
+        prefix = f"mcp_{name}_"
+        unregistered = 0
+        for tool_name in list(self._tool_registry._tools.keys()):
+            if tool_name.startswith(prefix):
+                self._tool_registry.unregister_tool(tool_name)
+                unregistered += 1
+
+        await self._mcp_service.disconnect(name)
+        return (
+            f"Disconnected MCP server '{name}' "
+            f"and unregistered {unregistered} tool(s)."
+        )
