@@ -77,3 +77,135 @@ describe("rpcClient.sessionCreate", () => {
     expect(result.session_id).toBe("sess-new")
   })
 })
+
+function makeReadableStream(chunks: string[]): ReadableStream<Uint8Array> {
+  const encoder = new TextEncoder()
+  return new ReadableStream({
+    async pull(controller) {
+      for (const chunk of chunks) {
+        controller.enqueue(encoder.encode(chunk))
+      }
+      controller.close()
+    },
+  })
+}
+
+describe("chatStream", () => {
+  it("parses SSE events and calls onEvent", async () => {
+    const stream = makeReadableStream([
+      "data: {\"type\":\"content\",\"data\":\"Hello\"}\n\n",
+      "data: {\"type\":\"content\",\"data\":\" World\"}\n\n",
+    ])
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      body: stream,
+      headers: new Headers(),
+    })
+
+    const { chatStream } = await import("./rpc")
+    const onEvent = vi.fn()
+    const onError = vi.fn()
+    const onComplete = vi.fn()
+
+    await chatStream("hi", { onEvent, onError, onComplete })
+
+    expect(onEvent).toHaveBeenCalledTimes(2)
+    expect(onEvent).toHaveBeenNthCalledWith(1, { type: "content", data: "Hello" })
+    expect(onEvent).toHaveBeenNthCalledWith(2, { type: "content", data: " World" })
+    expect(onError).not.toHaveBeenCalled()
+  })
+
+  it("calls onComplete on finish event", async () => {
+    const stream = makeReadableStream([
+      "data: {\"type\":\"finish\",\"data\":\"\"}\n\n",
+    ])
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      body: stream,
+      headers: new Headers(),
+    })
+
+    const { chatStream } = await import("./rpc")
+    const onEvent = vi.fn()
+    const onError = vi.fn()
+    const onComplete = vi.fn()
+
+    await chatStream("hi", { onEvent, onError, onComplete })
+
+    expect(onComplete).toHaveBeenCalledOnce()
+    expect(onError).not.toHaveBeenCalled()
+  })
+
+  it("calls onError on stream failure", async () => {
+    const stream = new ReadableStream({
+      start(controller) {
+        controller.error(new Error("stream broken"))
+      },
+    })
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      body: stream,
+      headers: new Headers(),
+    })
+
+    const { chatStream } = await import("./rpc")
+    const onEvent = vi.fn()
+    const onError = vi.fn()
+    const onComplete = vi.fn()
+
+    await chatStream("hi", { onEvent, onError, onComplete })
+
+    expect(onError).toHaveBeenCalled()
+    expect(onComplete).not.toHaveBeenCalled()
+  })
+
+  it("skips unparseable SSE lines silently", async () => {
+    const stream = makeReadableStream([
+      "data: not json\n\n",
+      "data: {\"type\":\"content\",\"data\":\"ok\"}\n\n",
+    ])
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      body: stream,
+      headers: new Headers(),
+    })
+
+    const { chatStream } = await import("./rpc")
+    const onEvent = vi.fn()
+    const onError = vi.fn()
+    const onComplete = vi.fn()
+
+    await chatStream("hi", { onEvent, onError, onComplete })
+
+    // Only the valid line should be processed
+    expect(onEvent).toHaveBeenCalledTimes(1)
+    expect(onEvent).toHaveBeenCalledWith({ type: "content", data: "ok" })
+  })
+
+  it("handles abort signal gracefully", async () => {
+    const abortController = new AbortController()
+
+    // Stream that errors on read
+    const stream = new ReadableStream({
+      pull() {
+        throw new Error("stream error")
+      },
+    })
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      body: stream,
+      headers: new Headers(),
+    })
+
+    const { chatStream } = await import("./rpc")
+    const onError = vi.fn()
+    const onComplete = vi.fn()
+
+    // Pre-abort the signal — the catch block checks signal.aborted before calling onError
+    abortController.abort()
+    await chatStream("hi", { onEvent: vi.fn(), onError, onComplete }, abortController.signal)
+
+    expect(onError).not.toHaveBeenCalled()
+    expect(onComplete).not.toHaveBeenCalled()
+  })
+})

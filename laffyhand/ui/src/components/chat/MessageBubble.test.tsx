@@ -49,4 +49,17 @@ describe("MessageBubble", () => {
     )
     expect(screen.getByText("↑100 ↓50")).toBeInTheDocument()
   })
+
+  it("renders reasoning for assistant messages", () => {
+    render(
+      <MessageBubble
+        message={makeMessage({
+          role: "assistant",
+          content: "answer",
+          reasoning: "step by step",
+        })}
+      />,
+    )
+    expect(screen.getByText("step by step")).toBeInTheDocument()
+  })
 })
