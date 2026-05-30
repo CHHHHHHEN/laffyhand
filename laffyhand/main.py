@@ -140,6 +140,7 @@ async def create_runtime(args: argparse.Namespace) -> AgentRuntime:
         max_steps=max_steps,
         max_subagents=max_subagents,
         db_path=db_path,
+        context_size=MODEL_CONTEXT_SIZE,
     )
 
     skill_paths_env = os.getenv("SKILLS_PATHS", "")

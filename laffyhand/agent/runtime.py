@@ -41,6 +41,7 @@ class AgentRuntime:
         max_steps: int,
         max_subagents: int,
         db_path: str,
+        context_size: int = 0,
     ) -> None:
         self.llm = llm
         self.session_manager = session_manager
@@ -48,6 +49,7 @@ class AgentRuntime:
         self.compaction_config = compaction_config
         self.title_config = title_config
         self.max_steps = max_steps
+        self._context_size = context_size
 
         self.tool_registry = ToolRegistry()
         self.agent_registry = AgentRegistry()
@@ -116,7 +118,7 @@ class AgentRuntime:
         self._state = AgentState(
             messages=[system_message],
             session_id=session.id,
-            usage=SessionUsage(context_size=0),
+            usage=SessionUsage(context_size=self._context_size),
         )
         return self._state
 
@@ -137,10 +139,7 @@ class AgentRuntime:
         loaded = self.session_manager.load_state(tip)
         if loaded is None:
             return False
-        # Preserve context_size from the current state so compaction
-        # continues to work after switching sessions.
-        if self._state is not None:
-            loaded.usage.context_size = self._state.usage.context_size
+        loaded.usage.context_size = self._context_size
         self._state = loaded
         return True
 
@@ -152,7 +151,7 @@ class AgentRuntime:
             session_id=session.id,
             turn_count=0,
             step=0,
-            usage=SessionUsage(context_size=0),
+            usage=SessionUsage(context_size=self._context_size),
         )
         return self._state
 

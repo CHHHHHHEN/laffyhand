@@ -38,6 +38,7 @@ def runtime(manager: SessionManager) -> AgentRuntime:
         max_steps=50,
         max_subagents=2,
         db_path=":memory:",
+        context_size=128000,
     )
     rt._state = AgentState(
         messages=[SystemMessage(content="system")],

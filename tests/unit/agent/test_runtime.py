@@ -38,6 +38,7 @@ def runtime(session_manager):
         max_steps=50,
         max_subagents=2,
         db_path=":memory:",
+        context_size=128000,
     )
     return rt
 
@@ -118,9 +119,9 @@ class TestCreateInitialState:
         assert runtime.state is state
 
     @pytest.mark.anyio
-    async def test_usage_context_size_zero(self, runtime):
+    async def test_usage_context_size(self, runtime):
         state = runtime.create_initial_state(SystemMessage(content="hi"))
-        assert state.usage.context_size == 0
+        assert state.usage.context_size == 128000
 
 
 class TestSaveCurrentState:
