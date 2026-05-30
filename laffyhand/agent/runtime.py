@@ -8,7 +8,10 @@ from typing import TYPE_CHECKING, Any
 from loguru import logger
 
 from laffyhand.agent.schemas import (
-    AgentState, CompactionConfig, SessionUsage, SystemMessage,
+    AgentState,
+    CompactionConfig,
+    SessionUsage,
+    SystemMessage,
 )
 from laffyhand.agent.agent import AgentRegistry
 from laffyhand.agent.skill import SkillRegistry
@@ -20,7 +23,11 @@ from laffyhand.agent.tools.bash import BashTool
 from laffyhand.agent.tools.todo import TodoTool
 from laffyhand.agent.tools.skill_tool import SkillTool
 from laffyhand.agent.tools.task import TaskTool
-from laffyhand.agent.tools.mcp_manage import MCPListTool, MCPConnectTool, MCPDisconnectTool
+from laffyhand.agent.tools.mcp_manage import (
+    MCPListTool,
+    MCPConnectTool,
+    MCPDisconnectTool,
+)
 from laffyhand.agent.mcp import MCPService
 from laffyhand.agent.loop import agent_loop
 
@@ -62,18 +69,22 @@ class AgentRuntime:
         self._active_session_id: str | None = None
         self._task_tool: TaskTool | None = None
 
-    async def init_tools(self) -> None:
+    async def init_tools(self, todo_path: str = ".todos.json") -> None:
         for mcp_tool in await self.mcp_service.get_wrapped_tools():
             self.tool_registry.register_tool(mcp_tool)
         self.tool_registry.register_tool(ReadTool())
-        self.tool_registry.register_tool(WriteTool(permission_manager=self.tool_registry.permission))
+        self.tool_registry.register_tool(
+            WriteTool(permission_manager=self.tool_registry.permission)
+        )
         self.tool_registry.register_tool(EditTool())
         self.tool_registry.register_tool(GlobTool())
         self.tool_registry.register_tool(GrepTool())
         self.tool_registry.register_tool(BashTool())
-        self.tool_registry.register_tool(TodoTool(
-            todo_path=os.getenv("TODOS_PATH", ".todos.json"),
-        ))
+        self.tool_registry.register_tool(
+            TodoTool(
+                todo_path=todo_path,
+            )
+        )
 
         skill_tool = SkillTool(self.skill_registry, self.tool_registry.permission)
         self.tool_registry.register_tool(skill_tool)
@@ -83,17 +94,20 @@ class AgentRuntime:
 
         # MCP management tools
         self.tool_registry.register_tool(MCPListTool(self.mcp_service))
-        self.tool_registry.register_tool(MCPConnectTool(self.mcp_service, self.tool_registry))
-        self.tool_registry.register_tool(MCPDisconnectTool(self.mcp_service, self.tool_registry))
+        self.tool_registry.register_tool(
+            MCPConnectTool(self.mcp_service, self.tool_registry)
+        )
+        self.tool_registry.register_tool(
+            MCPDisconnectTool(self.mcp_service, self.tool_registry)
+        )
 
         def _update_skill_description():
             summary = self.skill_registry.build_skills_summary()
             if summary:
-                skill_tool.description = (
-                    f"Load and inject a skill into context.\n\nAvailable skills:\n{summary}"
-                )
+                skill_tool.description = f"Load and inject a skill into context.\n\nAvailable skills:\n{summary}"
             else:
                 skill_tool.description = "Load and inject a skill into context."
+
         self.tool_registry.on_build_defs(_update_skill_description)
         _update_skill_description()
 
@@ -247,7 +261,9 @@ class AgentRuntime:
             return f"Sub-agent [{agent_info.name}] started (id: {task_id[:8]}). I'll notify you when it completes."
 
         return await self._run_subagent_foreground(
-            parent_session_id, agent_info, prompt,
+            parent_session_id,
+            agent_info,
+            prompt,
         )
 
     async def _run_subagent_foreground(
@@ -257,8 +273,12 @@ class AgentRuntime:
         prompt: str,
     ) -> str:
         _, child_state, child_registry = build_subagent_state(
-            self.session_manager, parent_session_id, agent_info, prompt,
-            self.tool_registry.permission, self.tool_registry,
+            self.session_manager,
+            parent_session_id,
+            agent_info,
+            prompt,
+            self.tool_registry.permission,
+            self.tool_registry,
         )
 
         result_parts: list[str] = []
@@ -295,8 +315,12 @@ class AgentRuntime:
         state = self._states.get(self._session_id)
         sid = state.session_id if state and state.session_id else self._session_id
         from laffyhand.agent.title import generate_title
+
         return await generate_title(
-            self.session_manager, sid, self.llm, self.title_config,
+            self.session_manager,
+            sid,
+            self.llm,
+            self.title_config,
         )
 
     async def shutdown(self) -> None:

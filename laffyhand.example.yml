@@ -1,0 +1,62 @@
+# Laffyhand Configuration
+# Copy this file to laffyhand.yml and fill in your settings.
+
+llm:
+  # Required: LLM API endpoint
+  base_url: "https://opencode.ai/zen/go"
+  # Required: API key for authentication
+  api_key: "sk-..."
+  # Required: Model name to use
+  model_name: "deepseek-v4-flash"
+  # Maximum context size in tokens
+  context_size: 1000000
+
+db:
+  # Path to the SQLite database file
+  path: "./laffyhand.db"
+
+logging:
+  # Directory for log files
+  dir: "logs"
+  # Log level: DEBUG, INFO, WARNING, ERROR, CRITICAL
+  level: "INFO"
+  # Number of days to retain log files
+  retention_days: 10
+  # Whether to also output logs to console
+  console: false
+
+agent:
+  # Title generation mode: off, on_create, on_compact, auto
+  title_mode: "on_compact"
+  # Number of recent user turns preserved verbatim during compaction
+  compaction_tail_turns: 2
+  # Maximum agent loop iterations per turn
+  max_steps: 50
+  # Maximum concurrent sub-agents
+  max_concurrent_subagents: 2
+
+paths:
+  # Directories to scan for SKILL.md files
+  skills: []
+  # Directories to scan for .agent.md files (optional)
+  agents: []
+  # Path to the todo list JSON file
+  todos: ".todos.json"
+
+mcp:
+  # MCP server configurations
+  servers:
+    # example local MCP server:
+    # my-local-server:
+    #   type: local
+    #   command: ["python", "-m", "my_mcp_server"]
+    #   env:
+    #     MY_VAR: "value"
+    #   timeout: 300
+    #
+    # example remote MCP server:
+    # my-remote-server:
+    #   type: remote
+    #   url: "https://example.com/sse"
+    #   transport: sse  # sse or streamable-http
+    #   timeout: 300

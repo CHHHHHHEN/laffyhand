@@ -13,6 +13,9 @@ wheels/
 # env file
 .env
 
+# configuration files (may contain secrets)
+laffyhand.yml
+
 logs/
 laffybot.db*
 skills/

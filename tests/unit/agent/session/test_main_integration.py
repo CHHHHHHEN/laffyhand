@@ -10,8 +10,15 @@ import pytest
 from laffyhand.agent.runtime import AgentRuntime
 from laffyhand.agent.session import SessionManager, TitleConfig
 from laffyhand.agent.schemas import (
-    AgentState, AssistantMessage, CompactionConfig, StreamText, StreamFinish,
-    StreamError, SystemMessage, SessionUsage, UserMessage,
+    AgentState,
+    AssistantMessage,
+    CompactionConfig,
+    StreamText,
+    StreamFinish,
+    StreamError,
+    SystemMessage,
+    SessionUsage,
+    UserMessage,
 )
 
 
@@ -60,58 +67,85 @@ def make_messages():
 
 # ── resolve_session ──────────────────────────────────────────
 
+
 class TestResolveSession:
+    @pytest.fixture
+    def config(self) -> Any:
+        from laffyhand.config import LaffyConfig, LLMConfig
+
+        return LaffyConfig.model_construct(
+            llm=LLMConfig(
+                base_url="http://test",
+                api_key="test-key",
+                model_name="test-model",
+                context_size=128000,
+            ),
+        )
+
     @pytest.mark.anyio
-    async def test_creates_new_session(self, manager: SessionManager) -> None:
+    async def test_creates_new_session(self, manager: SessionManager, config) -> None:
         from laffyhand.main import resolve_session
+
         args = argparse.Namespace(session=None, resume=False, list=False)
         sys_msg = SystemMessage(content="system")
-        state = await resolve_session(args, manager, sys_msg)
+        state = await resolve_session(args, manager, sys_msg, config)
         assert state.session_id is not None
         assert len(state.messages) == 1
         assert state.messages[0].content == "system"
 
     @pytest.mark.anyio
-    async def test_resume_found(self, manager: SessionManager) -> None:
+    async def test_resume_found(self, manager: SessionManager, config) -> None:
         from laffyhand.main import resolve_session
+
         session = manager.create()
         args = argparse.Namespace(session=None, resume=True, list=False)
         sys_msg = SystemMessage(content="system")
-        state = await resolve_session(args, manager, sys_msg)
+        state = await resolve_session(args, manager, sys_msg, config)
         assert state.session_id == session.id
 
     @pytest.mark.anyio
-    async def test_resume_not_found_creates_new(self, manager: SessionManager) -> None:
+    async def test_resume_not_found_creates_new(
+        self, manager: SessionManager, config
+    ) -> None:
         from laffyhand.main import resolve_session
+
         args = argparse.Namespace(session=None, resume=True, list=False)
         sys_msg = SystemMessage(content="system")
-        state = await resolve_session(args, manager, sys_msg)
+        state = await resolve_session(args, manager, sys_msg, config)
         assert state.session_id is not None
 
     @pytest.mark.anyio
-    async def test_session_specified_found(self, manager: SessionManager) -> None:
+    async def test_session_specified_found(
+        self, manager: SessionManager, config
+    ) -> None:
         from laffyhand.main import resolve_session
+
         session = manager.create()
         args = argparse.Namespace(session=session.id, resume=False, list=False)
         sys_msg = SystemMessage(content="system")
-        state = await resolve_session(args, manager, sys_msg)
+        state = await resolve_session(args, manager, sys_msg, config)
         assert state.session_id == session.id
 
     @pytest.mark.anyio
-    async def test_session_specified_not_found_exits(self, manager: SessionManager) -> None:
+    async def test_session_specified_not_found_exits(
+        self, manager: SessionManager, config
+    ) -> None:
         from laffyhand.main import resolve_session
+
         args = argparse.Namespace(session="nonexistent", resume=False, list=False)
         sys_msg = SystemMessage(content="system")
         with pytest.raises(SystemExit):
-            await resolve_session(args, manager, sys_msg)
+            await resolve_session(args, manager, sys_msg, config)
 
 
 # ── handle_repl_command ──────────────────────────────────────
+
 
 class TestHandleReplCommand:
     @pytest.mark.anyio
     async def test_sessions(self, runtime: AgentRuntime, capsys) -> None:
         from laffyhand.main import handle_repl_command
+
         runtime.session_manager.create()
         runtime.session_manager.create()
         result = await handle_repl_command("/sessions", runtime)
@@ -122,6 +156,7 @@ class TestHandleReplCommand:
     @pytest.mark.anyio
     async def test_sessions_empty(self, runtime: AgentRuntime, capsys) -> None:
         from laffyhand.main import handle_repl_command
+
         result = await handle_repl_command("/sessions", runtime)
         assert result is True
         captured = capsys.readouterr()
@@ -130,6 +165,7 @@ class TestHandleReplCommand:
     @pytest.mark.anyio
     async def test_session_switch(self, runtime: AgentRuntime, capsys) -> None:
         from laffyhand.main import handle_repl_command
+
         msgs = [UserMessage(content="test")]
         session = runtime.session_manager.create(messages=msgs)
         result = await handle_repl_command(f"/session {session.id}", runtime)
@@ -139,6 +175,7 @@ class TestHandleReplCommand:
     @pytest.mark.anyio
     async def test_session_no_arg(self, runtime: AgentRuntime, capsys) -> None:
         from laffyhand.main import handle_repl_command
+
         result = await handle_repl_command("/session", runtime)
         assert result is True
         captured = capsys.readouterr()
@@ -147,6 +184,7 @@ class TestHandleReplCommand:
     @pytest.mark.anyio
     async def test_session_not_found(self, runtime: AgentRuntime, capsys) -> None:
         from laffyhand.main import handle_repl_command
+
         result = await handle_repl_command("/session nonexistent", runtime)
         assert result is True
         captured = capsys.readouterr()
@@ -155,6 +193,7 @@ class TestHandleReplCommand:
     @pytest.mark.anyio
     async def test_new(self, runtime: AgentRuntime, capsys) -> None:
         from laffyhand.main import handle_repl_command
+
         runtime.state.session_id = "some-old-session"
         result = await handle_repl_command("/new", runtime)
         assert result is True
@@ -164,6 +203,7 @@ class TestHandleReplCommand:
     @pytest.mark.anyio
     async def test_title_set(self, runtime: AgentRuntime, capsys) -> None:
         from laffyhand.main import handle_repl_command
+
         session = runtime.session_manager.create()
         runtime.state.session_id = session.id
         result = await handle_repl_command("/title My Title", runtime)
@@ -175,6 +215,7 @@ class TestHandleReplCommand:
     @pytest.mark.anyio
     async def test_title_no_active(self, runtime: AgentRuntime, capsys) -> None:
         from laffyhand.main import handle_repl_command
+
         runtime.state.session_id = ""
         result = await handle_repl_command("/title MyTitle", runtime)
         assert result is True
@@ -184,6 +225,7 @@ class TestHandleReplCommand:
     @pytest.mark.anyio
     async def test_fork(self, runtime: AgentRuntime, capsys) -> None:
         from laffyhand.main import handle_repl_command
+
         session = runtime.session_manager.create(messages=[UserMessage(content="hi")])
         runtime.state.session_id = session.id
         result = await handle_repl_command("/fork", runtime)
@@ -193,6 +235,7 @@ class TestHandleReplCommand:
     @pytest.mark.anyio
     async def test_fork_no_active(self, runtime: AgentRuntime, capsys) -> None:
         from laffyhand.main import handle_repl_command
+
         runtime.state.session_id = ""
         result = await handle_repl_command("/fork", runtime)
         assert result is True
@@ -202,6 +245,7 @@ class TestHandleReplCommand:
     @pytest.mark.anyio
     async def test_archive(self, runtime: AgentRuntime, capsys) -> None:
         from laffyhand.main import handle_repl_command
+
         session = runtime.session_manager.create()
         runtime.state.session_id = session.id
         result = await handle_repl_command("/archive", runtime)
@@ -213,16 +257,19 @@ class TestHandleReplCommand:
     @pytest.mark.anyio
     async def test_unknown_command(self, runtime: AgentRuntime) -> None:
         from laffyhand.main import handle_repl_command
+
         result = await handle_repl_command("/unknown", runtime)
         assert result is False
 
 
 # ── generate_title ───────────────────────────────────────────
 
+
 class TestGenerateTitle:
     @pytest.mark.anyio
     async def test_mode_off_returns_none(self, manager: SessionManager) -> None:
         from laffyhand.agent.title import generate_title
+
         config = TitleConfig(mode="off")
         result = await generate_title(manager, "sid", MagicMock(), config)
         assert result is None
@@ -230,6 +277,7 @@ class TestGenerateTitle:
     @pytest.mark.anyio
     async def test_no_user_messages_returns_none(self, manager: SessionManager) -> None:
         from laffyhand.agent.title import generate_title
+
         session = manager.create(messages=[SystemMessage(content="sys")])
         config = TitleConfig(mode="auto")
         result = await generate_title(manager, session.id, MagicMock(), config)
@@ -288,10 +336,12 @@ class TestGenerateTitle:
 
 # ── _compact_on_overflow ─────────────────────────────────────
 
+
 class TestCompactOnOverflow:
     @pytest.mark.anyio
     async def test_no_overflow_returns_false(self, manager: SessionManager) -> None:
         from laffyhand.agent.loop import _compact_on_overflow
+
         state = AgentState(
             messages=[UserMessage(content="hi")],
             usage=SessionUsage(context_size=128000),
@@ -333,7 +383,9 @@ class TestCompactOnOverflow:
         assert state.step == 0
 
     @pytest.mark.anyio
-    async def test_overflow_without_session_manager(self, manager: SessionManager) -> None:
+    async def test_overflow_without_session_manager(
+        self, manager: SessionManager
+    ) -> None:
         from laffyhand.agent.loop import _compact_on_overflow
 
         async def mock_stream(messages, **kwargs):
@@ -362,7 +414,9 @@ class TestCompactOnOverflow:
         assert len(state.messages) < len(msgs)
 
     @pytest.mark.anyio
-    async def test_overflow_with_session_compact_fails(self, manager: SessionManager) -> None:
+    async def test_overflow_with_session_compact_fails(
+        self, manager: SessionManager
+    ) -> None:
         from laffyhand.agent.loop import _compact_on_overflow
 
         async def mock_stream(messages, **kwargs):
@@ -388,33 +442,42 @@ class TestCompactOnOverflow:
 
 # ── create_runtime ─────────────────────────────────────────────
 
+
 class TestCreateRuntime:
     @pytest.mark.anyio
     async def test_creates_runtime(self):
         from laffyhand.main import create_runtime
+        from laffyhand.config import LaffyConfig, LLMConfig
 
-        args = argparse.Namespace(session=None, resume=False, list=False)
+        config = LaffyConfig.model_construct(
+            llm=LLMConfig(
+                base_url="http://test",
+                api_key="test-key",
+                model_name="test-model",
+                context_size=128000,
+            ),
+        )
 
-        with patch("laffyhand.main.OPENCODE_BASE_URL", "http://test"), \
-             patch("laffyhand.main.OPENCODE_API_KEY", "test-key"), \
-             patch("laffyhand.main.OPENCODE_MODEL_NAME", "test-model"), \
-             patch("laffyhand.main.MODEL_CONTEXT_SIZE", 128000), \
-             patch("laffyhand.main.deepseek_route") as mock_route, \
-             patch("laffyhand.main.LLM") as mock_llm, \
-             patch("laffyhand.main.MCPService") as mock_mcp, \
-             patch("laffyhand.main.SessionManager") as mock_sm:
+        with (
+            patch("laffyhand.main.deepseek_route") as mock_route,
+            patch("laffyhand.main.LLM") as mock_llm,
+            patch("laffyhand.main.MCPService") as mock_mcp,
+            patch("laffyhand.main.SessionManager") as mock_sm,
+        ):
             mock_route.return_value = "route"
             mock_llm.return_value = MagicMock()
             mock_mcp_instance = MagicMock()
+
             async def mock_get_wrapped():
                 return []
+
             mock_mcp_instance = MagicMock()
             mock_mcp_instance.get_wrapped_tools = mock_get_wrapped
             mock_mcp.return_value = mock_mcp_instance
             mock_sm_instance = MagicMock()
             mock_sm.return_value = mock_sm_instance
 
-            runtime = await create_runtime(args)
+            runtime = await create_runtime(config)
 
         assert runtime is not None
         assert runtime.llm is not None
@@ -424,28 +487,36 @@ class TestCreateRuntime:
     @pytest.mark.anyio
     async def test_runtime_has_registries(self):
         from laffyhand.main import create_runtime
+        from laffyhand.config import LaffyConfig, LLMConfig
 
-        args = argparse.Namespace(session=None, resume=False, list=False)
+        config = LaffyConfig.model_construct(
+            llm=LLMConfig(
+                base_url="http://test",
+                api_key="test-key",
+                model_name="test-model",
+                context_size=128000,
+            ),
+        )
 
-        with patch("laffyhand.main.OPENCODE_BASE_URL", "http://test"), \
-             patch("laffyhand.main.OPENCODE_API_KEY", "test-key"), \
-             patch("laffyhand.main.OPENCODE_MODEL_NAME", "test-model"), \
-             patch("laffyhand.main.MODEL_CONTEXT_SIZE", 128000), \
-             patch("laffyhand.main.deepseek_route") as mock_route, \
-             patch("laffyhand.main.LLM") as mock_llm, \
-             patch("laffyhand.main.MCPService") as mock_mcp, \
-             patch("laffyhand.main.SessionManager") as mock_sm:
+        with (
+            patch("laffyhand.main.deepseek_route") as mock_route,
+            patch("laffyhand.main.LLM") as mock_llm,
+            patch("laffyhand.main.MCPService") as mock_mcp,
+            patch("laffyhand.main.SessionManager") as mock_sm,
+        ):
             mock_route.return_value = "route"
             mock_llm.return_value = MagicMock()
+
             async def mock_get_wrapped():
                 return []
+
             mock_mcp_instance = MagicMock()
             mock_mcp_instance.get_wrapped_tools = mock_get_wrapped
             mock_mcp.return_value = mock_mcp_instance
             mock_sm_instance = MagicMock()
             mock_sm.return_value = mock_sm_instance
 
-            runtime = await create_runtime(args)
+            runtime = await create_runtime(config)
 
         assert runtime.agent_registry is not None
         assert runtime.tool_registry is not None
