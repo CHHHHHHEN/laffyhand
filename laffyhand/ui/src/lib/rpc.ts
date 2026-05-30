@@ -1,0 +1,202 @@
+import type {
+  JsonRpcRequest,
+  JsonRpcResponse,
+  JsonRpcError,
+  ServerInfo,
+  SessionListResult,
+  SessionCreateParams,
+  SessionCreateResult,
+  SessionDeleteResult,
+  SessionForkResult,
+  CancelResult,
+  ToolsListResult,
+  AgentEvent,
+} from "@/types/rpc"
+
+export class RpcError extends Error {
+  constructor(
+    public code: number,
+    message: string,
+    public data?: unknown,
+  ) {
+    super(message)
+    this.name = "RpcError"
+  }
+}
+
+let requestId = 1
+
+function nextId(): number {
+  return requestId++
+}
+
+function getBaseUrl(): string {
+  return import.meta.env.VITE_API_BASE_URL ?? `http://${location.hostname}:9090`
+}
+
+async function call<TResult>(
+  method: string,
+  params?: unknown,
+  signal?: AbortSignal,
+): Promise<TResult> {
+  const body: JsonRpcRequest = {
+    jsonrpc: "2.0",
+    id: nextId(),
+    method,
+    params,
+  }
+
+  const response = await fetch(`${getBaseUrl()}/rpc`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    signal,
+  })
+
+  const raw: unknown = await response.json()
+  const data = raw as JsonRpcResponse<TResult> | JsonRpcError
+
+  if ("error" in data && data.error != null) {
+    throw new RpcError(data.error.code, data.error.message, data.error.data)
+  }
+
+  return (data as JsonRpcResponse<TResult>).result
+}
+
+async function callStream(
+  method: string,
+  params?: unknown,
+  signal?: AbortSignal,
+): Promise<ReadableStream<Uint8Array>> {
+  const body: JsonRpcRequest = {
+    jsonrpc: "2.0",
+    id: nextId(),
+    method,
+    params,
+  }
+
+  const response = await fetch(`${getBaseUrl()}/rpc`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "text/event-stream",
+    },
+    body: JSON.stringify(body),
+    signal,
+  })
+
+  if (!response.ok) {
+    const errorBody = await response.text()
+    throw new RpcError(response.status, `HTTP ${response.status}: ${errorBody}`)
+  }
+
+  if (!response.body) {
+    throw new RpcError(0, "Response body is null")
+  }
+
+  return response.body
+}
+
+export interface ChatStreamCallbacks {
+  onEvent: (event: AgentEvent) => void
+  onError: (error: Error) => void
+  onComplete: () => void
+}
+
+export async function chatStream(
+  message: string,
+  callbacks: ChatStreamCallbacks,
+  signal?: AbortSignal,
+): Promise<void> {
+  const stream = await callStream("chat_stream", { message }, signal)
+  const reader = stream.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ""
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split("\n")
+      buffer = lines.pop() ?? ""
+
+      for (const line of lines) {
+        if (!line.trim()) continue
+
+        if (line.startsWith("data: ")) {
+          try {
+            const raw = JSON.parse(line.slice(6))
+            const notification = raw as {
+              method?: string
+              params?: AgentEvent
+            }
+            const event = notification.params ?? (notification as AgentEvent)
+            if (event.type) {
+              callbacks.onEvent(event as AgentEvent)
+            }
+            if (event.type === "finish") {
+              callbacks.onComplete()
+            }
+          } catch {
+            // skip unparseable lines
+          }
+        }
+      }
+    }
+  } catch (err) {
+    if (signal?.aborted) return
+    callbacks.onError(
+      err instanceof Error ? err : new Error(String(err)),
+    )
+  } finally {
+    reader.releaseLock()
+  }
+}
+
+export const rpcClient = {
+  initialize(): Promise<ServerInfo> {
+    return call<ServerInfo>("initialize")
+  },
+
+  sessionList(limit = 50, offset = 0): Promise<SessionListResult> {
+    return call<SessionListResult>("session/list", { limit, offset })
+  },
+
+  sessionCreate(
+    params?: SessionCreateParams,
+  ): Promise<SessionCreateResult> {
+    return call<SessionCreateResult>("session/create", params ?? {})
+  },
+
+  sessionLoad(
+    sessionId: string,
+  ): Promise<{
+    session_id: string
+    messages_count: number
+    turn_count: number
+  }> {
+    return call("session/load", { session_id: sessionId })
+  },
+
+  sessionDelete(sessionId: string): Promise<SessionDeleteResult> {
+    return call<SessionDeleteResult>("session/delete", {
+      session_id: sessionId,
+    })
+  },
+
+  sessionFork(): Promise<SessionForkResult> {
+    return call<SessionForkResult>("session/fork")
+  },
+
+  toolsList(): Promise<ToolsListResult> {
+    return call<ToolsListResult>("tools/list")
+  },
+
+  cancelStream(): Promise<CancelResult> {
+    return call<CancelResult>("chat/cancel")
+  },
+
+  chatStream,
+}

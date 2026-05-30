@@ -81,6 +81,12 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Path to configuration file (default: ./laffyhand.yml)",
     )
+
+    ui_parser = sub.add_parser("ui", help="Start the web UI")
+    ui_parser.add_argument("--host", type=str, default="127.0.0.1", help="Host to bind")
+    ui_parser.add_argument("--port", type=int, default=9090, help="Port to bind")
+    ui_parser.add_argument("--no-open", action="store_true", help="Do not open browser")
+
     return parser.parse_args()
 
 
@@ -256,6 +262,19 @@ async def main():
             await _run_gateway_serve(args, config)
         else:
             print("Usage: laffyhand gateway serve [--listen ...]")
+        return
+
+    if args.command == "ui":
+        runtime = await create_runtime(config)
+        from laffyhand.ui_server import run_ui_server
+
+        await run_ui_server(
+            runtime,
+            host=args.host,
+            port=args.port,
+            open_browser=not args.no_open,
+        )
+        await runtime.shutdown()
         return
 
     runtime = await create_runtime(config)
