@@ -56,7 +56,7 @@ export function ChatInput({ onSend, onCancel, disabled }: ChatInputProps) {
           Cancel
         </Button>
       ) : (
-        <Button onClick={handleSubmit}>
+        <Button onClick={handleSubmit} disabled={disabled || undefined}>
           Send
         </Button>
       )}
