@@ -5,7 +5,10 @@ from collections.abc import AsyncIterable, AsyncIterator
 from loguru import logger
 
 
-class SSEFraming:
+from laffyhand.agent.llm.specs import Framing
+
+
+class SSEFraming(Framing):
     """Frames SSE (Server-Sent Events) from HTTP chunked transfer.
 
     Handles the case where SSE events are split across HTTP chunks by

@@ -1,7 +1,7 @@
 import unittest
 
 from laffyhand.agent.schemas import SystemMessage, UserMessage, ToolMessage
-from laffyhand.agent.context import wrap_last_user, attach_reminder
+from laffyhand.agent.compaction import wrap_last_user, attach_reminder
 
 
 class TestWrapLastUser(unittest.TestCase):

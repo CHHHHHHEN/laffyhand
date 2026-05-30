@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Optional, Literal
 
@@ -10,17 +9,20 @@ from pydantic import BaseModel
 from laffyhand.agent.schemas import (
     AgentState, AssistantMessage, CompactionConfig, StreamText, StreamReasoning,
     StreamToolCall, StreamFinish, StreamError, FinishReason,
-    ToolCallContent, ToolMessage, Usage, UserMessage, estimate_tokens,
+    ToolCallContent, Usage, UserMessage, estimate_tokens,
 )
-from laffyhand.agent.context import (
-    compact, compact_with_chain, prune, wrap_last_user, attach_reminder,
+from laffyhand.agent.compaction import (
+    compact, compact_with_chain, wrap_last_user, attach_reminder,
     estimate_messages_tokens, is_overflow,
 )
+from laffyhand.agent.prune import prune
+from laffyhand.agent.tool_executor import ToolExecutor
 from laffyhand.agent.llm.facade import LLM
 from laffyhand.agent.tools import ToolRegistry
 
 if TYPE_CHECKING:
     from laffyhand.agent.session import SessionManager
+    from laffyhand.agent.subagent.manager import SubagentManager
 
 
 class AgentEvent(BaseModel):
@@ -74,6 +76,7 @@ async def agent_loop(
     max_steps: int = 50,
     reminder: str | None = None,
     session_manager: SessionManager | None = None,
+    subagent_manager: SubagentManager | None = None,
 ) -> AsyncIterator[AgentEvent]:
     messages = agent_state.messages
     context_size = agent_state.usage.context_size
@@ -101,6 +104,21 @@ async def agent_loop(
                 messages = agent_state.messages
                 yield AgentEvent(type="compacting", data="Compacting conversation history...")
                 continue
+
+        # ── Mid-turn injection: drain background subagent results ──
+        if subagent_manager is not None and agent_state.session_id:
+            bg_results = await subagent_manager.poll_results(agent_state.session_id)
+            for bg in bg_results:
+                content = bg.content or bg.error or "[No output]"
+                injected = UserMessage(
+                    content=(
+                        f"[Background task '{bg.agent_type}' (id: {bg.task_id[:8]}) completed]\n\n"
+                        f"{content}"
+                    ),
+                )
+                messages.append(injected)
+                agent_state.messages = messages
+                logger.info(f"Injected subagent result: {bg.task_id[:8]}")
 
         reasoning_buf: list[str] = []
         content_buf: list[str] = []
@@ -167,22 +185,9 @@ async def agent_loop(
         if finish_reason == "tool_calls" and tool_calls:
             logger.debug(f"Executing {len(tool_calls)} tool call(s)")
             for tc in tool_calls:
-                try:
-                    params = json.loads(tc.args)
-                except json.JSONDecodeError:
-                    logger.warning(f"Failed to parse tool args for {tc.tool_name}: {tc.args[:200]}")
-                    messages.append(ToolMessage(
-                        tool_call_id=tc.tool_call_id,
-                        content=f"Error: failed to parse tool arguments for {tc.tool_name}: {tc.args}",
-                    ))
-                    yield AgentEvent(type="tool_result", data=f"Error: invalid JSON args for {tc.tool_name}")
-                    continue
-                result = await tool_registry.run_tool(tc.tool_name, params)
-                messages.append(ToolMessage(
-                    tool_call_id=tc.tool_call_id,
-                    content=result,
-                ))
-                yield AgentEvent(type="tool_result", data=result)
+                exec_result = await ToolExecutor.execute(tool_registry, tc)
+                messages.append(exec_result.message)
+                yield AgentEvent(type="tool_result", data=exec_result.event_data)
             if compaction_config.prune:
                 logger.debug("Pruning after tool calls")
                 messages = prune(messages)
