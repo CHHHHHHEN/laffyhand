@@ -344,6 +344,7 @@ class TestHandleChatStream:
         runtime.state.session_id = "sess-1"
         runtime.state.messages = []
         runtime.state.step = 0
+        runtime.state.pending_steer = None
         runtime.state.usage = MagicMock()
         runtime.state.usage.model_dump.return_value = {"total_input": 0, "total_output": 0}
         runtime.current_session_id = "sess-1"
@@ -375,6 +376,7 @@ class TestHandleChatStream:
         runtime.state.session_id = "sess-1"
         runtime.state.messages = []
         runtime.state.step = 0
+        runtime.state.pending_steer = None
         runtime.state.usage = MagicMock()
         runtime.state.usage.model_dump.return_value = {"total_input": 0, "total_output": 0}
         runtime.current_session_id = "sess-1"
@@ -406,6 +408,7 @@ class TestHandleChatStream:
         runtime.state.session_id = "sess-1"
         runtime.state.messages = []
         runtime.state.step = 0
+        runtime.state.pending_steer = None
         runtime.state.usage = MagicMock()
         runtime.state.usage.model_dump.return_value = {"total_input": 0, "total_output": 0}
         runtime.current_session_id = "sess-1"
@@ -485,7 +488,7 @@ class TestHandleSessionSetTitle:
 
     @pytest.mark.anyio
     async def test_uses_current_session(self, runtime, transport):
-        result = await handlers.handle_session_set_title(
+        await handlers.handle_session_set_title(
             runtime, {"title": "Auto"}, transport, 1, "c1"
         )
         runtime.session_manager.set_title.assert_called_once_with("sess-1", "Auto")
@@ -534,7 +537,7 @@ class TestHandleSessionArchive:
 
     @pytest.mark.anyio
     async def test_archives_current(self, runtime, transport):
-        result = await handlers.handle_session_archive(
+        await handlers.handle_session_archive(
             runtime, {}, transport, 1, "c1"
         )
         runtime.session_manager.archive.assert_called_once_with("sess-1")

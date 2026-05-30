@@ -88,14 +88,13 @@ class Notification:
 JSONRPCMessage = Request | Response | ErrorResponse | Notification
 
 
-def _omit(d: dict, keys: set[str]) -> dict:
-    return {k: v for k, v in d.items() if k not in keys}
-
-
 def to_dict(msg: JSONRPCMessage | Error) -> dict[str, Any]:
-    d = asdict(msg)
     if isinstance(msg, Notification):
-        return _omit(d, {"jsonrpc"})
+        d: dict[str, Any] = {"method": msg.method}
+        if msg.params is not None:
+            d["params"] = msg.params
+        return d
+    d = asdict(msg)
     return d
 
 

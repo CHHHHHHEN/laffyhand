@@ -7,9 +7,8 @@ import pytest
 
 from laffyhand.gateway.client import GatewayClient, RPCError
 from laffyhand.gateway.protocol import (
-    Request, Response, ErrorResponse, Notification, Error,
+    Response, ErrorResponse, Notification, Error,
 )
-from laffyhand.agent.loop import AgentEvent
 
 
 @pytest.fixture
