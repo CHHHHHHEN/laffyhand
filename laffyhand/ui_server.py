@@ -68,6 +68,10 @@ async def run_ui_server(
     _add_security_middleware(app)
 
     if os.path.isdir(ui_dir):
+        async def _serve_index(request: Request) -> Response:
+            import aiohttp.web
+            return aiohttp.web.FileResponse(os.path.join(ui_dir, "index.html"))
+        app.router.add_get("/", _serve_index)
         app.router.add_static("/", ui_dir, show_index=False)
         logger.info(f"Serving UI static files from {ui_dir}")
     else:
