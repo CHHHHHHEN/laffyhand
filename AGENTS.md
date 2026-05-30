@@ -4,3 +4,4 @@
 使用 uv run ruff 运行风格检查
 使用 uv run vulture 运行死代码检查
 未经允许禁止添加新依赖
+Git提交遵守规范：xxx(xxx): xxx
