@@ -160,6 +160,34 @@ async def create_runtime(args: argparse.Namespace) -> AgentRuntime:
     return runtime
 
 
+_stdin_reader: asyncio.StreamReader | None = None
+_stdin_transport: asyncio.ReadTransport | None = None
+
+
+async def async_input(prompt: str = "") -> str:
+    global _stdin_reader, _stdin_transport
+    if prompt:
+        print(prompt, end="", flush=True)
+    if _stdin_reader is None:
+        loop = asyncio.get_running_loop()
+        reader = asyncio.StreamReader()
+        protocol = asyncio.StreamReaderProtocol(reader)
+        _stdin_transport, _ = await loop.connect_read_pipe(
+            lambda: protocol, sys.stdin
+        )
+        _stdin_reader = reader
+    line = await _stdin_reader.readline()
+    return line.decode().rstrip("\n")
+
+
+async def _close_stdin_reader() -> None:
+    global _stdin_reader, _stdin_transport
+    if _stdin_transport is not None:
+        _stdin_transport.close()
+        _stdin_transport = None
+    _stdin_reader = None
+
+
 async def main():
     args = parse_args()
     setup_logging()
@@ -170,6 +198,7 @@ async def main():
         sessions = runtime.session_manager.list_sessions(limit=20)
         print_sessions(sessions)
         await runtime.shutdown()
+        await _close_stdin_reader()
         return
 
     system_content = runtime.build_system_prompt(SYSTEM_PROMPT)
@@ -178,6 +207,7 @@ async def main():
     state = await resolve_session(args, runtime.session_manager, system_message)
     if state is None:
         await runtime.shutdown()
+        await _close_stdin_reader()
         return
     runtime.state = state
 
@@ -193,8 +223,8 @@ async def main():
                     print(f"  ⚙  subagent [{sa['agent_type']}] {sa['task_id'][:8]} — {sa['status']}")
 
             try:
-                user_prompt = await asyncio.to_thread(input, "\nYou: ")
-            except (EOFError, KeyboardInterrupt):
+                user_prompt = await async_input("\nYou: ")
+            except (EOFError, KeyboardInterrupt, asyncio.CancelledError):
                 logger.info("Agent session ended")
                 break
 
@@ -232,6 +262,7 @@ async def main():
             print()
     finally:
         await runtime.shutdown()
+        await _close_stdin_reader()
 
 
 async def handle_repl_command(
