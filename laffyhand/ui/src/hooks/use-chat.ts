@@ -99,6 +99,22 @@ export function useChat() {
     [urlSessionId],
   )
 
+  const steerMessage = useCallback(
+    async (content: string) => {
+      const store = useChatStore.getState()
+      if (!content.trim()) return
+      if (!store.isStreaming) return
+
+      store.addUserMessage(content)
+      try {
+        await rpcClient.steerMessage(content, urlSessionId)
+      } catch {
+        // best effort
+      }
+    },
+    [urlSessionId],
+  )
+
   const cancelStream = useCallback(async () => {
     if (abortRef.current) {
       abortRef.current.abort()
@@ -118,5 +134,5 @@ export function useChat() {
     }
   }, [])
 
-  return { sendMessage, cancelStream }
+  return { sendMessage, steerMessage, cancelStream }
 }

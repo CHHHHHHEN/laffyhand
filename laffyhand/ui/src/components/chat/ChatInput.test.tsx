@@ -25,15 +25,17 @@ describe("ChatInput", () => {
     expect(onSend).not.toHaveBeenCalled()
   })
 
-  it("shows disabled state", () => {
+  it("shows steer state", () => {
     const onSend = vi.fn()
-    render(<ChatInput onSend={onSend} disabled={true} />)
+    const onSteer = vi.fn()
+    const onCancel = vi.fn()
+    render(<ChatInput onSend={onSend} onSteer={onSteer} onCancel={onCancel} isStreaming={true} />)
 
-    const textarea = screen.getByPlaceholderText("Waiting for response...")
-    expect(textarea).toBeDisabled()
+    const textarea = screen.getByPlaceholderText("Type to steer the AI...")
+    expect(textarea).toBeEnabled()
 
-    const button = screen.getByRole("button", { name: /send/i })
-    expect(button).toBeDisabled()
+    const steerButton = screen.getByRole("button", { name: /steer/i })
+    expect(steerButton).toBeEnabled()
   })
 
   it("submits on button click", () => {

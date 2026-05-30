@@ -8,7 +8,7 @@ import { Spinner } from "@/components/ui/Spinner"
 
 export function ChatPage() {
   const { sessionId } = useParams()
-  const { sendMessage, cancelStream } = useChat()
+  const { sendMessage, steerMessage, cancelStream } = useChat()
   const { isLoading } = useCurrentSession(sessionId)
   const isStreaming = useChatStore((s) => s.isStreaming)
   const messages = useChatStore((s) => s.messages)
@@ -34,8 +34,9 @@ export function ChatPage() {
       <MessageList />
       <ChatInput
         onSend={sendMessage}
+        onSteer={steerMessage}
         onCancel={cancelStream}
-        disabled={isStreaming}
+        isStreaming={isStreaming}
       />
     </div>
   )
