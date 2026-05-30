@@ -26,7 +26,7 @@ _MESSAGE_COUNTER: int = 0
 _HTTP_DISPATCHER: Dispatcher | None = None
 
 
-def _set_http_dispatcher(dispatcher: Dispatcher) -> None:
+def _set_http_dispatcher(dispatcher: Dispatcher | None) -> None:
     global _HTTP_DISPATCHER
     _HTTP_DISPATCHER = dispatcher
 
@@ -276,34 +276,54 @@ async def handle_chat_stream(
 
     finish_reason = ""
     usage_info = None
+    last_content = ""
 
-    async for event in runtime.run_agent_turn(session_id=session_id):
-        notif = Notification(
-            method="event",
-            params={
-                "type": event.type,
-                "data": event.data,
-                "finish_reason": event.finish_reason,
-                "usage": event.usage.model_dump() if event.usage else None,
-            },
-        )
-        await transport.send(notif.json())
-        if event.finish_reason:
-            finish_reason = event.finish_reason
-        if event.usage:
-            usage_info = event.usage
+    try:
+        async for event in runtime.run_agent_turn(session_id=session_id):
+            notif = Notification(
+                method="event",
+                params={
+                    "type": event.type,
+                    "data": event.data,
+                    "finish_reason": event.finish_reason,
+                    "usage": event.usage.model_dump() if event.usage else None,
+                },
+            )
+            await transport.send(notif.json())
+            if event.finish_reason:
+                finish_reason = event.finish_reason
+            if event.usage:
+                usage_info = event.usage
+            if event.type == "content" and event.data:
+                last_content += event.data
+    except Exception:
+        logger.exception(f"Chat stream error for session {session_id} (conn={conn_id})")
+        try:
+            err_notif = Notification(
+                method="event",
+                params={
+                    "type": "error",
+                    "data": "Internal error during streaming",
+                },
+            )
+            await transport.send(err_notif.json())
+        except Exception:
+            logger.warning("Failed to send error event to client in chat stream")
 
     done = Notification(
         method="event",
         params={
             "type": "finish",
-            "data": "",
+            "data": last_content,
             "finish_reason": finish_reason,
             "usage": usage_info.model_dump() if usage_info else None,
             "session_id": session_id,
         },
     )
-    await transport.send(done.json())
+    try:
+        await transport.send(done.json())
+    except Exception:
+        pass
 
 
 async def handle_chat_cancel(

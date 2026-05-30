@@ -50,6 +50,16 @@ export function useSessions() {
     },
   })
 
+  const forkMutation = useMutation({
+    mutationFn: async () => {
+      const result = await rpcClient.sessionFork()
+      return result.session_id
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["sessions"] })
+    },
+  })
+
   return {
     sessions: query.data ?? [],
     isLoading: query.isLoading,
@@ -57,8 +67,10 @@ export function useSessions() {
     refetch: query.refetch,
     createSession: createMutation.mutateAsync,
     deleteSession: deleteMutation.mutateAsync,
+    forkSession: forkMutation.mutateAsync,
     isCreating: createMutation.isPending,
     isDeleting: deleteMutation.isPending,
+    isForking: forkMutation.isPending,
   }
 }
 
@@ -67,6 +79,7 @@ function toStoreMessage(m: MessageData): Message {
     id: m.id,
     role: m.role,
     content: m.content,
+    reasoning: m.reasoning,
     createdAt: m.createdAt,
   }
   if (m.toolCalls) {

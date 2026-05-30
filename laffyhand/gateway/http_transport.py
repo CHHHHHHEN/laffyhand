@@ -155,11 +155,10 @@ class HTTPTransport:
         self._runner: Any = None
 
         from laffyhand.gateway.dispatcher import Dispatcher
-        from laffyhand.gateway.handlers import register_all_handlers
+        from laffyhand.gateway.handlers import register_all_handlers, _set_http_dispatcher
 
         self._dispatcher = Dispatcher(runtime=runtime)
         register_all_handlers(self._dispatcher)
-        from laffyhand.gateway.handlers import _set_http_dispatcher
         _set_http_dispatcher(self._dispatcher)
 
     async def start(self) -> None:
@@ -242,11 +241,11 @@ class HTTPTransport:
             await entry.func(self.runtime, message.params or {}, transport, message.id, transport.connection_id)
             await transport.send(RpcResponse(id=message.id, result={"status": "completed"}).json())
         except Exception:
-            logger.error(f"SSE stream error for method={message.method}")
+            logger.exception(f"SSE stream error for method={message.method}")
             try:
                 await transport.send(ErrorResponse(id=message.id, error=Error(code=-32603, message="Internal error")).json())
             except Exception:
-                pass
+                logger.warning("Failed to send SSE error event to client (connection may be closed)")
         await response.write_eof()
         return response
 

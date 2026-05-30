@@ -12,8 +12,16 @@ from laffyhand.gateway.handlers import (
     handle_session_delete,
     handle_session_fork,
     handle_chat,
+    handle_chat_stream,
     handle_chat_cancel,
     handle_tools_list,
+    _serialize_messages,
+    _next_msg_id,
+    _set_http_dispatcher,
+)
+from laffyhand.agent.schemas import (
+    SystemMessage, UserMessage, AssistantMessage, ToolMessage,
+    ToolCallContent, Usage,
 )
 
 
@@ -196,12 +204,233 @@ class TestHandleChat:
         assert result["session_id"] == "sess-new"
 
 
-class TestHandleChatCancel:
+class TestHandleChatCancelWithHTTPDispatcher:
     @pytest.mark.anyio
-    async def test_returns_no_active_stream(self, runtime, transport):
-        transport._dispatcher = None  # type: ignore[attr-defined]
+    async def test_cancels_via_http_dispatcher_fallback(self, runtime, transport):
+        """transport._dispatcher is None, should fall back to _HTTP_DISPATCHER."""
+        dispatcher = MagicMock()
+        dispatcher.cancel_connection = MagicMock(return_value=True)
+        _set_http_dispatcher(dispatcher)
+        try:
+            transport._dispatcher = None  # type: ignore[attr-defined]
+            result = await handle_chat_cancel(runtime, {}, transport, 1, "c1")
+            assert result["status"] == "cancelled"
+            dispatcher.cancel_connection.assert_called_once_with("c1")
+        finally:
+            _set_http_dispatcher(None)
+
+    @pytest.mark.anyio
+    async def test_no_active_stream_when_cancel_fails(self, runtime, transport):
+        """cancel_connection returns False -> no_active_stream."""
+        dispatcher = MagicMock()
+        dispatcher.cancel_connection = MagicMock(return_value=False)
+        _set_http_dispatcher(dispatcher)
+        try:
+            transport._dispatcher = None  # type: ignore[attr-defined]
+            result = await handle_chat_cancel(runtime, {}, transport, 1, "c1")
+            assert result["status"] == "no_active_stream"
+        finally:
+            _set_http_dispatcher(None)
+
+    @pytest.mark.anyio
+    async def test_cancels_via_transport_dispatcher(self, runtime, transport):
+        """transport._dispatcher is set, used directly (no fallback)."""
+        dispatcher = MagicMock()
+        dispatcher.cancel_connection = MagicMock(return_value=True)
+        transport._dispatcher = dispatcher  # type: ignore[attr-defined]
         result = await handle_chat_cancel(runtime, {}, transport, 1, "c1")
         assert result["status"] == "cancelled"
+
+
+class TestSerializeMessages:
+    def test_system_message(self):
+        result = _serialize_messages([SystemMessage(content="system prompt")])
+        assert len(result) == 1
+        assert result[0]["role"] == "system"
+        assert result[0]["content"] == "system prompt"
+        assert "id" in result[0]
+        assert "createdAt" in result[0]
+
+    def test_user_message(self):
+        result = _serialize_messages([UserMessage(content="hello")])
+        assert len(result) == 1
+        assert result[0]["role"] == "user"
+        assert result[0]["content"] == "hello"
+
+    def test_assistant_message_content_only(self):
+        result = _serialize_messages([AssistantMessage(content="hi")])
+        assert len(result) == 1
+        assert result[0]["role"] == "assistant"
+        assert result[0]["content"] == "hi"
+
+    def test_assistant_message_with_reasoning(self):
+        result = _serialize_messages([AssistantMessage(content="answer", reasoning="thinking...")])
+        assert result[0]["reasoning"] == "thinking..."
+
+    def test_assistant_message_with_tool_calls(self):
+        tc = ToolCallContent(tool_call_id="call-1", tool_name="read_file", args='{"path": "/test"}')
+        result = _serialize_messages([AssistantMessage(content="using tool", tool_calls=[tc])])
+        assert len(result[0]["toolCalls"]) == 1
+        assert result[0]["toolCalls"][0]["id"] == "call-1"
+        assert result[0]["toolCalls"][0]["name"] == "read_file"
+
+    def test_assistant_message_with_usage(self):
+        usage = Usage(input_tokens=10, output_tokens=5)
+        result = _serialize_messages([AssistantMessage(content="done", tokens=usage)])
+        assert result[0]["usage"]["inputTokens"] == 10
+        assert result[0]["usage"]["outputTokens"] == 5
+
+    def test_assistant_message_no_content(self):
+        result = _serialize_messages([AssistantMessage(content="")])
+        assert result[0]["content"] == ""
+
+    def test_tool_message(self):
+        result = _serialize_messages([ToolMessage(content="tool output", tool_call_id="call-1")])
+        assert result[0]["role"] == "tool"
+        assert result[0]["content"] == "tool output"
+        assert result[0]["tool_call_id"] == "call-1"
+
+    def test_mixed_messages(self):
+        msgs = [
+            SystemMessage(content="sys"),
+            UserMessage(content="user"),
+            AssistantMessage(content="assistant"),
+            ToolMessage(content="result", tool_call_id="c1"),
+        ]
+        result = _serialize_messages(msgs)
+        assert len(result) == 4
+        assert [m["role"] for m in result] == ["system", "user", "assistant", "tool"]
+
+    def test_assistant_without_tool_calls_omits_field(self):
+        msg = AssistantMessage(content="no tools")
+        result = _serialize_messages([msg])
+        assert "toolCalls" not in result[0]
+
+    def test_assistant_without_usage_omits_field(self):
+        msg = AssistantMessage(content="no usage", tokens=None)
+        result = _serialize_messages([msg])
+        assert "usage" not in result[0]
+
+
+class TestNextMsgId:
+    def test_format(self):
+        msg_id = _next_msg_id()
+        assert msg_id.startswith("msg-")
+        parts = msg_id.split("-")
+        assert len(parts) >= 3
+
+    def test_incrementing(self):
+        id1 = _next_msg_id()
+        id2 = _next_msg_id()
+        # IDs should differ (counter increments)
+        assert id1 != id2
+
+
+class TestHandleSessionLoadWithMessages:
+    @pytest.mark.anyio
+    async def test_returns_messages(self, runtime, transport):
+        runtime.switch_session = MagicMock(return_value=True)
+        runtime.state = MagicMock()
+        runtime.state.session_id = "sess-target"
+        runtime.state.messages = [
+            UserMessage(content="hello"),
+            AssistantMessage(content="hi there"),
+        ]
+        runtime.state.turn_count = 2
+
+        result = await handle_session_load(runtime, {"session_id": "sess-target"}, transport, 1, "c1")
+
+        assert "messages" in result
+        assert len(result["messages"]) == 2
+        assert result["messages"][0]["role"] == "user"
+        assert result["messages"][1]["role"] == "assistant"
+
+
+class TestHandleChatStream:
+    @pytest.mark.anyio
+    async def test_streams_events_and_finish(self, runtime, transport):
+        runtime.state = MagicMock()
+        runtime.state.session_id = "sess-1"
+        runtime.state.messages = []
+        runtime.state.step = 0
+        runtime.current_session_id = "sess-1"
+        runtime.get_state = MagicMock(return_value=runtime.state)
+
+        class FakeEvent:
+            type = "content"
+            data = "hello"
+            finish_reason = None
+            usage = None
+
+        runtime.run_agent_turn = MagicMock()
+        runtime.run_agent_turn.return_value = _async_gen([FakeEvent()])
+
+        await handle_chat_stream(runtime, {"message": "hi"}, transport, 1, "c1")
+
+        # Should have sent at least 2 messages: event + finish
+        assert transport.send.await_count >= 2
+        # The finish should be the last call
+        last_call = transport.send.await_args_list[-1]
+        import json
+        last_data = json.loads(last_call[0][0])
+        assert last_data["params"]["type"] == "finish"
+        assert last_data["params"]["data"] == "hello"
+
+    @pytest.mark.anyio
+    async def test_streams_error_as_event_on_exception(self, runtime, transport):
+        runtime.state = MagicMock()
+        runtime.state.session_id = "sess-1"
+        runtime.state.messages = []
+        runtime.state.step = 0
+        runtime.current_session_id = "sess-1"
+        runtime.get_state = MagicMock(return_value=runtime.state)
+
+        async def failing_gen():
+            raise RuntimeError("provider failed")
+            yield  # pragma: no cover
+
+        runtime.run_agent_turn = MagicMock()
+        runtime.run_agent_turn.return_value = failing_gen()
+
+        await handle_chat_stream(runtime, {"message": "hi"}, transport, 1, "c1")
+
+        # Should have sent both error event and finish
+        assert transport.send.await_count >= 2
+        import json
+        # Find the error event
+        sent_events = []
+        for call in transport.send.await_args_list:
+            data = json.loads(call[0][0])
+            sent_events.append(data["params"]["type"])
+        assert "error" in sent_events
+        assert "finish" in sent_events
+
+    @pytest.mark.anyio
+    async def test_streams_finish_on_empty_turn(self, runtime, transport):
+        runtime.state = MagicMock()
+        runtime.state.session_id = "sess-1"
+        runtime.state.messages = []
+        runtime.state.step = 0
+        runtime.current_session_id = "sess-1"
+        runtime.get_state = MagicMock(return_value=runtime.state)
+
+        runtime.run_agent_turn = MagicMock()
+        runtime.run_agent_turn.return_value = _async_gen([])
+
+        await handle_chat_stream(runtime, {"message": "hi"}, transport, 1, "c1")
+
+        import json
+        last_call = transport.send.await_args_list[-1]
+        last_data = json.loads(last_call[0][0])
+        assert last_data["params"]["type"] == "finish"
+        assert last_data["params"]["data"] == ""
+
+
+def _async_gen(items):
+    async def gen():
+        for item in items:
+            yield item
+    return gen()
 
 
 class TestHandleToolsList:
@@ -217,10 +446,3 @@ class TestHandleToolsList:
 
         assert len(result["tools"]) == 2
         assert result["tools"][0]["name"] == "read"
-
-
-def _async_gen(items):
-    async def gen():
-        for item in items:
-            yield item
-    return gen()

@@ -95,6 +95,7 @@ export const useChatStore = create<ChatState>((set) => ({
         id: state.currentAssistantMessageId ?? nextMessageId(),
         role: "assistant",
         content: state.streamContent,
+        reasoning: state.streamReasoning || undefined,
         toolCalls:
           state.streamToolCalls.length > 0
             ? state.streamToolCalls

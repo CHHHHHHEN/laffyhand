@@ -46,6 +46,18 @@ describe("chat-store", () => {
     expect(state.messages[1]!.usage?.inputTokens).toBe(10)
   })
 
+  it("preserves reasoning in finalized message", () => {
+    const store = useChatStore.getState()
+    store.startStreaming()
+    store.setReasoning("thinking step by step")
+    store.appendContent("Here's the answer")
+    store.finalizeMessage()
+
+    const message = useChatStore.getState().messages[0]!
+    expect(message.reasoning).toBe("thinking step by step")
+    expect(message.content).toBe("Here's the answer")
+  })
+
   it("handles tool calls during streaming", () => {
     const store = useChatStore.getState()
     store.startStreaming()

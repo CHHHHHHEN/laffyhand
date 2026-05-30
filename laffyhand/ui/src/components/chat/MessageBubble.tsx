@@ -41,6 +41,11 @@ export function MessageBubble({ message }: MessageBubbleProps) {
           <p className="whitespace-pre-wrap">{message.content}</p>
         ) : (
           <>
+            {message.reasoning && (
+              <div className="text-xs text-gray-400 dark:text-gray-500 mb-2 italic border-l-2 border-gray-300 dark:border-gray-600 pl-2">
+                {message.reasoning}
+              </div>
+            )}
             {message.content && <MarkdownContent content={message.content} />}
             {message.toolCalls && message.toolCalls.length > 0 && (
               <div className="mt-2 border-t border-gray-300 dark:border-gray-600 pt-2">

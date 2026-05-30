@@ -1,4 +1,3 @@
-import { useEffect } from "react"
 import { useParams } from "react-router-dom"
 import { ChatInput } from "@/components/chat/ChatInput"
 import { MessageList } from "@/components/chat/MessageList"
@@ -12,11 +11,7 @@ export function ChatPage() {
   const { sendMessage, cancelStream } = useChat()
   const { isLoading } = useCurrentSession(sessionId)
   const isStreaming = useChatStore((s) => s.isStreaming)
-  const clearMessages = useChatStore((s) => s.clearMessages)
-
-  useEffect(() => {
-    clearMessages()
-  }, [sessionId, clearMessages])
+  const messages = useChatStore((s) => s.messages)
 
   if (!sessionId) {
     return (
@@ -26,7 +21,7 @@ export function ChatPage() {
     )
   }
 
-  if (isLoading) {
+  if (isLoading && messages.length === 0) {
     return (
       <div className="flex-1 flex items-center justify-center">
         <Spinner />
