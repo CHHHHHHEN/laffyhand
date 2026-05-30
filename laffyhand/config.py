@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Annotated, Any, Literal
 
 import yaml
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from laffyhand.agent.mcp.config import LocalMCPConfig, RemoteMCPConfig
 
@@ -45,6 +45,15 @@ class MCPConfig(BaseModel):
     servers: dict[
         str, Annotated[LocalMCPConfig | RemoteMCPConfig, Field(discriminator="type")]
     ] = Field(default_factory=dict)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_none(cls, data: Any) -> Any:
+        if data is None:
+            return {}
+        if isinstance(data, dict) and data.get("servers") is None:
+            data["servers"] = {}
+        return data
 
 
 class LaffyConfig(BaseModel):
