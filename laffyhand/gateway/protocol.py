@@ -71,8 +71,6 @@ def to_dict(msg: JSONRPCMessage | Error) -> dict[str, Any]:
     d = asdict(msg)
     if isinstance(msg, Notification):
         return _omit(d, {"jsonrpc"})
-    if isinstance(msg, ErrorResponse):
-        return _omit(d, set())
     return d
 
 

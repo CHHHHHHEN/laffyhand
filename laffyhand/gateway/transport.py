@@ -26,9 +26,8 @@ class Transport(ABC):
 
 
 class StdioTransport(Transport):
-    connection_id: str = "stdio"
-
     def __init__(self, reader: StreamReader | None = None) -> None:
+        self.connection_id = "stdio"
         self._reader: StreamReader | None = reader
         self._writer = sys.stdout
         self._closed = False
@@ -71,25 +70,17 @@ class InProcessTransport(Transport):
             return ""
         return await self._server_queue.get()
 
-    async def send_to_server(self, data: str) -> None:
-        if self._closed:
-            return
-        await self._server_queue.put(data)
-
-    async def recv_from_server(self) -> str:
-        if self._closed:
-            return ""
-        return await self._client_queue.get()
-
     async def close(self) -> None:
         self._closed = True
 
 
 class _WSConnection(Transport):
     def __init__(self, ws: Any, conn_id: str) -> None:
+        from aiohttp import WSMsgType
         self._ws = ws
         self.connection_id = conn_id
         self._closed = False
+        self._WSMsgType = WSMsgType
 
     async def send(self, data: str) -> None:
         if self._closed:
@@ -104,11 +95,10 @@ class _WSConnection(Transport):
         if self._closed:
             return ""
         try:
-            from aiohttp import WSMsgType
             msg = await self._ws.receive()
-            if msg.type == WSMsgType.TEXT:
+            if msg.type == self._WSMsgType.TEXT:
                 return msg.data
-            if msg.type in (WSMsgType.BINARY, WSMsgType.CLOSE, WSMsgType.PING, WSMsgType.PONG):
+            if msg.type in (self._WSMsgType.BINARY, self._WSMsgType.CLOSE, self._WSMsgType.PING, self._WSMsgType.PONG):
                 self._closed = True
                 return ""
             return ""

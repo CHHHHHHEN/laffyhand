@@ -44,13 +44,13 @@ class GatewayServer:
                 try:
                     message = from_json(raw)
                 except Exception as e:
-                    logger.warning(f"Failed to parse message: {e}")
+                    logger.warning(f"Failed to parse message ({conn_id}): {e}")
                     err = Error(code=PARSE_ERROR, message=f"Parse error: {e}")
                     await transport.send(ErrorResponse(id=None, error=err).json())
                     continue
 
                 if not isinstance(message, Request):
-                    logger.warning(f"Unexpected message type: {type(message).__name__}")
+                    logger.warning(f"Unexpected message type ({conn_id}): {type(message).__name__}")
                     continue
 
                 await self.dispatcher.dispatch(message, transport, conn_id)

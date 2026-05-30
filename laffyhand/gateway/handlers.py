@@ -53,20 +53,9 @@ async def handle_session_create(
     _request_id: str | int | None,
     conn_id: str,
 ) -> dict[str, Any]:
-    system_content = _system_prompt(runtime, params.get("system_prompt", ""))
-    system_message = SystemMessage(content=system_content)
-    session = runtime.session_manager.create(
-        title=params.get("title", ""),
-        cwd=params.get("cwd", os.getcwd()),
-        model=params.get("model", ""),
-    )
-    state = AgentState(
-        messages=[system_message],
-        session_id=session.id,
-        usage=SessionUsage(context_size=runtime._context_size),
-    )
-    runtime.state = state
-    return {"session_id": session.id}
+    await _ensure_session(runtime, params)
+    assert runtime.state is not None
+    return {"session_id": runtime.state.session_id}
 
 
 async def handle_session_list(
@@ -149,7 +138,7 @@ async def handle_chat(
     runtime: AgentRuntime,
     params: dict[str, Any],
     transport: Transport,
-    _request_id: str | int | None,
+    request_id: str | int | None,
     conn_id: str,
 ) -> dict[str, Any]:
     message: str = params.get("message", "")
@@ -167,6 +156,7 @@ async def handle_chat(
     last_content = ""
     finish = ""
     usage_info = None
+    logger.debug(f"Chat started (id={request_id}, conn={conn_id})")
 
     async for event in runtime.run_agent_turn():
         if event.type == "content" and event.data:
@@ -176,6 +166,7 @@ async def handle_chat(
         if event.usage:
             usage_info = event.usage
 
+    logger.debug(f"Chat finished (id={request_id}, conn={conn_id}, finish={finish})")
     return {
         "content": last_content,
         "finish_reason": finish,

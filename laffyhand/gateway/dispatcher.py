@@ -50,7 +50,7 @@ class Dispatcher:
     ) -> None:
         entry = self.handlers.get(request.method)
         if entry is None:
-            logger.warning(f"Method not found: {request.method}")
+            logger.warning(f"Method not found: {request.method} (id={request.id})")
             error = Error(code=METHOD_NOT_FOUND, message=f"Method not found: {request.method}")
             await transport.send(ErrorResponse(id=request.id, error=error).json())
             return
@@ -60,12 +60,12 @@ class Dispatcher:
         try:
             result = await entry.func(self.runtime, params, transport, request.id, conn_id)
         except Exception as e:
-            logger.exception(f"Handler error for {request.method}: {e}")
+            logger.exception(f"Handler error for {request.method} (id={request.id}): {e}")
             error = Error(code=INTERNAL_ERROR, message=str(e))
             await transport.send(ErrorResponse(id=request.id, error=error).json())
             return
         elapsed = time.monotonic() - t0
-        logger.debug(f"Handler {request.method} completed in {elapsed*1000:.1f}ms")
+        logger.debug(f"Handler {request.method} (id={request.id}) completed in {elapsed*1000:.1f}ms")
 
         if request.method == "shutdown":
             self.shutdown_requested = True
