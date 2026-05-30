@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import itertools
 import os
 import time
 from typing import TYPE_CHECKING, Any
@@ -22,13 +24,11 @@ if TYPE_CHECKING:
     from laffyhand.gateway.transport import Transport
 
 
-_MESSAGE_COUNTER: int = 0
+_MESSAGE_COUNTER = itertools.count(1)
 
 
 def _next_msg_id() -> str:
-    global _MESSAGE_COUNTER
-    _MESSAGE_COUNTER += 1
-    return f"msg-{int(time.time() * 1000)}-{_MESSAGE_COUNTER}"
+    return f"msg-{int(time.time() * 1000)}-{next(_MESSAGE_COUNTER)}"
 
 
 def _serialize_messages(messages: list) -> list[dict[str, Any]]:
@@ -201,6 +201,15 @@ async def handle_session_fork(
     return {"session_id": child_id}
 
 
+_session_locks: dict[str, asyncio.Lock] = {}
+
+
+def _get_session_lock(session_id: str) -> asyncio.Lock:
+    if session_id not in _session_locks:
+        _session_locks[session_id] = asyncio.Lock()
+    return _session_locks[session_id]
+
+
 async def _prepare_chat(
     runtime: AgentRuntime,
     params: dict[str, Any],
@@ -225,7 +234,8 @@ async def _prepare_chat(
         raise RuntimeError(f"Session state not found: {session_id}")
     state.step = 0
     user_message = UserMessage(content=message)
-    state.messages.append(user_message)
+    async with _get_session_lock(session_id):
+        state.messages.append(user_message)
     return session_id
 
 
@@ -348,7 +358,7 @@ async def handle_chat_cancel(
 
     # 3. No cancellation mechanism available
     logger.warning(f"Cancellation not supported for transport {type(transport).__name__} (conn={conn_id})")
-    return {"status": "cancelled"}
+    return {"status": "cancellation_not_supported"}
 
 
 async def handle_tools_list(

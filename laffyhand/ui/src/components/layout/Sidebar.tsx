@@ -55,7 +55,7 @@ export function Sidebar() {
             size="sm"
             className="w-full"
           >
-            {isForking ? "Forking..." : "🔀 Fork"}
+            {isForking ? "Forking..." : "Fork"}
           </Button>
         )}
       </div>

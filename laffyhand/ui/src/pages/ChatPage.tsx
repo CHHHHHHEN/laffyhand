@@ -35,6 +35,7 @@ export function ChatPage() {
       <div className="flex items-center gap-2 px-4">
         {isStreaming && (
           <button
+            type="button"
             onClick={cancelStream}
             className="text-sm text-red-500 hover:text-red-700 cursor-pointer mb-3"
           >

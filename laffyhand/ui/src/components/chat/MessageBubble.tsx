@@ -13,7 +13,7 @@ function MarkdownContent({ content }: { content: string }) {
       const raw = marked.parse(content, { async: false }) as string
       return DOMPurify.sanitize(raw)
     } catch {
-      return content
+      return DOMPurify.sanitize(content)
     }
   }, [content])
 

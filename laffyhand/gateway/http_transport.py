@@ -5,6 +5,7 @@ from typing import Any
 
 from loguru import logger
 
+from laffyhand.gateway.protocol import MAX_MESSAGE_SIZE
 from laffyhand.gateway.transport import Transport, _NullTransport
 
 
@@ -210,9 +211,9 @@ class HTTPTransport:
                     task.cancel()
                     cancelled = True
             return cancelled
-        task = self._sse_tasks.get(conn_id)
-        if task is not None and not task.done():
-            task.cancel()
+        sse_task = self._sse_tasks.get(conn_id)
+        if sse_task is not None and not sse_task.done():
+            sse_task.cancel()
             return True
         return False
 
@@ -233,7 +234,7 @@ class HTTPTransport:
         return _json_response({}, status=204, origin=origin)
 
     async def _handle_rpc(self, request: Any) -> Any:
-        body = await request.text(max_size=1024 * 1024)
+        body = await request.text(max_size=MAX_MESSAGE_SIZE)
         if not body:
             origin = _resolve_cors_origin(request.headers.get("Origin"))
             return _json_response(
@@ -329,7 +330,10 @@ class HTTPTransport:
             except Exception:
                 logger.warning("Failed to send SSE error event to client (connection may be closed)")
         finally:
-            await response.write_eof()
+            try:
+                await response.write_eof()
+            except (ConnectionError, asyncio.CancelledError):
+                pass
         return response
 
     async def _handle_rpc_call(

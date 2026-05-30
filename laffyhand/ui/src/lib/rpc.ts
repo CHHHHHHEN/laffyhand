@@ -32,13 +32,16 @@ function nextId(): number {
 }
 
 function getBaseUrl(): string {
-  return import.meta.env.VITE_API_BASE_URL ?? `http://${location.hostname}:9090`
+  if (import.meta.env.VITE_API_BASE_URL) return import.meta.env.VITE_API_BASE_URL
+  const protocol = location.protocol === "https:" ? "https:" : "http:"
+  return `${protocol}//${location.hostname}:9090`
 }
 
 async function call<TResult>(
   method: string,
   params?: unknown,
   signal?: AbortSignal,
+  timeoutMs = 30000,
 ): Promise<TResult> {
   const body: JsonRpcRequest = {
     jsonrpc: "2.0",
@@ -47,21 +50,36 @@ async function call<TResult>(
     params,
   }
 
-  const response = await fetch(`${getBaseUrl()}/rpc`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-    signal,
-  })
-
-  const raw: unknown = await response.json()
-  const data = raw as JsonRpcResponse<TResult> | JsonRpcError
-
-  if ("error" in data && data.error != null) {
-    throw new RpcError(data.error.code, data.error.message, data.error.data)
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+  if (signal) {
+    signal.addEventListener("abort", () => controller.abort())
   }
 
-  return (data as JsonRpcResponse<TResult>).result
+  try {
+    const response = await fetch(`${getBaseUrl()}/rpc`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    })
+
+    if (!response.ok) {
+      const errorBody = await response.text()
+      throw new RpcError(response.status, `HTTP ${response.status}: ${errorBody}`)
+    }
+
+    const raw: unknown = await response.json()
+    const data = raw as JsonRpcResponse<TResult> | JsonRpcError
+
+    if ("error" in data && data.error != null) {
+      throw new RpcError(data.error.code, data.error.message, data.error.data)
+    }
+
+    return (data as JsonRpcResponse<TResult>).result
+  } finally {
+    clearTimeout(timeoutId)
+  }
 }
 
 async function callStream(
@@ -76,6 +94,11 @@ async function callStream(
     params,
   }
 
+  const controller = new AbortController()
+  if (signal) {
+    signal.addEventListener("abort", () => controller.abort())
+  }
+
   const response = await fetch(`${getBaseUrl()}/rpc`, {
     method: "POST",
     headers: {
@@ -83,7 +106,7 @@ async function callStream(
       Accept: "text/event-stream",
     },
     body: JSON.stringify(body),
-    signal,
+    signal: controller.signal,
   })
 
   if (!response.ok) {

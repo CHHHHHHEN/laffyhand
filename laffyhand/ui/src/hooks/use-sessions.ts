@@ -1,3 +1,4 @@
+import { useEffect } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { rpcClient } from "@/lib/rpc"
 import { useSessionStore } from "@/stores/session-store"
@@ -109,15 +110,19 @@ export function useCurrentSession(sessionId: string | undefined) {
     queryKey: ["session", sessionId],
     queryFn: async () => {
       if (!sessionId) return null
-      setCurrentSessionId(sessionId)
-      const result = await rpcClient.sessionLoad(sessionId)
-      if (result.messages) {
-        loadMessages(result.messages.map(toStoreMessage))
-      }
-      return result
+      return rpcClient.sessionLoad(sessionId)
     },
     enabled: !!sessionId,
   })
+
+  useEffect(() => {
+    if (session && sessionId) {
+      setCurrentSessionId(sessionId)
+      if (session.messages) {
+        loadMessages(session.messages.map(toStoreMessage))
+      }
+    }
+  }, [session, sessionId, setCurrentSessionId, loadMessages])
 
   return { session, isLoading }
 }

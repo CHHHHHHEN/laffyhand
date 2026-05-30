@@ -109,11 +109,12 @@ export function useChat() {
     } catch {
       // best effort
     }
-    const { streamContent, streamToolCalls } = useChatStore.getState()
-    if (streamContent || streamToolCalls.length > 0) {
-      useChatStore.getState().finalizeMessage()
+    const state = useChatStore.getState()
+    if (!state.isStreaming) return
+    if (state.streamContent || state.streamToolCalls.length > 0) {
+      state.finalizeMessage()
     } else {
-      useChatStore.getState().setError("Stream cancelled")
+      state.setError("Stream cancelled")
     }
   }, [])
 
