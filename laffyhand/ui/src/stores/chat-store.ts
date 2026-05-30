@@ -1,5 +1,6 @@
 import { create } from "zustand"
 import type { Message, ToolCall, ToolResult } from "@/types/session"
+import type { SessionUsage } from "@/types/rpc"
 
 export interface ChatState {
   messages: Message[]
@@ -11,16 +12,21 @@ export interface ChatState {
   currentAssistantMessageId: string | null
   error: string | null
 
+  // Persistent session info
+  model: string
+  sessionUsage: SessionUsage | null
+
   addUserMessage: (content: string) => void
   startStreaming: () => void
   appendContent: (text: string) => void
   setReasoning: (text: string) => void
   addToolCall: (toolCall: ToolCall) => void
   addToolResult: (toolResult: ToolResult) => void
-  finalizeMessage: (usage?: { inputTokens: number; outputTokens: number }) => void
+  finalizeMessage: (usage?: { inputTokens: number; outputTokens: number }, sessionUsage?: SessionUsage | null) => void
   setError: (error: string) => void
   clearMessages: () => void
   loadMessages: (messages: Message[]) => void
+  setSessionInfo: (model: string, usage: SessionUsage | null) => void
 }
 
 let messageCounter = 0
@@ -41,6 +47,8 @@ export const useChatStore = create<ChatState>((set) => ({
   streamToolResults: [],
   currentAssistantMessageId: null,
   error: null,
+  model: "",
+  sessionUsage: null,
 
   addUserMessage: (content) =>
     set((state) => ({
@@ -89,7 +97,7 @@ export const useChatStore = create<ChatState>((set) => ({
       streamToolResults: [...state.streamToolResults, toolResult],
     })),
 
-  finalizeMessage: (usage) =>
+  finalizeMessage: (usage, sessionUsage) =>
     set((state) => {
       const assistantMessage: Message = {
         id: state.currentAssistantMessageId ?? nextMessageId(),
@@ -117,6 +125,7 @@ export const useChatStore = create<ChatState>((set) => ({
         streamToolCalls: [],
         streamToolResults: [],
         currentAssistantMessageId: null,
+        sessionUsage: sessionUsage ?? state.sessionUsage,
       }
     }),
 
@@ -146,4 +155,7 @@ export const useChatStore = create<ChatState>((set) => ({
       currentAssistantMessageId: null,
       error: null,
     }),
+
+  setSessionInfo: (model, usage) =>
+    set({ model, sessionUsage: usage }),
 }))

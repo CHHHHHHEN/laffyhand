@@ -43,6 +43,7 @@ export interface SessionInfo {
   id: string
   status: string
   title: string | null
+  model?: string
   message_count: number
   turn_count: number
   usage?: { input_tokens: number; output_tokens: number }
@@ -75,10 +76,19 @@ export interface MessageData {
   createdAt: number
 }
 
+export interface SessionUsage {
+  total_input: number
+  total_output: number
+  total_reasoning: number
+  context_size: number
+}
+
 export interface SessionLoadResult {
   session_id: string
+  model?: string
   messages_count: number
   turn_count: number
+  usage?: SessionUsage
   messages: MessageData[]
 }
 
@@ -118,6 +128,7 @@ export interface AgentEvent {
   data: string
   finish_reason?: string
   usage?: Usage
+  session_usage?: SessionUsage
 }
 
 export type AgentEventType =

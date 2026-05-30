@@ -72,7 +72,7 @@ export function useChat() {
                         outputTokens: event.usage.output_tokens,
                       }
                     : undefined
-                  store.finalizeMessage(usage)
+                  store.finalizeMessage(usage, event.session_usage ?? null)
                   break
                 }
               }

@@ -142,6 +142,7 @@ async def handle_session_list(
                 "id": s.id,
                 "status": s.status,
                 "title": s.title,
+                "model": s.model,
                 "message_count": s.message_count,
                 "turn_count": s.turn_count,
                 "input_tokens": s.input_tokens,
@@ -169,10 +170,13 @@ async def handle_session_load(
         raise ValueError(f"Session not found: {session_id}")
     if runtime.state is None:
         raise RuntimeError("Session load failed")
+    session = runtime.session_manager.get(session_id)
     return {
         "session_id": runtime.state.session_id,
+        "model": session.model if session else "",
         "messages_count": len(runtime.state.messages),
         "turn_count": runtime.state.turn_count,
+        "usage": runtime.state.usage.model_dump() if runtime.state.usage else None,
         "messages": _serialize_messages(runtime.state.messages),
     }
 

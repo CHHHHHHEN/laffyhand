@@ -118,6 +118,10 @@ export function useCurrentSession(sessionId: string | undefined) {
   useEffect(() => {
     if (session && sessionId) {
       setCurrentSessionId(sessionId)
+      useChatStore.getState().setSessionInfo(
+        session.model ?? "",
+        session.usage ?? null,
+      )
       if (session.messages) {
         loadMessages(session.messages.map(toStoreMessage))
       }
