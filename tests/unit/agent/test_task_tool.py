@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, AsyncMock
 
 import pytest
 
-from laffyhand.agent.agent import AgentInfo, AgentRegistry
+from laffyhand.agent.agent import AgentRegistry
 from laffyhand.agent.tools.task import TaskTool
 
 
@@ -54,7 +54,7 @@ class TestTaskTool:
     @pytest.mark.anyio
     async def test_run_with_description(self, task_tool, runtime):
         runtime.create_subagent.return_value = "<task>ok</task>"
-        result = await task_tool.run({
+        await task_tool.run({
             "subagent_type": "build",
             "prompt": "Fix the bug",
             "description": "Fix bug",

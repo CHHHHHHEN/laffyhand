@@ -2,28 +2,24 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import json
 import os
 import sys
-from dotenv import load_dotenv
-load_dotenv()
 
 from loguru import logger
 from laffyhand import setup_logging
+from laffyhand.config import LaffyConfig, load_config
 from laffyhand.agent.schemas import (
-    AgentState, CompactionConfig, SystemMessage, UserMessage, SessionUsage,
+    AgentState,
+    CompactionConfig,
+    SystemMessage,
+    UserMessage,
+    SessionUsage,
 )
 from laffyhand.agent.llm.builders import deepseek_route
 from laffyhand.agent.llm.facade import LLM
 from laffyhand.agent.session import SessionManager, TitleConfig
 from laffyhand.agent.runtime import AgentRuntime
-from laffyhand.agent.mcp import MCPService, LocalMCPConfig, RemoteMCPConfig
-
-
-OPENCODE_BASE_URL = os.environ['OPENCODE_BASE_URL']
-OPENCODE_API_KEY = os.environ['OPENCODE_API_KEY']
-OPENCODE_MODEL_NAME = os.environ['OPENCODE_MODEL_NAME']
-MODEL_CONTEXT_SIZE = int(os.environ['MODEL_CONTEXT_SIZE'])
+from laffyhand.agent.mcp import MCPService
 
 SYSTEM_PROMPT = """
 ---
@@ -45,29 +41,45 @@ def parse_args() -> argparse.Namespace:
     gateway_sub = gateway_parser.add_subparsers(dest="gateway_command")
     serve_parser = gateway_sub.add_parser("serve", help="Start the gateway server")
     serve_parser.add_argument(
-        "--listen", type=str, default="stdio://",
+        "--listen",
+        type=str,
+        default="stdio://",
         help="Transport to listen on: stdio://, ws://HOST:PORT, http://HOST:PORT",
     )
     serve_parser.add_argument(
-        "--host", type=str, default="127.0.0.1",
+        "--host",
+        type=str,
+        default="127.0.0.1",
         help="Host to bind (for ws/http transports)",
     )
     serve_parser.add_argument(
-        "--port", type=int, default=9090,
+        "--port",
+        type=int,
+        default=9090,
         help="Port to bind (for ws/http transports)",
     )
 
     parser.add_argument(
-        "--resume", action="store_true",
+        "--resume",
+        action="store_true",
         help="Resume the most recent active session if one exists",
     )
     parser.add_argument(
-        "--session", type=str, default=None,
+        "--session",
+        type=str,
+        default=None,
         help="Load a specific session by ID",
     )
     parser.add_argument(
-        "--list", action="store_true",
+        "--list",
+        action="store_true",
         help="List recent sessions and exit",
+    )
+    parser.add_argument(
+        "--config",
+        type=str,
+        default=None,
+        help="Path to configuration file (default: ./laffyhand.yml)",
     )
     return parser.parse_args()
 
@@ -82,20 +94,28 @@ def print_sessions(sessions, session_manager: SessionManager | None = None) -> N
         title = (s.title or "(untitled)")[:40]
         cost = s.input_tokens + s.output_tokens
         cost_str = f"{cost // 1000}k" if cost > 1000 else str(cost)
-        print(f"{s.id:<30} {s.status:<12} {title:<40} {s.message_count:<8} {cost_str:<8}")
+        print(
+            f"{s.id:<30} {s.status:<12} {title:<40} {s.message_count:<8} {cost_str:<8}"
+        )
 
 
 async def resolve_session(
     args: argparse.Namespace,
     session_manager: SessionManager,
     system_message: SystemMessage,
+    config: LaffyConfig,
 ) -> AgentState | None:
+    context_size = config.llm.context_size
     if args.session:
         loaded = session_manager.resolve(
-            args.session, system_message, MODEL_CONTEXT_SIZE,
+            args.session,
+            system_message,
+            context_size,
         )
         if loaded is not None:
-            logger.info(f"Loaded session {args.session} ({len(loaded.messages)} messages)")
+            logger.info(
+                f"Loaded session {args.session} ({len(loaded.messages)} messages)"
+            )
             return loaded
         logger.error(f"Session not found: {args.session}")
         sys.exit(1)
@@ -104,82 +124,58 @@ async def resolve_session(
         last_active = session_manager.get_active()
         if last_active is not None:
             loaded = session_manager.resolve(
-                last_active.id, system_message, MODEL_CONTEXT_SIZE,
+                last_active.id,
+                system_message,
+                context_size,
             )
             if loaded is not None:
-                logger.info(f"Resumed session {loaded.session_id} ({len(loaded.messages)} messages)")
+                logger.info(
+                    f"Resumed session {loaded.session_id} ({len(loaded.messages)} messages)"
+                )
                 return loaded
         logger.info("No active session to resume, starting new")
 
-    session = session_manager.create(cwd=os.getcwd(), model=OPENCODE_MODEL_NAME)
+    session = session_manager.create(cwd=os.getcwd(), model=config.llm.model_name)
     logger.info(f"New session created: {session.id}")
     return AgentState(
         messages=[system_message],
         session_id=session.id,
-        usage=SessionUsage(context_size=MODEL_CONTEXT_SIZE),
+        usage=SessionUsage(context_size=context_size),
     )
 
 
-async def create_runtime(args: argparse.Namespace) -> AgentRuntime:
-    route = deepseek_route(base_url=OPENCODE_BASE_URL, api_key=OPENCODE_API_KEY)
-    llm = LLM(model=OPENCODE_MODEL_NAME, route=route)
-    logger.info(f"Agent started, model={OPENCODE_MODEL_NAME}")
+async def create_runtime(config: LaffyConfig) -> AgentRuntime:
+    route = deepseek_route(base_url=config.llm.base_url, api_key=config.llm.api_key)
+    llm = LLM(model=config.llm.model_name, route=route)
+    logger.info(f"Agent started, model={config.llm.model_name}")
 
     mcp_service = MCPService()
-    mcp_servers_json = os.getenv("MCP_SERVERS", "")
-    if mcp_servers_json:
-        try:
-            raw: dict = json.loads(mcp_servers_json)
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse MCP_SERVERS JSON: {e}")
-            raw = {}
-        mcp_configs: dict[str, LocalMCPConfig | RemoteMCPConfig] = {}
-        for name, cfg in raw.items():
-            try:
-                if "command" in cfg:
-                    mcp_configs[name] = LocalMCPConfig.model_validate(cfg)
-                else:
-                    mcp_configs[name] = RemoteMCPConfig.model_validate(cfg)
-            except Exception as e:
-                logger.error(f"Failed to parse MCP server '{name}': {e}")
-        await mcp_service.connect_all(mcp_configs)
+    if config.mcp.servers:
+        await mcp_service.connect_all(config.mcp.servers)
 
-    db_path = os.getenv("DB_PATH", "./laffyhand.db")
-    session_manager = SessionManager(db_path)
-    title_mode: str = os.getenv("TITLE_MODE", "on_compact")
+    session_manager = SessionManager(config.db.path)
     compaction_config = CompactionConfig(
-        tail_turns=int(os.getenv("COMPACTION_TAIL_TURNS", "2")),
+        tail_turns=config.agent.compaction_tail_turns,
     )
-    max_steps = int(os.getenv("MAX_STEPS", "50"))
-    max_subagents = int(os.getenv("MAX_CONCURRENT_SUBAGENTS", "2"))
 
     runtime = AgentRuntime(
         llm=llm,
         session_manager=session_manager,
         mcp_service=mcp_service,
         compaction_config=compaction_config,
-        title_config=TitleConfig(mode=title_mode),  # type: ignore[arg-type]
-        max_steps=max_steps,
-        max_subagents=max_subagents,
-        db_path=db_path,
-        context_size=MODEL_CONTEXT_SIZE,
+        title_config=TitleConfig(mode=config.agent.title_mode),  # type: ignore[arg-type]
+        max_steps=config.agent.max_steps,
+        max_subagents=config.agent.max_concurrent_subagents,
+        db_path=config.db.path,
+        context_size=config.llm.context_size,
     )
 
-    skill_paths_env = os.getenv("SKILLS_PATHS", "")
-    if skill_paths_env:
-        skill_dirs = [d.strip() for d in skill_paths_env.split(":") if d.strip()]
-    else:
-        skill_dirs = ["skills/"]
+    skill_dirs = config.paths.skills if config.paths.skills else ["skills/"]
     runtime.load_skills(skill_dirs)
 
-    agent_paths_env = os.getenv("AGENTS_PATHS", "")
-    if agent_paths_env:
-        agent_dirs = [d.strip() for d in agent_paths_env.split(":") if d.strip()]
-    else:
-        agent_dirs = []
-    runtime.load_agents(agent_dirs)
+    runtime.load_agents(config.paths.agents)
 
-    await runtime.init_tools()
+    await runtime.init_tools(todo_path=config.paths.todos)
     return runtime
 
 
@@ -195,9 +191,7 @@ async def async_input(prompt: str = "") -> str:
         loop = asyncio.get_running_loop()
         reader = asyncio.StreamReader()
         protocol = asyncio.StreamReaderProtocol(reader)
-        _stdin_transport, _ = await loop.connect_read_pipe(
-            lambda: protocol, sys.stdin
-        )
+        _stdin_transport, _ = await loop.connect_read_pipe(lambda: protocol, sys.stdin)
         _stdin_reader = reader
     line = await _stdin_reader.readline()
     return line.decode().rstrip("\n")
@@ -211,16 +205,17 @@ async def _close_stdin_reader() -> None:
     _stdin_reader = None
 
 
-async def _run_gateway_serve(args: argparse.Namespace) -> None:
+async def _run_gateway_serve(args: argparse.Namespace, config: LaffyConfig) -> None:
     from laffyhand.gateway import GatewayServer, StdioTransport
 
-    runtime = await create_runtime(args)
+    runtime = await create_runtime(config)
     listen = args.listen
 
     if listen.startswith("ws://"):
         host = args.host
         port = args.port
         from laffyhand.gateway.http_transport import WSTransport
+
         ws_mgr = WSTransport(runtime=runtime, host=host, port=port)
         await ws_mgr.start()
         logger.info(f"WebSocket gateway running on ws://{host}:{port}/ws")
@@ -232,6 +227,7 @@ async def _run_gateway_serve(args: argparse.Namespace) -> None:
         host = args.host
         port = args.port
         from laffyhand.gateway.http_transport import HTTPTransport
+
         http_mgr = HTTPTransport(runtime=runtime, host=host, port=port)
         await http_mgr.start()
         logger.info(f"HTTP gateway running on http://{host}:{port}/rpc")
@@ -247,16 +243,22 @@ async def _run_gateway_serve(args: argparse.Namespace) -> None:
 
 async def main():
     args = parse_args()
-    setup_logging()
+    config = load_config(args.config)
+    setup_logging(
+        log_dir=config.logging.dir,
+        level=config.logging.level,
+        retention=config.logging.retention_days,
+        console=config.logging.console,
+    )
 
     if args.command == "gateway":
         if args.gateway_command == "serve":
-            await _run_gateway_serve(args)
+            await _run_gateway_serve(args, config)
         else:
             print("Usage: laffyhand gateway serve [--listen ...]")
         return
 
-    runtime = await create_runtime(args)
+    runtime = await create_runtime(config)
 
     if args.list:
         sessions = runtime.session_manager.list_sessions(limit=20)
@@ -268,7 +270,7 @@ async def main():
     system_content = runtime.build_system_prompt(SYSTEM_PROMPT)
     system_message = SystemMessage(content=system_content)
 
-    state = await resolve_session(args, runtime.session_manager, system_message)
+    state = await resolve_session(args, runtime.session_manager, system_message, config)
     if state is None:
         await runtime.shutdown()
         await _close_stdin_reader()
@@ -281,14 +283,19 @@ async def main():
 
     try:
         while True:
-            if runtime.state and runtime.subagent_manager.active_count(runtime.state.session_id) > 0:
+            if (
+                runtime.state
+                and runtime.subagent_manager.active_count(runtime.state.session_id) > 0
+            ):
                 active = runtime.subagent_manager.list_active(runtime.state.session_id)
                 for sa in active:
-                    print(f"  ⚙  subagent [{sa['agent_type']}] {sa['task_id'][:8]} — {sa['status']}")
+                    print(
+                        f"  ⚙  subagent [{sa['agent_type']}] {sa['task_id'][:8]} — {sa['status']}"
+                    )
 
             try:
                 user_prompt = await async_input("\nYou: ")
-            except (EOFError, KeyboardInterrupt, asyncio.CancelledError):
+            except EOFError, KeyboardInterrupt, asyncio.CancelledError:
                 logger.info("Agent session ended")
                 break
 
@@ -313,15 +320,24 @@ async def main():
             runtime.state.messages.append(user_message)
 
             if runtime.state.session_id:
-                runtime.session_manager.append_messages(runtime.state.session_id, runtime.state.messages)
+                runtime.session_manager.append_messages(
+                    runtime.state.session_id, runtime.state.messages
+                )
 
-            if runtime.state.turn_count == 0 and runtime.title_config.mode in ("on_create", "auto"):
+            if runtime.state.turn_count == 0 and runtime.title_config.mode in (
+                "on_create",
+                "auto",
+            ):
                 gen_title = await runtime.generate_title_for_current()
                 if gen_title:
                     logger.info(f"Generated session title: {gen_title}")
 
             async for event in runtime.run_agent_turn():
-                if event.type == "content" and event.finish_reason is not None and event.usage:
+                if (
+                    event.type == "content"
+                    and event.finish_reason is not None
+                    and event.usage
+                ):
                     print()
                     print(runtime.state.usage.display(event.usage))
                 else:
@@ -358,7 +374,9 @@ async def handle_repl_command(
         return True
 
     if command == "/new":
-        system_prompt = SystemMessage(content=runtime.build_system_prompt(SYSTEM_PROMPT))
+        system_prompt = SystemMessage(
+            content=runtime.build_system_prompt(SYSTEM_PROMPT)
+        )
         runtime.new_session(system_prompt)
         assert runtime.state is not None
         logger.info(f"New session started: {runtime.state.session_id}")
@@ -424,5 +442,8 @@ if __name__ == "__main__":
         asyncio.run(main())
     except Exception:
         logger.exception("Unhandled exception")
-        print("\nError: Laffyhand encountered an unexpected error. Check logs/ for details.", file=sys.stderr)
+        print(
+            "\nError: Laffyhand encountered an unexpected error. Check logs/ for details.",
+            file=sys.stderr,
+        )
         sys.exit(1)

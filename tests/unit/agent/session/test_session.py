@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-import os
-import tempfile
-
 import pytest
 
 from laffyhand.agent.session import SessionManager
@@ -10,18 +7,6 @@ from laffyhand.agent.schemas import (
     AgentState, AssistantMessage, SystemMessage, ToolCallContent,
     ToolMessage, UserMessage, SessionUsage,
 )
-
-
-@pytest.fixture
-def db_path() -> str:
-    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
-        yield f.name
-    os.unlink(f.name)
-
-
-@pytest.fixture
-def manager(db_path: str) -> SessionManager:
-    return SessionManager(db_path)
 
 
 def make_messages() -> list:
@@ -35,123 +20,123 @@ def make_messages() -> list:
 
 
 class TestSessionCRUD:
-    def test_create(self, manager: SessionManager) -> None:
-        session = manager.create(cwd="/test", model="gpt-4")
+    def test_create(self, session_manager: SessionManager) -> None:
+        session = session_manager.create(cwd="/test", model="gpt-4")
         assert session.id != ""
         assert session.status == "active"
         assert session.cwd == "/test"
         assert session.model == "gpt-4"
         assert session.turn_count == 0
 
-    def test_get(self, manager: SessionManager) -> None:
-        created = manager.create()
-        fetched = manager.get(created.id)
+    def test_get(self, session_manager: SessionManager) -> None:
+        created = session_manager.create()
+        fetched = session_manager.get(created.id)
         assert fetched is not None
         assert fetched.id == created.id
 
-    def test_get_not_found(self, manager: SessionManager) -> None:
-        assert manager.get("nonexistent") is None
+    def test_get_not_found(self, session_manager: SessionManager) -> None:
+        assert session_manager.get("nonexistent") is None
 
-    def test_get_active(self, manager: SessionManager) -> None:
-        manager.create(model="gpt-4")
-        s2 = manager.create(model="gpt-5")
-        active = manager.get_active()
+    def test_get_active(self, session_manager: SessionManager) -> None:
+        session_manager.create(model="gpt-4")
+        s2 = session_manager.create(model="gpt-5")
+        active = session_manager.get_active()
         assert active is not None
         assert active.id == s2.id
 
-    def test_list_sessions(self, manager: SessionManager) -> None:
-        manager.create()
-        manager.create()
-        all_sessions = manager.list_sessions()
+    def test_list_sessions(self, session_manager: SessionManager) -> None:
+        session_manager.create()
+        session_manager.create()
+        all_sessions = session_manager.list_sessions()
         assert len(all_sessions) == 2
 
-    def test_list_with_status_filter(self, manager: SessionManager) -> None:
-        s1 = manager.create()
-        s2 = manager.create()
-        manager.complete(s2.id)
-        active = manager.list_sessions(status="active")
+    def test_list_with_status_filter(self, session_manager: SessionManager) -> None:
+        s1 = session_manager.create()
+        s2 = session_manager.create()
+        session_manager.complete(s2.id)
+        active = session_manager.list_sessions(status="active")
         assert len(active) == 1
         assert active[0].id == s1.id
 
-    def test_complete(self, manager: SessionManager) -> None:
-        session = manager.create()
-        manager.complete(session.id, summary="Done!")
-        fetched = manager.get(session.id)
+    def test_complete(self, session_manager: SessionManager) -> None:
+        session = session_manager.create()
+        session_manager.complete(session.id, summary="Done!")
+        fetched = session_manager.get(session.id)
         assert fetched is not None
         assert fetched.status == "completed"
         assert fetched.summary == "Done!"
         assert fetched.ended_at is not None
 
-    def test_archive(self, manager: SessionManager) -> None:
-        session = manager.create()
-        manager.archive(session.id)
-        fetched = manager.get(session.id)
+    def test_archive(self, session_manager: SessionManager) -> None:
+        session = session_manager.create()
+        session_manager.archive(session.id)
+        fetched = session_manager.get(session.id)
         assert fetched is not None
         assert fetched.status == "archived"
 
-    def test_delete(self, manager: SessionManager) -> None:
-        session = manager.create()
-        manager.delete(session.id)
-        assert manager.get(session.id) is None
+    def test_delete(self, session_manager: SessionManager) -> None:
+        session = session_manager.create()
+        session_manager.delete(session.id)
+        assert session_manager.get(session.id) is None
 
-    def test_update(self, manager: SessionManager) -> None:
-        session = manager.create(title="old")
+    def test_update(self, session_manager: SessionManager) -> None:
+        session = session_manager.create(title="old")
         session.title = "new"
-        manager.update(session)
-        fetched = manager.get(session.id)
+        session_manager.update(session)
+        fetched = session_manager.get(session.id)
         assert fetched is not None
         assert fetched.title == "new"
 
 
 class TestMessages:
-    def test_create_with_messages(self, manager: SessionManager) -> None:
+    def test_create_with_messages(self, session_manager: SessionManager) -> None:
         msgs = make_messages()
-        session = manager.create(messages=msgs)
+        session = session_manager.create(messages=msgs)
         assert session.message_count == len(msgs)
 
-    def test_append_messages(self, manager: SessionManager) -> None:
-        session = manager.create()
+    def test_append_messages(self, session_manager: SessionManager) -> None:
+        session = session_manager.create()
         msgs = make_messages()
-        count = manager.append_messages(session.id, msgs)
+        count = session_manager.append_messages(session.id, msgs)
         assert count == len(msgs)
 
-    def test_append_messages_incremental(self, manager: SessionManager) -> None:
-        session = manager.create()
+    def test_append_messages_incremental(self, session_manager: SessionManager) -> None:
+        session = session_manager.create()
         first = [
             SystemMessage(content="system"),
             UserMessage(content="hi"),
         ]
-        manager.append_messages(session.id, first)
+        session_manager.append_messages(session.id, first)
         second = [AssistantMessage(content="hello")]
-        manager.append_messages(session.id, first + second)
-        loaded = manager.get_messages(session.id)
+        session_manager.append_messages(session.id, first + second)
+        loaded = session_manager.get_messages(session.id)
         assert len(loaded) == 3
 
-    def test_get_messages(self, manager: SessionManager) -> None:
+    def test_get_messages(self, session_manager: SessionManager) -> None:
         msgs = make_messages()
-        session = manager.create(messages=msgs)
-        loaded = manager.get_messages(session.id)
+        session = session_manager.create(messages=msgs)
+        loaded = session_manager.get_messages(session.id)
         assert len(loaded) == len(msgs)
         assert isinstance(loaded[0], SystemMessage)
         assert isinstance(loaded[1], UserMessage)
         assert loaded[1].content == "Hello!"
 
-    def test_get_messages_with_limit(self, manager: SessionManager) -> None:
+    def test_get_messages_with_limit(self, session_manager: SessionManager) -> None:
         msgs = make_messages()
-        session = manager.create(messages=msgs)
-        loaded = manager.get_messages(session.id, limit=2)
+        session = session_manager.create(messages=msgs)
+        loaded = session_manager.get_messages(session.id, limit=2)
         assert len(loaded) == 2
 
-    def test_sync_messages(self, manager: SessionManager) -> None:
+    def test_sync_messages(self, session_manager: SessionManager) -> None:
         msgs = make_messages()
-        session = manager.create(messages=msgs)
+        session = session_manager.create(messages=msgs)
         new_msgs = [SystemMessage(content="New system.")]
-        manager.sync_messages(session.id, new_msgs)
-        loaded = manager.get_messages(session.id)
+        session_manager.sync_messages(session.id, new_msgs)
+        loaded = session_manager.get_messages(session.id)
         assert len(loaded) == 1
         assert loaded[0].content == "New system."
 
-    def test_assistant_message_with_tool_calls(self, manager: SessionManager) -> None:
+    def test_assistant_message_with_tool_calls(self, session_manager: SessionManager) -> None:
         tc = ToolCallContent(
             tool_call_id="call_1",
             tool_name="test_tool",
@@ -164,8 +149,8 @@ class TestMessages:
             ),
             ToolMessage(tool_call_id="call_1", content="Result!"),
         ]
-        session = manager.create(messages=msgs)
-        loaded = manager.get_messages(session.id)
+        session = session_manager.create(messages=msgs)
+        loaded = session_manager.get_messages(session.id)
         assert len(loaded) == 2
         assert isinstance(loaded[0], AssistantMessage)
         assert loaded[0].tool_calls is not None
@@ -176,9 +161,9 @@ class TestMessages:
 
 
 class TestStatePersistence:
-    def test_save_and_load_state(self, manager: SessionManager) -> None:
+    def test_save_and_load_state(self, session_manager: SessionManager) -> None:
         msgs = make_messages()
-        session = manager.create()
+        session = session_manager.create()
         state = AgentState(
             messages=msgs,
             turn_count=3,
@@ -190,8 +175,8 @@ class TestStatePersistence:
                 total_reasoning=10,
             ),
         )
-        manager.save_state(session.id, state)
-        loaded = manager.load_state(session.id)
+        session_manager.save_state(session.id, state)
+        loaded = session_manager.load_state(session.id)
         assert loaded is not None
         assert loaded.turn_count == 3
         assert loaded.step == 5
@@ -200,43 +185,43 @@ class TestStatePersistence:
         assert loaded.usage.total_output == 50
         assert len(loaded.messages) == len(msgs)
 
-    def test_load_nonexistent(self, manager: SessionManager) -> None:
-        assert manager.load_state("nonexistent") is None
+    def test_load_nonexistent(self, session_manager: SessionManager) -> None:
+        assert session_manager.load_state("nonexistent") is None
 
 
 class TestCompactionChain:
-    def test_chain_from_root(self, manager: SessionManager) -> None:
-        root = manager.create()
-        child = manager.create(parent_id=root.id)
-        grandchild = manager.create(parent_id=child.id)
-        ids = manager.chain(grandchild.id)
+    def test_chain_from_root(self, session_manager: SessionManager) -> None:
+        root = session_manager.create()
+        child = session_manager.create(parent_id=root.id)
+        grandchild = session_manager.create(parent_id=child.id)
+        ids = session_manager.chain(grandchild.id)
         assert ids == [grandchild.id, child.id, root.id]
 
-    def test_compression_tip(self, manager: SessionManager) -> None:
-        root = manager.create()
-        child = manager.create(parent_id=root.id)
-        grandchild = manager.create(parent_id=child.id)
-        tip = manager.get_compression_tip(root.id)
+    def test_compression_tip(self, session_manager: SessionManager) -> None:
+        root = session_manager.create()
+        child = session_manager.create(parent_id=root.id)
+        grandchild = session_manager.create(parent_id=child.id)
+        tip = session_manager.get_compression_tip(root.id)
         assert tip == grandchild.id
 
-    def test_compression_tip_no_children(self, manager: SessionManager) -> None:
-        session = manager.create()
-        tip = manager.get_compression_tip(session.id)
+    def test_compression_tip_no_children(self, session_manager: SessionManager) -> None:
+        session = session_manager.create()
+        tip = session_manager.get_compression_tip(session.id)
         assert tip == session.id
 
-    def test_compression_tip_skips_completed(self, manager: SessionManager) -> None:
-        root = manager.create()
-        child = manager.create(parent_id=root.id)
-        manager.complete(child.id)
-        tip = manager.get_compression_tip(root.id)
+    def test_compression_tip_skips_completed(self, session_manager: SessionManager) -> None:
+        root = session_manager.create()
+        child = session_manager.create(parent_id=root.id)
+        session_manager.complete(child.id)
+        tip = session_manager.get_compression_tip(root.id)
         assert tip == root.id
 
-    def test_compact_creates_child(self, manager: SessionManager) -> None:
+    def test_compact_creates_child(self, session_manager: SessionManager) -> None:
         msgs = make_messages()
-        parent = manager.create(messages=msgs)
+        parent = session_manager.create(messages=msgs)
         system = [msgs[0]]
         tail = msgs[2:]
-        child = manager.create_compacted_child(
+        child = session_manager.create_compacted_child(
             parent_id=parent.id,
             system_messages=system,
             summary_content="Summarized conversation.",
@@ -244,104 +229,104 @@ class TestCompactionChain:
         )
         assert child.parent_id == parent.id
         assert child.status == "active"
-        parent_fetched = manager.get(parent.id)
+        parent_fetched = session_manager.get(parent.id)
         assert parent_fetched is not None
         assert parent_fetched.status == "completed"
         assert parent_fetched.summary == "Summarized conversation."
-        child_msgs = manager.get_messages(child.id)
+        child_msgs = session_manager.get_messages(child.id)
         assert len(child_msgs) == len(system) + 1 + len(tail)
         assert child_msgs[1].content == "Summarized conversation."
 
 
 class TestFork:
-    def test_fork_creates_child(self, manager: SessionManager) -> None:
+    def test_fork_creates_child(self, session_manager: SessionManager) -> None:
         msgs = make_messages()
-        parent = manager.create(title="Original", messages=msgs)
-        child = manager.fork(parent.id)
+        parent = session_manager.create(title="Original", messages=msgs)
+        child = session_manager.fork(parent.id)
         assert child.fork_id == parent.id
         assert child.status == "active"
-        child_msgs = manager.get_messages(child.id)
+        child_msgs = session_manager.get_messages(child.id)
         assert len(child_msgs) == len(msgs)
         assert child_msgs[0].content == msgs[0].content
 
-    def test_fork_nonexistent(self, manager: SessionManager) -> None:
+    def test_fork_nonexistent(self, session_manager: SessionManager) -> None:
         with pytest.raises(ValueError, match="Source session not found"):
-            manager.fork("nonexistent")
+            session_manager.fork("nonexistent")
 
 
 class TestSearch:
-    def test_search_content(self, manager: SessionManager) -> None:
+    def test_search_content(self, session_manager: SessionManager) -> None:
         msgs = [
             SystemMessage(content="system"),
             UserMessage(content="What is the meaning of life?"),
             AssistantMessage(content="42"),
         ]
-        session = manager.create(messages=msgs)
-        results = manager.search("meaning")
+        session = session_manager.create(messages=msgs)
+        results = session_manager.search("meaning")
         assert len(results) >= 1
         assert results[0].id == session.id
 
-    def test_search_no_match(self, manager: SessionManager) -> None:
+    def test_search_no_match(self, session_manager: SessionManager) -> None:
         msgs = [UserMessage(content="Hello world.")]
-        manager.create(messages=msgs)
-        results = manager.search("nonexistenttermxyz")
+        session_manager.create(messages=msgs)
+        results = session_manager.search("nonexistenttermxyz")
         assert len(results) == 0
 
 
 class TestMetadata:
-    def test_metadata_roundtrip(self, manager: SessionManager) -> None:
-        session = manager.create()
+    def test_metadata_roundtrip(self, session_manager: SessionManager) -> None:
+        session = session_manager.create()
         session.metadata = {"key": "value", "nested": {"a": 1}}
-        manager.update(session)
-        fetched = manager.get(session.id)
+        session_manager.update(session)
+        fetched = session_manager.get(session.id)
         assert fetched is not None
         assert fetched.metadata == {"key": "value", "nested": {"a": 1}}
 
 
 class TestTitle:
-    def test_set_title(self, manager: SessionManager) -> None:
-        session = manager.create()
-        manager.set_title(session.id, "My Title")
-        fetched = manager.get(session.id)
+    def test_set_title(self, session_manager: SessionManager) -> None:
+        session = session_manager.create()
+        session_manager.set_title(session.id, "My Title")
+        fetched = session_manager.get(session.id)
         assert fetched is not None
         assert fetched.title == "My Title"
 
 
 class TestResolve:
-    def test_resolve_returns_state(self, manager: SessionManager) -> None:
-        session = manager.create(model="gpt-4")
+    def test_resolve_returns_state(self, session_manager: SessionManager) -> None:
+        session = session_manager.create(model="gpt-4")
         sys_msg = SystemMessage(content="system")
-        state = manager.resolve(session.id, sys_msg, context_size=128000)
+        state = session_manager.resolve(session.id, sys_msg, context_size=128000)
         assert state is not None
         assert state.session_id == session.id
         assert state.usage.context_size == 128000
         assert any(isinstance(m, SystemMessage) for m in state.messages)
 
-    def test_resolve_inserts_system_message(self, manager: SessionManager) -> None:
+    def test_resolve_inserts_system_message(self, session_manager: SessionManager) -> None:
         msgs = [UserMessage(content="hi")]
-        session = manager.create(messages=msgs)
+        session = session_manager.create(messages=msgs)
         sys_msg = SystemMessage(content="You are a helpful assistant.")
-        state = manager.resolve(session.id, sys_msg)
+        state = session_manager.resolve(session.id, sys_msg)
         assert state is not None
         assert state.messages[0].content == "You are a helpful assistant."
         assert state.messages[1].content == "hi"
 
-    def test_resolve_follows_compression_chain(self, manager: SessionManager) -> None:
-        parent = manager.create()
-        child = manager.create_compacted_child(
+    def test_resolve_follows_compression_chain(self, session_manager: SessionManager) -> None:
+        parent = session_manager.create()
+        child = session_manager.create_compacted_child(
             parent_id=parent.id,
             system_messages=[SystemMessage(content="sys")],
             summary_content="summary",
             tail_messages=[UserMessage(content="tail")],
         )
         sys_msg = SystemMessage(content="system")
-        state = manager.resolve(parent.id, sys_msg)
+        state = session_manager.resolve(parent.id, sys_msg)
         assert state is not None
         assert state.session_id == child.id
 
-    def test_resolve_nonexistent(self, manager: SessionManager) -> None:
+    def test_resolve_nonexistent(self, session_manager: SessionManager) -> None:
         sys_msg = SystemMessage(content="system")
-        result = manager.resolve("nonexistent", sys_msg)
+        result = session_manager.resolve("nonexistent", sys_msg)
         assert result is None
 
 
@@ -416,65 +401,65 @@ class TestHelpers:
 
 
 class TestAdvancedCRUD:
-    def test_complete_without_summary(self, manager: SessionManager) -> None:
-        session = manager.create()
-        manager.complete(session.id)
-        fetched = manager.get(session.id)
+    def test_complete_without_summary(self, session_manager: SessionManager) -> None:
+        session = session_manager.create()
+        session_manager.complete(session.id)
+        fetched = session_manager.get(session.id)
         assert fetched is not None
         assert fetched.status == "completed"
         assert fetched.summary is None
 
-    def test_complete_already_completed(self, manager: SessionManager) -> None:
-        session = manager.create()
-        manager.complete(session.id)
-        manager.complete(session.id)  # should not raise
-        fetched = manager.get(session.id)
+    def test_complete_already_completed(self, session_manager: SessionManager) -> None:
+        session = session_manager.create()
+        session_manager.complete(session.id)
+        session_manager.complete(session.id)  # should not raise
+        fetched = session_manager.get(session.id)
         assert fetched is not None
         assert fetched.status == "completed"
 
-    def test_delete_nonexistent(self, manager: SessionManager) -> None:
-        manager.delete("nonexistent")  # should not raise
+    def test_delete_nonexistent(self, session_manager: SessionManager) -> None:
+        session_manager.delete("nonexistent")  # should not raise
 
-    def test_get_messages_with_offset(self, manager: SessionManager) -> None:
+    def test_get_messages_with_offset(self, session_manager: SessionManager) -> None:
         msgs = [UserMessage(content=f"msg{i}") for i in range(5)]
-        session = manager.create(messages=msgs)
-        loaded = manager.get_messages(session.id, offset=2, limit=2)
+        session = session_manager.create(messages=msgs)
+        loaded = session_manager.get_messages(session.id, offset=2, limit=2)
         assert len(loaded) == 2
         assert loaded[0].content == "msg2"
 
-    def test_list_sessions_pagination(self, manager: SessionManager) -> None:
+    def test_list_sessions_pagination(self, session_manager: SessionManager) -> None:
         for i in range(5):
-            manager.create(model=f"model-{i}")
-        page1 = manager.list_sessions(limit=2)
+            session_manager.create(model=f"model-{i}")
+        page1 = session_manager.list_sessions(limit=2)
         assert len(page1) == 2
-        page2 = manager.list_sessions(limit=2, offset=2)
+        page2 = session_manager.list_sessions(limit=2, offset=2)
         assert len(page2) == 2
         assert page1[0].id != page2[0].id
 
-    def test_append_messages_error_nonexistent(self, manager: SessionManager) -> None:
+    def test_append_messages_error_nonexistent(self, session_manager: SessionManager) -> None:
         with pytest.raises(ValueError, match="Session not found"):
-            manager.append_messages("nonexistent", [UserMessage(content="hi")])
+            session_manager.append_messages("nonexistent", [UserMessage(content="hi")])
 
-    def test_sync_messages_error_nonexistent(self, manager: SessionManager) -> None:
+    def test_sync_messages_error_nonexistent(self, session_manager: SessionManager) -> None:
         with pytest.raises(ValueError, match="Session not found"):
-            manager.sync_messages("nonexistent", [])
+            session_manager.sync_messages("nonexistent", [])
 
-    def test_fork_with_custom_title(self, manager: SessionManager) -> None:
+    def test_fork_with_custom_title(self, session_manager: SessionManager) -> None:
         msgs = [UserMessage(content="hi")]
-        parent = manager.create(title="Original", messages=msgs)
-        child = manager.fork(parent.id, title="Forked")
+        parent = session_manager.create(title="Original", messages=msgs)
+        child = session_manager.fork(parent.id, title="Forked")
         assert child.title == "Forked"
         assert child.fork_id == parent.id
 
 
 class TestSchema:
-    def test_has_fts5_default(self, manager: SessionManager) -> None:
+    def test_has_fts5_default(self, session_manager: SessionManager) -> None:
         from laffyhand.agent.session.schema import has_fts5
-        assert has_fts5(manager._conn) is True
+        assert has_fts5(session_manager._conn) is True
 
-    def test_create_tables_idempotent(self, manager: SessionManager) -> None:
+    def test_create_tables_idempotent(self, session_manager: SessionManager) -> None:
         from laffyhand.agent.session.schema import create_tables
-        create_tables(manager._conn)  # should not raise
+        create_tables(session_manager._conn)  # should not raise
 
     def test_migrate_fresh_db(self, db_path: str) -> None:
         import sqlite3

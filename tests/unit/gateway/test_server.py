@@ -10,11 +10,6 @@ from laffyhand.gateway.protocol import Request
 
 
 @pytest.fixture
-def runtime():
-    return MagicMock()
-
-
-@pytest.fixture
 def transport():
     t = MagicMock()
     t.connection_id = "test-conn"

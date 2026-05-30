@@ -1,7 +1,3 @@
-from dotenv import load_dotenv
-load_dotenv()
-
-import os
 import sys
 import json
 import sqlite3
@@ -12,24 +8,26 @@ from typing import Callable, Any, Self, override
 from loguru import logger
 
 from laffyhand import setup_logging
+from laffyhand.config import load_config
 from laffyhand.agent.llm.specs import LLMProviderConfig
 
-DB_PATH = os.environ['DB_PATH']
 
 class SimpleHTTPServer(HTTPServer):
     @override
     def __init__(
-        self, 
-        server_address: tuple[str | bytes | bytearray, int] | tuple[str | bytes | bytearray, int, int, int], 
-        RequestHandlerClass: Callable[[Any, Any, Self], BaseRequestHandler], 
+        self,
+        server_address: tuple[str | bytes | bytearray, int]
+        | tuple[str | bytes | bytearray, int, int, int],
+        RequestHandlerClass: Callable[[Any, Any, Self], BaseRequestHandler],
         db_conn: sqlite3.Connection,
-        bind_and_activate: bool = True, 
+        bind_and_activate: bool = True,
     ) -> None:
         super().__init__(server_address, RequestHandlerClass, bind_and_activate)
         self.db_conn = db_conn
 
+
 class SimpleHTTPHandler(BaseHTTPRequestHandler):
-    server: SimpleHTTPServer # FIXME: 暂时找不到更好的 db 注入方法
+    server: SimpleHTTPServer
 
     def _send_json(self, status: int, data: dict | list) -> None:
         self.send_response(status)
@@ -37,7 +35,9 @@ class SimpleHTTPHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(json.dumps(data, default=str).encode())
 
-    def _safe_log(self, action: str, data: dict, safe_keys: tuple[str, ...] = ("name", "base_url")) -> str:
+    def _safe_log(
+        self, action: str, data: dict, safe_keys: tuple[str, ...] = ("name", "base_url")
+    ) -> str:
         safe = {k: v for k, v in data.items() if k in safe_keys}
         safe["action"] = action
         logger.info(f"Provider {action}: {safe}")
@@ -59,10 +59,9 @@ class SimpleHTTPHandler(BaseHTTPRequestHandler):
                 return
             try:
                 providers = [
-                    {"id": row[0], "name": row[1], 'base_url': row[2]}
-                    for row in rows
+                    {"id": row[0], "name": row[1], "base_url": row[2]} for row in rows
                 ]
-            except (TypeError, ValueError, OverflowError):
+            except TypeError, ValueError, OverflowError:
                 logger.error("Failed to serialize provider list to JSON")
                 self._send_json(500, {"error": "Failed to serialize provider data"})
                 return
@@ -70,9 +69,9 @@ class SimpleHTTPHandler(BaseHTTPRequestHandler):
         else:
             self.send_response(404)
             self.end_headers()
-    
+
     def do_POST(self):
-        content_length = int(self.headers.get('Content-Length', '0'))
+        content_length = int(self.headers.get("Content-Length", "0"))
         body = self.rfile.read(content_length)
         try:
             data = json.loads(body)
@@ -81,7 +80,7 @@ class SimpleHTTPHandler(BaseHTTPRequestHandler):
             self._send_json(400, {"error": "Invalid JSON"})
             return
         if self.path == "/echo":
-            self._send_json(200, {'Received': data})
+            self._send_json(200, {"Received": data})
         elif self.path == "/api/v1/providers":
             self._safe_log("received", data)
 
@@ -104,7 +103,9 @@ class SimpleHTTPHandler(BaseHTTPRequestHandler):
                 self._send_json(500, {"error": "Database insert failed"})
                 return
 
-            logger.info(f"Inserted provider: name={config.name}, base_url={config.base_url}")
+            logger.info(
+                f"Inserted provider: name={config.name}, base_url={config.base_url}"
+            )
             self._send_json(200, {"status": "ok"})
         else:
             self.send_response(404)
@@ -123,25 +124,35 @@ class SimpleHTTPHandler(BaseHTTPRequestHandler):
             return
         self.send_response(404)
         self.end_headers()
-            
+
+
 def init_db(db_conn: sqlite3.Connection) -> None:
-    with db_conn: # with connection 能够自动完成 commit 和 rollback
+    with db_conn:
         cursor = db_conn.cursor()
         cursor.execute(
-    """CREATE TABLE IF NOT EXISTS llm_providers (
-        id INTEGER PRIMARY KEY AUTOINCREMENT, -- LLM 提供商的唯一ID
-        name TEXT NOT NULL, -- 供人类查看的 LLM 提供商名称
-        base_url TEXT NOT NULL, -- 提供商的 base url, 一般为 xxx/v1
-        api_key TEXT NOT NULL -- 访问提供商服务的密钥 sk-xxx
-    )""")
-        
-if __name__ == "__main__":
-    setup_logging()
+            """CREATE TABLE IF NOT EXISTS llm_providers (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        base_url TEXT NOT NULL,
+        api_key TEXT NOT NULL
+    )"""
+        )
 
+
+if __name__ == "__main__":
+    config = load_config()
+    setup_logging(
+        log_dir=config.logging.dir,
+        level=config.logging.level,
+        retention=config.logging.retention_days,
+        console=config.logging.console,
+    )
+
+    db_path = config.db.path
     try:
-        db_conn = sqlite3.connect(DB_PATH, timeout=3)
+        db_conn = sqlite3.connect(db_path, timeout=3)
     except sqlite3.OperationalError:
-        logger.critical(f"Failed to connect to database at {DB_PATH}")
+        logger.critical(f"Failed to connect to database at {db_path}")
         raise
 
     try:

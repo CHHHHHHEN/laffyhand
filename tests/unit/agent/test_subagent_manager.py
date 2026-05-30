@@ -1,33 +1,18 @@
 from __future__ import annotations
 
-import os
-import tempfile
 from unittest.mock import MagicMock, AsyncMock, patch
 
 import pytest
 
 from laffyhand.agent.agent import AgentInfo
 from laffyhand.agent.schemas import (
-    AgentState, CompactionConfig, SessionUsage, SystemMessage, UserMessage,
+    AgentState, SessionUsage, SystemMessage, UserMessage,
 )
-from laffyhand.agent.session import SessionManager
 from laffyhand.agent.subagent.manager import (
     SubagentManager, SubagentResult, build_subagent_state,
 )
-from laffyhand.agent.tools.permission import PermissionManager, SubagentPermissions
+from laffyhand.agent.tools.permission import PermissionManager
 from laffyhand.agent.tools.registry import ToolRegistry
-
-
-@pytest.fixture
-def db_path():
-    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
-        yield f.name
-    os.unlink(f.name)
-
-
-@pytest.fixture
-def session_manager(db_path):
-    return SessionManager(db_path)
 
 
 @pytest.fixture

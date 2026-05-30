@@ -1,24 +1,12 @@
 from __future__ import annotations
 
 import json
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 
 from laffyhand.gateway.dispatcher import Dispatcher, RegisteredHandler
 from laffyhand.gateway.protocol import Request
-
-
-@pytest.fixture
-def runtime():
-    return MagicMock()
-
-
-@pytest.fixture
-def transport():
-    t = MagicMock()
-    t.send = AsyncMock()
-    return t
 
 
 @pytest.fixture

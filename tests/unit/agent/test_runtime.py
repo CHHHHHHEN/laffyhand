@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import os
-import tempfile
 from unittest.mock import MagicMock, AsyncMock, patch
 
 import pytest
@@ -11,20 +9,8 @@ from laffyhand.agent.runtime import AgentRuntime, MAX_SUBAGENT_DEPTH
 from laffyhand.agent.schemas import (
     AgentState, CompactionConfig, SessionUsage, SystemMessage, UserMessage,
 )
-from laffyhand.agent.session import SessionManager, TitleConfig
+from laffyhand.agent.session import TitleConfig
 from laffyhand.agent.tools.registry import ToolRegistry
-
-
-@pytest.fixture
-def db_path():
-    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
-        yield f.name
-    os.unlink(f.name)
-
-
-@pytest.fixture
-def session_manager(db_path):
-    return SessionManager(db_path)
 
 
 @pytest.fixture
