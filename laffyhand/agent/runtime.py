@@ -137,7 +137,10 @@ class AgentRuntime:
         loaded = self.session_manager.load_state(tip)
         if loaded is None:
             return False
-        loaded.usage.context_size = 0
+        # Preserve context_size from the current state so compaction
+        # continues to work after switching sessions.
+        if self._state is not None:
+            loaded.usage.context_size = self._state.usage.context_size
         self._state = loaded
         return True
 
