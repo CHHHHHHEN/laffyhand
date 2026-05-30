@@ -8,7 +8,6 @@ from laffyhand.agent.tools.file._security import (
     detect_line_ending,
     normalize_newlines,
     atomic_write,
-    BINARY_EXTENSIONS,
 )
 
 

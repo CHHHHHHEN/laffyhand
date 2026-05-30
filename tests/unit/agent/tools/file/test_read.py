@@ -174,3 +174,23 @@ class TestReadTool(unittest.TestCase):
             r = asyncio.run(tool.run({"file_path": str(f)}))
         self.assertIn("consecutively", r.lower())
         self.assertIn("different approach", r.lower())
+
+    # ─── large file warning ────────────────────────────────
+
+    def test_read_large_file_warning(self):
+        chunk = "x" * 1024 * 100
+        content = (chunk + "\n") * 6
+        f = self.root / "large.txt"
+        f.write_text(content)
+        tool = ReadTool()
+        result = asyncio.run(tool.run({"file_path": str(f)}))
+        self.assertIn("File is large", result)
+
+    # ─── directory offset validation ──────────────────────
+
+    def test_read_directory_offset_out_of_range(self):
+        tool = ReadTool()
+        result = asyncio.run(tool.run({
+            "file_path": str(self.root), "offset": 100,
+        }))
+        self.assertIn("out of range", result.lower())

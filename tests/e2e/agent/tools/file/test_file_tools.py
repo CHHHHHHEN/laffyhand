@@ -224,3 +224,33 @@ class TestFileToolsE2E(unittest.TestCase):
         # Verify line ending preserved (LF)
         raw_after = (self.root / "crlf.txt").read_bytes()
         self.assertEqual(raw_after, b"modified\nline2\n")
+
+    # ─── workflow: binary file rejected across tools ──────
+
+    def test_binary_file_rejected_across_tools(self):
+        write_tool = WriteTool()
+        read_tool = ReadTool()
+
+        asyncio.run(write_tool.run({
+            "file_path": str(self.root / "data.zip"),
+            "content": "fake zip content",
+        }))
+        read_result = asyncio.run(read_tool.run({
+            "file_path": str(self.root / "data.zip"),
+        }))
+        self.assertIn("binary", read_result.lower())
+
+    # ─── workflow: grep skips oversized files ─────────────
+
+    def test_grep_skips_large_file(self):
+        chunk = "x" * 200_000
+        content = (chunk + "\n") * 6
+        (self.root / "huge.txt").write_text(content)
+        (self.root / "small.txt").write_text("match\n")
+        grep_tool = GrepTool()
+        result = asyncio.run(grep_tool.run({
+            "pattern": "match",
+            "path": str(self.root),
+        }))
+        self.assertIn("small.txt", result)
+        self.assertNotIn("huge.txt", result)

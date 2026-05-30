@@ -1,5 +1,6 @@
 import asyncio
 import unittest
+from unittest import mock
 import tempfile
 from pathlib import Path
 from laffyhand.agent.tools.file.grep import GrepTool
@@ -111,3 +112,48 @@ class TestGrepTool(unittest.TestCase):
         self.assertEqual(len(lines), 2)
         self.assertIn("2", lines[0])
         self.assertIn("1", lines[1])
+
+    @mock.patch("laffyhand.agent.tools.file.grep.rg_available", return_value=False)
+    def test_grep_python_fallback_content(self, mock_rg):
+        (self.root / "a.py").write_text("foo\nbar\n")
+        (self.root / "b.py").write_text("foo\nbaz\n")
+        tool = GrepTool()
+        result = asyncio.run(tool.run({
+            "pattern": "foo", "path": str(self.root),
+            "include": "*.py",
+        }))
+        self.assertIn("a.py", result)
+        self.assertIn("b.py", result)
+
+    @mock.patch("laffyhand.agent.tools.file.grep.rg_available", return_value=False)
+    def test_grep_python_fallback_files_only(self, mock_rg):
+        (self.root / "a.py").write_text("foo")
+        (self.root / "b.py").write_text("bar")
+        tool = GrepTool()
+        result = asyncio.run(tool.run({
+            "pattern": "foo", "path": str(self.root),
+            "output_mode": "files_only",
+        }))
+        self.assertIn("a.py", result)
+        self.assertNotIn("b.py", result)
+
+    @mock.patch("laffyhand.agent.tools.file.grep.rg_available", return_value=False)
+    def test_grep_python_fallback_count(self, mock_rg):
+        (self.root / "a.py").write_text("foo\nfoo\n")
+        (self.root / "b.py").write_text("foo")
+        tool = GrepTool()
+        result = asyncio.run(tool.run({
+            "pattern": "foo", "path": str(self.root),
+            "output_mode": "count",
+        }))
+        self.assertIn("2", result)
+        self.assertIn("1", result)
+
+    @mock.patch("laffyhand.agent.tools.file.grep.rg_available", return_value=False)
+    def test_grep_python_fallback_no_match(self, mock_rg):
+        (self.root / "test.py").write_text("hello")
+        tool = GrepTool()
+        result = asyncio.run(tool.run({
+            "pattern": "zzz", "path": str(self.root),
+        }))
+        self.assertIn("No matches", result)
