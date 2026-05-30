@@ -14,8 +14,9 @@ from laffyhand.agent.schemas import (
 )
 from laffyhand.gateway.protocol import (
     INITIALIZE, SHUTDOWN, SESSION_CREATE, SESSION_LIST, SESSION_LOAD,
-    SESSION_DELETE, SESSION_FORK, CHAT, CHAT_STREAM,
-    CHAT_CANCEL, TOOLS_LIST, Notification,
+    SESSION_DELETE, SESSION_FORK, SESSION_SEARCH, SESSION_SET_TITLE,
+    SESSION_GENERATE_TITLE, SESSION_ARCHIVE, SUBAGENT_LIST_ACTIVE,
+    USAGE_GET, CHAT, CHAT_STREAM, CHAT_CANCEL, TOOLS_LIST, Notification,
 )
 
 if TYPE_CHECKING:
@@ -143,6 +144,8 @@ async def handle_session_list(
                 "title": s.title,
                 "message_count": s.message_count,
                 "turn_count": s.turn_count,
+                "input_tokens": s.input_tokens,
+                "output_tokens": s.output_tokens,
                 "created_at": s.created_at.isoformat(),
                 "updated_at": s.updated_at.isoformat(),
             }
@@ -393,6 +396,114 @@ async def _ensure_session(
     return session.id
 
 
+async def handle_session_search(
+    runtime: AgentRuntime,
+    params: dict[str, Any],
+    transport: Transport,
+    _request_id: str | int | None,
+    conn_id: str,
+) -> dict[str, Any]:
+    query: str = params.get("query", "")
+    if not query:
+        raise ValueError("query is required")
+    limit = params.get("limit", 20)
+    sessions = runtime.session_manager.search(query, limit=limit)
+    return {
+        "sessions": [
+            {
+                "id": s.id,
+                "status": s.status,
+                "title": s.title,
+                "message_count": s.message_count,
+                "turn_count": s.turn_count,
+                "input_tokens": s.input_tokens,
+                "output_tokens": s.output_tokens,
+                "created_at": s.created_at.isoformat(),
+                "updated_at": s.updated_at.isoformat(),
+            }
+            for s in sessions
+        ],
+    }
+
+
+async def handle_session_set_title(
+    runtime: AgentRuntime,
+    params: dict[str, Any],
+    transport: Transport,
+    _request_id: str | int | None,
+    conn_id: str,
+) -> dict[str, Any]:
+    title: str = params.get("title", "")
+    if not title:
+        raise ValueError("title is required")
+    session_id: str | None = params.get("session_id") or runtime.current_session_id
+    if not session_id:
+        raise ValueError("No active session")
+    runtime.session_manager.set_title(session_id, title)
+    return {"status": "ok", "session_id": session_id, "title": title}
+
+
+async def handle_session_generate_title(
+    runtime: AgentRuntime,
+    params: dict[str, Any],
+    transport: Transport,
+    _request_id: str | int | None,
+    conn_id: str,
+) -> dict[str, Any]:
+    title = await runtime.generate_title_for_current()
+    return {"title": title}
+
+
+async def handle_session_archive(
+    runtime: AgentRuntime,
+    params: dict[str, Any],
+    transport: Transport,
+    _request_id: str | int | None,
+    conn_id: str,
+) -> dict[str, Any]:
+    session_id: str = params.get("session_id") or runtime.current_session_id or ""
+    if not session_id:
+        raise ValueError("session_id is required")
+    runtime.session_manager.archive(session_id)
+    return {"status": "archived", "session_id": session_id}
+
+
+async def handle_subagent_list_active(
+    runtime: AgentRuntime,
+    params: dict[str, Any],
+    transport: Transport,
+    _request_id: str | int | None,
+    conn_id: str,
+) -> dict[str, Any]:
+    session_id: str | None = runtime.current_session_id
+    if not session_id:
+        return {"subagents": []}
+    active = runtime.subagent_manager.list_active(session_id)
+    return {"subagents": active}
+
+
+async def handle_usage_get(
+    runtime: AgentRuntime,
+    params: dict[str, Any],
+    transport: Transport,
+    _request_id: str | int | None,
+    conn_id: str,
+) -> dict[str, Any]:
+    if runtime.state is None:
+        return {"usage": None, "session_id": None}
+    usage = runtime.state.usage
+    return {
+        "usage": {
+            "total_input": usage.total_input,
+            "total_output": usage.total_output,
+            "total_reasoning": usage.total_reasoning,
+            "total_cache_read": usage.total_cache_read,
+            "context_size": usage.context_size,
+        },
+        "session_id": runtime.current_session_id,
+    }
+
+
 def register_all_handlers(dispatcher: Dispatcher) -> None:
     dispatcher.register(INITIALIZE, handle_initialize)
     dispatcher.register(SHUTDOWN, handle_shutdown)
@@ -405,3 +516,9 @@ def register_all_handlers(dispatcher: Dispatcher) -> None:
     dispatcher.register(CHAT_STREAM, handle_chat_stream, streaming=True)
     dispatcher.register(CHAT_CANCEL, handle_chat_cancel)
     dispatcher.register(TOOLS_LIST, handle_tools_list)
+    dispatcher.register(SESSION_SEARCH, handle_session_search)
+    dispatcher.register(SESSION_SET_TITLE, handle_session_set_title)
+    dispatcher.register(SESSION_GENERATE_TITLE, handle_session_generate_title)
+    dispatcher.register(SESSION_ARCHIVE, handle_session_archive)
+    dispatcher.register(SUBAGENT_LIST_ACTIVE, handle_subagent_list_active)
+    dispatcher.register(USAGE_GET, handle_usage_get)

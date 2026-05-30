@@ -25,6 +25,12 @@ CHAT = "chat"
 CHAT_STREAM = "chat/stream"
 CHAT_CANCEL = "chat/cancel"
 TOOLS_LIST = "tools/list"
+SESSION_SEARCH = "session/search"
+SESSION_SET_TITLE = "session/set_title"
+SESSION_GENERATE_TITLE = "session/generate_title"
+SESSION_ARCHIVE = "session/archive"
+SUBAGENT_LIST_ACTIVE = "subagent/list_active"
+USAGE_GET = "usage/get"
 
 
 @dataclass

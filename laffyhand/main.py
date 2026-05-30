@@ -2,17 +2,13 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import os
 import sys
 
 from loguru import logger
 from laffyhand import setup_logging
 from laffyhand.config import LaffyConfig, load_config
 from laffyhand.agent.schemas import (
-    AgentState,
     CompactionConfig,
-    SystemMessage,
-    UserMessage,
     SessionUsage,
 )
 from laffyhand.agent.llm.builders import deepseek_route
@@ -20,6 +16,9 @@ from laffyhand.agent.llm.facade import LLM
 from laffyhand.agent.session import SessionManager, TitleConfig
 from laffyhand.agent.runtime import AgentRuntime
 from laffyhand.agent.mcp import MCPService
+from laffyhand.gateway.client import GatewayClient
+from laffyhand.gateway.server import GatewayServer
+from laffyhand.gateway.transport import InProcessTransport
 
 SYSTEM_PROMPT = """
 ---
@@ -90,64 +89,19 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def print_sessions(sessions, session_manager: SessionManager | None = None) -> None:
+def print_sessions(sessions: list[dict]) -> None:
     if not sessions:
         print("No sessions.")
         return
     print(f"{'ID':<30} {'Status':<12} {'Title':<40} {'Messages':<8} {'Cost':<8}")
     print("-" * 100)
     for s in sessions:
-        title = (s.title or "(untitled)")[:40]
-        cost = s.input_tokens + s.output_tokens
+        title = (s.get("title") or "(untitled)")[:40]
+        cost = (s.get("input_tokens") or 0) + (s.get("output_tokens") or 0)
         cost_str = f"{cost // 1000}k" if cost > 1000 else str(cost)
         print(
-            f"{s.id:<30} {s.status:<12} {title:<40} {s.message_count:<8} {cost_str:<8}"
+            f"{s['id']:<30} {s['status']:<12} {title:<40} {s['message_count']:<8} {cost_str:<8}"
         )
-
-
-async def resolve_session(
-    args: argparse.Namespace,
-    session_manager: SessionManager,
-    system_message: SystemMessage,
-    config: LaffyConfig,
-) -> AgentState | None:
-    context_size = config.llm.context_size
-    if args.session:
-        loaded = session_manager.resolve(
-            args.session,
-            system_message,
-            context_size,
-        )
-        if loaded is not None:
-            logger.info(
-                f"Loaded session {args.session} ({len(loaded.messages)} messages)"
-            )
-            return loaded
-        logger.error(f"Session not found: {args.session}")
-        sys.exit(1)
-
-    if args.resume:
-        last_active = session_manager.get_active()
-        if last_active is not None:
-            loaded = session_manager.resolve(
-                last_active.id,
-                system_message,
-                context_size,
-            )
-            if loaded is not None:
-                logger.info(
-                    f"Resumed session {loaded.session_id} ({len(loaded.messages)} messages)"
-                )
-                return loaded
-        logger.info("No active session to resume, starting new")
-
-    session = session_manager.create(cwd=os.getcwd(), model=config.llm.model_name)
-    logger.info(f"New session created: {session.id}")
-    return AgentState(
-        messages=[system_message],
-        session_id=session.id,
-        usage=SessionUsage(context_size=context_size),
-    )
 
 
 async def create_runtime(config: LaffyConfig) -> AgentRuntime:
@@ -279,34 +233,60 @@ async def main():
 
     runtime = await create_runtime(config)
 
+    server_transport, client_transport = InProcessTransport.create_pair()
+    gateway = GatewayServer(runtime, server_transport)
+    gateway_task = asyncio.create_task(gateway.serve())
+
+    client = GatewayClient(client_transport)
+    await client.initialize()
+
     if args.list:
-        sessions = runtime.session_manager.list_sessions(limit=20)
+        sessions = await client.list_sessions(limit=20)
         print_sessions(sessions)
-        await runtime.shutdown()
+        await _shutdown_gateway(client, gateway_task)
         await _close_stdin_reader()
         return
 
-    system_content = runtime.build_system_prompt(SYSTEM_PROMPT)
-    system_message = SystemMessage(content=system_content)
+    # Resolve or create session
+    is_resumed = False
+    if args.session:
+        try:
+            info = await client.load_session(args.session)
+            logger.info(
+                f"Loaded session {args.session} ({info.get('messages_count', 0)} messages)"
+            )
+            is_resumed = info.get("turn_count", 0) > 0
+        except Exception:
+            logger.error(f"Session not found: {args.session}")
+            await _shutdown_gateway(client, gateway_task)
+            await _close_stdin_reader()
+            sys.exit(1)
+    elif args.resume:
+        sessions = await client.list_sessions(status="active", limit=1)
+        if sessions:
+            info = await client.load_session(sessions[0]["id"])
+            logger.info(
+                f"Resumed session {sessions[0]['id']} ({info.get('messages_count', 0)} messages)"
+            )
+            is_resumed = info.get("turn_count", 0) > 0
+        else:
+            session_id = await client.create_session(system_prompt=SYSTEM_PROMPT)
+            logger.info(f"No active session to resume, starting new: {session_id}")
+    else:
+        session_id = await client.create_session(system_prompt=SYSTEM_PROMPT)
+        logger.info(f"New session created: {session_id}")
 
-    state = await resolve_session(args, runtime.session_manager, system_message, config)
-    if state is None:
-        await runtime.shutdown()
-        await _close_stdin_reader()
-        return
-    runtime.state = state
+    print(f"\nSession: {runtime.current_session_id}")
+    if is_resumed:
+        print("Resuming conversation")
 
-    print(f"\nSession: {runtime.state.session_id}")
-    if runtime.state.turn_count > 0:
-        print(f"Resuming conversation ({runtime.state.turn_count} previous turns)")
+    title_mode = config.agent.title_mode
+    is_first_turn = not is_resumed
 
     try:
         while True:
-            if (
-                runtime.state
-                and runtime.subagent_manager.active_count(runtime.state.session_id) > 0
-            ):
-                active = runtime.subagent_manager.list_active(runtime.state.session_id)
+            active = await client.list_active_subagents()
+            if active:
                 for sa in active:
                     print(
                         f"  ⚙  subagent [{sa['agent_type']}] {sa['task_id'][:8]} — {sa['status']}"
@@ -323,7 +303,7 @@ async def main():
                 break
 
             if user_prompt.startswith("/"):
-                handled = await _handle_command(user_prompt, runtime)
+                handled = await _handle_command(user_prompt, client)
                 if handled:
                     continue
                 cmd_name = user_prompt.split()[0]
@@ -331,53 +311,53 @@ async def main():
                 print(f"Unknown command: {cmd_name}")
                 continue
 
-            if runtime.state is None:
-                continue
-
-            runtime.state.step = 0
-            user_message = UserMessage(content=user_prompt)
-            runtime.state.messages.append(user_message)
-
-            if runtime.state.session_id:
-                runtime.session_manager.append_messages(
-                    runtime.state.session_id, runtime.state.messages
-                )
-
-            if runtime.state.turn_count == 0 and runtime.title_config.mode in (
-                "on_create",
-                "auto",
-            ):
-                gen_title = await runtime.generate_title_for_current()
-                if gen_title:
-                    logger.info(f"Generated session title: {gen_title}")
-
-            async for event in runtime.run_agent_turn():
+            async for event in client.chat_stream(user_prompt):
                 if (
                     event.type == "content"
                     and event.finish_reason is not None
                     and event.usage
                 ):
+                    usage_info = await client.get_usage()
+                    session_usage = SessionUsage(**usage_info["usage"])
                     print()
-                    print(runtime.state.usage.display(event.usage))
+                    print(session_usage.display(event.usage))
                 else:
                     print(event.data, end="")
             print()
+
+            if is_first_turn and title_mode in ("on_create", "auto"):
+                gen_title = await client.generate_session_title()
+                if gen_title:
+                    logger.info(f"Generated session title: {gen_title}")
+            is_first_turn = False
     finally:
+        await _shutdown_gateway(client, gateway_task)
         await runtime.shutdown()
         await _close_stdin_reader()
 
 
+async def _shutdown_gateway(client: GatewayClient, gateway_task: asyncio.Task) -> None:
+    try:
+        await client.shutdown()
+    except Exception:
+        pass
+    try:
+        await gateway_task
+    except (Exception, asyncio.CancelledError):
+        pass
+
+
 async def handle_repl_command(
     cmd: str,
-    runtime: AgentRuntime,
+    client: GatewayClient,
 ) -> bool:
     parts = cmd.strip().split(maxsplit=1)
     command = parts[0].lower()
     arg = parts[1] if len(parts) > 1 else ""
 
     if command == "/sessions":
-        sessions = runtime.session_manager.list_sessions(limit=20)
-        print_sessions(sessions, runtime.session_manager)
+        sessions = await client.list_sessions(limit=20)
+        print_sessions(sessions)
         logger.info(f"Listed {len(sessions)} sessions")
         return True
 
@@ -385,33 +365,27 @@ async def handle_repl_command(
         if not arg:
             print("Usage: /session <id>")
             return True
-        if runtime.switch_session(arg):
+        try:
+            await client.load_session(arg)
             logger.info(f"Switched to session: {arg}")
             print(f"Switched to session: {arg}")
-        else:
+        except Exception:
             print(f"Session not found: {arg}")
         return True
 
     if command == "/new":
-        system_prompt = SystemMessage(
-            content=runtime.build_system_prompt(SYSTEM_PROMPT)
-        )
-        runtime.new_session(system_prompt)
-        assert runtime.state is not None
-        logger.info(f"New session started: {runtime.state.session_id}")
-        print(f"New session started: {runtime.state.session_id}")
+        session_id = await client.create_session(system_prompt=SYSTEM_PROMPT)
+        logger.info(f"New session started: {session_id}")
+        print(f"New session started: {session_id}")
         return True
 
     if command == "/title":
         if arg:
-            if runtime.state and runtime.state.session_id:
-                runtime.session_manager.set_title(runtime.state.session_id, arg)
-                logger.info(f"Title set for {runtime.state.session_id}: {arg}")
-                print(f"Title set to: {arg}")
-            else:
-                print("No active session.")
-        elif runtime.state and runtime.state.session_id:
-            gen_title = await runtime.generate_title_for_current()
+            await client.set_session_title(title=arg)
+            logger.info(f"Title set to: {arg}")
+            print(f"Title set to: {arg}")
+        else:
+            gen_title = await client.generate_session_title()
             if gen_title:
                 print(f"Generated title: {gen_title}")
             else:
@@ -419,20 +393,19 @@ async def handle_repl_command(
         return True
 
     if command == "/fork":
-        child_id = runtime.fork_session()
-        if child_id:
+        try:
+            child_id = await client.fork_session()
             logger.info(f"Forked to new session: {child_id}")
             print(f"Forked to new session: {child_id}")
-        else:
+        except Exception:
             print("No active session to fork.")
         return True
 
     if command == "/archive":
-        target = arg or (runtime.state.session_id if runtime.state else "")
-        if target:
-            runtime.session_manager.archive(target)
-            logger.info(f"Archived session: {target}")
-            print(f"Archived session: {target}")
+        target = arg
+        await client.archive_session(session_id=target)
+        logger.info(f"Archived session: {target or '(current)'}")
+        print(f"Archived session: {target or '(current)'}")
         return True
 
     if command == "/search":
@@ -441,12 +414,12 @@ async def handle_repl_command(
             print("  Search session messages. Supports FTS5 syntax if available")
             print("  (quotes for phrase, AND/OR, prefix*, etc.)")
             return True
-        sessions = runtime.session_manager.search(arg, limit=20)
+        sessions = await client.search_sessions(arg, limit=20)
         if not sessions:
             print(f"No sessions found for query: {arg}")
         else:
             print(f"Found {len(sessions)} session(s) for query: {arg}")
-            print_sessions(sessions, runtime.session_manager)
+            print_sessions(sessions)
         logger.info(f"Searched for '{arg}', found {len(sessions)} session(s)")
         return True
 

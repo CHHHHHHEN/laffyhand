@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-import argparse
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from laffyhand.agent.runtime import AgentRuntime
 from laffyhand.agent.session import SessionManager, TitleConfig
 from laffyhand.agent.schemas import (
     AgentState,
@@ -20,222 +18,194 @@ from laffyhand.agent.schemas import (
 )
 
 
-@pytest.fixture
-def runtime(session_manager) -> AgentRuntime:
-    rt = AgentRuntime(
-        llm=MagicMock(),
-        session_manager=session_manager,
-        mcp_service=MagicMock(),
-        compaction_config=CompactionConfig(),
-        title_config=TitleConfig(mode="off"),
-        max_steps=50,
-        max_subagents=2,
-        db_path=":memory:",
-        context_size=128000,
-    )
-    init_state = AgentState(
-        messages=[SystemMessage(content="system")],
-        session_id="",
-        usage=SessionUsage(context_size=128000),
-    )
-    rt._states[""] = init_state
-    rt._session_id = ""
-    return rt
-
-
-def make_messages():
-    return [
-        SystemMessage(content="system"),
-        UserMessage(content="Hello!"),
-        AssistantMessage(content="Hi there!"),
-    ]
-
-
-# ── resolve_session ──────────────────────────────────────────
-
-
-class TestResolveSession:
-    @pytest.mark.anyio
-    async def test_creates_new_session(
-        self, session_manager, runtime_config
-    ) -> None:
-        from laffyhand.main import resolve_session
-
-        args = argparse.Namespace(session=None, resume=False, list=False)
-        sys_msg = SystemMessage(content="system")
-        state = await resolve_session(args, session_manager, sys_msg, runtime_config)
-        assert state.session_id is not None
-        assert len(state.messages) == 1
-        assert state.messages[0].content == "system"
-
-    @pytest.mark.anyio
-    async def test_resume_found(
-        self, session_manager, runtime_config
-    ) -> None:
-        from laffyhand.main import resolve_session
-
-        session = session_manager.create()
-        args = argparse.Namespace(session=None, resume=True, list=False)
-        sys_msg = SystemMessage(content="system")
-        state = await resolve_session(args, session_manager, sys_msg, runtime_config)
-        assert state.session_id == session.id
-
-    @pytest.mark.anyio
-    async def test_resume_not_found_creates_new(
-        self, session_manager, runtime_config
-    ) -> None:
-        from laffyhand.main import resolve_session
-
-        args = argparse.Namespace(session=None, resume=True, list=False)
-        sys_msg = SystemMessage(content="system")
-        state = await resolve_session(args, session_manager, sys_msg, runtime_config)
-        assert state.session_id is not None
-
-    @pytest.mark.anyio
-    async def test_session_specified_found(
-        self, session_manager, runtime_config
-    ) -> None:
-        from laffyhand.main import resolve_session
-
-        session = session_manager.create()
-        args = argparse.Namespace(session=session.id, resume=False, list=False)
-        sys_msg = SystemMessage(content="system")
-        state = await resolve_session(args, session_manager, sys_msg, runtime_config)
-        assert state.session_id == session.id
-
-    @pytest.mark.anyio
-    async def test_session_specified_not_found_exits(
-        self, session_manager, runtime_config
-    ) -> None:
-        from laffyhand.main import resolve_session
-
-        args = argparse.Namespace(session="nonexistent", resume=False, list=False)
-        sys_msg = SystemMessage(content="system")
-        with pytest.raises(SystemExit):
-            await resolve_session(args, session_manager, sys_msg, runtime_config)
-
-
 # ── handle_repl_command ──────────────────────────────────────
+
+
+@pytest.fixture
+def mock_client() -> AsyncMock:
+    client = AsyncMock()
+    client.list_sessions.return_value = [
+        {"id": "sess-1", "status": "active", "title": "Test", "message_count": 5,
+         "turn_count": 3, "input_tokens": 100, "output_tokens": 200,
+         "created_at": "2024-01-01T00:00:00", "updated_at": "2024-01-01T00:00:00"},
+        {"id": "sess-2", "status": "active", "title": "", "message_count": 2,
+         "turn_count": 1, "input_tokens": 50, "output_tokens": 75,
+         "created_at": "2024-01-02T00:00:00", "updated_at": "2024-01-02T00:00:00"},
+    ]
+    client.load_session.return_value = {"session_id": "sess-1", "messages_count": 5, "turn_count": 3}
+    client.create_session.return_value = "new-sess-id"
+    client.fork_session.return_value = "forked-sess-id"
+    client.generate_session_title.return_value = "Generated Title"
+    client.search_sessions.return_value = [
+        {"id": "sess-1", "status": "active", "title": "Found", "message_count": 3,
+         "turn_count": 2, "input_tokens": 60, "output_tokens": 120,
+         "created_at": "2024-01-01T00:00:00", "updated_at": "2024-01-01T00:00:00"},
+    ]
+    return client
 
 
 class TestHandleReplCommand:
     @pytest.mark.anyio
-    async def test_sessions(self, runtime: AgentRuntime, capsys) -> None:
+    async def test_sessions(self, mock_client: AsyncMock, capsys) -> None:
         from laffyhand.main import handle_repl_command
 
-        runtime.session_manager.create()
-        runtime.session_manager.create()
-        result = await handle_repl_command("/sessions", runtime)
+        result = await handle_repl_command("/sessions", mock_client)
         assert result is True
+        mock_client.list_sessions.assert_called_once_with(limit=20)
         captured = capsys.readouterr()
-        assert "No sessions." not in captured.out
+        assert "sess-1" in captured.out
+        assert "sess-2" in captured.out
 
     @pytest.mark.anyio
-    async def test_sessions_empty(self, runtime: AgentRuntime, capsys) -> None:
+    async def test_sessions_empty(self, mock_client: AsyncMock, capsys) -> None:
         from laffyhand.main import handle_repl_command
 
-        result = await handle_repl_command("/sessions", runtime)
+        mock_client.list_sessions.return_value = []
+        result = await handle_repl_command("/sessions", mock_client)
         assert result is True
         captured = capsys.readouterr()
         assert "No sessions." in captured.out
 
     @pytest.mark.anyio
-    async def test_session_switch(self, runtime: AgentRuntime, capsys) -> None:
+    async def test_session_switch(self, mock_client: AsyncMock, capsys) -> None:
         from laffyhand.main import handle_repl_command
 
-        msgs = [UserMessage(content="test")]
-        session = runtime.session_manager.create(messages=msgs)
-        result = await handle_repl_command(f"/session {session.id}", runtime)
+        result = await handle_repl_command("/session sess-1", mock_client)
         assert result is True
-        assert runtime.state.session_id == session.id
+        mock_client.load_session.assert_called_once_with("sess-1")
+        captured = capsys.readouterr()
+        assert "Switched to session: sess-1" in captured.out
 
     @pytest.mark.anyio
-    async def test_session_no_arg(self, runtime: AgentRuntime, capsys) -> None:
+    async def test_session_no_arg(self, mock_client: AsyncMock, capsys) -> None:
         from laffyhand.main import handle_repl_command
 
-        result = await handle_repl_command("/session", runtime)
+        result = await handle_repl_command("/session", mock_client)
         assert result is True
         captured = capsys.readouterr()
         assert "Usage:" in captured.out
 
     @pytest.mark.anyio
-    async def test_session_not_found(self, runtime: AgentRuntime, capsys) -> None:
+    async def test_session_not_found(self, mock_client: AsyncMock, capsys) -> None:
         from laffyhand.main import handle_repl_command
 
-        result = await handle_repl_command("/session nonexistent", runtime)
+        mock_client.load_session.side_effect = Exception("not found")
+        result = await handle_repl_command("/session nonexistent", mock_client)
         assert result is True
         captured = capsys.readouterr()
         assert "not found" in captured.out
 
     @pytest.mark.anyio
-    async def test_new(self, runtime: AgentRuntime, capsys) -> None:
+    async def test_new(self, mock_client: AsyncMock, capsys) -> None:
         from laffyhand.main import handle_repl_command
 
-        runtime.state.session_id = "some-old-session"
-        result = await handle_repl_command("/new", runtime)
+        result = await handle_repl_command("/new", mock_client)
         assert result is True
-        assert runtime.state.session_id != "some-old-session"
-        assert runtime.state.turn_count == 0
+        mock_client.create_session.assert_called_once()
+        captured = capsys.readouterr()
+        assert "new-sess-id" in captured.out
 
     @pytest.mark.anyio
-    async def test_title_set(self, runtime: AgentRuntime, capsys) -> None:
+    async def test_title_set(self, mock_client: AsyncMock, capsys) -> None:
         from laffyhand.main import handle_repl_command
 
-        session = runtime.session_manager.create()
-        runtime.state.session_id = session.id
-        result = await handle_repl_command("/title My Title", runtime)
+        result = await handle_repl_command("/title My Title", mock_client)
         assert result is True
-        fetched = runtime.session_manager.get(session.id)
-        assert fetched is not None
-        assert fetched.title == "My Title"
+        mock_client.set_session_title.assert_called_once_with(title="My Title")
+        captured = capsys.readouterr()
+        assert "My Title" in captured.out
 
     @pytest.mark.anyio
-    async def test_title_no_active(self, runtime: AgentRuntime, capsys) -> None:
+    async def test_title_generate(self, mock_client: AsyncMock, capsys) -> None:
         from laffyhand.main import handle_repl_command
 
-        runtime.state.session_id = ""
-        result = await handle_repl_command("/title MyTitle", runtime)
+        result = await handle_repl_command("/title", mock_client)
+        assert result is True
+        mock_client.generate_session_title.assert_called_once()
+        captured = capsys.readouterr()
+        assert "Generated Title" in captured.out
+
+    @pytest.mark.anyio
+    async def test_title_generate_fails(self, mock_client: AsyncMock, capsys) -> None:
+        from laffyhand.main import handle_repl_command
+
+        mock_client.generate_session_title.return_value = None
+        result = await handle_repl_command("/title", mock_client)
         assert result is True
         captured = capsys.readouterr()
-        assert "No active session" in captured.out
+        assert "Could not generate" in captured.out
 
     @pytest.mark.anyio
-    async def test_fork(self, runtime: AgentRuntime, capsys) -> None:
+    async def test_fork(self, mock_client: AsyncMock, capsys) -> None:
         from laffyhand.main import handle_repl_command
 
-        session = runtime.session_manager.create(messages=[UserMessage(content="hi")])
-        runtime.state.session_id = session.id
-        result = await handle_repl_command("/fork", runtime)
+        result = await handle_repl_command("/fork", mock_client)
         assert result is True
-        assert runtime.state.session_id != session.id
+        mock_client.fork_session.assert_called_once()
+        captured = capsys.readouterr()
+        assert "forked-sess-id" in captured.out
 
     @pytest.mark.anyio
-    async def test_fork_no_active(self, runtime: AgentRuntime, capsys) -> None:
+    async def test_fork_no_active(self, mock_client: AsyncMock, capsys) -> None:
         from laffyhand.main import handle_repl_command
 
-        runtime.state.session_id = ""
-        result = await handle_repl_command("/fork", runtime)
+        mock_client.fork_session.side_effect = Exception("No active session")
+        result = await handle_repl_command("/fork", mock_client)
         assert result is True
         captured = capsys.readouterr()
         assert "No active" in captured.out
 
     @pytest.mark.anyio
-    async def test_archive(self, runtime: AgentRuntime, capsys) -> None:
+    async def test_archive(self, mock_client: AsyncMock, capsys) -> None:
         from laffyhand.main import handle_repl_command
 
-        session = runtime.session_manager.create()
-        runtime.state.session_id = session.id
-        result = await handle_repl_command("/archive", runtime)
+        result = await handle_repl_command("/archive", mock_client)
         assert result is True
-        fetched = runtime.session_manager.get(session.id)
-        assert fetched is not None
-        assert fetched.status == "archived"
+        mock_client.archive_session.assert_called_once_with(session_id="")
 
     @pytest.mark.anyio
-    async def test_unknown_command(self, runtime: AgentRuntime) -> None:
+    async def test_archive_with_id(self, mock_client: AsyncMock, capsys) -> None:
         from laffyhand.main import handle_repl_command
 
-        result = await handle_repl_command("/unknown", runtime)
+        result = await handle_repl_command("/archive some-id", mock_client)
+        assert result is True
+        mock_client.archive_session.assert_called_once_with(session_id="some-id")
+
+    @pytest.mark.anyio
+    async def test_search(self, mock_client: AsyncMock, capsys) -> None:
+        from laffyhand.main import handle_repl_command
+
+        result = await handle_repl_command("/search test", mock_client)
+        assert result is True
+        mock_client.search_sessions.assert_called_once_with("test", limit=20)
+        captured = capsys.readouterr()
+        assert "Found 1" in captured.out
+        assert "Found" in captured.out
+
+    @pytest.mark.anyio
+    async def test_search_no_query(self, mock_client: AsyncMock, capsys) -> None:
+        from laffyhand.main import handle_repl_command
+
+        result = await handle_repl_command("/search", mock_client)
+        assert result is True
+        captured = capsys.readouterr()
+        assert "Usage:" in captured.out
+
+    @pytest.mark.anyio
+    async def test_search_no_results(self, mock_client: AsyncMock, capsys) -> None:
+        from laffyhand.main import handle_repl_command
+
+        mock_client.search_sessions.return_value = []
+        result = await handle_repl_command("/search nonexistent", mock_client)
+        assert result is True
+        captured = capsys.readouterr()
+        assert "No sessions found" in captured.out
+
+    @pytest.mark.anyio
+    async def test_unknown_command(self, mock_client: AsyncMock) -> None:
+        from laffyhand.main import handle_repl_command
+
+        result = await handle_repl_command("/unknown", mock_client)
         assert result is False
 
 
