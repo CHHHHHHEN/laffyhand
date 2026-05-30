@@ -3,12 +3,15 @@ from __future__ import annotations
 import os
 from typing import TYPE_CHECKING, Any
 
+from loguru import logger
+
 from laffyhand.agent.schemas import (
     SystemMessage, UserMessage, AgentState, SessionUsage,
 )
 
 if TYPE_CHECKING:
     from laffyhand.agent.runtime import AgentRuntime
+    from laffyhand.gateway.dispatcher import Dispatcher
     from laffyhand.gateway.transport import Transport
 
 
@@ -166,9 +169,8 @@ async def handle_chat(
     usage_info = None
 
     async for event in runtime.run_agent_turn():
-        if event.type in ("reasoning", "content", "tool_result", "tool_calls", "compacting"):
-            if event.data:
-                last_content += event.data
+        if event.type == "content" and event.data:
+            last_content += event.data
         if event.finish_reason:
             finish = event.finish_reason
         if event.usage:
@@ -242,6 +244,7 @@ async def handle_chat_cancel(
     _request_id: str | int | None,
     conn_id: str,
 ) -> dict[str, Any]:
+    logger.warning(f"Cancellation requested for connection {conn_id}, but streaming task cancellation is not yet implemented")
     return {"status": "cancelled"}
 
 
@@ -265,6 +268,7 @@ async def _ensure_session(
     system_content = _system_prompt(runtime, params.get("system_prompt", ""))
     system_message = SystemMessage(content=system_content)
     session = runtime.session_manager.create(
+        title=params.get("title", ""),
         cwd=params.get("cwd", os.getcwd()),
         model=params.get("model", ""),
     )
@@ -273,3 +277,18 @@ async def _ensure_session(
         session_id=session.id,
         usage=SessionUsage(context_size=runtime._context_size),
     )
+
+
+def register_all_handlers(dispatcher: Dispatcher) -> None:
+    """Register all RPC handlers on a dispatcher."""
+    dispatcher.register("initialize", handle_initialize)
+    dispatcher.register("shutdown", handle_shutdown)
+    dispatcher.register("session/create", handle_session_create)
+    dispatcher.register("session/list", handle_session_list)
+    dispatcher.register("session/load", handle_session_load)
+    dispatcher.register("session/delete", handle_session_delete)
+    dispatcher.register("session/fork", handle_session_fork)
+    dispatcher.register("chat", handle_chat)
+    dispatcher.register("chat_stream", handle_chat_stream, streaming=True)
+    dispatcher.register("chat/cancel", handle_chat_cancel)
+    dispatcher.register("tools/list", handle_tools_list)

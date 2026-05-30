@@ -5,19 +5,7 @@ from typing import TYPE_CHECKING
 from loguru import logger
 
 from laffyhand.gateway.dispatcher import Dispatcher
-from laffyhand.gateway.handlers import (
-    handle_initialize,
-    handle_shutdown,
-    handle_session_create,
-    handle_session_list,
-    handle_session_load,
-    handle_session_delete,
-    handle_session_fork,
-    handle_chat,
-    handle_chat_stream,
-    handle_chat_cancel,
-    handle_tools_list,
-)
+from laffyhand.gateway.handlers import register_all_handlers
 from laffyhand.gateway.protocol import from_json, Request, ErrorResponse, Error, PARSE_ERROR
 
 if TYPE_CHECKING:
@@ -36,18 +24,7 @@ class GatewayServer:
     def _ensure_handlers(self) -> None:
         if self._handlers_registered:
             return
-        d = self.dispatcher
-        d.register("initialize", handle_initialize)
-        d.register("shutdown", handle_shutdown)
-        d.register("session/create", handle_session_create)
-        d.register("session/list", handle_session_list)
-        d.register("session/load", handle_session_load)
-        d.register("session/delete", handle_session_delete)
-        d.register("session/fork", handle_session_fork)
-        d.register("chat", handle_chat)
-        d.register("chat_stream", handle_chat_stream, streaming=True)
-        d.register("chat/cancel", handle_chat_cancel)
-        d.register("tools/list", handle_tools_list)
+        register_all_handlers(self.dispatcher)
         self._handlers_registered = True
 
     async def serve(self) -> None:
@@ -77,6 +54,9 @@ class GatewayServer:
                     continue
 
                 await self.dispatcher.dispatch(message, transport, conn_id)
+                if self.dispatcher.shutdown_requested:
+                    logger.info("Shutdown requested, stopping serve loop")
+                    break
         except Exception as e:
             logger.error(f"Gateway serve error: {e}")
         finally:

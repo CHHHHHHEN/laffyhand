@@ -96,21 +96,24 @@ class _WSConnection(Transport):
             return
         try:
             await self._ws.send_str(data)
-        except Exception:
+        except Exception as e:
+            logger.debug(f"WebSocket send error ({self.connection_id}): {e}")
             self._closed = True
 
     async def recv(self) -> str:
         if self._closed:
             return ""
         try:
+            from aiohttp import WSMsgType
             msg = await self._ws.receive()
-            if msg.type == 1:
+            if msg.type == WSMsgType.TEXT:
                 return msg.data
-            if msg.type in (2, 8, 9, 10):
+            if msg.type in (WSMsgType.BINARY, WSMsgType.CLOSE, WSMsgType.PING, WSMsgType.PONG):
                 self._closed = True
                 return ""
             return ""
-        except Exception:
+        except Exception as e:
+            logger.debug(f"WebSocket recv error ({self.connection_id}): {e}")
             self._closed = True
             return ""
 
@@ -118,8 +121,8 @@ class _WSConnection(Transport):
         self._closed = True
         try:
             await self._ws.close()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"WebSocket close error ({self.connection_id}): {e}")
 
 
 class WSTransport:
@@ -225,26 +228,10 @@ class HTTPTransport:
         wants_sse = request.headers.get("Accept", "") == "text/event-stream"
 
         from laffyhand.gateway.dispatcher import Dispatcher
+        from laffyhand.gateway.handlers import register_all_handlers
 
         dispatcher = Dispatcher(runtime=self.runtime)
-        from laffyhand.gateway.handlers import (
-            handle_initialize, handle_shutdown,
-            handle_session_create, handle_session_list, handle_session_load,
-            handle_session_delete, handle_session_fork,
-            handle_chat, handle_chat_stream, handle_chat_cancel,
-            handle_tools_list,
-        )
-        dispatcher.register("initialize", handle_initialize)
-        dispatcher.register("shutdown", handle_shutdown)
-        dispatcher.register("session/create", handle_session_create)
-        dispatcher.register("session/list", handle_session_list)
-        dispatcher.register("session/load", handle_session_load)
-        dispatcher.register("session/delete", handle_session_delete)
-        dispatcher.register("session/fork", handle_session_fork)
-        dispatcher.register("chat", handle_chat)
-        dispatcher.register("chat_stream", handle_chat_stream, streaming=True)
-        dispatcher.register("chat/cancel", handle_chat_cancel)
-        dispatcher.register("tools/list", handle_tools_list)
+        register_all_handlers(dispatcher)
 
         entry = dispatcher.handlers.get(message.method)
         if entry is None:

@@ -6,6 +6,7 @@ from typing import Any
 
 
 _JSONRPC_VERSION = "2.0"
+MAX_MESSAGE_SIZE = 16 * 1024 * 1024  # 16 MB
 
 
 @dataclass
@@ -80,6 +81,10 @@ def to_json(msg: JSONRPCMessage | Error) -> str:
 
 
 def from_json(data: str) -> JSONRPCMessage:
+    if len(data) > MAX_MESSAGE_SIZE:
+        raise ValueError(
+            f"Message too large: {len(data)} bytes (max {MAX_MESSAGE_SIZE})"
+        )
     obj = json.loads(data)
     if not isinstance(obj, dict):
         raise ValueError(f"Invalid JSON-RPC message: {data!r}")

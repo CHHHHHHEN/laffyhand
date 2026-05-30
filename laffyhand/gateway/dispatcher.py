@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass, field
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any
@@ -31,6 +32,7 @@ class RegisteredHandler:
 class Dispatcher:
     runtime: Any = None
     handlers: dict[str, RegisteredHandler] = field(default_factory=dict)
+    shutdown_requested: bool = False
 
     def register(
         self,
@@ -54,6 +56,7 @@ class Dispatcher:
             return
 
         params = request.params or {}
+        t0 = time.monotonic()
         try:
             result = await entry.func(self.runtime, params, transport, request.id, conn_id)
         except Exception as e:
@@ -61,6 +64,11 @@ class Dispatcher:
             error = Error(code=INTERNAL_ERROR, message=str(e))
             await transport.send(ErrorResponse(id=request.id, error=error).json())
             return
+        elapsed = time.monotonic() - t0
+        logger.debug(f"Handler {request.method} completed in {elapsed*1000:.1f}ms")
+
+        if request.method == "shutdown":
+            self.shutdown_requested = True
 
         if not entry.streaming:
             await transport.send(Response(id=request.id, result=result or {}).json())
