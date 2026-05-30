@@ -40,11 +40,13 @@ def runtime(manager: SessionManager) -> AgentRuntime:
         db_path=":memory:",
         context_size=128000,
     )
-    rt._state = AgentState(
+    init_state = AgentState(
         messages=[SystemMessage(content="system")],
         session_id="",
         usage=SessionUsage(context_size=128000),
     )
+    rt._states[""] = init_state
+    rt._session_id = ""
     return rt
 
 

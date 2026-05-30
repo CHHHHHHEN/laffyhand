@@ -145,20 +145,25 @@ async def handle_chat(
     if not message:
         raise ValueError("message is required")
 
+    session_id: str | None
     if runtime.state is None:
-        await _ensure_session(runtime, params)
+        session_id = await _ensure_session(runtime, params)
+    else:
+        session_id = runtime.current_session_id
 
-    assert runtime.state is not None
-    runtime.state.step = 0
+    assert session_id is not None
+    state = runtime.get_state(session_id)
+    assert state is not None
+    state.step = 0
     user_message = UserMessage(content=message)
-    runtime.state.messages.append(user_message)
+    state.messages.append(user_message)
 
     last_content = ""
     finish = ""
     usage_info = None
     logger.debug(f"Chat started (id={request_id}, conn={conn_id})")
 
-    async for event in runtime.run_agent_turn():
+    async for event in runtime.run_agent_turn(session_id=session_id):
         if event.type == "content" and event.data:
             last_content += event.data
         if event.finish_reason:
@@ -171,7 +176,7 @@ async def handle_chat(
         "content": last_content,
         "finish_reason": finish,
         "usage": usage_info.model_dump() if usage_info else None,
-        "session_id": runtime.state.session_id,
+        "session_id": session_id,
     }
 
 
@@ -188,18 +193,23 @@ async def handle_chat_stream(
     if not message:
         raise ValueError("message is required")
 
+    session_id: str | None
     if runtime.state is None:
-        await _ensure_session(runtime, params)
+        session_id = await _ensure_session(runtime, params)
+    else:
+        session_id = runtime.current_session_id
 
-    assert runtime.state is not None
-    runtime.state.step = 0
+    assert session_id is not None
+    state = runtime.get_state(session_id)
+    assert state is not None
+    state.step = 0
     user_message = UserMessage(content=message)
-    runtime.state.messages.append(user_message)
+    state.messages.append(user_message)
 
     finish = ""
     usage_info = None
 
-    async for event in runtime.run_agent_turn():
+    async for event in runtime.run_agent_turn(session_id=session_id):
         notif = Notification(
             method="event",
             params={
@@ -222,7 +232,7 @@ async def handle_chat_stream(
             "data": "",
             "finish_reason": finish,
             "usage": usage_info.model_dump() if usage_info else None,
-            "session_id": runtime.state.session_id,
+            "session_id": session_id,
         },
     )
     await transport.send(done.json())
@@ -255,7 +265,7 @@ async def handle_tools_list(
 async def _ensure_session(
     runtime: AgentRuntime,
     params: dict[str, Any],
-) -> None:
+) -> str:
     system_content = _system_prompt(runtime, params.get("system_prompt", ""))
     system_message = SystemMessage(content=system_content)
     session = runtime.session_manager.create(
@@ -268,6 +278,7 @@ async def _ensure_session(
         session_id=session.id,
         usage=SessionUsage(context_size=runtime._context_size),
     )
+    return session.id
 
 
 def register_all_handlers(dispatcher: Dispatcher) -> None:
