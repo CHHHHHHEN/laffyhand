@@ -225,11 +225,12 @@ class TestHandleChatCancel:
         assert result["status"] == "no_active_stream"
 
     @pytest.mark.anyio
-    async def test_graceful_when_no_dispatcher(self, runtime, transport):
-        """No dispatcher on transport -> graceful cancellation (returns cancelled)."""
+    async def test_cancellation_not_supported(self, runtime, transport):
+        """No dispatcher or SSE canceller on transport -> cancellation_not_supported."""
         transport._dispatcher = None  # type: ignore[attr-defined]
+        transport._sse_canceller = None  # type: ignore[attr-defined]
         result = await handle_chat_cancel(runtime, {}, transport, 1, "c1")
-        assert result["status"] == "cancelled"
+        assert result["status"] == "cancellation_not_supported"
 
 
 class TestSerializeMessages:
@@ -343,6 +344,8 @@ class TestHandleChatStream:
         runtime.state.session_id = "sess-1"
         runtime.state.messages = []
         runtime.state.step = 0
+        runtime.state.usage = MagicMock()
+        runtime.state.usage.model_dump.return_value = {"total_input": 0, "total_output": 0}
         runtime.current_session_id = "sess-1"
         runtime.get_state = MagicMock(return_value=runtime.state)
 
@@ -372,6 +375,8 @@ class TestHandleChatStream:
         runtime.state.session_id = "sess-1"
         runtime.state.messages = []
         runtime.state.step = 0
+        runtime.state.usage = MagicMock()
+        runtime.state.usage.model_dump.return_value = {"total_input": 0, "total_output": 0}
         runtime.current_session_id = "sess-1"
         runtime.get_state = MagicMock(return_value=runtime.state)
 
@@ -401,6 +406,8 @@ class TestHandleChatStream:
         runtime.state.session_id = "sess-1"
         runtime.state.messages = []
         runtime.state.step = 0
+        runtime.state.usage = MagicMock()
+        runtime.state.usage.model_dump.return_value = {"total_input": 0, "total_output": 0}
         runtime.current_session_id = "sess-1"
         runtime.get_state = MagicMock(return_value=runtime.state)
 

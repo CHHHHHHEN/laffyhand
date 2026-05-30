@@ -392,7 +392,8 @@ async def handle_repl_command(
                     print(f"Generated title: {gen_title}")
                 else:
                     print("Could not generate title.")
-        except Exception:
+        except Exception as e:
+            logger.debug(f"/title failed: {e}")
             print("No active session.")
         return True
 
@@ -401,7 +402,8 @@ async def handle_repl_command(
             child_id = await client.fork_session()
             logger.info(f"Forked to new session: {child_id}")
             print(f"Forked to new session: {child_id}")
-        except Exception:
+        except Exception as e:
+            logger.debug(f"/fork failed: {e}")
             print("No active session to fork.")
         return True
 
@@ -411,7 +413,8 @@ async def handle_repl_command(
             await client.archive_session(session_id=target)
             logger.info(f"Archived session: {target or '(current)'}")
             print(f"Archived session: {target or '(current)'}")
-        except Exception:
+        except Exception as e:
+            logger.debug(f"/archive failed: {e}")
             print("No active session.")
         return True
 

@@ -188,6 +188,7 @@ async def handle_session_delete(
     if not session_id:
         raise ValueError("session_id is required")
     runtime.session_manager.delete(session_id)
+    _session_locks.pop(session_id, None)
     return {"status": "deleted", "session_id": session_id}
 
 

@@ -210,7 +210,7 @@ async def test_chat_stream_via_gateway(transport_pair):
     runtime.current_session_id = "sess-stream"
     runtime.get_state = MagicMock(return_value=runtime.state)
 
-    req = Request(id=1, method="chat_stream", params={"message": "hello"})
+    req = Request(id=1, method="chat/stream", params={"message": "hello"})
     await client_t.send(req.json())
 
     notifications = []
