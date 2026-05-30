@@ -97,7 +97,6 @@ llm/
 ## Schemas
 
 项目级别通用模型定义在 `laffyhand/agent/schemas.py`，包括 `LLMRequest`、各类 `Message`、`StreamEvent`、`ToolDefinition`、`Usage` 等。
-Provider 配置模型 `LLMProviderConfig` 定义在 `laffyhand/agent/llm/specs/config.py`。
 
 **Provider-specific 原始字段模型仅在 `protocols/` 中定义**，不会泄露到外部。
 
