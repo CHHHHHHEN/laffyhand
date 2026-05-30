@@ -1,4 +1,5 @@
 import asyncio
+import time
 import unittest
 import tempfile
 from pathlib import Path
@@ -132,3 +133,44 @@ class TestReadTool(unittest.TestCase):
         tool = ReadTool()
         result = asyncio.run(tool.run({"file_path": str(f), "offset": 0}))
         self.assertIn("invalid offset", result.lower())
+
+    # ─── dedup / consecutive read guard ────────────────────
+
+    def test_identical_read_returns_unchanged(self):
+        f = self.root / "dedup.txt"
+        f.write_text("hello")
+        tool = ReadTool()
+        r1 = asyncio.run(tool.run({"file_path": str(f)}))
+        self.assertIn("1|hello", r1)
+        r2 = asyncio.run(tool.run({"file_path": str(f)}))
+        self.assertIn("unchanged", r2.lower())
+
+    def test_consecutive_count_resets_on_interleaved_read(self):
+        f = self.root / "a.txt"
+        f2 = self.root / "b.txt"
+        f.write_text("AAA")
+        f2.write_text("BBB")
+        tool = ReadTool()
+        asyncio.run(tool.run({"file_path": str(f)}))
+        asyncio.run(tool.run({"file_path": str(f2)}))
+        r = asyncio.run(tool.run({"file_path": str(f)}))
+        self.assertIn("unchanged", r.lower())
+
+    def test_file_change_returns_new_content(self):
+        f = self.root / "dedup.txt"
+        f.write_text("hello")
+        tool = ReadTool()
+        asyncio.run(tool.run({"file_path": str(f)}))
+        time.sleep(0.02)
+        f.write_text("world")
+        r = asyncio.run(tool.run({"file_path": str(f)}))
+        self.assertIn("1|world", r)
+
+    def test_consecutive_reads_eventually_blocked(self):
+        f = self.root / "loop.txt"
+        f.write_text("data")
+        tool = ReadTool()
+        for _ in range(5):
+            r = asyncio.run(tool.run({"file_path": str(f)}))
+        self.assertIn("consecutively", r.lower())
+        self.assertIn("different approach", r.lower())
