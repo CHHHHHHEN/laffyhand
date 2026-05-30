@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
-import { renderHook, act, waitFor } from "@testing-library/react"
+import { renderHook, act } from "@testing-library/react"
 import { useChat } from "./use-chat"
 import { useChatStore, resetMessageCounter } from "@/stores/chat-store"
 import type { AgentEvent } from "@/types/rpc"
@@ -43,14 +43,6 @@ beforeEach(() => {
     error: null,
   })
 })
-
-function makeCallbacks(
-  onEvent?: (event: AgentEvent) => void,
-  onError?: (error: Error) => void,
-  onComplete?: () => void,
-) {
-  return { onEvent: onEvent ?? vi.fn(), onError: onError ?? vi.fn(), onComplete: onComplete ?? vi.fn() }
-}
 
 describe("useChat", () => {
   it("sends message and starts streaming", async () => {
@@ -144,9 +136,8 @@ describe("useChat", () => {
     const { result } = renderHook(() => useChat())
 
     // Start sending
-    let sendPromise: Promise<void>
     await act(async () => {
-      sendPromise = result.current.sendMessage("hello")
+      result.current.sendMessage("hello")
     })
 
     // Cancel
@@ -159,7 +150,6 @@ describe("useChat", () => {
     })
 
     // After cancel, the stream content should be finalized
-    const state = useChatStore.getState()
     // The mock sends content before hanging, so finalize should have the content
     expect(mockCancelStream).toHaveBeenCalled()
   })
