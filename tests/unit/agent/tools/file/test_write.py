@@ -51,18 +51,15 @@ class TestWriteTool(unittest.TestCase):
             os.chdir(orig_cwd)
 
     def test_write_line_ending_preservation_crlf(self):
-        """Should preserve CRLF line endings when writing to an existing CRLF file."""
         f = self.root / "crlf.txt"
         f.write_bytes(b"line1\r\nline2\r\n")
         tool = WriteTool()
         result = asyncio.run(tool.run({"file_path": str(f), "content": "new1\nnew2\n"}))
         self.assertIn("File written", result)
         raw = f.read_bytes()
-        # Content should be CRLF
         self.assertEqual(raw, b"new1\r\nnew2\r\n")
 
     def test_write_line_ending_preservation_lf(self):
-        """Should keep LF line endings when writing to an existing LF file."""
         f = self.root / "lf.txt"
         f.write_bytes(b"line1\nline2\n")
         tool = WriteTool()
@@ -84,3 +81,13 @@ class TestWriteTool(unittest.TestCase):
         result = asyncio.run(tool.run({"file_path": str(f), "content": "https://user:pass@host"}))
         self.assertIn("Blocked", result)
         self.assertFalse(f.exists())
+
+    def test_write_diff_preview(self):
+        f = self.root / "editable.txt"
+        f.write_text("old content\nline2\n")
+        tool = WriteTool()
+        result = asyncio.run(tool.run({"file_path": str(f), "content": "new content\nline2\n"}))
+        self.assertIn("File written", result)
+        self.assertIn("-old content", result)
+        self.assertIn("+new content", result)
+        self.assertEqual(f.read_text(), "new content\nline2\n")

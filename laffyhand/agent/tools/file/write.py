@@ -1,3 +1,4 @@
+import difflib
 from pathlib import Path
 from typing import Any
 
@@ -10,10 +11,26 @@ from laffyhand.agent.tools.file._security import (
     normalize_newlines,
 )
 
+MAX_DIFF_LINES = 50
+
+
+def _compute_diff(path: Path, old_content: str, new_content: str) -> str:
+    old_lines = old_content.splitlines(keepends=True)
+    new_lines = new_content.splitlines(keepends=True)
+    diff = list(difflib.unified_diff(
+        old_lines, new_lines,
+        fromfile=str(path), tofile=str(path),
+    ))
+    return "".join(diff)
+
 
 class WriteTool(BaseTool):
     name = "write"
     description = "Write content to a file, creating or overwriting it."
+    max_result_size = 50000
+
+    def __init__(self, permission_manager: Any | None = None) -> None:
+        self._permission = permission_manager
 
     def _input_schema(self) -> dict:
         return {
@@ -26,6 +43,10 @@ class WriteTool(BaseTool):
                 "content": {
                     "type": "string",
                     "description": "Content to write to the file",
+                },
+                "confirm": {
+                    "type": "boolean",
+                    "description": "If true, prompts for interactive confirmation before writing",
                 },
             },
             "required": ["file_path", "content"],
@@ -46,9 +67,22 @@ class WriteTool(BaseTool):
         if content is None:
             content = ""
 
+        old_content: str | None = None
         if path.exists() and path.is_file():
+            old_content = path.read_text(encoding="utf-8")
             line_ending = detect_line_ending(path)
             content = normalize_newlines(content, line_ending)
+
+        # Interactive confirmation with diff preview
+        confirm = params.get("confirm", False)
+        if confirm and self._permission is not None and old_content is not None:
+            diff = _compute_diff(path, old_content, content)
+            allowed = await self._permission.ask(
+                "write",
+                [str(path)],
+            )
+            if not allowed:
+                return f"Write cancelled by user: {path}"
 
         try:
             atomic_write(path, content)
@@ -56,6 +90,7 @@ class WriteTool(BaseTool):
             logger.error(f"Write failed for {path}: {e}")
             return f"Write failed for {path}: {e}"
 
+        # Post-write verification
         try:
             written = path.read_bytes()
             expected = content.encode("utf-8")
@@ -64,4 +99,17 @@ class WriteTool(BaseTool):
         except Exception:
             logger.warning(f"Write verification read failed for {path}")
 
-        return f"File written: {path} ({len(content)} chars)"
+        result = f"File written: {path} ({len(content)} chars)"
+
+        # Append diff for existing-file edits
+        if old_content is not None:
+            diff = _compute_diff(path, old_content, content)
+            diff_lines = diff.splitlines()
+            if len(diff_lines) > MAX_DIFF_LINES:
+                diff_lines = diff_lines[:MAX_DIFF_LINES]
+                diff_lines.append(f"... diff truncated ({len(diff.splitlines())} lines total)")
+            diff_display = "\n".join(diff_lines)
+            if diff_display.strip():
+                result += f"\n\n{diff_display}"
+
+        return result

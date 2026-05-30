@@ -2,7 +2,6 @@ import difflib
 from pathlib import Path
 from typing import Any
 
-from loguru import logger
 from laffyhand.agent.tools.base import BaseTool
 from laffyhand.agent.tools.file._security import looks_binary
 

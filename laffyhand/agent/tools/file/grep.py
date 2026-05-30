@@ -3,7 +3,6 @@ import re
 from pathlib import Path
 from typing import Any
 
-from loguru import logger
 from laffyhand.agent.tools.base import BaseTool
 from laffyhand.agent.tools.file._ripgrep import (
     rg_available, grep as rg_grep,
@@ -159,7 +158,7 @@ class GrepTool(BaseTool):
         if raw is None:
             return None
 
-        lines = [l for l in raw.splitlines() if l.strip()]
+        lines = [ln for ln in raw.splitlines() if ln.strip()]
         total = len(lines)
         selected = lines[offset:offset + limit] if offset else lines[:limit]
         if not selected:

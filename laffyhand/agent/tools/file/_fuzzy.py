@@ -9,8 +9,8 @@ def count_diff(old: str, new: str) -> tuple[int, int]:
         old.splitlines(keepends=True),
         new.splitlines(keepends=True),
     ))
-    additions = sum(1 for l in diff if l.startswith('+') and not l.startswith('+++'))
-    deletions = sum(1 for l in diff if l.startswith('-') and not l.startswith('---'))
+    additions = sum(1 for line in diff if line.startswith('+') and not line.startswith('+++'))
+    deletions = sum(1 for line in diff if line.startswith('-') and not line.startswith('---'))
     return additions, deletions
 
 
@@ -56,7 +56,7 @@ def trimmed_boundary_match(content: str, old: str) -> tuple[int, int] | None:
 def line_trimmed_match(content: str, old: str) -> tuple[int, int] | None:
     """Match with each line individually trimmed."""
     lines = old.splitlines(keepends=True)
-    trimmed_lines = [l.strip() for l in lines]
+    trimmed_lines = [line.strip() for line in lines]
     trimmed = ''.join(trimmed_lines)
     if trimmed == old:
         return None
