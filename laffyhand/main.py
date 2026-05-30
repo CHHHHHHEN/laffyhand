@@ -236,7 +236,10 @@ async def main():
                 handled = await _handle_command(user_prompt, runtime)
                 if handled:
                     continue
-                logger.warning(f"Unknown REPL command: {user_prompt.split()[0]}")
+                cmd_name = user_prompt.split()[0]
+                logger.warning(f"Unknown REPL command: {cmd_name}")
+                print(f"Unknown command: {cmd_name}")
+                continue
 
             if runtime.state is None:
                 continue
