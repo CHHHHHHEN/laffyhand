@@ -1,4 +1,6 @@
+import os
 import re
+import tempfile
 from pathlib import Path
 
 
@@ -45,3 +47,35 @@ def blocked_write_path(path: Path) -> str | None:
         if pattern.search(spath):
             return msg
     return None
+
+
+def detect_line_ending(path: Path, sample_size: int = 4096) -> str:
+    """Detect whether a file uses \\r\\n or \\n line endings."""
+    try:
+        with path.open("rb") as f:
+            sample = f.read(sample_size)
+        crlf = sample.count(b"\r\n")
+        lf = sample.count(b"\n") - crlf
+        return "\r\n" if crlf > lf else "\n"
+    except Exception:
+        return "\n"
+
+
+def normalize_newlines(text: str, line_ending: str) -> str:
+    """Normalize internal newlines to the target line ending."""
+    if line_ending == "\n":
+        return text.replace("\r\n", "\n")
+    return text.replace("\r\n", "\n").replace("\n", "\r\n")
+
+
+def atomic_write(path: Path, content: str) -> None:
+    """Write content atomically using a temporary file."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(content)
+        Path(tmp).replace(path)
+    except Exception:
+        Path(tmp).unlink(missing_ok=True)
+        raise

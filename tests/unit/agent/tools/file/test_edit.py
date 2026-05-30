@@ -37,9 +37,71 @@ class TestEditTool(unittest.TestCase):
         result = asyncio.run(tool.run({"file_path": str(f), "old_string": "zzz", "new_string": "xxx"}))
         self.assertIn("not found", result)
 
-    def test_edit_multiple_matches(self):
+    def test_edit_multiple_matches_no_replace_all(self):
         f = self.root / "test.txt"
         f.write_text("foo\nfoo\nfoo")
         tool = EditTool()
         result = asyncio.run(tool.run({"file_path": str(f), "old_string": "foo", "new_string": "bar"}))
-        self.assertIn("3 matches", result.lower())
+        self.assertIn("Edited", result)
+        self.assertEqual(f.read_text(), "bar\nfoo\nfoo")
+
+    def test_edit_replace_all(self):
+        f = self.root / "test.txt"
+        f.write_text("foo\nfoo\nfoo")
+        tool = EditTool()
+        result = asyncio.run(tool.run({
+            "file_path": str(f), "old_string": "foo", "new_string": "bar", "replaceAll": True,
+        }))
+        self.assertIn("3", result)
+        self.assertEqual(f.read_text(), "bar\nbar\nbar")
+
+    def test_edit_old_string_empty_creates_file(self):
+        f = self.root / "new.txt"
+        tool = EditTool()
+        result = asyncio.run(tool.run({
+            "file_path": str(f), "old_string": "", "new_string": "hello",
+        }))
+        self.assertIn("Created", result)
+        self.assertEqual(f.read_text(), "hello")
+
+    def test_edit_old_string_empty_prepends(self):
+        f = self.root / "existing.txt"
+        f.write_text("original")
+        tool = EditTool()
+        result = asyncio.run(tool.run({
+            "file_path": str(f), "old_string": "", "new_string": "prefix",
+        }))
+        self.assertIn("Edited", result)
+        self.assertEqual(f.read_text(), "prefix\noriginal")
+
+    def test_edit_whitespace_normalized_match(self):
+        f = self.root / "test.txt"
+        f.write_text("def foo():\n    print('hello')\n")
+        tool = EditTool()
+        result = asyncio.run(tool.run({
+            "file_path": str(f),
+            "old_string": "def foo():\n    print('hello')",
+            "new_string": "def foo():\n    print('world')",
+        }))
+        self.assertIn("Edited", result)
+        self.assertEqual(f.read_text(), "def foo():\n    print('world')\n")
+
+    def test_edit_blocked_path(self):
+        f = self.root / ".env"
+        f.write_text("OLD=val")
+        tool = EditTool()
+        result = asyncio.run(tool.run({
+            "file_path": str(f), "old_string": "OLD=val", "new_string": "NEW=val",
+        }))
+        self.assertIn("Blocked", result)
+
+    def test_edit_line_ending_preservation(self):
+        f = self.root / "crlf.txt"
+        f.write_bytes(b"foo\r\nbar\r\n")
+        tool = EditTool()
+        result = asyncio.run(tool.run({
+            "file_path": str(f), "old_string": "foo", "new_string": "baz",
+        }))
+        self.assertIn("Edited", result)
+        raw = f.read_bytes()
+        self.assertEqual(raw, b"baz\r\nbar\r\n")
