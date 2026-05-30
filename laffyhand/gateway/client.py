@@ -150,6 +150,7 @@ class GatewayClient:
                     finish_reason=params.get("finish_reason"),
                     usage=Usage(**params["usage"]) if params.get("usage") else None,
                     session_usage=params.get("session_usage"),
+                    leftover_steer=params.get("leftover_steer"),
                 )
                 return
             usage = None
@@ -164,8 +165,17 @@ class GatewayClient:
                 session_usage=params.get("session_usage"),
             )
 
-    async def cancel_chat(self) -> None:
-        await self._request("chat/cancel")
+    async def cancel_chat(self, session_id: str | None = None) -> None:
+        params: dict[str, Any] = {}
+        if session_id:
+            params["session_id"] = session_id
+        await self._request("chat/cancel", params)
+
+    async def steer_chat(self, message: str, session_id: str | None = None) -> None:
+        params: dict[str, Any] = {"message": message}
+        if session_id:
+            params["session_id"] = session_id
+        await self._request("chat/steer", params)
 
     async def list_active_subagents(self) -> list[dict[str, Any]]:
         result = await self._request("subagent/list_active")

@@ -170,6 +170,8 @@ class AgentState(BaseModel):
     step: int = 0
     usage: SessionUsage = SessionUsage()
     session_id: Optional[str] = None
+    interrupt_requested: bool = False
+    pending_steer: Optional[str] = None
 
 
 StreamEvent = Union[StreamText, StreamReasoning, StreamToolCall, StreamFinish, StreamError]

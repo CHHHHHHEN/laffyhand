@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from laffyhand.agent.schemas import (
     AgentState, AssistantMessage, CompactionConfig, StreamText, StreamReasoning,
     StreamToolCall, StreamFinish, StreamError, FinishReason,
-    ToolCallContent, Usage, UserMessage, estimate_tokens,
+    ToolCallContent, ToolMessage, Usage, UserMessage, estimate_tokens,
 )
 from laffyhand.agent.compaction import (
     compact, compact_with_chain, wrap_last_user, attach_reminder,
@@ -31,6 +31,7 @@ class AgentEvent(BaseModel):
     finish_reason: Optional[FinishReason] = None
     usage: Optional[Usage] = None
     session_usage: Optional[dict] = None
+    leftover_steer: Optional[str] = None
 
 
 async def _compact_on_overflow(
@@ -84,6 +85,11 @@ async def agent_loop(
     _compacted_this_step = False
 
     while True:
+        if agent_state.interrupt_requested:
+            agent_state.interrupt_requested = False
+            logger.debug("Agent loop interrupted by user request")
+            break
+
         agent_state.step += 1
         _compacted_this_step = False
         logger.debug(f"Agent loop step {agent_state.step}")
@@ -192,6 +198,14 @@ async def agent_loop(
                 exec_result = await ToolExecutor.execute(tool_registry, tc)
                 messages.append(exec_result.message)
                 yield AgentEvent(type="tool_result", data=exec_result.event_data)
+
+            # Inject pending steer into the last tool result
+            if agent_state.pending_steer and messages and isinstance(messages[-1], ToolMessage):
+                steer_text = agent_state.pending_steer
+                agent_state.pending_steer = None
+                messages[-1].content += f"\n\n[User steers: {steer_text}]"
+                logger.debug("Injected steer text into tool result")
+
             if compaction_config.prune:
                 logger.debug("Pruning after tool calls")
                 messages = prune(messages)

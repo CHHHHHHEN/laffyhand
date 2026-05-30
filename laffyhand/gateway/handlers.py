@@ -16,7 +16,7 @@ from laffyhand.gateway.protocol import (
     INITIALIZE, SHUTDOWN, SESSION_CREATE, SESSION_LIST, SESSION_LOAD,
     SESSION_DELETE, SESSION_FORK, SESSION_SEARCH, SESSION_SET_TITLE,
     SESSION_GENERATE_TITLE, SESSION_ARCHIVE, SUBAGENT_LIST_ACTIVE,
-    USAGE_GET, CHAT, CHAT_STREAM, CHAT_CANCEL, TOOLS_LIST, Notification,
+    USAGE_GET, CHAT, CHAT_STREAM, CHAT_CANCEL, CHAT_STEER, TOOLS_LIST, Notification,
 )
 
 if TYPE_CHECKING:
@@ -305,6 +305,9 @@ async def handle_chat_stream(
                 usage_info = event.usage
             if event.type == "content" and event.data:
                 last_content += event.data
+    except asyncio.CancelledError:
+        finish_reason = "cancelled"
+        logger.info(f"Chat stream cancelled for session {session_id} (conn={conn_id})")
     except Exception:
         logger.exception(f"Chat stream error for session {session_id} (conn={conn_id})")
         try:
@@ -319,6 +322,13 @@ async def handle_chat_stream(
         except Exception:
             logger.warning("Failed to send error event to client in chat stream")
 
+    # Check for leftover steer that wasn't consumed by tool batch
+    leftover_steer: str | None = None
+    state = runtime.get_state(session_id)
+    if state is not None and state.pending_steer:
+        leftover_steer = state.pending_steer
+        state.pending_steer = None
+
     done = Notification(
         method="event",
         params={
@@ -328,12 +338,36 @@ async def handle_chat_stream(
             "usage": usage_info.model_dump() if usage_info else None,
             "session_id": session_id,
             "session_usage": runtime.state.usage.model_dump() if runtime.state else None,
+            "leftover_steer": leftover_steer,
         },
     )
     try:
         await transport.send(done.json())
     except Exception:
         pass
+
+
+async def handle_chat_steer(
+    runtime: AgentRuntime,
+    params: dict[str, Any],
+    transport: Transport,
+    _request_id: str | int | None,
+    conn_id: str,
+) -> dict[str, Any]:
+    message: str = params.get("message", "")
+    if not message:
+        raise ValueError("message is required")
+
+    session_id: str | None = params.get("session_id")
+    if not session_id:
+        session_id = runtime.current_session_id
+
+    if session_id is None:
+        raise RuntimeError("No active session to steer")
+    ok = runtime.steer_session(session_id, message)
+    if not ok:
+        raise RuntimeError(f"Session state not found: {session_id}")
+    return {"status": "steered", "session_id": session_id}
 
 
 async def handle_chat_cancel(
@@ -343,6 +377,15 @@ async def handle_chat_cancel(
     _request_id: str | int | None,
     conn_id: str,
 ) -> dict[str, Any]:
+    # 0. Signal interrupt to the agent state if we can identify the session
+    session_id: str | None = params.get("session_id")
+    if session_id:
+        runtime.interrupt_session(session_id)
+    else:
+        current = runtime.current_session_id
+        if current:
+            runtime.interrupt_session(current)
+
     # 1. Try dispatcher-based cancellation (WS/stdio transports)
     dispatcher: Dispatcher | None = getattr(transport, "_dispatcher", None)
     if dispatcher is not None:
@@ -517,6 +560,7 @@ def register_all_handlers(dispatcher: Dispatcher) -> None:
     dispatcher.register(CHAT, handle_chat)
     dispatcher.register(CHAT_STREAM, handle_chat_stream, streaming=True)
     dispatcher.register(CHAT_CANCEL, handle_chat_cancel)
+    dispatcher.register(CHAT_STEER, handle_chat_steer)
     dispatcher.register(TOOLS_LIST, handle_tools_list)
     dispatcher.register(SESSION_SEARCH, handle_session_search)
     dispatcher.register(SESSION_SET_TITLE, handle_session_set_title)

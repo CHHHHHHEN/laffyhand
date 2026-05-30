@@ -286,8 +286,55 @@ async def main():
     title_mode = config.agent.title_mode
     is_first_turn = not is_resumed
 
+    # ── REPL state machine ──────────────────────────────────────────
+    streaming_task: asyncio.Task | None = None
+    pending_queue: list[str] = []
+    busy_mode: str = "interrupt"
+    leftover_steer: str | None = None
+
+    async def run_turn(message: str) -> None:
+        nonlocal is_first_turn, leftover_steer
+        async for event in client.chat_stream(message):
+            if event.type == "content" and event.finish_reason is not None and event.usage:
+                print()
+                session_usage = SessionUsage(**(event.session_usage or {}))
+                print(session_usage.display(event.usage))
+                if event.leftover_steer:
+                    leftover_steer = event.leftover_steer
+            else:
+                print(event.data, end="")
+        print()
+        if is_first_turn and title_mode in ("on_create", "auto"):
+            gen_title = await client.generate_session_title()
+            if gen_title:
+                logger.info(f"Generated session title: {gen_title}")
+        is_first_turn = False
+
     try:
         while True:
+            # Check if streaming task has finished
+            if streaming_task is not None and streaming_task.done():
+                if not streaming_task.cancelled():
+                    exc = streaming_task.exception()
+                    if exc is not None:
+                        logger.error(f"Streaming task failed: {exc}")
+                streaming_task = None
+
+            # If idle and leftover steer, submit as new turn
+            if streaming_task is None and leftover_steer:
+                msg = leftover_steer
+                leftover_steer = None
+                streaming_task = asyncio.create_task(run_turn(msg))
+                continue
+
+            # If idle and queued messages, submit next
+            if streaming_task is None and pending_queue:
+                msg = pending_queue.pop(0)
+                streaming_task = asyncio.create_task(run_turn(msg))
+                print(f"  (sending queued message, {len(pending_queue)} remaining)")
+                continue
+
+            # Show active subagents
             active = await client.list_active_subagents()
             if active:
                 for sa in active:
@@ -295,18 +342,75 @@ async def main():
                         f"  ⚙  subagent [{sa['agent_type']}] {sa['task_id'][:8]} — {sa['status']}"
                     )
 
+            # Build prompt based on state
+            if streaming_task is None:
+                prompt = "\nYou: "
+            else:
+                q_info = f" Q:{len(pending_queue)}" if pending_queue else ""
+                prompt = f"\n({busy_mode}{q_info}) You: "
+
             try:
-                user_prompt = await async_input("\nYou: ")
+                user_prompt = await async_input(prompt)
             except (EOFError, KeyboardInterrupt, asyncio.CancelledError):
                 logger.info("Agent session ended")
                 break
 
             if user_prompt.lower() in ("", "/exit", "quit", "exit"):
+                if streaming_task is not None:
+                    streaming_task.cancel()
                 logger.info("Agent session ended")
                 break
 
             if user_prompt.startswith("/"):
-                handled = await _handle_command(user_prompt, client)
+                parts = user_prompt.strip().split(maxsplit=1)
+                command = parts[0].lower()
+                arg = parts[1] if len(parts) > 1 else ""
+
+                # ── New REPL commands ───────────────────────────
+                if command == "/steer":
+                    if not arg:
+                        print("Usage: /steer <message>")
+                    elif streaming_task is None:
+                        print("No active turn to steer")
+                    else:
+                        await client.steer_chat(arg)
+                        print("  (steered into current turn)")
+                    continue
+
+                if command in ("/queue", "/q"):
+                    if not arg:
+                        print("Usage: /queue <message>")
+                    else:
+                        pending_queue.append(arg)
+                        print(f"  (queued, {len(pending_queue)} pending)")
+                    continue
+
+                if command == "/cancel":
+                    if streaming_task is None:
+                        print("No active turn to cancel")
+                    else:
+                        await client.cancel_chat()
+                        try:
+                            await streaming_task
+                        except Exception:
+                            pass
+                        streaming_task = None
+                        print("  (cancelled)")
+                    continue
+
+                if command == "/busy":
+                    if not arg:
+                        print(f"  Current mode: {busy_mode}")
+                        print("  Usage: /busy interrupt|steer|queue")
+                    elif arg in ("interrupt", "steer", "queue"):
+                        busy_mode = arg
+                        print(f"  Busy mode set to: {busy_mode}")
+                    else:
+                        print(f"  Unknown mode: {arg}. Use: interrupt, steer, queue")
+                    continue
+
+                # ── Existing REPL commands ──────────────────────
+                handled = await handle_repl_command(user_prompt, client)
                 if handled:
                     continue
                 cmd_name = user_prompt.split()[0]
@@ -314,25 +418,30 @@ async def main():
                 print(f"Unknown command: {cmd_name}")
                 continue
 
-            async for event in client.chat_stream(user_prompt):
-                if (
-                    event.type == "content"
-                    and event.finish_reason is not None
-                    and event.usage
-                ):
-                    print()
-                    session_usage = SessionUsage(**(event.session_usage or {}))
-                    print(session_usage.display(event.usage))
-                else:
-                    print(event.data, end="")
-            print()
-
-            if is_first_turn and title_mode in ("on_create", "auto"):
-                gen_title = await client.generate_session_title()
-                if gen_title:
-                    logger.info(f"Generated session title: {gen_title}")
-            is_first_turn = False
+            # ── User input ──────────────────────────────────────────
+            if streaming_task is None:
+                streaming_task = asyncio.create_task(run_turn(user_prompt))
+            else:
+                if busy_mode == "interrupt":
+                    await client.cancel_chat()
+                    try:
+                        await streaming_task
+                    except Exception:
+                        pass
+                    streaming_task = asyncio.create_task(run_turn(user_prompt))
+                elif busy_mode == "steer":
+                    await client.steer_chat(user_prompt)
+                    print("  (steered into current turn)")
+                elif busy_mode == "queue":
+                    pending_queue.append(user_prompt)
+                    print(f"  (queued, {len(pending_queue)} pending)")
     finally:
+        if streaming_task is not None and not streaming_task.done():
+            streaming_task.cancel()
+            try:
+                await streaming_task
+            except Exception:
+                pass
         await _shutdown_gateway(client, gateway_task)
         await _close_stdin_reader()
 
@@ -434,9 +543,6 @@ async def handle_repl_command(
         return True
 
     return False
-
-
-_handle_command = handle_repl_command
 
 
 def entry_point() -> None:
