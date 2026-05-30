@@ -159,8 +159,8 @@ class HTTPTransport:
 
         self._dispatcher = Dispatcher(runtime=runtime)
         register_all_handlers(self._dispatcher)
-        if runtime is not None:
-            runtime._http_dispatcher = self._dispatcher
+        from laffyhand.gateway.handlers import _set_http_dispatcher
+        _set_http_dispatcher(self._dispatcher)
 
     async def start(self) -> None:
         import aiohttp.web
@@ -180,7 +180,7 @@ class HTTPTransport:
         return _json_response({}, status=204)
 
     async def _handle_rpc(self, request: Any) -> Any:
-        body = await request.text()
+        body = await request.text(max_size=1024 * 1024)
         if not body:
             return _json_response(
                 {"jsonrpc": "2.0", "error": {"code": -32700, "message": "Parse error"}, "id": None},

@@ -17,7 +17,10 @@ wheels/
 laffyhand.yml
 
 logs/
-laffybot.db*
+laffybot.db
+*.db
+*.db-shm
+*.db-wal
 skills/
 .todos.json
 test.txt

@@ -24,6 +24,9 @@ export interface ChatState {
 }
 
 let messageCounter = 0
+export function resetMessageCounter() {
+  messageCounter = 0
+}
 function nextMessageId(): string {
   messageCounter++
   return `msg-${Date.now()}-${messageCounter}`

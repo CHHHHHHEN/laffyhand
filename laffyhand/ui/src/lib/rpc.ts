@@ -138,11 +138,14 @@ export async function chatStream(
               method?: string
               params?: AgentEvent
             }
-            const event = notification.params ?? (notification as AgentEvent)
-            if (event.type) {
-              callbacks.onEvent(event as AgentEvent)
+            const event: AgentEvent | undefined =
+              notification.params !== undefined
+                ? notification.params
+                : (notification as AgentEvent)
+            if (event?.type) {
+              callbacks.onEvent(event)
             }
-            if (event.type === "finish") {
+            if (event?.type === "finish") {
               callbacks.onComplete()
             }
           } catch {

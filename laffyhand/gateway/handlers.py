@@ -23,6 +23,12 @@ if TYPE_CHECKING:
 
 
 _MESSAGE_COUNTER: int = 0
+_HTTP_DISPATCHER: Dispatcher | None = None
+
+
+def _set_http_dispatcher(dispatcher: Dispatcher) -> None:
+    global _HTTP_DISPATCHER
+    _HTTP_DISPATCHER = dispatcher
 
 
 def _next_msg_id() -> str:
@@ -309,7 +315,7 @@ async def handle_chat_cancel(
 ) -> dict[str, Any]:
     dispatcher: Dispatcher | None = getattr(transport, "_dispatcher", None)
     if dispatcher is None:
-        dispatcher = getattr(runtime, "_http_dispatcher", None)
+        dispatcher = _HTTP_DISPATCHER
     if dispatcher is None:
         logger.warning(f"Cancellation requested for connection {conn_id}, but no dispatcher reference found")
         return {"status": "cancelled"}

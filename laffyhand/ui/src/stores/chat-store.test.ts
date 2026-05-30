@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach } from "vitest"
-import { useChatStore } from "./chat-store"
+import { useChatStore, resetMessageCounter } from "./chat-store"
 
 beforeEach(() => {
+  resetMessageCounter()
   useChatStore.setState({
     messages: [],
     isStreaming: false,

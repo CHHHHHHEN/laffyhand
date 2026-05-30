@@ -1,5 +1,6 @@
 import { useMemo } from "react"
 import { marked } from "marked"
+import DOMPurify from "dompurify"
 import type { Message } from "@/types/session"
 
 interface MessageBubbleProps {
@@ -9,7 +10,8 @@ interface MessageBubbleProps {
 function MarkdownContent({ content }: { content: string }) {
   const html = useMemo(() => {
     try {
-      return marked.parse(content, { async: false }) as string
+      const raw = marked.parse(content, { async: false }) as string
+      return DOMPurify.sanitize(raw)
     } catch {
       return content
     }

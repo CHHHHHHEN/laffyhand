@@ -1,4 +1,5 @@
 import { useRef, useEffect } from "react"
+import DOMPurify from "dompurify"
 import { useChatStore } from "@/stores/chat-store"
 import { Spinner } from "@/components/ui/Spinner"
 import { MessageBubble } from "./MessageBubble"
@@ -41,7 +42,7 @@ export function MessageList() {
               <div
                 className="prose prose-sm dark:prose-invert max-w-none"
                 dangerouslySetInnerHTML={{
-                  __html: streamContent.replace(/\n/g, "<br>"),
+                  __html: DOMPurify.sanitize(streamContent.replace(/\n/g, "<br>")),
                 }}
               />
             ) : (

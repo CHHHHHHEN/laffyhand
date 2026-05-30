@@ -19,21 +19,12 @@ function toSession(rpc: SessionInfo): Session {
 
 export function useSessions() {
   const queryClient = useQueryClient()
-  const setSessions = useSessionStore((s) => s.setSessions)
-  const setLoading = useSessionStore((s) => s.setLoading)
 
   const query = useQuery({
     queryKey: ["sessions"],
     queryFn: async () => {
-      setLoading(true)
-      try {
-        const result = await rpcClient.sessionList()
-        const sessions = result.sessions.map(toSession)
-        setSessions(sessions)
-        return sessions
-      } finally {
-        setLoading(false)
-      }
+      const result = await rpcClient.sessionList()
+      return result.sessions.map(toSession)
     },
     refetchOnMount: true,
   })
@@ -84,7 +75,7 @@ function toStoreMessage(m: MessageData): Message {
       name: tc.name,
       arguments:
         typeof tc.arguments === "string"
-          ? (tc.arguments as unknown as Record<string, unknown>)
+          ? JSON.parse(tc.arguments)
           : (tc.arguments as Record<string, unknown>),
     }))
   }

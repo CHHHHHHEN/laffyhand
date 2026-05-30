@@ -40,10 +40,11 @@ async def run_ui_server(
 
     transport = HTTPTransport(runtime=runtime)
     app.router.add_post("/rpc", transport._handle_rpc)
+    app.router.add_options("/rpc", transport._handle_cors_preflight)
     app.router.add_get("/health", transport._handle_health)
 
     if os.path.isdir(ui_dir):
-        app.router.add_static("/", ui_dir, show_index=True)
+        app.router.add_static("/", ui_dir, show_index=False)
         logger.info(f"Serving UI static files from {ui_dir}")
     else:
         logger.warning(f"UI dist directory not found at {ui_dir}")
