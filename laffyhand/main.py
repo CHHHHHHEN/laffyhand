@@ -350,4 +350,5 @@ if __name__ == "__main__":
         asyncio.run(main())
     except Exception:
         logger.exception("Unhandled exception")
+        print("\nError: Laffyhand encountered an unexpected error. Check logs/ for details.", file=sys.stderr)
         sys.exit(1)
