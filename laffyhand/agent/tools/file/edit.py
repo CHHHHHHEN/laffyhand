@@ -41,7 +41,11 @@ class EditTool(BaseTool):
         }
 
     async def run(self, params: dict[str, Any]) -> str:
-        path = Path(params["file_path"])
+        raw = params["file_path"]
+        path = Path(raw)
+        if not path.is_absolute():
+            path = Path.cwd() / path
+        path = path.resolve()
         old = params["old_string"]
         new = params["new_string"]
         replace_all = params.get("replaceAll", False)

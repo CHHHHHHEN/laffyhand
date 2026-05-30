@@ -75,14 +75,18 @@ class WriteTool(BaseTool):
 
         # Interactive confirmation with diff preview
         confirm = params.get("confirm", False)
-        if confirm and self._permission is not None and old_content is not None:
-            diff = _compute_diff(path, old_content, content)
-            allowed = await self._permission.ask(
-                "write",
-                [str(path)],
-            )
-            if not allowed:
-                return f"Write cancelled by user: {path}"
+        if confirm:
+            if self._permission is None:
+                logger.warning("confirm=True but no permission manager available; skipping")
+            elif old_content is None:
+                logger.info("confirm=True skipped for new file (no previous content to diff)")
+            else:
+                allowed = await self._permission.ask(
+                    "write",
+                    [str(path)],
+                )
+                if not allowed:
+                    return f"Write cancelled by user: {path}"
 
         try:
             atomic_write(path, content)
