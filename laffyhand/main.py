@@ -437,7 +437,7 @@ async def handle_repl_command(
 _handle_command = handle_repl_command
 
 
-if __name__ == "__main__":
+def entry_point() -> None:
     try:
         asyncio.run(main())
     except Exception:
@@ -447,3 +447,7 @@ if __name__ == "__main__":
             file=sys.stderr,
         )
         sys.exit(1)
+
+
+if __name__ == "__main__":
+    entry_point()
