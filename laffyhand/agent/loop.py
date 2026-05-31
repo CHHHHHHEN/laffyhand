@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Optional, Literal
 
@@ -151,7 +152,15 @@ async def agent_loop(
                     tool_name=event.tool_name,
                     args=event.args,
                 ))
-                yield AgentEvent(type="tool_calls", data=event.args, finish_reason="tool_calls")
+                yield AgentEvent(
+                    type="tool_calls",
+                    data=json.dumps([{
+                        "id": event.tool_call_id,
+                        "name": event.tool_name,
+                        "arguments": event.args,
+                    }]),
+                    finish_reason="tool_calls",
+                )
             elif isinstance(event, StreamFinish):
                 finish_reason = event.finish_reason
                 usage = event.usage
