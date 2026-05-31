@@ -1,4 +1,4 @@
-import { useRef, useEffect, type KeyboardEvent } from "react"
+import { useRef, useEffect, useState, type KeyboardEvent, type ChangeEvent } from "react"
 import { Button } from "@/components/ui/Button"
 
 interface ChatInputProps {
@@ -10,6 +10,7 @@ interface ChatInputProps {
 
 export function ChatInput({ onSend, onSteer, onCancel, isStreaming }: ChatInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const [inputValue, setInputValue] = useState("")
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -29,6 +30,7 @@ export function ChatInput({ onSend, onSteer, onCancel, isStreaming }: ChatInputP
       onSend(content)
     }
     textarea.value = ""
+    setInputValue("")
     textarea.style.height = "auto"
   }
 
@@ -39,7 +41,9 @@ export function ChatInput({ onSend, onSteer, onCancel, isStreaming }: ChatInputP
     }
   }
 
-  const handleInput = () => {
+  const handleInputChange = (e: ChangeEvent<HTMLTextAreaElement>) => {
+    const value = e.target.value
+    setInputValue(value)
     const textarea = textareaRef.current
     if (!textarea) return
     textarea.style.height = "auto"
@@ -50,7 +54,7 @@ export function ChatInput({ onSend, onSteer, onCancel, isStreaming }: ChatInputP
     <div className="flex items-end gap-2 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-4 py-3">
       <textarea
         ref={textareaRef}
-        onInput={handleInput}
+        onChange={handleInputChange}
         onKeyDown={handleKeyDown}
         placeholder={
           isStreaming
@@ -58,14 +62,14 @@ export function ChatInput({ onSend, onSteer, onCancel, isStreaming }: ChatInputP
             : "Type a message..."
         }
         rows={1}
-        className="flex-1 resize-none rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+        className="flex-1 resize-none rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-colors"
       />
       {isStreaming && onCancel && (
         <button
           type="button"
           onClick={onCancel}
           title="Cancel current response"
-          className="self-center p-1 text-gray-400 hover:text-red-500 transition-colors cursor-pointer"
+          className="self-center p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md transition-colors cursor-pointer"
         >
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="size-5">
             <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
@@ -75,6 +79,8 @@ export function ChatInput({ onSend, onSteer, onCancel, isStreaming }: ChatInputP
       <Button
         variant={isStreaming ? "primary" : "primary"}
         onClick={handleSubmit}
+        disabled={!inputValue.trim()}
+        className="transition-all"
       >
         {isStreaming ? "Steer" : "Send"}
       </Button>

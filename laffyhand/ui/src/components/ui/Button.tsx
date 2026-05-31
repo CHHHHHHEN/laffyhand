@@ -17,7 +17,7 @@ const variantStyles: Record<string, string> = {
 }
 
 const sizeStyles: Record<string, string> = {
-  sm: "px-2 py-1 text-xs rounded",
+  sm: "px-2 py-1 text-xs rounded-md",
   md: "px-3 py-1.5 text-sm rounded-md",
   lg: "px-4 py-2 text-base rounded-lg",
 }
