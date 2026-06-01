@@ -129,9 +129,11 @@ export function AppShell() {
           </button>
         </div>
 
-        <ErrorBoundary>
-          <Outlet />
-        </ErrorBoundary>
+        <div className="flex-1 flex flex-col min-h-0">
+          <ErrorBoundary>
+            <Outlet />
+          </ErrorBoundary>
+        </div>
         <SubagentFooter />
       </div>
 
