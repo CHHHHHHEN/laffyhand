@@ -1,4 +1,5 @@
 import difflib
+import re
 from pathlib import Path
 from typing import Any
 
@@ -14,12 +15,15 @@ MAX_CACHE_SIZE = 200
 class ReadTool(BaseTool):
     name = "read"
     description = (
-        "Read a file or directory from the local filesystem. "
-        "If the path does not exist, an error is returned. "
-        "The filePath parameter should be an absolute path. "
-        "By default, this tool returns up to 2000 lines from the start of the file. "
-        "The offset parameter is the line number to start from (1-indexed). "
-        "Any line longer than 2000 characters is truncated."
+        "Read files or directories from the local filesystem. "
+        "Supports line-numbered output, pattern-based context reading, and batch reading.\n\n"
+        "To read a single file, provide file_path. "
+        "Use offset (1-indexed) and limit for pagination (default limit: 2000). "
+        "Any line longer than 2000 characters is truncated.\n\n"
+        "To read around specific keywords, provide pattern (regex) and optional context (default 5). "
+        "When pattern is given, offset/limit apply to matches, not raw lines.\n\n"
+        "To read multiple files at once, provide paths (array of absolute paths).\n\n"
+        "Directory listings show file line counts in parentheses."
     )
     max_result_size = 50000
 
@@ -33,18 +37,34 @@ class ReadTool(BaseTool):
             "properties": {
                 "file_path": {
                     "type": "string",
-                    "description": "The absolute path to the file or directory to read",
+                    "description": "Single absolute path to a file or directory to read",
+                },
+                "paths": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Multiple absolute file paths to read at once",
                 },
                 "offset": {
                     "type": "integer",
-                    "description": "The line number to start reading from (1-indexed)",
+                    "description": "Line number to start from (1-indexed) for normal reads; skip first N matches for pattern reads",
                 },
                 "limit": {
                     "type": "integer",
-                    "description": "The maximum number of lines to read (defaults to 2000)",
+                    "description": "Maximum number of lines or matches to return (defaults to 2000)",
+                },
+                "pattern": {
+                    "type": "string",
+                    "description": "Regex pattern to find lines of interest; shows matching lines with surrounding context (see context param)",
+                },
+                "context": {
+                    "type": "integer",
+                    "description": "Number of context lines before and after each match (default: 5). Only used with pattern",
                 },
             },
-            "required": ["file_path"],
+            "anyOf": [
+                {"required": ["file_path"]},
+                {"required": ["paths"]},
+            ],
         }
 
     def _cache_key(self, path: Path, offset: int | None, limit: int | None) -> str:
@@ -76,14 +96,105 @@ class ReadTool(BaseTool):
             return f"Offset {offset} is out of range (directory has {total} entries)"
         end = total if limit is None else start + limit
         selected = entries[start:end]
-        lines = [f"Contents of {path}:"]
+        lines = [f"Contents of {path} (total {total} entries):"]
         for entry in selected:
             suffix = "/" if entry.is_dir() else ""
-            lines.append(f"{entry.name}{suffix}")
+            if entry.is_file() and not looks_binary(entry):
+                try:
+                    text = entry.read_text(encoding="utf-8", errors="replace")
+                    count = len(text.splitlines())
+                    lines.append(f"  {entry.name}{suffix} ({count} lines)")
+                except Exception:
+                    lines.append(f"  {entry.name}{suffix}")
+            else:
+                lines.append(f"  {entry.name}{suffix}")
         return "\n".join(lines)
 
+    def _read_with_context(
+        self,
+        path: Path,
+        pattern_str: str,
+        context: int,
+        offset: int | None,
+        limit: int | None,
+    ) -> str:
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except Exception as e:
+            return f"Error reading {path}: {e}"
+
+        lines = text.splitlines(keepends=True)
+        total_lines = len(lines)
+
+        try:
+            pattern = re.compile(pattern_str)
+        except re.error as e:
+            return f"Invalid regex pattern: {e}"
+
+        match_indices = [i for i, line in enumerate(lines) if pattern.search(line)]
+        if not match_indices:
+            return f"No matches for `{pattern_str}` in {path}"
+
+        total_matches = len(match_indices)
+        start = offset if offset is not None else 0
+        end = total_matches if limit is None else start + limit
+        selected = match_indices[start:end]
+
+        line_num_width = max(4, len(str(total_lines)))
+        result_parts: list[str] = []
+
+        # Build context ranges and merge overlapping ones
+        groups: list[tuple[int, int, list[int]]] = []
+        for idx in selected:
+            start = max(0, idx - context)
+            end = min(total_lines, idx + context + 1)
+            if groups and start <= groups[-1][1]:
+                prev_start, prev_end, prev_matches = groups[-1]
+                groups[-1] = (prev_start, max(prev_end, end), prev_matches + [idx])
+            else:
+                groups.append((start, end, [idx]))
+
+        for gi, (start, end, group_matches) in enumerate(groups):
+            if gi > 0:
+                result_parts.append("--\n")
+
+            for ci in range(start, end):
+                line = lines[ci]
+                line_num = f"{ci + 1:>{line_num_width}d}"
+                marker = ">" if ci in group_matches else " "
+                if len(line) > 2000:
+                    line = line[:2000]
+                    if line.endswith("\n"):
+                        line = line[:-1]
+                    line += "... (line truncated to 2000 chars)\n"
+                if not line.endswith("\n"):
+                    line += "\n"
+                result_parts.append(f"{line_num}{marker}{line}")
+
+        result = "".join(result_parts)
+        if len(selected) < total_matches:
+            result += f"\n[Showing {len(selected)} of {total_matches} matches]"
+
+        return result
+
     async def run(self, params: dict[str, Any]) -> str:
-        path = Path(params["file_path"])
+        file_path: str | None = params.get("file_path")
+        paths_input: Any = params.get("paths")
+
+        if not file_path and not paths_input:
+            return "Either file_path or paths is required"
+
+        if file_path:
+            return await self._run_single(file_path, params)
+
+        if not isinstance(paths_input, list) or not paths_input:
+            return "Either file_path or paths is required"
+
+        paths: list[str] = [str(p) for p in paths_input]
+        return await self._run_multi(paths, params)
+
+    async def _run_single(self, file_path: str, params: dict[str, Any]) -> str:
+        path = Path(file_path)
 
         if not path.exists():
             msg = f"File not found: {path}"
@@ -103,6 +214,16 @@ class ReadTool(BaseTool):
             logger.info(f"Read: skipped binary file {path}")
             return f"File appears to be binary and cannot be read as text: {path}"
 
+        pattern = params.get("pattern")
+        if pattern:
+            context = params.get("context", 5)
+            logger.info(
+                f"Read: context read {path} pattern={pattern} context={context}"
+            )
+            return self._read_with_context(
+                path, pattern, context, params.get("offset"), params.get("limit")
+            )
+
         offset = params.get("offset")
         limit = params.get("limit")
         key = self._cache_key(path, offset, limit)
@@ -112,7 +233,6 @@ class ReadTool(BaseTool):
         except OSError:
             current_mtime = 0.0
 
-        # Dedup & consecutive-read guard
         if key in self._read_cache:
             cached_mtime, _ = self._read_cache[key]
             if cached_mtime == current_mtime:
@@ -128,7 +248,6 @@ class ReadTool(BaseTool):
                     msg += f" (consecutive read #{count})"
                 return msg
 
-        # Reset consecutive counter when file changed or first read
         self._consecutive.pop(key, None)
 
         text = path.read_text(encoding="utf-8", errors="replace")
@@ -171,3 +290,45 @@ class ReadTool(BaseTool):
             del self._read_cache[oldest]
 
         return result
+
+    async def _run_multi(self, paths: list[str], params: dict[str, Any]) -> str:
+        parts: list[str] = []
+        total_size = 0
+        max_size = self.max_result_size
+
+        for p in paths:
+            if total_size >= max_size:
+                parts.append(
+                    f"... (result truncated, max {max_size} characters)"
+                )
+                break
+
+            path = Path(p)
+            head = f"==== {p} ===="
+
+            if not path.exists():
+                parts.append(f"File not found: {p}")
+                continue
+
+            if path.is_dir():
+                dir_content = self._list_directory(
+                    path, params.get("offset"), params.get("limit")
+                )
+                parts.append(f"{head}\n{dir_content}")
+                total_size += len(dir_content) + len(head) + 2
+                continue
+
+            if looks_binary(path):
+                parts.append(f"{head}\n(binary file)")
+                total_size += len(head) + 15
+                continue
+
+            file_params: dict[str, Any] = {
+                k: v for k, v in params.items() if k != "paths"
+            }
+            file_params["file_path"] = p
+            result = await self._run_single(p, file_params)
+            parts.append(f"{head}\n{result}")
+            total_size += len(result)
+
+        return "\n\n".join(parts)

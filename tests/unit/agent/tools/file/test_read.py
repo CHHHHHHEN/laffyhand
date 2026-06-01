@@ -89,6 +89,14 @@ class TestReadTool(unittest.TestCase):
         self.assertIn("a.py", result)
         self.assertIn("sub/", result)
 
+    def test_read_directory_shows_line_count(self):
+        (self.root / "a.py").write_text("line1\nline2\n")
+        (self.root / "empty.txt").touch()
+        tool = ReadTool()
+        result = asyncio.run(tool.run({"file_path": str(self.root)}))
+        self.assertIn("a.py (2 lines)", result)
+        self.assertIn("empty.txt (0 lines)", result)
+
     def test_read_directory_with_limit(self):
         for i in range(5):
             (self.root / f"f{i}.py").touch()
@@ -199,3 +207,111 @@ class TestReadTool(unittest.TestCase):
             )
         )
         self.assertIn("out of range", result.lower())
+
+    # ─── pattern-based context reading ─────────────────────
+
+    def test_read_with_pattern(self):
+        f = self.root / "test.py"
+        f.write_text("pre\ndef foo():\n    pass\n\nmid\ndef bar():\n    pass\npost\n")
+        tool = ReadTool()
+        result = asyncio.run(
+            tool.run({"file_path": str(f), "pattern": "def"})
+        )
+        self.assertIn("2>def foo():", result)
+        self.assertIn("6>def bar():", result)
+
+    def test_read_with_pattern_and_context(self):
+        f = self.root / "test.py"
+        f.write_text("a\nb\ndef foo():\n    pass\ne\nf\n")
+        tool = ReadTool()
+        result = asyncio.run(
+            tool.run({"file_path": str(f), "pattern": "def", "context": 1})
+        )
+        self.assertIn("2 ", result)  # context line before first match
+        self.assertIn("3>def foo():", result)
+        self.assertIn("4 ", result)  # context line after first match
+
+    def test_read_with_pattern_and_offset_limit(self):
+        f = self.root / "test.py"
+        f.write_text("aaa\nbbb\ndef a():\n    pass\nccc\nddd\ndef b():\n    pass\neee\nfff\ndef c():\n    pass\nggg\n")
+        tool = ReadTool()
+        result = asyncio.run(
+            tool.run({"file_path": str(f), "pattern": "def", "offset": 1, "limit": 1, "context": 0})
+        )
+        self.assertNotIn("def a():", result)
+        self.assertIn("def b():", result)
+        self.assertNotIn("def c():", result)
+
+    def test_read_with_pattern_no_match(self):
+        f = self.root / "test.txt"
+        f.write_text("hello world\n")
+        tool = ReadTool()
+        result = asyncio.run(
+            tool.run({"file_path": str(f), "pattern": "nope"})
+        )
+        self.assertIn("No matches", result)
+
+    def test_read_with_pattern_invalid_regex(self):
+        f = self.root / "test.txt"
+        f.write_text("hello\n")
+        tool = ReadTool()
+        result = asyncio.run(
+            tool.run({"file_path": str(f), "pattern": "["})
+        )
+        self.assertIn("Invalid regex", result)
+
+    def test_read_with_pattern_separator(self):
+        content = "a\nb\nMATCH1\nc\nd\nb\nMATCH2\nc\nd\n"
+        f = self.root / "test.txt"
+        f.write_text(content)
+        tool = ReadTool()
+        result = asyncio.run(
+            tool.run({"file_path": str(f), "pattern": "MATCH", "context": 0})
+        )
+        self.assertIn("--\n", result)
+
+    # ─── batch reading ─────────────────────────────────────
+
+    def test_read_batch_multiple_files(self):
+        (self.root / "a.txt").write_text("alpha\n")
+        (self.root / "b.txt").write_text("beta\n")
+        tool = ReadTool()
+        result = asyncio.run(
+            tool.run({
+                "paths": [str(self.root / "a.txt"), str(self.root / "b.txt")],
+            })
+        )
+        self.assertIn("a.txt", result)
+        self.assertIn("b.txt", result)
+        self.assertIn("1|alpha", result)
+        self.assertIn("1|beta", result)
+
+    def test_read_batch_with_pattern(self):
+        (self.root / "a.txt").write_text("foo\nbar\nbaz\n")
+        (self.root / "b.txt").write_text("bar\nqux\nfoo\n")
+        tool = ReadTool()
+        result = asyncio.run(
+            tool.run({
+                "paths": [str(self.root / "a.txt"), str(self.root / "b.txt")],
+                "pattern": "foo",
+                "context": 0,
+            })
+        )
+        self.assertIn("1>foo", result)
+        self.assertIn("3>foo", result)
+
+    def test_read_batch_missing_file(self):
+        (self.root / "a.txt").write_text("alpha\n")
+        tool = ReadTool()
+        result = asyncio.run(
+            tool.run({
+                "paths": [str(self.root / "a.txt"), str(self.root / "nope.txt")],
+            })
+        )
+        self.assertIn("alpha", result)
+        self.assertIn("not found", result.lower())
+
+    def test_read_batch_requires_paths_or_file_path(self):
+        tool = ReadTool()
+        result = asyncio.run(tool.run({}))
+        self.assertIn("required", result.lower())
