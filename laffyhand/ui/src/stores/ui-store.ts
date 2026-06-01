@@ -18,9 +18,17 @@ export interface UiState {
 
 function getInitialDarkMode(): boolean {
   if (typeof window === "undefined") return false
-  const stored = localStorage.getItem("laffyhand-dark-mode")
-  if (stored !== null) return stored === "true"
-  return window.matchMedia("(prefers-color-scheme: dark)").matches
+  try {
+    const stored = localStorage.getItem("laffyhand-dark-mode")
+    if (stored !== null) return stored === "true"
+  } catch {
+    // localStorage may not be available in test environments
+  }
+  try {
+    return window.matchMedia("(prefers-color-scheme: dark)").matches
+  } catch {
+    return false
+  }
 }
 
 export const useUiStore = create<UiState>((set) => ({
