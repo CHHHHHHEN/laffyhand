@@ -1,10 +1,28 @@
-import { useRef, useEffect, useCallback, useState } from "react"
+import { useRef, useEffect, useCallback, useState, useMemo } from "react"
 import DOMPurify from "dompurify"
 import { useChatStore } from "@/stores/chat-store"
 import { Spinner } from "@/components/ui/Spinner"
 import { MessageBubble } from "./MessageBubble"
 import { AiAvatar, ToolCallCard, ReasoningBlock } from "./ChatComponents"
 import { SubagentCard } from "./SubagentCard"
+
+/** Format a date for the date separator */
+function formatDateSeparator(date: Date): string {
+  const now = new Date()
+  const isToday = date.toDateString() === now.toDateString()
+  const yesterday = new Date(now)
+  yesterday.setDate(yesterday.getDate() - 1)
+  const isYesterday = date.toDateString() === yesterday.toDateString()
+
+  if (isToday) return "Today"
+  if (isYesterday) return "Yesterday"
+  return date.toLocaleDateString([], { weekday: "long", month: "short", day: "numeric", year: date.getFullYear() !== now.getFullYear() ? "numeric" : undefined })
+}
+
+/** Format a timestamp as a short time string */
+function formatTime(ts: number): string {
+  return new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+}
 
 interface MessageListProps {
   onRetry?: () => void
@@ -75,9 +93,27 @@ export function MessageList({ onRetry }: MessageListProps) {
         onScroll={checkNearBottom}
         className="h-full overflow-y-auto px-4 py-5 space-y-1"
       >
-      {messages.map((msg) => (
-        <MessageBubble key={msg.id} message={msg} onResolvePermission={handleResolvePermission} />
-      ))}
+      {messages.map((msg, i) => {
+        // Date separator between messages from different days
+        const prevMsg = i > 0 ? messages[i - 1] : null
+        const showDateSep = prevMsg
+          ? new Date(msg.createdAt).toDateString() !== new Date(prevMsg.createdAt).toDateString()
+          : true // show date on first message
+        return (
+          <div key={msg.id}>
+            {showDateSep && (
+              <div className="flex items-center gap-3 my-6 select-none">
+                <span className="flex-1 h-px bg-gray-200 dark:bg-gray-700/50" />
+                <span className="text-[10px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider">
+                  {formatDateSeparator(new Date(msg.createdAt))}
+                </span>
+                <span className="flex-1 h-px bg-gray-200 dark:bg-gray-700/50" />
+              </div>
+            )}
+            <MessageBubble message={msg} onResolvePermission={handleResolvePermission} />
+          </div>
+        )
+      })}
 
       {/* 流式消息 */}
       {isStreaming && (
