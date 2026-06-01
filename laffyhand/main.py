@@ -7,29 +7,17 @@ import sys
 from loguru import logger
 from laffyhand import setup_logging
 from laffyhand.config import LaffyConfig, load_config
-from laffyhand.agent.schemas import SessionUsage
 from laffyhand.agent.runtime import AgentRuntime
-from laffyhand.gateway.client import GatewayClient
-from laffyhand.gateway.server import GatewayServer
-from laffyhand.gateway.transport import InProcessTransport
-
-SYSTEM_PROMPT = """You are Laffybot, an AI coding assistant with access to tools.
-
-## Behavior
-- Use tools when needed; if no tool is relevant, respond directly.
-- Always show your reasoning before providing your final answer.
-- For file operations: read first, analyze, then propose changes.
-- If a tool fails, try an alternative approach before reporting failure.
-- Use multiple tools in sequence to accomplish a task.
-
-## Output Format
-- Be concise. Use code blocks with language tags for code.
-- Use bullet points for lists.
-- When suggesting code changes, show a diff summary of what changed."""
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Laffyhand -- An AI Coding Agent")
+    parser.add_argument(
+        "--config",
+        type=str,
+        default=None,
+        help="Path to configuration file (default: ./laffyhand.yml)",
+    )
     sub = parser.add_subparsers(dest="command")
 
     gateway_parser = sub.add_parser("gateway", help="Gateway server commands")
@@ -54,61 +42,11 @@ def parse_args() -> argparse.Namespace:
         help="Port to bind (for ws/http transports)",
     )
 
-    parser.add_argument(
-        "--resume",
-        action="store_true",
-        help="Resume the most recent active session if one exists",
-    )
-    parser.add_argument(
-        "--session",
-        type=str,
-        default=None,
-        help="Load a specific session by ID",
-    )
-    parser.add_argument(
-        "--list",
-        action="store_true",
-        help="List recent sessions and exit",
-    )
-    parser.add_argument(
-        "--config",
-        type=str,
-        default=None,
-        help="Path to configuration file (default: ./laffyhand.yml)",
-    )
-    parser.add_argument(
-        "--provider",
-        type=str,
-        default=None,
-        help="LLM provider key (must match a provider in llm.providers config)",
-    )
-    parser.add_argument(
-        "--model",
-        type=str,
-        default=None,
-        help="Model name for the selected provider (default: first model in config)",
-    )
-
     ui_parser = sub.add_parser("ui", help="Start the web UI")
     ui_parser.add_argument("--host", type=str, default="127.0.0.1", help="Host to bind")
     ui_parser.add_argument("--port", type=int, default=9090, help="Port to bind")
 
     return parser.parse_args()
-
-
-def print_sessions(sessions: list[dict]) -> None:
-    if not sessions:
-        print("No sessions.")
-        return
-    print(f"{'ID':<30} {'Status':<12} {'Title':<40} {'Messages':<8} {'Cost':<8}")
-    print("-" * 100)
-    for s in sessions:
-        title = (s.get("title") or "(untitled)")[:40]
-        cost = (s.get("input_tokens") or 0) + (s.get("output_tokens") or 0)
-        cost_str = f"{cost // 1000}k" if cost > 1000 else str(cost)
-        print(
-            f"{s['id']:<30} {s['status']:<12} {title:<40} {s['message_count']:<8} {cost_str:<8}"
-        )
 
 
 async def create_runtime(config: LaffyConfig) -> AgentRuntime:
@@ -122,32 +60,6 @@ async def create_runtime(config: LaffyConfig) -> AgentRuntime:
     runtime.load_agents(config.paths.agents)
     await runtime.init_tools(todo_path=config.paths.todos)
     return runtime
-
-
-_stdin_reader: asyncio.StreamReader | None = None
-_stdin_transport: asyncio.ReadTransport | None = None
-
-
-async def async_input(prompt: str = "") -> str:
-    global _stdin_reader, _stdin_transport
-    if prompt:
-        print(prompt, end="", flush=True)
-    if _stdin_reader is None:
-        loop = asyncio.get_running_loop()
-        reader = asyncio.StreamReader()
-        protocol = asyncio.StreamReaderProtocol(reader)
-        _stdin_transport, _ = await loop.connect_read_pipe(lambda: protocol, sys.stdin)
-        _stdin_reader = reader
-    line = await _stdin_reader.readline()
-    return line.decode(errors="replace").rstrip("\n")
-
-
-async def _close_stdin_reader() -> None:
-    global _stdin_reader, _stdin_transport
-    if _stdin_transport is not None:
-        _stdin_transport.close()
-        _stdin_transport = None
-    _stdin_reader = None
 
 
 async def _run_gateway_serve(args: argparse.Namespace, config: LaffyConfig) -> None:
@@ -215,324 +127,8 @@ async def main():
         await runtime.shutdown()
         return
 
-    runtime = await create_runtime(config)
-
-    server_transport, client_transport = InProcessTransport.create_pair()
-    gateway = GatewayServer(runtime, server_transport)
-    gateway_task = asyncio.create_task(gateway.serve())
-
-    client = GatewayClient(client_transport)
-    await client.initialize()
-
-    if args.list:
-        sessions = await client.list_sessions(limit=20)
-        print_sessions(sessions)
-        await _shutdown_gateway(client, gateway_task)
-        await _close_stdin_reader()
-        return
-
-    # Resolve or create session
-    provider = args.provider or config.llm.default_provider
-    model = args.model or ""
-    is_resumed = False
-    current_session_id: str | None = None
-    if args.session:
-        try:
-            info = await client.load_session(args.session)
-            current_session_id = info.get("session_id", args.session)
-            logger.info(
-                f"Loaded session {current_session_id} ({info.get('messages_count', 0)} messages)"
-            )
-            is_resumed = info.get("turn_count", 0) > 0
-        except Exception:
-            logger.error(f"Session not found: {args.session}")
-            await _shutdown_gateway(client, gateway_task)
-            await _close_stdin_reader()
-            sys.exit(1)
-    elif args.resume:
-        sessions = await client.list_sessions(status="active", limit=1)
-        if sessions:
-            info = await client.load_session(sessions[0]["id"])
-            current_session_id = info.get("session_id", sessions[0]["id"])
-            logger.info(
-                f"Resumed session {current_session_id} ({info.get('messages_count', 0)} messages)"
-            )
-            is_resumed = info.get("turn_count", 0) > 0
-        else:
-            current_session_id = await client.create_session(
-                system_prompt=SYSTEM_PROMPT, provider=provider, model=model,
-            )
-            logger.info(f"No active session to resume, starting new: {current_session_id}")
-    else:
-        current_session_id = await client.create_session(
-            system_prompt=SYSTEM_PROMPT, provider=provider, model=model,
-        )
-        logger.info(f"New session created: {current_session_id}")
-
-    print(f"\nSession: {current_session_id}")
-    if is_resumed:
-        print("Resuming conversation")
-
-    title_mode = config.agent.title_mode
-    is_first_turn = not is_resumed
-
-    # ── REPL state machine ──────────────────────────────────────────
-    streaming_task: asyncio.Task | None = None
-    pending_queue: list[str] = []
-    busy_mode: str = "interrupt"
-    leftover_steer: str | None = None
-
-    async def run_turn(message: str) -> None:
-        nonlocal is_first_turn, leftover_steer
-        async for event in client.chat_stream(message):
-            if event.type == "content" and event.finish_reason is not None and event.usage:
-                print()
-                session_usage = SessionUsage(**(event.session_usage or {}))
-                print(session_usage.display(event.usage))
-                if event.leftover_steer:
-                    leftover_steer = event.leftover_steer
-            else:
-                print(event.data, end="")
-        print()
-        if is_first_turn and title_mode in ("on_create", "auto"):
-            gen_title = await client.generate_session_title()
-            if gen_title:
-                logger.info(f"Generated session title: {gen_title}")
-        is_first_turn = False
-
-    try:
-        while True:
-            # Check if streaming task has finished
-            if streaming_task is not None and streaming_task.done():
-                if not streaming_task.cancelled():
-                    exc = streaming_task.exception()
-                    if exc is not None:
-                        logger.error(f"Streaming task failed: {exc}")
-                streaming_task = None
-
-            # If idle and leftover steer, submit as new turn
-            if streaming_task is None and leftover_steer:
-                msg = leftover_steer
-                leftover_steer = None
-                streaming_task = asyncio.create_task(run_turn(msg))
-                continue
-
-            # If idle and queued messages, submit next
-            if streaming_task is None and pending_queue:
-                msg = pending_queue.pop(0)
-                streaming_task = asyncio.create_task(run_turn(msg))
-                print(f"  (sending queued message, {len(pending_queue)} remaining)")
-                continue
-
-            # Show active subagents
-            active = await client.list_active_subagents()
-            if active:
-                for sa in active:
-                    print(
-                        f"  ⚙  subagent [{sa['agent_type']}] {sa['task_id'][:8]} — {sa['status']}"
-                    )
-
-            # Build prompt based on state
-            if streaming_task is None:
-                prompt = "\nYou: "
-            else:
-                q_info = f" Q:{len(pending_queue)}" if pending_queue else ""
-                prompt = f"\n({busy_mode}{q_info}) You: "
-
-            try:
-                user_prompt = await async_input(prompt)
-            except (EOFError, KeyboardInterrupt, asyncio.CancelledError):
-                logger.info("Agent session ended")
-                break
-
-            if user_prompt.lower() in ("", "/exit", "quit", "exit"):
-                if streaming_task is not None:
-                    streaming_task.cancel()
-                logger.info("Agent session ended")
-                break
-
-            if user_prompt.startswith("/"):
-                parts = user_prompt.strip().split(maxsplit=1)
-                command = parts[0].lower()
-                arg = parts[1] if len(parts) > 1 else ""
-
-                # ── New REPL commands ───────────────────────────
-                if command == "/steer":
-                    if not arg:
-                        print("Usage: /steer <message>")
-                    elif streaming_task is None:
-                        print("No active turn to steer")
-                    else:
-                        await client.steer_chat(arg)
-                        print("  (steered into current turn)")
-                    continue
-
-                if command in ("/queue", "/q"):
-                    if not arg:
-                        print("Usage: /queue <message>")
-                    else:
-                        pending_queue.append(arg)
-                        print(f"  (queued, {len(pending_queue)} pending)")
-                    continue
-
-                if command == "/cancel":
-                    if streaming_task is None:
-                        print("No active turn to cancel")
-                    else:
-                        await client.cancel_chat()
-                        try:
-                            await streaming_task
-                        except Exception:
-                            pass
-                        streaming_task = None
-                        print("  (cancelled)")
-                    continue
-
-                if command == "/busy":
-                    if not arg:
-                        print(f"  Current mode: {busy_mode}")
-                        print("  Usage: /busy interrupt|steer|queue")
-                    elif arg in ("interrupt", "steer", "queue"):
-                        busy_mode = arg
-                        print(f"  Busy mode set to: {busy_mode}")
-                    else:
-                        print(f"  Unknown mode: {arg}. Use: interrupt, steer, queue")
-                    continue
-
-                # ── Existing REPL commands ──────────────────────
-                handled = await handle_repl_command(user_prompt, client)
-                if handled:
-                    continue
-                cmd_name = user_prompt.split()[0]
-                logger.warning(f"Unknown REPL command: {cmd_name}")
-                print(f"Unknown command: {cmd_name}")
-                continue
-
-            # ── User input ──────────────────────────────────────────
-            if streaming_task is None:
-                streaming_task = asyncio.create_task(run_turn(user_prompt))
-            else:
-                if busy_mode == "interrupt":
-                    await client.cancel_chat()
-                    try:
-                        await streaming_task
-                    except Exception:
-                        pass
-                    streaming_task = asyncio.create_task(run_turn(user_prompt))
-                elif busy_mode == "steer":
-                    await client.steer_chat(user_prompt)
-                    print("  (steered into current turn)")
-                elif busy_mode == "queue":
-                    pending_queue.append(user_prompt)
-                    print(f"  (queued, {len(pending_queue)} pending)")
-    finally:
-        if streaming_task is not None and not streaming_task.done():
-            streaming_task.cancel()
-            try:
-                await streaming_task
-            except Exception:
-                pass
-        await _shutdown_gateway(client, gateway_task)
-        await _close_stdin_reader()
-
-
-async def _shutdown_gateway(client: GatewayClient, gateway_task: asyncio.Task) -> None:
-    try:
-        await client.shutdown()
-    except Exception:
-        pass
-    try:
-        await gateway_task
-    except (Exception, asyncio.CancelledError):
-        pass
-
-
-async def handle_repl_command(
-    cmd: str,
-    client: GatewayClient,
-) -> bool:
-    parts = cmd.strip().split(maxsplit=1)
-    command = parts[0].lower()
-    arg = parts[1] if len(parts) > 1 else ""
-
-    if command == "/sessions":
-        sessions = await client.list_sessions(limit=20)
-        print_sessions(sessions)
-        logger.info(f"Listed {len(sessions)} sessions")
-        return True
-
-    if command == "/session":
-        if not arg:
-            print("Usage: /session <id>")
-            return True
-        try:
-            await client.load_session(arg)
-            logger.info(f"Switched to session: {arg}")
-            print(f"Switched to session: {arg}")
-        except Exception:
-            print(f"Session not found: {arg}")
-        return True
-
-    if command == "/new":
-        session_id = await client.create_session(system_prompt=SYSTEM_PROMPT)
-        logger.info(f"New session started: {session_id}")
-        print(f"New session started: {session_id}")
-        return True
-
-    if command == "/title":
-        try:
-            if arg:
-                await client.set_session_title(title=arg)
-                logger.info(f"Title set to: {arg}")
-                print(f"Title set to: {arg}")
-            else:
-                gen_title = await client.generate_session_title()
-                if gen_title:
-                    print(f"Generated title: {gen_title}")
-                else:
-                    print("Could not generate title.")
-        except Exception as e:
-            logger.debug(f"/title failed: {e}")
-            print("No active session.")
-        return True
-
-    if command == "/fork":
-        try:
-            child_id = await client.fork_session()
-            logger.info(f"Forked to new session: {child_id}")
-            print(f"Forked to new session: {child_id}")
-        except Exception as e:
-            logger.debug(f"/fork failed: {e}")
-            print("No active session to fork.")
-        return True
-
-    if command == "/archive":
-        try:
-            target = arg
-            await client.archive_session(session_id=target)
-            logger.info(f"Archived session: {target or '(current)'}")
-            print(f"Archived session: {target or '(current)'}")
-        except Exception as e:
-            logger.debug(f"/archive failed: {e}")
-            print("No active session.")
-        return True
-
-    if command == "/search":
-        if not arg:
-            print("Usage: /search <query>")
-            print("  Search session messages. Supports FTS5 syntax if available")
-            print("  (quotes for phrase, AND/OR, prefix*, etc.)")
-            return True
-        sessions = await client.search_sessions(arg, limit=20)
-        if not sessions:
-            print(f"No sessions found for query: {arg}")
-        else:
-            print(f"Found {len(sessions)} session(s) for query: {arg}")
-            print_sessions(sessions)
-        logger.info(f"Searched for '{arg}', found {len(sessions)} session(s)")
-        return True
-
-    return False
+    parser = argparse.ArgumentParser(description="Laffyhand -- An AI Coding Agent")
+    parser.print_help()
 
 
 def entry_point() -> None:
