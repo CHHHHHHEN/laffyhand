@@ -76,6 +76,65 @@
     content: none;
   }
 
+  /* 表格样式增强 */
+  .prose table {
+    font-size: 12px;
+    border-collapse: separate;
+    border-spacing: 0;
+    width: 100%;
+    overflow: hidden;
+    border-radius: 8px;
+    border: 1px solid #e5e7eb;
+  }
+  .dark .prose table {
+    border-color: #374151;
+  }
+  .prose th {
+    background: #f3f4f6;
+    font-weight: 600;
+    text-align: left;
+    padding: 8px 12px;
+    white-space: nowrap;
+  }
+  .dark .prose th {
+    background: #1f2937;
+    color: #e5e7eb;
+  }
+  .prose td {
+    padding: 8px 12px;
+    border-top: 1px solid #f3f4f6;
+  }
+  .dark .prose td {
+    border-top-color: #1f2937;
+  }
+  .prose tbody tr:hover {
+    background: #f9fafb;
+  }
+  .dark .prose tbody tr:hover {
+    background: #111827;
+  }
+
+  /* 引用样式增强 */
+  .prose blockquote {
+    border-left: 3px solid #3b82f6;
+    padding: 4px 12px;
+    margin: 8px 0;
+    background: #f8fafc;
+    border-radius: 0 4px 4px 0;
+  }
+  .dark .prose blockquote {
+    border-left-color: #60a5fa;
+    background: #0f172a;
+  }
+
+  /* 列表间距 */
+  .prose ul, .prose ol {
+    padding-left: 1.25em;
+  }
+  .prose li {
+    margin: 2px 0;
+  }
+
   /* 选中文字颜色 */
   ::selection {
     background: #3b82f6;
