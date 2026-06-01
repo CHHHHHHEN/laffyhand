@@ -19,53 +19,71 @@ export function StatusBar() {
   const ctxSize = sessionUsage?.context_size ?? 0
 
   return (
-    <div className="flex items-center gap-3 px-4 py-2 text-xs text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/30 shrink-0">
+    <div className="flex items-center gap-3 px-4 py-1.5 text-xs text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900/50 shrink-0">
+      {/* Model */}
       {model && (
-        <span className="font-mono flex items-center gap-1" title="Model">
-          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-          </svg>
+        <span className="font-mono flex items-center gap-1.5 text-[11px]" title="Model">
+          <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
           {model}
         </span>
       )}
+
+      {/* Token Usage */}
       {sessionUsage && (
         <>
-          <span className="text-gray-300 dark:text-gray-600">|</span>
-          <span className="flex items-center gap-1" title="Total tokens used">
-            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <span className="text-gray-300 dark:text-gray-600 select-none">|</span>
+
+          {/* Total / Context */}
+          <span className="flex items-center gap-1.5" title="Total tokens used / Context size">
+            <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
             </svg>
-            {formatTokens(totalTokens)} / {formatTokens(ctxSize)}
+            <span className="font-medium">{formatTokens(totalTokens)}</span>
+            <span className="text-gray-400 dark:text-gray-500">/ {formatTokens(ctxSize)}</span>
           </span>
-          <span className="text-gray-300 dark:text-gray-600">|</span>
-          <span className="flex items-center gap-1" title="Breakdown">
-            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 11l5-5m0 0l5 5m-5-5v12" />
-            </svg>
-            {formatTokens(sessionUsage.total_input)}
-            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+
+          {/* Input / Output */}
+          <span className="flex items-center gap-1.5" title="Input → Output breakdown">
+            <span className="flex items-center gap-0.5">
+              <svg className="w-3 h-3 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 11l5-5m0 0l5 5m-5-5v12" />
+              </svg>
+              <span>{formatTokens(sessionUsage.total_input)}</span>
+            </span>
+            <svg className="w-2.5 h-2.5 text-gray-300 dark:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 13l-5 5m0 0l-5-5m5 5V6" />
             </svg>
-            {formatTokens(sessionUsage.total_output)}
+            <span className="flex items-center gap-0.5">
+              <svg className="w-3 h-3 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 13l-5 5m0 0l-5-5m5 5V6" />
+              </svg>
+              <span>{formatTokens(sessionUsage.total_output)}</span>
+            </span>
           </span>
+
+          {/* Reasoning */}
           {sessionUsage.total_reasoning > 0 && (
-            <>
-              {' '}
-              <span className="text-gray-300 dark:text-gray-600">·</span>
-              {' '}
-              <span className="flex items-center gap-1" title="Reasoning tokens">
-                🧠 {formatTokens(sessionUsage.total_reasoning)}
+            <span className="flex items-center gap-1" title="Reasoning tokens">
+              <span className="text-gray-300 dark:text-gray-600 select-none">·</span>
+              <span className="flex items-center gap-0.5">
+                <span className="text-[11px]">🧠</span>
+                <span>{formatTokens(sessionUsage.total_reasoning)}</span>
               </span>
-            </>
+            </span>
           )}
         </>
       )}
+
+      {/* Streaming indicator */}
       {isStreaming && (
         <>
-          <span className="text-gray-300 dark:text-gray-600">|</span>
-          <span className="flex items-center gap-1 text-green-500">
-            <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-            Streaming
+          <span className="text-gray-300 dark:text-gray-600 select-none">|</span>
+          <span className="flex items-center gap-1.5 text-green-600 dark:text-green-400">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
+            </span>
+            <span className="text-[11px] font-medium">Streaming</span>
           </span>
         </>
       )}
