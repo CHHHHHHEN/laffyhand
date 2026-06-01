@@ -233,6 +233,7 @@ async def agent_loop(
                 messages = agent_state.messages
                 yield AgentEvent(type="compacting", data="Compacting conversation history...")
                 if compaction_config.auto_continue:
+                    agent_state.messages = messages
                     messages.append(UserMessage(
                         content="Continue if you have next steps, or stop and ask for clarification if you are unsure how to proceed.",
                     ))

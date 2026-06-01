@@ -1,7 +1,6 @@
 from loguru import logger
-from laffyhand.agent.schemas import LLMRequest, StreamFinish, FinishReason, StreamReasoning
+from laffyhand.agent.schemas import LLMRequest, StreamReasoning
 from laffyhand.agent.llm.protocols.openai import OpenAIProtocol, OpenAIChatChunk
-from typing import cast, get_args
 
 
 class DeepseekProtocol(OpenAIProtocol):

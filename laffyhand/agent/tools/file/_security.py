@@ -33,7 +33,7 @@ def looks_binary(path: Path, sample_size: int = 1000) -> bool:
 
 
 BLOCKED_WRITE_PATTERNS: list[tuple[re.Pattern, str]] = [
-    (re.compile(r'(^|/)[.]env(?:$|[.][a-zA-Z]|[-_][a-zA-Z])'), 'writing to .env files is blocked for security'),
+    (re.compile(r'(^|/)[.]env(?:$|[.][a-zA-Z0-9][a-zA-Z0-9._-]*$)'), 'writing to .env files is blocked for security'),
     (re.compile(r'[.]git-credentials(?:[.]|$)'), 'writing to git credentials is blocked'),
     (re.compile(r'[/\\][.]ssh(?:[/\\]|$)'), 'writing to SSH key paths is blocked'),
     (re.compile(r'[/\\][.]kube(?:[/\\]|$)'), 'writing to kubeconfig paths is blocked'),
