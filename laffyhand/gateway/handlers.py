@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any
 from loguru import logger
 
 from laffyhand.agent.loop import StepFinish, Finish, PermissionRequest
+from laffyhand.agent.tools.permission import _request_callback as _pm_callback
 from laffyhand.agent.schemas import (
     SystemMessage, UserMessage, AssistantMessage, ToolMessage,
     AgentState, SessionUsage,
@@ -313,7 +314,7 @@ async def handle_chat_stream(
         finally:
             runtime._pending_permissions.pop(request_id, None)
 
-    runtime.tool_registry.permission.request_callback = _permission_callback
+    token = _pm_callback.set(_permission_callback)
 
     try:
         try:
@@ -365,7 +366,7 @@ async def handle_chat_stream(
         except Exception:
             logger.warning("Failed to send finish event to client (connection may be closed)")
     finally:
-        runtime.tool_registry.permission.request_callback = None
+        _pm_callback.reset(token)
 
 
 async def handle_chat_steer(
@@ -563,6 +564,7 @@ async def handle_config_providers(
             "base_url": pc.base_url,
             "models": [{"name": m.name, "context_size": m.context_size} for m in pc.models],
         }
+    logger.debug(f"config/providers: returning {len(providers)} provider(s) (conn={conn_id})")
     return {
         "default_provider": runtime._config.llm.default_provider,
         "providers": providers,
@@ -577,6 +579,7 @@ async def handle_mcp_status(
     conn_id: str,
 ) -> dict[str, Any]:
     status = runtime.mcp_service.get_status()
+    logger.debug(f"mcp/status: returning {len(status)} server(s) (conn={conn_id})")
     return {
         "servers": [
             {"name": name, "status": st} for name, st in status.items()
@@ -595,6 +598,7 @@ async def handle_session_set_config(
     model = params.get("model", "")
     if not runtime.state:
         raise ValueError("No active session")
+    runtime.complete_current_session()
     runtime.state.session_id = runtime.session_manager.create(
         provider=provider,
         model=model,
@@ -625,6 +629,7 @@ async def handle_permission_respond(
         result = False
     runtime._pending_permissions[req_id] = (event, permission, pattern, result)
     event.set()
+    logger.info(f"Permission '{permission}:{pattern}' resolved: {action} (conn={conn_id})")
     return {"status": "ok"}
 
 

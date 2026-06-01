@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextvars
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -11,6 +12,10 @@ if TYPE_CHECKING:
 
 
 Rule = Literal["allow", "deny"]
+
+_request_callback: contextvars.ContextVar[Callable[[str, str], Awaitable[bool]] | None] = (
+    contextvars.ContextVar("_request_callback", default=None)
+)
 
 
 class PermissionManager:
@@ -49,8 +54,9 @@ class PermissionManager:
             if rule == "allow":
                 logger.info(f"Permission '{permission}:{pattern}' allowed by rule")
                 continue
-            if self.request_callback is not None:
-                allowed = await self.request_callback(permission, pattern)
+            callback = _request_callback.get() or self.request_callback
+            if callback is not None:
+                allowed = await callback(permission, pattern)
                 if allowed:
                     logger.info(f"Permission '{permission}:{pattern}' allowed via callback")
                 else:
