@@ -75,6 +75,14 @@ export function useSessions() {
   }
 }
 
+function safeParseJSON(s: string): Record<string, unknown> {
+  try {
+    return JSON.parse(s)
+  } catch {
+    return {}
+  }
+}
+
 function toStoreMessage(m: MessageData): Message {
   const msg: Message = {
     id: m.id,
@@ -89,7 +97,7 @@ function toStoreMessage(m: MessageData): Message {
       name: tc.name,
       arguments:
         typeof tc.arguments === "string"
-          ? JSON.parse(tc.arguments)
+          ? safeParseJSON(tc.arguments)
           : (tc.arguments as Record<string, unknown>),
     }))
   }
@@ -118,6 +126,10 @@ export function useCurrentSession(sessionId: string | undefined) {
   useEffect(() => {
     if (session && sessionId) {
       setCurrentSessionId(sessionId)
+      useChatStore.getState().setSessionInfo(
+        session.model ?? "",
+        session.usage ?? null,
+      )
       if (session.messages) {
         loadMessages(session.messages.map(toStoreMessage))
       }

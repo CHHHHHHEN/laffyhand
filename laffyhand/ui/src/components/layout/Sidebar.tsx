@@ -36,9 +36,30 @@ export function Sidebar() {
     navigate(`/chat/${childId}`)
   }
 
+  const formatRelativeTime = (dateString: string | undefined): string => {
+    if (!dateString) return ""
+    const date = new Date(dateString)
+    const now = new Date()
+    const diffMs = now.getTime() - date.getTime()
+    const diffSec = Math.floor(diffMs / 1000)
+    const diffMin = Math.floor(diffSec / 60)
+    const diffHour = Math.floor(diffMin / 60)
+    const diffDay = Math.floor(diffHour / 24)
+
+    if (diffDay > 0) {
+      return diffDay === 1 ? "1 day ago" : `${diffDay} days ago`
+    } else if (diffHour > 0) {
+      return diffHour === 1 ? "1 hour ago" : `${diffHour} hours ago`
+    } else if (diffMin > 0) {
+      return diffMin === 1 ? "1 minute ago" : `${diffMin} minutes ago`
+    } else {
+      return "just now"
+    }
+  }
+
   return (
     <div className="h-full flex flex-col bg-gray-50 dark:bg-gray-900">
-      <div className="p-3 border-b border-gray-200 dark:border-gray-700 space-y-2">
+      <div className="p-4 border-b border-gray-200 dark:border-gray-700 space-y-3">
         <Button
           onClick={handleNewSession}
           disabled={isCreating}
@@ -60,7 +81,7 @@ export function Sidebar() {
         )}
       </div>
 
-      <div className="flex-1 overflow-y-auto p-2 space-y-1">
+      <div className="flex-1 overflow-y-auto p-3 space-y-2">
         {isLoading && (
           <div className="flex justify-center py-4">
             <Spinner size="sm" />
@@ -74,18 +95,23 @@ export function Sidebar() {
           >
             <button
               onClick={() => navigate(`/chat/${s.id}`)}
-              className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors cursor-pointer ${
+              className={`w-full text-left px-3 py-2.5 rounded-md text-sm transition-colors cursor-pointer ${
                 (sessionId ?? currentSessionId) === s.id
                   ? "bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300"
                   : "text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-800"
               }`}
             >
-              <div className="truncate font-medium pr-6">
+              <div className="truncate font-semibold pr-6">
                 {s.title || "Untitled"}
               </div>
-              <div className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+              <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                 {s.messageCount} messages
               </div>
+              {s.updatedAt && (
+                <div className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                  {formatRelativeTime(s.updatedAt)}
+                </div>
+              )}
             </button>
             <button
               onClick={(e) => handleDelete(e, s.id)}

@@ -69,7 +69,12 @@ class Dispatcher:
                 self._run_streaming(entry, params, transport, request.id, conn_id),
             )
             self._active_tasks[conn_id] = task
-            task.add_done_callback(lambda _: self._active_tasks.pop(conn_id, None))
+
+            def _cleanup(_t: asyncio.Task, _cid: str = conn_id, _task: asyncio.Task = task) -> None:
+                if self._active_tasks.get(_cid) is _task:
+                    self._active_tasks.pop(_cid, None)
+
+            task.add_done_callback(_cleanup)
             elapsed_ms = (time.monotonic() - t0) * 1000
             logger.debug(f"Handler {request.method} (id={request.id}) started in {elapsed_ms:.1f}ms")
             return
@@ -104,5 +109,6 @@ class Dispatcher:
             await entry.func(self.runtime, params, transport, request_id, conn_id)
         except asyncio.CancelledError:
             logger.info(f"Streaming handler cancelled (conn={conn_id})")
+            raise
         except Exception:
             logger.exception(f"Streaming handler error (conn={conn_id})")

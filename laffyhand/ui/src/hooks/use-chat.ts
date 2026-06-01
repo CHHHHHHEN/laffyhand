@@ -27,43 +27,62 @@ export function useChat() {
             onEvent: (event) => {
               const store = useChatStore.getState()
               switch (event.type) {
-                case "content":
-                  store.appendContent(event.data)
-                  break
-                case "reasoning":
-                  store.setReasoning(event.data)
-                  break
-                case "tool_calls":
-                  try {
-                    const calls = JSON.parse(event.data)
-                    if (Array.isArray(calls)) {
-                      for (const call of calls) {
-                        store.addToolCall({
-                          id: call.id ?? "unknown",
-                          name: call.name ?? "unknown",
-                          arguments: call.arguments ?? {},
-                        })
-                      }
-                    }
-                  } catch {
-                    // skip unparseable tool calls
+                case "step-start":
+                  // Subsequent steps (after tool execution) need a fresh streaming segment.
+                  if (!store.isStreaming) {
+                    store.startStreaming()
                   }
                   break
-                case "tool_result":
-                  try {
-                    const result = JSON.parse(event.data)
-                    store.addToolResult({
-                      id: result.id ?? "unknown",
-                      name: result.name ?? "unknown",
-                      result: result.result ?? event.data,
-                      isError: result.isError,
-                    })
-                  } catch {
-                    // skip unparseable
+                case "text-delta":
+                  if (event.text) {
+                    store.appendContent(event.text)
                   }
                   break
-                case "error":
-                  store.setError(event.data)
+                case "reasoning-delta":
+                  if (event.text) {
+                    store.setReasoning(event.text)
+                  }
+                  break
+                case "tool-call": {
+                  let args: Record<string, unknown> = {}
+                  try {
+                    args = JSON.parse(event.input)
+                  } catch {
+                    args = {}
+                  }
+                  store.addToolCall({
+                    id: event.id,
+                    name: event.name,
+                    arguments: args,
+                  })
+                  break
+                }
+                case "tool-result":
+                  store.addToolResult({
+                    id: event.id,
+                    name: event.name,
+                    result: event.result,
+                    isError: event.error,
+                  })
+                  break
+                case "tool-error":
+                  store.addToolResult({
+                    id: event.id,
+                    name: event.name,
+                    result: event.message,
+                    isError: true,
+                  })
+                  break
+                case "step-finish":
+                  if (event.reason === "tool_calls") {
+                    const stepUsage = event.usage
+                      ? {
+                          inputTokens: event.usage.input_tokens,
+                          outputTokens: event.usage.output_tokens,
+                        }
+                      : undefined
+                    store.finalizeMessage(stepUsage)
+                  }
                   break
                 case "finish": {
                   const usage = event.usage
@@ -72,9 +91,12 @@ export function useChat() {
                         outputTokens: event.usage.output_tokens,
                       }
                     : undefined
-                  store.finalizeMessage(usage)
+                  store.finalizeMessage(usage, event.session_usage ?? null)
                   break
                 }
+                case "provider-error":
+                  store.setError(event.message)
+                  break
               }
             },
             onError: (error) => {
@@ -99,6 +121,22 @@ export function useChat() {
     [urlSessionId],
   )
 
+  const steerMessage = useCallback(
+    async (content: string) => {
+      const store = useChatStore.getState()
+      if (!content.trim()) return
+      if (!store.isStreaming) return
+
+      store.addUserMessage(content)
+      try {
+        await rpcClient.steerMessage(content, urlSessionId)
+      } catch {
+        // best effort
+      }
+    },
+    [urlSessionId],
+  )
+
   const cancelStream = useCallback(async () => {
     if (abortRef.current) {
       abortRef.current.abort()
@@ -118,5 +156,5 @@ export function useChat() {
     }
   }, [])
 
-  return { sendMessage, cancelStream }
+  return { sendMessage, steerMessage, cancelStream }
 }

@@ -9,7 +9,7 @@ export function AppShell() {
   return (
     <div className="flex h-full">
       {sidebarOpen && (
-        <div className="w-64 border-r border-gray-200 dark:border-gray-700 shrink-0">
+        <div className="w-64 border-r border-gray-200 dark:border-gray-700 shadow-sm shrink-0">
           <Sidebar />
         </div>
       )}

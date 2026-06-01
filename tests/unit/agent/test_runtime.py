@@ -276,7 +276,8 @@ class TestCreateSubagent:
             async def mock_agent_loop(*args, **kwargs):
                 child_state = args[0]
                 child_state.messages.append(UserMessage(content="final answer"))
-                yield MagicMock(type="content", finish_reason="stop")
+                from laffyhand.agent.loop import StepFinish
+                yield StepFinish(index=1, reason="stop")
 
             mock_loop.side_effect = mock_agent_loop
 
@@ -297,7 +298,8 @@ class TestCreateSubagent:
 
         with patch("laffyhand.agent.runtime.agent_loop") as mock_loop:
             async def mock_agent_loop(*args, **kwargs):
-                yield MagicMock(type="tool_result", data="result")
+                from laffyhand.agent.loop import StepFinish
+                yield StepFinish(index=1, reason="stop")
 
             mock_loop.side_effect = mock_agent_loop
 

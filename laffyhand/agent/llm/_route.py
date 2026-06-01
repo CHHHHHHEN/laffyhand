@@ -30,7 +30,11 @@ class HTTPClient:
                 logger.debug(f"HTTP {response.status_code} from {_redact_url(url)}")
                 if response.status_code != 200:
                     error_body = await response.aread()
-                    raise RuntimeError(f"HTTP {response.status_code}: {error_body.decode()}")
+                    raise httpx.HTTPStatusError(
+                        f"HTTP {response.status_code}: {error_body.decode()}",
+                        request=response.request,
+                        response=response,
+                    )
                 async for chunk in response.aiter_bytes():
                     yield chunk
 
@@ -70,8 +74,12 @@ class Route:
                     yield event
                 if any(isinstance(e, StreamFinish) for e in events):
                     break
-        except RuntimeError as e:
-            logger.error(f"LLM request failed: {e}")
+        except httpx.HTTPStatusError as e:
+            logger.error(f"LLM request failed with HTTP {e.response.status_code}: {e}")
+            yield StreamError(error=str(e))
+            finished = True
+        except httpx.RequestError as e:
+            logger.error(f"LLM request connection error: {e}")
             yield StreamError(error=str(e))
             finished = True
         except Exception as e:
@@ -80,5 +88,5 @@ class Route:
             finished = True
 
         if not finished:
-            logger.warning("LLM stream ended without a finish event, synthesizing stop")
-            yield StreamFinish(finish_reason="stop")
+            logger.error("LLM stream ended without a finish event — the response may be truncated")
+            yield StreamError(error="LLM stream ended without a finish event")

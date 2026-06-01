@@ -35,7 +35,7 @@ class GlobTool(BaseTool):
         }
 
     async def run(self, params: dict[str, Any]) -> str:
-        root = Path(params.get("path", "."))
+        root = Path(params.get("path", ".")).resolve()
         pattern = params["pattern"]
 
         matches: list[Path] = []
@@ -48,7 +48,11 @@ class GlobTool(BaseTool):
 
         if not matches:
             for p in glob_module.glob(pattern, root_dir=root, recursive=True):
-                p_obj = root / p if root != Path(".") else Path(p)
+                p_obj = (root / p).resolve()
+                # Prevent path traversal outside root
+                if not str(p_obj).startswith(str(root)):
+                    logger.warning(f"Glob: blocked path traversal: {p_obj}")
+                    continue
                 if p_obj.is_file():
                     matches.append(p_obj)
             logger.debug(f"Glob: Python glob returned {len(matches)} results for {pattern} in {root}")

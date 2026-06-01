@@ -20,7 +20,7 @@ class SSEFraming(Framing):
     async def frames(self, response: AsyncIterable[bytes]) -> AsyncIterator[dict]:
         buffer = ""
         async for chunk in response:
-            buffer += chunk.decode("utf-8")
+            buffer += chunk.decode("utf-8", errors="replace")
             while "\n\n" in buffer:
                 raw_event, buffer = buffer.split("\n\n", 1)
                 parsed = self._parse_event(raw_event)
@@ -53,7 +53,7 @@ class SSEFraming(Framing):
             line = line.strip()
             if not line:
                 continue
-            if line == "data: [DONE]":
+            if line == "data: [DONE]" or line == "data:[DONE]":
                 is_done = True
             elif line.startswith("data: "):
                 payload_lines.append(line[6:])
@@ -65,7 +65,7 @@ class SSEFraming(Framing):
         if not payload_lines:
             return None
 
-        payload = "".join(payload_lines)
+        payload = "\n".join(payload_lines)
         try:
             return json.loads(payload)
         except json.JSONDecodeError as e:

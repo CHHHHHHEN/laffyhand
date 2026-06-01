@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 import { renderHook, act } from "@testing-library/react"
 import { useChat } from "./use-chat"
 import { useChatStore, resetMessageCounter } from "@/stores/chat-store"
-import type { AgentEvent } from "@/types/rpc"
+import type { StreamEvent } from "@/types/rpc"
 
 // Mock react-router-dom
 vi.mock("react-router-dom", () => ({
@@ -50,14 +50,15 @@ describe("useChat", () => {
       async (
         _message: string,
         callbacks: {
-          onEvent: (event: AgentEvent) => void
+          onEvent: (event: StreamEvent) => void
           onComplete: () => void
           onError: (error: Error) => void
         },
         _signal?: AbortSignal,
       ) => {
-        callbacks.onEvent({ type: "content", data: "Hello!" })
-        callbacks.onEvent({ type: "finish", data: "", usage: { input_tokens: 10, output_tokens: 5 } })
+        callbacks.onEvent({ type: "text-delta", id: "t1", text: "Hello!" })
+        callbacks.onEvent({ type: "step-finish", index: 1, reason: "stop", usage: { input_tokens: 10, output_tokens: 5 } })
+        callbacks.onEvent({ type: "finish", reason: "stop" })
         callbacks.onComplete()
       },
     )
@@ -116,14 +117,14 @@ describe("useChat", () => {
       async (
         _message: string,
         callbacks: {
-          onEvent: (event: AgentEvent) => void
+          onEvent: (event: StreamEvent) => void
           onComplete: () => void
           onError: (error: Error) => void
         },
         signal?: AbortSignal,
       ) => {
         // Simulate receiving some content
-        callbacks.onEvent({ type: "content", data: "partial" })
+        callbacks.onEvent({ type: "text-delta", id: "t1", text: "partial" })
         // Then cancel
         signal?.addEventListener("abort", () => {
           // stream aborted

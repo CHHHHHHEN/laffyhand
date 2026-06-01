@@ -1,6 +1,7 @@
 import { useParams } from "react-router-dom"
 import { ChatInput } from "@/components/chat/ChatInput"
 import { MessageList } from "@/components/chat/MessageList"
+import { StatusBar } from "@/components/chat/StatusBar"
 import { useChat } from "@/hooks/use-chat"
 import { useCurrentSession } from "@/hooks/use-sessions"
 import { useChatStore } from "@/stores/chat-store"
@@ -8,15 +9,18 @@ import { Spinner } from "@/components/ui/Spinner"
 
 export function ChatPage() {
   const { sessionId } = useParams()
-  const { sendMessage, cancelStream } = useChat()
+  const { sendMessage, steerMessage, cancelStream } = useChat()
   const { isLoading } = useCurrentSession(sessionId)
   const isStreaming = useChatStore((s) => s.isStreaming)
   const messages = useChatStore((s) => s.messages)
 
   if (!sessionId) {
     return (
-      <div className="flex-1 flex items-center justify-center text-gray-400 dark:text-gray-500">
-        <p>Select or create a session to start</p>
+      <div className="flex-1 flex flex-col items-center justify-center text-gray-500 dark:text-gray-400 space-y-4">
+        <svg className="w-16 h-16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+        </svg>
+        <p className="text-lg">Select or create a session to start</p>
       </div>
     )
   }
@@ -31,19 +35,14 @@ export function ChatPage() {
 
   return (
     <div className="flex-1 flex flex-col h-full">
+      <StatusBar />
       <MessageList />
-      <div className="flex items-center gap-2 px-4">
-        {isStreaming && (
-          <button
-            type="button"
-            onClick={cancelStream}
-            className="text-sm text-red-500 hover:text-red-700 cursor-pointer mb-3"
-          >
-            Cancel
-          </button>
-        )}
-      </div>
-      <ChatInput onSend={sendMessage} disabled={isStreaming} />
+      <ChatInput
+        onSend={sendMessage}
+        onSteer={steerMessage}
+        onCancel={cancelStream}
+        isStreaming={isStreaming}
+      />
     </div>
   )
 }

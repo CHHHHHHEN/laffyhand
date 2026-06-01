@@ -16,11 +16,15 @@ _ENV_VAR_PATTERN = re.compile(
 
 _DANGEROUS_COMMANDS: list[tuple[re.Pattern, str]] = [
     (re.compile(r"\brm\s+(-rf?|--recursive)\s+/\s*$"), "rm -rf / is blocked"),
+    (re.compile(r"\brm\s+(-rf?|--recursive)\s+/\S"), "rm -rf on / paths is blocked"),
     (re.compile(r"\bmkfs\b"), "mkfs is blocked"),
     (re.compile(r"\bdd\s+if="), "dd with if= is blocked"),
     (re.compile(r"\bchmod\s+777\b"), "chmod 777 is blocked"),
+    (re.compile(r"\bchmod\s+0?777\b"), "chmod 777 (with leading zero) is blocked"),
+    (re.compile(r"\bchmod\s+a=rwx\b"), "chmod a=rwx is blocked"),
     (re.compile(r"\bchown\s+"), "chown is blocked (use chmod instead)"),
-    (re.compile(r"\b>:?\s*"), "direct file redirect (>) is blocked; use the file tools"),
+    (re.compile(r"(?<!\S)>\s*/"), "direct file redirect (>) is blocked; use the file tools"),
+    (re.compile(r">>\s*/"), "direct file append (>>) is blocked; use the file tools"),
     (re.compile(r"\bmv\s+/\s+"), "moving / is blocked"),
 ]
 

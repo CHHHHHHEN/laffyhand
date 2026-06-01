@@ -11,7 +11,7 @@ import type {
   SessionForkResult,
   CancelResult,
   ToolsListResult,
-  AgentEvent,
+  StreamEvent,
 } from "@/types/rpc"
 
 export class RpcError extends Error {
@@ -53,7 +53,7 @@ async function call<TResult>(
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
   if (signal) {
-    signal.addEventListener("abort", () => controller.abort())
+    signal.addEventListener("abort", () => controller.abort(), { once: true })
   }
 
   try {
@@ -96,7 +96,7 @@ async function callStream(
 
   const controller = new AbortController()
   if (signal) {
-    signal.addEventListener("abort", () => controller.abort())
+    signal.addEventListener("abort", () => controller.abort(), { once: true })
   }
 
   const response = await fetch(`${getBaseUrl()}/rpc`, {
@@ -122,7 +122,7 @@ async function callStream(
 }
 
 export interface ChatStreamCallbacks {
-  onEvent: (event: AgentEvent) => void
+  onEvent: (event: StreamEvent) => void
   onError: (error: Error) => void
   onComplete: () => void
 }
@@ -159,14 +159,12 @@ export async function chatStream(
             const raw = JSON.parse(line.slice(6))
             const notification = raw as {
               method?: string
-              params?: AgentEvent
+              params?: Record<string, unknown>
             }
-            const event: AgentEvent | undefined =
-              notification.params !== undefined
-                ? notification.params
-                : (notification as AgentEvent)
+            const event: Record<string, unknown> | undefined =
+              notification.params ?? (raw as Record<string, unknown>)
             if (event?.type) {
-              callbacks.onEvent(event)
+              callbacks.onEvent(event as StreamEvent)
             }
             if (event?.type === "finish") {
               callbacks.onComplete()
@@ -224,6 +222,17 @@ export const rpcClient = {
 
   cancelStream(): Promise<CancelResult> {
     return call<CancelResult>("chat/cancel")
+  },
+
+  steerMessage(
+    message: string,
+    sessionId?: string,
+  ): Promise<{ status: string; session_id: string }> {
+    const params: Record<string, unknown> = { message }
+    if (sessionId) {
+      params.session_id = sessionId
+    }
+    return call<{ status: string; session_id: string }>("chat/steer", params)
   },
 
   chatStream: (

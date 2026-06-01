@@ -16,7 +16,8 @@ class _MockLLM(LLM):
     """A mock LLM that yields a fixed sequence of events."""
 
     def __init__(self, events: list | None = None):
-        super().__init__(model="test", route=None)  # type: ignore[arg-type]
+        self.model = "test"
+        self.route = None  # type: ignore[assignment]
         self._events = events or []
 
     async def stream(self, messages, tools=None) -> AsyncIterator:

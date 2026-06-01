@@ -84,7 +84,6 @@ def parse_args() -> argparse.Namespace:
     ui_parser = sub.add_parser("ui", help="Start the web UI")
     ui_parser.add_argument("--host", type=str, default="127.0.0.1", help="Host to bind")
     ui_parser.add_argument("--port", type=int, default=9090, help="Port to bind")
-    ui_parser.add_argument("--no-open", action="store_true", help="Do not open browser")
 
     return parser.parse_args()
 
@@ -226,7 +225,6 @@ async def main():
             runtime,
             host=args.host,
             port=args.port,
-            open_browser=not args.no_open,
         )
         await runtime.shutdown()
         return

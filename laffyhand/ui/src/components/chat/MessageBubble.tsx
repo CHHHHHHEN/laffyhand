@@ -29,12 +29,12 @@ export function MessageBubble({ message }: MessageBubbleProps) {
   const isUser = message.role === "user"
 
   return (
-    <div className={`flex ${isUser ? "justify-end" : "justify-start"} mb-4`}>
+    <div className={`flex ${isUser ? "justify-end" : "justify-start"} mb-6`}>
       <div
-        className={`max-w-[80%] rounded-lg px-4 py-2 ${
+        className={`max-w-[80%] rounded-lg px-4 py-2 shadow-sm ${
           isUser
             ? "bg-blue-600 text-white"
-            : "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+            : "bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-gray-100"
         }`}
       >
         {isUser ? (
@@ -55,9 +55,19 @@ export function MessageBubble({ message }: MessageBubbleProps) {
                 {message.toolCalls.map((tc) => (
                   <div
                     key={tc.id}
-                    className="bg-gray-200 dark:bg-gray-700 rounded px-2 py-1 mb-1 text-xs font-mono"
+                    className="bg-gray-100 dark:bg-gray-800 rounded-md px-3 py-2 mb-2 text-xs font-mono border border-gray-200 dark:border-gray-700"
                   >
-                    {tc.name}({JSON.stringify(tc.arguments)})
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-blue-600 dark:text-blue-400">
+                        {tc.name}
+                      </span>
+                      <span className="text-gray-400 dark:text-gray-500 text-xs">
+                        {tc.id.slice(0, 8)}
+                      </span>
+                    </div>
+                    <pre className="mt-1 text-gray-600 dark:text-gray-300 whitespace-pre-wrap break-all">
+                      {JSON.stringify(tc.arguments, null, 2)}
+                    </pre>
                   </div>
                 ))}
               </div>

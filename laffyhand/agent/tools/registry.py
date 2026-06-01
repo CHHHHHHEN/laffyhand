@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import Callable
 from typing import Any
 
@@ -15,6 +16,7 @@ class ToolRegistry:
         self._dirty = True
         self.permission = permission or PermissionManager()
         self._on_build_defs: list[Callable[[], None]] = []
+        self._lock = asyncio.Lock()
 
     def on_build_defs(self, callback: Callable[[], None]) -> None:
         self._on_build_defs.append(callback)
@@ -27,13 +29,17 @@ class ToolRegistry:
         self._tools.pop(name, None)
         self._dirty = True
 
-    def build_tool_definitions(self) -> list[ToolDefinition]:
-        if self._dirty:
-            for cb in self._on_build_defs:
-                cb()
-            self._defs = [t.to_definition() for t in self._tools.values()]
-            self._dirty = False
-            logger.debug(f"Built {len(self._defs)} tool definition(s): {[d.name for d in self._defs]}")
+    def list_tools(self) -> dict[str, BaseTool]:
+        return dict(self._tools)
+
+    async def build_tool_definitions(self) -> list[ToolDefinition]:
+        async with self._lock:
+            if self._dirty:
+                for cb in self._on_build_defs:
+                    cb()
+                self._defs = [t.to_definition() for t in self._tools.values()]
+                self._dirty = False
+                logger.debug(f"Built {len(self._defs)} tool definition(s): {[d.name for d in self._defs]}")
         return self._defs
 
     def build_tool_prompt(self) -> str:

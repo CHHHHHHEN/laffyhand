@@ -146,7 +146,7 @@ class TestHandleRpcParseError:
     @pytest.mark.anyio
     async def test_empty_body_returns_400(self, http_transport):
         request = MagicMock()
-        request.text = AsyncMock(return_value="")
+        request.read = AsyncMock(return_value=b"")
         request.headers.get = MagicMock(return_value=None)
         response = await http_transport._handle_rpc(request)
         assert response.status == 400
@@ -156,7 +156,7 @@ class TestHandleRpcParseError:
     @pytest.mark.anyio
     async def test_invalid_json_returns_400(self, http_transport):
         request = MagicMock()
-        request.text = AsyncMock(return_value="not json")
+        request.read = AsyncMock(return_value=b"not json")
         request.headers.get = MagicMock(return_value=None)
         response = await http_transport._handle_rpc(request)
         assert response.status == 400

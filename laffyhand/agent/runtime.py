@@ -29,7 +29,7 @@ from laffyhand.agent.tools.mcp_manage import (
     MCPDisconnectTool,
 )
 from laffyhand.agent.mcp import MCPService
-from laffyhand.agent.loop import agent_loop
+from laffyhand.agent.loop import agent_loop, StepFinish
 
 if TYPE_CHECKING:
     from laffyhand.agent.agent import AgentInfo
@@ -164,6 +164,8 @@ class AgentRuntime:
                 sid = state.session_id or self._session_id
                 if self.session_manager.get(sid):
                     self.session_manager.save_state(sid, state)
+                else:
+                    logger.warning(f"save_current_state: session {sid} not found in DB, skipping")
 
     def complete_current_session(self) -> None:
         if self._session_id is not None:
@@ -181,6 +183,7 @@ class AgentRuntime:
         if loaded is None:
             return False
         loaded.usage.context_size = self._context_size
+        loaded.session_id = session_id  # keep key consistent with _states dict
         self._states[session_id] = loaded
         self._session_id = session_id
         return True
@@ -207,13 +210,14 @@ class AgentRuntime:
             return None
         self.save_current_state()
         child = self.session_manager.fork(state.session_id)
-        forked = state.model_copy()
+        import copy
+        forked = copy.deepcopy(state)
         forked.session_id = child.id
         self._states[child.id] = forked
         self._session_id = child.id
         return child.id
 
-    async def run_agent_turn(self, session_id: str | None = None) -> Any:
+    async def run_agent_turn(self, session_id: str | None = None):
         sid = session_id or self._session_id
         assert sid is not None
         state = self._states.get(sid)
@@ -276,7 +280,7 @@ class AgentRuntime:
         agent_info: AgentInfo,
         prompt: str,
     ) -> str:
-        _, child_state, child_registry = build_subagent_state(
+        child_state, child_registry = build_subagent_state(
             self.session_manager,
             parent_session_id,
             agent_info,
@@ -296,7 +300,7 @@ class AgentRuntime:
             max_steps=agent_info.max_steps,
             session_manager=self.session_manager,
         ):
-            if event.type == "content" and event.finish_reason is not None:
+            if isinstance(event, StepFinish):
                 last_msg = child_state.messages[-1]
                 if hasattr(last_msg, "content") and last_msg.content:
                     if not isinstance(last_msg, SystemMessage):
@@ -348,9 +352,10 @@ class AgentRuntime:
 
     async def shutdown(self) -> None:
         for sid, state in list(self._states.items()):
-            if state.session_id and self.session_manager.get(sid):
-                self.session_manager.save_state(sid, state)
-                logger.info(f"Session state saved: {sid}")
+            save_id = state.session_id or sid
+            if self.session_manager.get(save_id):
+                self.session_manager.save_state(save_id, state)
+                logger.info(f"Session state saved: {sid} (session_id={save_id})")
         self._states.clear()
         await self.mcp_service.disconnect_all()
         self.session_manager.close()

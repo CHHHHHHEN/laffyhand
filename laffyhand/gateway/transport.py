@@ -5,6 +5,8 @@ import asyncio
 from abc import ABC, abstractmethod
 from asyncio import Queue, StreamReader
 
+from loguru import logger
+
 
 class Transport(ABC):
     connection_id: str = ""
@@ -29,8 +31,12 @@ class StdioTransport(Transport):
     async def send(self, data: str) -> None:
         if self._closed:
             return
-        self._writer.write(data + "\n")
-        self._writer.flush()
+        try:
+            self._writer.write(data + "\n")
+            self._writer.flush()
+        except Exception as e:
+            self._closed = True
+            logger.warning(f"StdioTransport.send failed: {e}")
 
     async def recv(self) -> str:
         if self._reader is None:

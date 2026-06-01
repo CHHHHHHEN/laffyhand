@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, AsyncMock
 
 import pytest
 
@@ -18,7 +18,7 @@ def runtime():
     r.current_session_id = None
     r.state = None
     r.context_size = 128000
-    r.tool_registry.build_tool_definitions = MagicMock(return_value=[])
+    r.tool_registry.build_tool_definitions = AsyncMock(return_value=[])
     r.tool_registry.build_tool_prompt = MagicMock(return_value="")
     r.skill_registry.all = MagicMock(return_value=[])
     r.session_manager = MagicMock()
@@ -46,13 +46,10 @@ async def _shutdown_gateway(client_t: InProcessTransport) -> None:
 
 
 async def _mock_run_agent_turn(**kwargs):
-    from laffyhand.agent.loop import AgentEvent
+    from laffyhand.agent.loop import TextDelta, StepFinish
     from laffyhand.agent.schemas import Usage
-    yield AgentEvent(type="content", data="Hello from LLM")
-    yield AgentEvent(
-        type="content", data="", finish_reason="stop",
-        usage=Usage(input_tokens=10, output_tokens=5),
-    )
+    yield TextDelta(id="text-1", text="Hello from LLM")
+    yield StepFinish(index=1, reason="stop", usage=Usage(input_tokens=10, output_tokens=5))
 
 
 @pytest.mark.anyio
@@ -82,7 +79,8 @@ async def test_initialize(transport_pair):
 async def test_tools_list_empty(transport_pair):
     server_t, client_t = transport_pair
     runtime = MagicMock()
-    runtime.tool_registry.build_tool_definitions = MagicMock(return_value=[])
+    runtime.tool_registry = MagicMock()
+    runtime.tool_registry.build_tool_definitions = AsyncMock(return_value=[])
     gateway = GatewayServer(runtime, server_t)
 
     import asyncio
@@ -205,6 +203,7 @@ async def test_chat_stream_via_gateway(transport_pair):
     runtime.state.session_id = "sess-stream"
     runtime.state.messages = []
     runtime.state.step = 0
+    runtime.state.pending_steer = None
     runtime.state.usage = MagicMock()
     runtime.state.usage.model_dump.return_value = {"total_input": 10, "total_output": 5}
     runtime.current_session_id = "sess-stream"
@@ -224,12 +223,12 @@ async def test_chat_stream_via_gateway(transport_pair):
                 break
 
     assert len(notifications) >= 2
-    content_notif = notifications[0]
-    assert content_notif["type"] == "content"
-    assert "Hello" in content_notif["data"]
+    text_notif = notifications[0]
+    assert text_notif["type"] == "text-delta"
+    assert "Hello" in text_notif["text"]
     finish_notif = notifications[-1]
     assert finish_notif["type"] == "finish"
-    assert finish_notif["finish_reason"] == "stop"
+    assert finish_notif["reason"] == "stop"
     assert finish_notif["session_id"] == "sess-stream"
     assert finish_notif["session_usage"] == {"total_input": 10, "total_output": 5}
 
@@ -281,8 +280,10 @@ async def test_usage_get_via_gateway(transport_pair):
     await client_t.send(req.json())
     raw = await asyncio.wait_for(client_t.recv(), timeout=2)
     resp = json.loads(raw)
-    assert resp["result"]["usage"]["total_input"] == 100
-    assert resp["result"]["session_id"] == "sess-1"
+    assert resp["result"]["total_input"] == 100
+    assert resp["result"]["total_output"] == 50
+    assert resp["result"]["total_reasoning"] == 10
+    assert resp["result"]["context_size"] == 8192
 
     await _shutdown_gateway(client_t)
     await task
