@@ -9,6 +9,12 @@ import { ConfigPanel } from "@/components/chat/ConfigPanel"
 import { SubagentFooter } from "@/components/chat/SubagentFooter"
 import { useEffect } from "react"
 
+function formatTokens(n: number): string {
+  if (n < 1000) return `${n}`
+  const k = (n / 1000).toFixed(1).replace(/\.0$/, "")
+  return `${k}k`
+}
+
 export function AppShell() {
   const sidebarOpen = useUiStore((s) => s.sidebarOpen)
   const toggleSidebar = useUiStore((s) => s.toggleSidebar)
@@ -18,11 +24,19 @@ export function AppShell() {
   const toggleDarkMode = useUiStore((s) => s.toggleDarkMode)
 
   const isStreaming = useChatStore((s) => s.isStreaming)
+  const model = useChatStore((s) => s.model)
+  const sessionUsage = useChatStore((s) => s.sessionUsage)
+  const turnUsage = useChatStore((s) => s.turnUsage)
 
   // Sync dark mode class to <html>
   useEffect(() => {
     document.documentElement.classList.toggle("dark", darkMode)
   }, [darkMode])
+
+  const totalTokens = sessionUsage
+    ? sessionUsage.total_input + sessionUsage.total_output
+    : 0
+  const ctxSize = sessionUsage?.context_size ?? 0
 
   return (
     <div className="flex h-full overflow-hidden transition-colors duration-200">
@@ -55,6 +69,121 @@ export function AppShell() {
           <span className="text-xs font-medium text-gray-400 dark:text-gray-500 select-none shrink-0">
             Laffyhand
           </span>
+
+          {/* Model + Token usage — 上下文信息 */}
+          {(model || sessionUsage) && (
+            <>
+              <span className="w-px h-4 bg-gray-200 dark:bg-gray-700" />
+              {model && (
+                <span className="font-mono flex items-center gap-1.5 text-[11px] text-gray-500 dark:text-gray-400 shrink-0" title="Model">
+                  <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                  {model}
+                </span>
+              )}
+
+              {turnUsage && (
+                <>
+                  <span className="text-gray-300 dark:text-gray-600 select-none text-xs">|</span>
+
+                  <span className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400 text-[11px]" title="This turn / Cumulative / Context size">
+                    <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
+                    </svg>
+                    <span className="font-medium">{formatTokens(turnUsage.input + turnUsage.output)}</span>
+                    <span className="text-gray-400 dark:text-gray-500">/ {formatTokens(totalTokens)}</span>
+                    <span className="text-gray-300 dark:text-gray-500">/ {formatTokens(ctxSize)}</span>
+                    {ctxSize > 0 && (
+                      <span className={`text-[10px] font-medium ${
+                        totalTokens / ctxSize > 0.8
+                          ? "text-amber-500 dark:text-amber-400"
+                          : "text-gray-400 dark:text-gray-500"
+                      }`}>
+                        ({Math.round((totalTokens / ctxSize) * 100)}%)
+                      </span>
+                    )}
+                    {ctxSize > 0 && (
+                      <span className="w-12 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden shrink-0">
+                        <span
+                          className={`block h-full rounded-full transition-all duration-300 ${
+                            totalTokens / ctxSize > 0.8
+                              ? "bg-amber-400"
+                              : totalTokens / ctxSize > 0.5
+                                ? "bg-blue-400"
+                                : "bg-green-400"
+                          }`}
+                          style={{ width: `${Math.min((totalTokens / ctxSize) * 100, 100)}%` }}
+                        />
+                      </span>
+                    )}
+                  </span>
+
+                  <span className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400 text-[11px]">
+                    <span className="flex items-center gap-0.5">
+                      <svg className="w-3 h-3 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 11l5-5m0 0l5 5m-5-5v12" />
+                      </svg>
+                      <span>{formatTokens(turnUsage.input)}</span>
+                    </span>
+                    <svg className="w-2.5 h-2.5 text-gray-300 dark:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 13l-5 5m0 0l-5-5m5 5V6" />
+                    </svg>
+                    <span className="flex items-center gap-0.5">
+                      <svg className="w-3 h-3 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 13l-5 5m0 0l-5-5m5 5V6" />
+                      </svg>
+                      <span>{formatTokens(turnUsage.output)}</span>
+                    </span>
+                  </span>
+
+                  {turnUsage.reasoning > 0 && (
+                    <span className="flex items-center gap-1 text-gray-500 dark:text-gray-400 text-[11px]" title="Reasoning tokens">
+                      <span className="text-gray-300 dark:text-gray-600 select-none">·</span>
+                      <span className="flex items-center gap-0.5">
+                        <span className="text-[11px]">🧠</span>
+                        <span>{formatTokens(turnUsage.reasoning)}</span>
+                      </span>
+                    </span>
+                  )}
+                </>
+              )}
+
+              {!turnUsage && sessionUsage && (
+                <>
+                  <span className="text-gray-300 dark:text-gray-600 select-none text-xs">|</span>
+                  <span className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400 text-[11px]" title="Cumulative tokens / Context size">
+                    <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
+                    </svg>
+                    <span className="font-medium">{formatTokens(totalTokens)}</span>
+                    <span className="text-gray-400 dark:text-gray-500">/ {formatTokens(ctxSize)}</span>
+                    {ctxSize > 0 && (
+                      <span className={`text-[10px] font-medium ${
+                        totalTokens / ctxSize > 0.8
+                          ? "text-amber-500 dark:text-amber-400"
+                          : "text-gray-400 dark:text-gray-500"
+                      }`}>
+                        ({Math.round((totalTokens / ctxSize) * 100)}%)
+                      </span>
+                    )}
+                    {ctxSize > 0 && (
+                      <span className="w-12 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden shrink-0">
+                        <span
+                          className={`block h-full rounded-full transition-all duration-300 ${
+                            totalTokens / ctxSize > 0.8
+                              ? "bg-amber-400"
+                              : totalTokens / ctxSize > 0.5
+                                ? "bg-blue-400"
+                                : "bg-green-400"
+                          }`}
+                          style={{ width: `${Math.min((totalTokens / ctxSize) * 100, 100)}%` }}
+                        />
+                      </span>
+                    )}
+                  </span>
+                </>
+              )}
+            </>
+          )}
 
           {/* Streaming indicator — 仅有 streaming 时在顶部栏显示简洁提示 */}
           {isStreaming && (
