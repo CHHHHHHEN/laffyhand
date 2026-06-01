@@ -155,7 +155,7 @@ describe("MessageBubble", () => {
     )
     // 折叠按钮可见
     expect(screen.getByText("Thinking")).toBeInTheDocument()
-    expect(screen.getByText("Show")).toBeInTheDocument()
+    expect(screen.getByText(/^Show/)).toBeInTheDocument()
     // 内容默认隐藏（不在 DOM 中）
     expect(screen.queryByText("step by step")).not.toBeInTheDocument()
   })
@@ -171,7 +171,7 @@ describe("MessageBubble", () => {
       />,
     )
     // 点击展开
-    fireEvent.click(screen.getByText("Show"))
+    fireEvent.click(screen.getByText(/^Show/))
     expect(screen.getByText("deep thoughts here")).toBeInTheDocument()
     // 按钮文字变为 Hide
     expect(screen.getByText("Hide")).toBeInTheDocument()
@@ -187,7 +187,7 @@ describe("MessageBubble", () => {
         })}
       />,
     )
-    const button = screen.getByText("Show")
+    const button = screen.getByText(/^Show/)
     fireEvent.click(button) // expand
     expect(screen.getByText("toggle test")).toBeInTheDocument()
     fireEvent.click(screen.getByText("Hide")) // collapse

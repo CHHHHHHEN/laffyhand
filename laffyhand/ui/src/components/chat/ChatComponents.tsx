@@ -26,6 +26,8 @@ export function UserAvatar() {
 /** 推理过程折叠面板 */
 export function ReasoningBlock({ text }: { text: string }) {
   const [expanded, setExpanded] = useState(false)
+  const [showAll, setShowAll] = useState(false)
+  const lineCount = text.split('\n').length
 
   return (
     <div className="mb-2 rounded-lg border border-gray-200 dark:border-gray-600 overflow-hidden">
@@ -43,12 +45,37 @@ export function ReasoningBlock({ text }: { text: string }) {
         </svg>
         <span>Thinking</span>
         <span className="ml-auto text-gray-400 dark:text-gray-500">
-          {expanded ? "Hide" : "Show"}
+          {expanded ? "Hide" : `Show (${lineCount} lines)`}
         </span>
       </button>
       {expanded && (
-        <div className="px-3 py-2 text-xs text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-800 whitespace-pre-wrap leading-relaxed border-t border-gray-100 dark:border-gray-700 animate-[fade-in_0.15s_ease-out]">
-          {text}
+        <div className="relative">
+          <div
+            className={`px-3 py-2 text-xs text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-800 whitespace-pre-wrap leading-relaxed border-t border-gray-100 dark:border-gray-700 animate-[fade-in_0.15s_ease-out] ${
+              !showAll ? "max-h-60 overflow-hidden" : ""
+            }`}
+          >
+            {text}
+          </div>
+          {!showAll && lineCount > 20 && (
+            <>
+              <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-white dark:from-gray-800 to-transparent pointer-events-none" />
+              <button
+                onClick={() => setShowAll(true)}
+                className="w-full text-[10px] py-1 text-blue-500 dark:text-blue-400 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors cursor-pointer font-sans border-t border-gray-100 dark:border-gray-700"
+              >
+                Show all ({lineCount} lines)
+              </button>
+            </>
+          )}
+          {showAll && lineCount > 20 && (
+            <button
+              onClick={() => setShowAll(false)}
+              className="w-full text-[10px] py-1 text-blue-500 dark:text-blue-400 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors cursor-pointer font-sans border-t border-gray-100 dark:border-gray-700"
+            >
+              Show less
+            </button>
+          )}
         </div>
       )}
     </div>
@@ -57,8 +84,12 @@ export function ReasoningBlock({ text }: { text: string }) {
 
 /** 工具调用卡片 */
 export function ToolCallCard({ toolCall }: { toolCall: ToolCall }) {
+  const argStr = JSON.stringify(toolCall.arguments, null, 2)
+  const argLines = argStr.split('\n').length
+  const [showAll, setShowAll] = useState(argLines <= 6)
+
   return (
-    <div className="bg-gray-50 dark:bg-gray-800/80 rounded-lg px-3 py-2.5 text-xs font-mono border border-gray-200 dark:border-gray-700 transition-all duration-150 hover:border-blue-300 dark:hover:border-blue-700 hover:shadow-sm">
+    <div className="bg-gray-50 dark:bg-gray-800/80 rounded-lg px-3 py-2 text-xs font-mono border border-gray-200 dark:border-gray-700 transition-all duration-150 hover:border-blue-300 dark:hover:border-blue-700 hover:shadow-sm">
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-1.5 min-w-0">
           <svg className="w-3 h-3 shrink-0 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -73,9 +104,23 @@ export function ToolCallCard({ toolCall }: { toolCall: ToolCall }) {
           {toolCall.id.slice(0, 6)}
         </span>
       </div>
-      <pre className="mt-1.5 text-gray-600 dark:text-gray-300 whitespace-pre-wrap break-all leading-relaxed">
-        {JSON.stringify(toolCall.arguments, null, 2)}
-      </pre>
+      {showAll ? (
+        <pre className="mt-1.5 text-gray-600 dark:text-gray-300 whitespace-pre-wrap break-all leading-relaxed">
+          {argStr}
+        </pre>
+      ) : (
+        <pre className="mt-1.5 text-gray-600 dark:text-gray-300 whitespace-pre-wrap break-all leading-relaxed line-clamp-3">
+          {argStr}
+        </pre>
+      )}
+      {argLines > 6 && (
+        <button
+          onClick={() => setShowAll(!showAll)}
+          className="mt-1 text-[10px] text-blue-500 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors cursor-pointer font-sans"
+        >
+          {showAll ? "Show less" : `Show all (${argLines} lines)`}
+        </button>
+      )}
     </div>
   )
 }

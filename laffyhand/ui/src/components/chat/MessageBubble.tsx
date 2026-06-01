@@ -25,7 +25,7 @@ function MarkdownContent({ content }: { content: string }) {
 
   useEffect(() => {
     if (!containerRef.current) return
-    // Add copy buttons to code blocks
+    // Add copy buttons and collapse to code blocks
     containerRef.current.querySelectorAll('pre').forEach((pre) => {
       if (pre.parentElement?.classList.contains('code-block-wrapper')) return
       const wrapper = document.createElement('div')
@@ -33,8 +33,9 @@ function MarkdownContent({ content }: { content: string }) {
       pre.parentNode?.insertBefore(wrapper, pre)
       wrapper.appendChild(pre)
 
+      // Copy button
       const copyBtn = document.createElement('button')
-      copyBtn.className = 'copy-code-btn absolute top-2 right-2 px-2 py-1 text-[10px] rounded-md bg-gray-200/70 dark:bg-gray-700/70 text-gray-500 dark:text-gray-400 opacity-0 group-hover:opacity-100 hover:bg-gray-300 dark:hover:bg-gray-600 transition-all duration-150 cursor-pointer font-sans'
+      copyBtn.className = 'copy-code-btn absolute top-2 right-2 px-2 py-1 text-[10px] rounded-md bg-gray-200/70 dark:bg-gray-700/70 text-gray-500 dark:text-gray-400 opacity-0 group-hover:opacity-100 hover:bg-gray-300 dark:hover:bg-gray-600 transition-all duration-150 cursor-pointer font-sans z-10'
       copyBtn.textContent = 'Copy'
       copyBtn.onclick = async () => {
         const code = pre.querySelector('code') || pre
@@ -47,6 +48,27 @@ function MarkdownContent({ content }: { content: string }) {
         }
       }
       wrapper.appendChild(copyBtn)
+
+      // Collapse long code blocks (>15 lines or >300px)
+      const lineCount = (pre.textContent || '').split('\n').length
+      if (lineCount > 15) {
+        pre.style.maxHeight = '200px'
+        pre.style.overflow = 'hidden'
+        pre.style.transition = 'max-height 0.2s ease'
+
+        const expandBtn = document.createElement('button')
+        expandBtn.className = 'code-expand-btn w-full text-[10px] py-1 text-gray-400 dark:text-gray-500 bg-gray-50 dark:bg-gray-800/50 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors cursor-pointer font-sans border-t border-gray-200 dark:border-gray-700'
+        expandBtn.textContent = `Show more (${lineCount} lines)`
+
+        let expanded = false
+        expandBtn.onclick = () => {
+          expanded = !expanded
+          pre.style.maxHeight = expanded ? `${pre.scrollHeight}px` : '200px'
+          expandBtn.textContent = expanded ? 'Show less' : `Show more (${lineCount} lines)`
+        }
+
+        wrapper.appendChild(expandBtn)
+      }
     })
   }, [html])
 
