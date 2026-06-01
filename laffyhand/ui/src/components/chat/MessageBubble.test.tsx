@@ -132,12 +132,12 @@ describe("MessageBubble", () => {
   it("does not render usage badge when usage is absent", () => {
     render(
       <MessageBubble
-        message={makeMessage({ role: "assistant", content: "no usage" })}
+        message={makeMessage({ role: "assistant", content: "no usage", createdAt: undefined })}
       />,
     )
     expect(screen.getByText("no usage")).toBeInTheDocument()
-    // 用量区不应出现数字
-    const usageContainer = document.querySelector(".text-\\[10px\\].text-gray-400")
+    // 用量区不应出现数字 — timestamp has text-[10px] too, so we check via className
+    const usageContainer = document.querySelector(".mt-1\\.5.flex.items-center")
     expect(usageContainer).toBeNull()
   })
 
