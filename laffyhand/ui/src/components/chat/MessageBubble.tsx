@@ -3,9 +3,11 @@ import { marked } from "marked"
 import DOMPurify from "dompurify"
 import type { Message } from "@/types/session"
 import { AiAvatar, UserAvatar, ReasoningBlock, ToolCallCard, UsageBadge } from "./ChatComponents"
+import { rpcClient } from "@/lib/rpc"
 
 interface MessageBubbleProps {
   message: Message
+  onResolvePermission?: (messageId: string) => void
 }
 
 function MarkdownContent({ content }: { content: string }) {
@@ -60,11 +62,61 @@ function SystemMessageBlock({ content }: { content: string }) {
   )
 }
 
-export function MessageBubble({ message }: MessageBubbleProps) {
+export function MessageBubble({ message, onResolvePermission }: MessageBubbleProps) {
   const isUser = message.role === "user"
 
   if (message.role === "system") {
     return <SystemMessageBlock content={message.content} />
+  }
+
+  if (message.role === "permission-request" && message.permissionInfo) {
+    const info = message.permissionInfo
+    return (
+      <div className="flex justify-center mb-5 animate-[fade-in_0.2s_ease-out]">
+        <div className="max-w-[85%] min-w-0 w-full">
+          <div className="bg-amber-50 dark:bg-amber-900/15 border border-amber-200 dark:border-amber-700/40 rounded-xl px-4 py-3">
+            <div className="text-sm text-amber-900 dark:text-amber-200 mb-3">
+              Allow <span className="font-medium">{info.permission}</span> '<span className="font-mono text-xs">{info.pattern}</span>'?
+            </div>
+            {info.resolved ? (
+              <div className="text-xs text-amber-600 dark:text-amber-400 italic">
+                Resolved
+              </div>
+            ) : (
+              <div className="flex gap-2 justify-end">
+                <button
+                  onClick={async () => {
+                    await rpcClient.permissionRespond(info.requestId, "deny")
+                    onResolvePermission?.(message.id)
+                  }}
+                  className="px-3 py-1.5 text-xs rounded-lg border border-amber-300 dark:border-amber-600 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-800/30 cursor-pointer"
+                >
+                  Deny
+                </button>
+                <button
+                  onClick={async () => {
+                    await rpcClient.permissionRespond(info.requestId, "allow")
+                    onResolvePermission?.(message.id)
+                  }}
+                  className="px-3 py-1.5 text-xs rounded-lg bg-blue-600 text-white hover:bg-blue-700 cursor-pointer"
+                >
+                  Allow Once
+                </button>
+                <button
+                  onClick={async () => {
+                    await rpcClient.permissionRespond(info.requestId, "always")
+                    onResolvePermission?.(message.id)
+                  }}
+                  className="px-3 py-1.5 text-xs rounded-lg bg-green-600 text-white hover:bg-green-700 cursor-pointer"
+                >
+                  Always Allow
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (

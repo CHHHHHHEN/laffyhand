@@ -1,7 +1,13 @@
-import { describe, it, expect } from "vitest"
-import { render, screen, fireEvent } from "@testing-library/react"
+import { describe, it, expect, vi } from "vitest"
+import { render, screen, fireEvent, waitFor } from "@testing-library/react"
 import { MessageBubble } from "./MessageBubble"
 import type { Message } from "@/types/session"
+
+vi.mock("@/lib/rpc", () => ({
+  rpcClient: {
+    permissionRespond: vi.fn().mockResolvedValue({ status: "ok" }),
+  },
+}))
 
 function makeMessage(overrides: Partial<Message> = {}): Message {
   return {
@@ -287,5 +293,107 @@ describe("MessageBubble", () => {
       />,
     )
     expect(screen.queryByText("System prompt")).not.toBeInTheDocument()
+  })
+
+  // ── Permission request message ──
+
+  it("renders permission request with permission and pattern", () => {
+    render(
+      <MessageBubble
+        message={makeMessage({
+          role: "permission-request",
+          content: "Allow skill 'code-review'?",
+          permissionInfo: { requestId: "r1", permission: "skill", pattern: "code-review" },
+        })}
+      />,
+    )
+    expect(screen.getByText("skill")).toBeInTheDocument()
+    expect(screen.getByText((content) => content.includes("code-review"))).toBeInTheDocument()
+  })
+
+  it("shows three action buttons for unresolved permission", () => {
+    render(
+      <MessageBubble
+        message={makeMessage({
+          role: "permission-request",
+          content: "Allow skill 'test'?",
+          permissionInfo: { requestId: "r1", permission: "skill", pattern: "test" },
+        })}
+      />,
+    )
+    expect(screen.getByText("Deny")).toBeInTheDocument()
+    expect(screen.getByText("Allow Once")).toBeInTheDocument()
+    expect(screen.getByText("Always Allow")).toBeInTheDocument()
+  })
+
+  it("shows resolved text when permission is resolved", () => {
+    render(
+      <MessageBubble
+        message={makeMessage({
+          role: "permission-request",
+          content: "Allow skill 'test'?",
+          permissionInfo: { requestId: "r1", permission: "skill", pattern: "test", resolved: true },
+        })}
+      />,
+    )
+    expect(screen.getByText("Resolved")).toBeInTheDocument()
+    expect(screen.queryByText("Deny")).not.toBeInTheDocument()
+  })
+
+  it("calls onResolvePermission after clicking Deny", async () => {
+    const onResolve = vi.fn()
+    render(
+      <MessageBubble
+        message={makeMessage({
+          role: "permission-request",
+          content: "Allow skill 'test'?",
+          permissionInfo: { requestId: "r1", permission: "skill", pattern: "test" },
+        })}
+        onResolvePermission={onResolve}
+      />,
+    )
+    fireEvent.click(screen.getByText("Deny"))
+    await waitFor(() => expect(onResolve).toHaveBeenCalledWith("msg-1"))
+  })
+
+  it("calls onResolvePermission after clicking Allow Once", async () => {
+    const onResolve = vi.fn()
+    render(
+      <MessageBubble
+        message={makeMessage({
+          role: "permission-request",
+          content: "Allow skill 'test'?",
+          permissionInfo: { requestId: "r1", permission: "skill", pattern: "test" },
+        })}
+        onResolvePermission={onResolve}
+      />,
+    )
+    fireEvent.click(screen.getByText("Allow Once"))
+    await waitFor(() => expect(onResolve).toHaveBeenCalledWith("msg-1"))
+  })
+
+  it("calls onResolvePermission after clicking Always Allow", async () => {
+    const onResolve = vi.fn()
+    render(
+      <MessageBubble
+        message={makeMessage({
+          role: "permission-request",
+          content: "Allow skill 'test'?",
+          permissionInfo: { requestId: "r1", permission: "skill", pattern: "test" },
+        })}
+        onResolvePermission={onResolve}
+      />,
+    )
+    fireEvent.click(screen.getByText("Always Allow"))
+    await waitFor(() => expect(onResolve).toHaveBeenCalledWith("msg-1"))
+  })
+
+  it("does not render permission UI for non-permission messages", () => {
+    render(
+      <MessageBubble
+        message={makeMessage({ role: "user", content: "hello" })}
+      />,
+    )
+    expect(screen.queryByText("Allow")).not.toBeInTheDocument()
   })
 })

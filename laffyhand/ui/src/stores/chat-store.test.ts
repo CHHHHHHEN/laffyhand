@@ -243,27 +243,42 @@ describe("chat-store", () => {
     expect(message.reasoning).toBeUndefined()
   })
 
-  // ── Permission pending state ──
+  // ── Permission request messages ──
 
-  it("pendingPermission defaults to null", () => {
-    const state = useChatStore.getState()
-    expect(state.pendingPermission).toBeNull()
+  it("addPermissionRequest appends a permission-request message", () => {
+    const store = useChatStore.getState()
+    store.addPermissionRequest({ requestId: "req-1", permission: "skill", pattern: "test-tool" })
+    const messages = useChatStore.getState().messages
+    expect(messages).toHaveLength(1)
+    const msg = messages[0]!
+    expect(msg.role).toBe("permission-request")
+    expect(msg.permissionInfo?.requestId).toBe("req-1")
+    expect(msg.permissionInfo?.permission).toBe("skill")
+    expect(msg.permissionInfo?.pattern).toBe("test-tool")
+    expect(msg.permissionInfo?.resolved).toBeUndefined()
   })
 
-  it("setPendingPermission stores the request", () => {
+  it("addPermissionRequest sets content from permission and pattern", () => {
     const store = useChatStore.getState()
-    store.setPendingPermission({ requestId: "req-1", permission: "skill", pattern: "test-tool" })
-    const state = useChatStore.getState()
-    expect(state.pendingPermission).not.toBeNull()
-    expect(state.pendingPermission!.requestId).toBe("req-1")
-    expect(state.pendingPermission!.permission).toBe("skill")
-    expect(state.pendingPermission!.pattern).toBe("test-tool")
+    store.addPermissionRequest({ requestId: "r1", permission: "write", pattern: "/tmp/test" })
+    const msg = useChatStore.getState().messages[0]!
+    expect(msg.content).toBe("Allow write '/tmp/test'?")
   })
 
-  it("setPendingPermission(null) clears pending request", () => {
+  it("resolvePermissionRequest marks message as resolved", () => {
     const store = useChatStore.getState()
-    store.setPendingPermission({ requestId: "req-1", permission: "skill", pattern: "test-tool" })
-    store.setPendingPermission(null)
-    expect(useChatStore.getState().pendingPermission).toBeNull()
+    store.addPermissionRequest({ requestId: "req-1", permission: "skill", pattern: "test" })
+    const msgId = useChatStore.getState().messages[0]!.id
+    store.resolvePermissionRequest(msgId)
+    const msg = useChatStore.getState().messages[0]!
+    expect(msg.permissionInfo?.resolved).toBe(true)
+  })
+
+  it("resolvePermissionRequest does nothing for unknown id", () => {
+    const store = useChatStore.getState()
+    store.addPermissionRequest({ requestId: "req-1", permission: "skill", pattern: "test" })
+    store.resolvePermissionRequest("nonexistent")
+    const msg = useChatStore.getState().messages[0]!
+    expect(msg.permissionInfo?.resolved).toBeUndefined()
   })
 })

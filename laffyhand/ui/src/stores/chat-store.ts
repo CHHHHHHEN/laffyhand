@@ -1,17 +1,11 @@
 import { create } from "zustand"
-import type { Message, ToolCall, ToolResult } from "@/types/session"
+import type { Message, ToolCall, ToolResult, PermissionInfo } from "@/types/session"
 import type { SessionUsage } from "@/types/rpc"
 
 export interface TurnUsage {
   input: number
   output: number
   reasoning: number
-}
-
-export interface PermissionRequest {
-  requestId: string
-  permission: string
-  pattern: string
 }
 
 export interface ChatState {
@@ -35,9 +29,6 @@ export interface ChatState {
   // Queue for busy_mode="queue"
   pendingQueue: string[]
 
-  // Permission request from backend
-  pendingPermission: PermissionRequest | null
-
   addUserMessage: (content: string) => void
   startStreaming: () => void
   appendContent: (text: string) => void
@@ -52,7 +43,8 @@ export interface ChatState {
   enqueueMessage: (content: string) => void
   dequeueMessage: () => string | undefined
   hasPendingMessages: () => boolean
-  setPendingPermission: (req: PermissionRequest | null) => void
+  addPermissionRequest: (req: PermissionInfo) => void
+  resolvePermissionRequest: (messageId: string) => void
 }
 
 let messageCounter = 0
@@ -78,9 +70,29 @@ export const useChatStore = create<ChatState>((set, get) => ({
   turnUsage: null,
   _turnStartUsage: null,
   pendingQueue: [],
-  pendingPermission: null,
 
-  setPendingPermission: (req) => set({ pendingPermission: req }),
+  addPermissionRequest: (req) =>
+    set((state) => ({
+      messages: [
+        ...state.messages,
+        {
+          id: nextMessageId(),
+          role: "permission-request",
+          content: `Allow ${req.permission} '${req.pattern}'?`,
+          permissionInfo: req,
+          createdAt: Date.now(),
+        },
+      ],
+    })),
+
+  resolvePermissionRequest: (messageId) =>
+    set((state) => ({
+      messages: state.messages.map((msg) =>
+        msg.id === messageId && msg.permissionInfo
+          ? { ...msg, permissionInfo: { ...msg.permissionInfo, resolved: true } }
+          : msg,
+      ),
+    })),
 
   addUserMessage: (content) =>
     set((state) => ({

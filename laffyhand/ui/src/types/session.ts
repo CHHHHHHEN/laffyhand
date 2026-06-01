@@ -10,15 +10,23 @@ export interface Session {
 
 export type SessionStatus = "active" | "archived" | "deleted"
 
+export interface PermissionInfo {
+  requestId: string
+  permission: string
+  pattern: string
+  resolved?: boolean
+}
+
 export interface Message {
   id: string
-  role: "user" | "assistant" | "system" | "tool"
+  role: "user" | "assistant" | "system" | "tool" | "permission-request"
   content: string
   reasoning?: string
   toolCalls?: ToolCall[]
   toolResults?: ToolResult[]
   finishReason?: string
   usage?: { inputTokens: number; outputTokens: number }
+  permissionInfo?: PermissionInfo
   createdAt: number
 }
 

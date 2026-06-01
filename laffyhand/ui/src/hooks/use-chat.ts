@@ -119,7 +119,7 @@ export function useChat() {
                   break
                 }
                 case "permission-request":
-                  store.setPendingPermission({
+                  store.addPermissionRequest({
                     requestId: event.request_id,
                     permission: event.permission,
                     pattern: event.pattern,
