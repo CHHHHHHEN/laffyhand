@@ -274,6 +274,37 @@ class TodoManager:
         self._conn.commit()
         return True
 
+    def delete_tasks(self, task_ids: list[str]) -> int:
+        """Delete multiple tasks by IDs. Removes references from dependents."""
+        count = 0
+        for tid in task_ids:
+            if self.delete_task(tid):
+                count += 1
+        return count
+
+    def update_tasks(
+        self, task_ids: list[str], session_id: str, updates: TodoUpdate
+    ) -> list[TodoItem]:
+        """Update multiple tasks with the same updates."""
+        results: list[TodoItem] = []
+        for tid in task_ids:
+            item = self.update_task(tid, session_id, updates)
+            if item is not None:
+                results.append(item)
+        return results
+
+    def cleanup_tasks(self, session_id: str, statuses: Optional[list[str]] = None) -> int:
+        """Delete tasks matching given statuses (default: completed, cancelled)."""
+        if statuses is None:
+            statuses = ["completed", "cancelled"]
+        placeholders = ",".join("?" for _ in statuses)
+        rows = self._conn.execute(
+            f"SELECT id FROM todo WHERE session_id = ? AND status IN ({placeholders})",
+            (session_id, *statuses),
+        ).fetchall()
+        ids = [row["id"] for row in rows]
+        return self.delete_tasks(ids)
+
     def delete_session_tasks(self, session_id: str) -> None:
         self._conn.execute("DELETE FROM todo WHERE session_id = ?", (session_id,))
         self._conn.commit()
