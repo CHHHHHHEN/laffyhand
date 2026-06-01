@@ -141,3 +141,29 @@ class TestSSEFraming(unittest.TestCase):
         ])
         self.assertEqual(len(frames), 1)
         self.assertEqual(frames[0]["id"], "no-trailing-nl")
+
+    def test_multi_data_lines_same_event(self):
+        """Multiple data: lines within one SSE event are joined with newline and parsed as combined JSON."""
+        frames = self._collect([
+            b"data: {\"valid\": true}\ndata: \n\n",
+        ])
+        self.assertEqual(len(frames), 1)
+        self.assertEqual(frames[0], {"valid": True})
+
+    def test_done_marker_no_space(self):
+        """[DONE] without space after colon should also terminate."""
+        data = json.dumps({"id": "before-done"})
+        frames = self._collect([
+            f"data: {data}\n\n".encode(),
+            b"data:[DONE]\n\n",
+        ])
+        self.assertEqual(len(frames), 1)
+
+    def test_utf8_decode_error_replaced(self):
+        """Invalid UTF-8 bytes should be replaced without crashing."""
+        frames = self._collect([
+            b"data: {\"valid\": true}\n\n",
+            b"data: {\"bad\": \xff\xfe}\n\n",
+            b"data: {\"after\": true}\n\n",
+        ])
+        self.assertEqual(len(frames), 2, "Skip malformed frame with replacement chars, keep others")

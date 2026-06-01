@@ -20,22 +20,17 @@ class DeepseekProtocol(OpenAIProtocol):
         Falls through to the standard OpenAI parser for frames that have
         actual content (e.g. the response phase or non-thinking models).
         """
-        # Debug: log raw frame for first few frames
         logger.debug(f"DeepSeek raw frame: {frame}")
         chunk = OpenAIChatChunk.model_validate(frame)
         if chunk.choices:
             delta = chunk.choices[0].delta
-            # Debug: log delta fields
             logger.debug(f"DeepSeek delta: content={delta.content[:100] if delta.content else None}, reasoning_content={delta.reasoning_content[:100] if delta.reasoning_content else None}")
-            # Debug: log raw delta fields
             logger.debug(f"DeepSeek delta keys: {list(delta.model_fields_set)}")
-            # Always emit StreamReasoning if reasoning_content is present
             events: list = []
             if delta.reasoning_content:
                 events.append(StreamReasoning(delta=delta.reasoning_content))
-            # Let parent handle content, tool_calls, finish_reason, etc.
             parent_events = super().parse_frame(frame)
-            events.extend(parent_events)
+            events.extend(e for e in parent_events if not isinstance(e, StreamReasoning))
             if events:
                 return events
         return super().parse_frame(frame)
