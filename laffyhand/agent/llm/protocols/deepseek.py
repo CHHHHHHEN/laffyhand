@@ -33,4 +33,5 @@ class DeepseekProtocol(OpenAIProtocol):
             events.extend(e for e in parent_events if not isinstance(e, StreamReasoning))
             if events:
                 return events
+            return parent_events
         return super().parse_frame(frame)

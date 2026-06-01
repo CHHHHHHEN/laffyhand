@@ -38,10 +38,19 @@ export function useChat() {
                     const calls = JSON.parse(event.data)
                     if (Array.isArray(calls)) {
                       for (const call of calls) {
+                        let args: Record<string, unknown> = {}
+                        try {
+                          args =
+                            typeof call.arguments === "string"
+                              ? JSON.parse(call.arguments)
+                              : (call.arguments ?? {})
+                        } catch {
+                          args = {}
+                        }
                         store.addToolCall({
                           id: call.id ?? "unknown",
                           name: call.name ?? "unknown",
-                          arguments: call.arguments ?? {},
+                          arguments: args,
                         })
                       }
                     }

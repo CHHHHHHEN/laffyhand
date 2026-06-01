@@ -29,6 +29,9 @@ class ToolRegistry:
         self._tools.pop(name, None)
         self._dirty = True
 
+    def list_tools(self) -> dict[str, BaseTool]:
+        return dict(self._tools)
+
     async def build_tool_definitions(self) -> list[ToolDefinition]:
         async with self._lock:
             if self._dirty:

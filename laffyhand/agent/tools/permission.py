@@ -22,6 +22,9 @@ class PermissionManager:
     def deny(self, tool_name: str) -> None:
         self._rules[tool_name] = "deny"
 
+    def get_rules(self) -> dict[str, Rule]:
+        return dict(self._rules)
+
     def check(self, tool_name: str) -> bool:
         result = self._rules.get(tool_name, "allow") == "allow"
         logger.trace(f"Permission check {tool_name}: {'allowed' if result else 'denied'}")
@@ -72,7 +75,7 @@ class SubagentPermissions:
         parent_session_permission: PermissionManager | None = None,
     ) -> PermissionManager:
         combined = PermissionManager()
-        for name, rule in parent_permission._rules.items():
+        for name, rule in parent_permission.get_rules().items():
             if rule == "allow":
                 combined.allow(name)
             else:
@@ -81,7 +84,7 @@ class SubagentPermissions:
         for name in agent_deny:
             combined.deny(name)
         if parent_session_permission is not None:
-            for name, rule in parent_session_permission._rules.items():
+            for name, rule in parent_session_permission.get_rules().items():
                 if rule == "deny":
                     combined.deny(name)
         return combined
@@ -94,7 +97,7 @@ class SubagentPermissions:
         from laffyhand.agent.tools.registry import ToolRegistry as _ToolRegistry
 
         filtered = _ToolRegistry(permission=permission)
-        for name, tool in registry._tools.items():
+        for name, tool in registry.list_tools().items():
             if name == "task":
                 continue
             if permission.check(name):

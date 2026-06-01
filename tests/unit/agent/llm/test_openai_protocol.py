@@ -256,6 +256,22 @@ class TestDeepseekProtocol(unittest.TestCase):
         self.assertIsInstance(events[0], StreamText)
         self.assertIsInstance(events[1], StreamFinish)
 
+    def test_tool_call_args_not_doubled(self):
+        """Tool call arguments must not be doubled by DeepSeekProtocol's parse_frame."""
+        start = {"choices": [{"delta": {"tool_calls": [{"index": 0, "id": "c1", "function": {"name": "bash", "arguments": ""}}]}, "finish_reason": None}]}
+        chunk1 = {"choices": [{"delta": {"tool_calls": [{"index": 0, "function": {"arguments": "{\"command\":"}}]}, "finish_reason": None}]}
+        chunk2 = {"choices": [{"delta": {"tool_calls": [{"index": 0, "function": {"arguments": " \"pwd\"}"}}]}, "finish_reason": None}]}
+        finish = {"choices": [{"delta": {}, "finish_reason": "tool_calls"}], "usage": {"prompt_tokens": 5, "completion_tokens": 3}}
+
+        self.protocol.parse_frame(start)
+        self.protocol.parse_frame(chunk1)
+        self.protocol.parse_frame(chunk2)
+        events = self.protocol.parse_frame(finish)
+
+        tool_calls = [e for e in events if isinstance(e, StreamToolCall)]
+        self.assertEqual(len(tool_calls), 1)
+        self.assertEqual(tool_calls[0].args, '{"command": "pwd"}')
+
 
 class TestToolDefinitionsToOpenAI(unittest.TestCase):
     """_tool_definitions_to_openai must produce valid OpenAI tool format."""
