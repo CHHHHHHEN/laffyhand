@@ -40,6 +40,7 @@ class TestSSEFraming(unittest.TestCase):
                 result.append(frame)
 
         import asyncio
+
         asyncio.run(_run())
         return result
 
@@ -52,17 +53,21 @@ class TestSSEFraming(unittest.TestCase):
     def test_multiple_frames(self):
         data1 = json.dumps({"id": "1", "choices": [{"delta": {"content": "hello"}}]})
         data2 = json.dumps({"id": "2", "choices": [{"delta": {"content": " world"}}]})
-        frames = self._collect([
-            f"data: {data1}\n\ndata: {data2}\n\n".encode(),
-        ])
+        frames = self._collect(
+            [
+                f"data: {data1}\n\ndata: {data2}\n\n".encode(),
+            ]
+        )
         self.assertEqual(len(frames), 2)
 
     def test_chunk_split_in_middle_of_json(self):
         """SSE frame split across chunks: JSON truncated across chunk boundary."""
-        json_str = json.dumps({
-            "id": "split-id-12345",
-            "choices": [{"delta": {"content": "hello"}}],
-        })
+        json_str = json.dumps(
+            {
+                "id": "split-id-12345",
+                "choices": [{"delta": {"content": "hello"}}],
+            }
+        )
         part1 = f"data: {json_str[:25]}".encode()
         part2 = f"{json_str[25:]}\n\n".encode()
         frames = self._collect([part1, part2])
@@ -83,12 +88,16 @@ class TestSSEFraming(unittest.TestCase):
 
     def test_malformed_json_does_not_stop_stream(self):
         """A malformed JSON frame should be skipped, not terminate the stream."""
-        valid_data = json.dumps({"id": "valid", "choices": [{"delta": {"content": "ok"}}]})
-        frames = self._collect([
-            f"data: {valid_data}\n\n".encode(),
-            b"data: {truncated json\n\n",
-            f"data: {valid_data}\n\n".encode(),
-        ])
+        valid_data = json.dumps(
+            {"id": "valid", "choices": [{"delta": {"content": "ok"}}]}
+        )
+        frames = self._collect(
+            [
+                f"data: {valid_data}\n\n".encode(),
+                b"data: {truncated json\n\n",
+                f"data: {valid_data}\n\n".encode(),
+            ]
+        )
         self.assertEqual(len(frames), 2, "Should skip malformed frame, keep valid ones")
         self.assertEqual(frames[0]["id"], "valid")
         self.assertEqual(frames[1]["id"], "valid")
@@ -96,11 +105,13 @@ class TestSSEFraming(unittest.TestCase):
     def test_done_marker(self):
         """[DONE] marker should terminate the stream."""
         data = json.dumps({"id": "1", "choices": [{"delta": {"content": "hello"}}]})
-        frames = self._collect([
-            f"data: {data}\n\n".encode(),
-            b"data: [DONE]\n\n",
-            f"data: {json.dumps({'id': 'after'})}\n\n".encode(),
-        ])
+        frames = self._collect(
+            [
+                f"data: {data}\n\n".encode(),
+                b"data: [DONE]\n\n",
+                f"data: {json.dumps({'id': 'after'})}\n\n".encode(),
+            ]
+        )
         self.assertEqual(len(frames), 1, "Should stop at [DONE] marker")
 
     def test_multiple_data_lines_same_chunk(self):
@@ -108,62 +119,78 @@ class TestSSEFraming(unittest.TestCase):
         d1 = json.dumps({"id": "a", "choices": [{"delta": {"content": "a"}}]})
         d2 = json.dumps({"id": "b", "choices": [{"delta": {"content": "b"}}]})
         d3 = json.dumps({"id": "c", "choices": [{"delta": {"content": "c"}}]})
-        frames = self._collect([
-            f"data: {d1}\n\ndata: {d2}\n\ndata: {d3}\n\n".encode(),
-        ])
+        frames = self._collect(
+            [
+                f"data: {d1}\n\ndata: {d2}\n\ndata: {d3}\n\n".encode(),
+            ]
+        )
         self.assertEqual(len(frames), 3)
 
     def test_non_data_lines_skipped(self):
         """Lines like 'event: ...' or 'id: ...' should be silently skipped."""
         data = json.dumps({"choices": [{"delta": {"content": "only"}}]})
-        frames = self._collect([
-            b"event: message\n",
-            b"id: 42\n",
-            f"data: {data}\n\n".encode(),
-        ])
+        frames = self._collect(
+            [
+                b"event: message\n",
+                b"id: 42\n",
+                f"data: {data}\n\n".encode(),
+            ]
+        )
         self.assertEqual(len(frames), 1)
 
     def test_empty_frames_skipped(self):
         """Empty data lines should be skipped."""
         data = json.dumps({"choices": [{"delta": {"content": "after empty"}}]})
-        frames = self._collect([
-            b"\n\n",
-            b"data: \n\n",
-            f"data: {data}\n\n".encode(),
-        ])
+        frames = self._collect(
+            [
+                b"\n\n",
+                b"data: \n\n",
+                f"data: {data}\n\n".encode(),
+            ]
+        )
         self.assertEqual(len(frames), 1)
 
     def test_leftover_data_without_trailing_newline(self):
         """Data remaining in buffer after stream ends should still be processed."""
         data = json.dumps({"id": "no-trailing-nl"})
-        frames = self._collect([
-            f"data: {data}".encode(),  # no \n\n at the end
-        ])
+        frames = self._collect(
+            [
+                f"data: {data}".encode(),  # no \n\n at the end
+            ]
+        )
         self.assertEqual(len(frames), 1)
         self.assertEqual(frames[0]["id"], "no-trailing-nl")
 
     def test_multi_data_lines_same_event(self):
         """Multiple data: lines within one SSE event are joined with newline and parsed as combined JSON."""
-        frames = self._collect([
-            b"data: {\"valid\": true}\ndata: \n\n",
-        ])
+        frames = self._collect(
+            [
+                b'data: {"valid": true}\ndata: \n\n',
+            ]
+        )
         self.assertEqual(len(frames), 1)
         self.assertEqual(frames[0], {"valid": True})
 
     def test_done_marker_no_space(self):
         """[DONE] without space after colon should also terminate."""
         data = json.dumps({"id": "before-done"})
-        frames = self._collect([
-            f"data: {data}\n\n".encode(),
-            b"data:[DONE]\n\n",
-        ])
+        frames = self._collect(
+            [
+                f"data: {data}\n\n".encode(),
+                b"data:[DONE]\n\n",
+            ]
+        )
         self.assertEqual(len(frames), 1)
 
     def test_utf8_decode_error_replaced(self):
         """Invalid UTF-8 bytes should be replaced without crashing."""
-        frames = self._collect([
-            b"data: {\"valid\": true}\n\n",
-            b"data: {\"bad\": \xff\xfe}\n\n",
-            b"data: {\"after\": true}\n\n",
-        ])
-        self.assertEqual(len(frames), 2, "Skip malformed frame with replacement chars, keep others")
+        frames = self._collect(
+            [
+                b'data: {"valid": true}\n\n',
+                b'data: {"bad": \xff\xfe}\n\n',
+                b'data: {"after": true}\n\n',
+            ]
+        )
+        self.assertEqual(
+            len(frames), 2, "Skip malformed frame with replacement chars, keep others"
+        )

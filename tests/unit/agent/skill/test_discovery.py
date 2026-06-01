@@ -12,6 +12,7 @@ class TestDiscoverSkills(unittest.TestCase):
 
     def _rmtree(self, path: Path) -> None:
         import shutil
+
         shutil.rmtree(path, ignore_errors=True)
 
     def _write_skill(self, base: Path, name: str, description: str = "") -> None:
@@ -49,7 +50,9 @@ class TestDiscoverSkills(unittest.TestCase):
 
     def test_invalid_skill_skipped(self):
         (self.tmpdir / "bad").mkdir()
-        (self.tmpdir / "bad" / "SKILL.md").write_text("No frontmatter", encoding="utf-8")
+        (self.tmpdir / "bad" / "SKILL.md").write_text(
+            "No frontmatter", encoding="utf-8"
+        )
         self._write_skill(self.tmpdir, "good", "Valid")
         skills = discover_skills([self.tmpdir])
         self.assertIn("good", skills)

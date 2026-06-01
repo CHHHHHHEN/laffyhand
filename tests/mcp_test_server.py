@@ -1,4 +1,5 @@
 """简单的 MCP 测试服务器 - 提供 echo 和 time 工具"""
+
 from mcp.server import Server
 from mcp.server.models import InitializationOptions
 from mcp.types import TextContent
@@ -12,6 +13,7 @@ async def main():
     @server.list_tools()
     async def handle_list_tools():
         from mcp.types import Tool
+
         return [
             Tool(
                 name="echo",
@@ -47,6 +49,7 @@ async def main():
             return [TextContent(type="text", text=f"Echo: {msg}")]
         elif name == "get_time":
             import time
+
             fmt = arguments.get("format", "iso")
             if fmt == "unix":
                 text = str(time.time())
@@ -59,7 +62,8 @@ async def main():
 
     async with mcp.server.stdio.stdio_server() as (read, write):
         await server.run(
-            read, write,
+            read,
+            write,
             InitializationOptions(
                 server_name="test-mcp-server",
                 server_version="0.1.0",

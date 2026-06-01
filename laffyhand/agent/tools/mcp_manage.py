@@ -2,15 +2,26 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+import urllib.parse
+
 from loguru import logger
 
 from laffyhand.agent.mcp.config import LocalMCPConfig, RemoteMCPConfig
 from laffyhand.agent.mcp.service import MCPWrappedTool
 from laffyhand.agent.tools.base import BaseTool
 
-_ALLOWED_MCP_COMMANDS: frozenset[str] = frozenset({
-    "npx", "uv", "uvx", "python", "python3", "node", "deno", "bun",
-})
+_ALLOWED_MCP_COMMANDS: frozenset[str] = frozenset(
+    {
+        "npx",
+        "uv",
+        "uvx",
+        "python",
+        "python3",
+        "node",
+        "deno",
+        "bun",
+    }
+)
 
 if TYPE_CHECKING:
     from laffyhand.agent.mcp import MCPService
@@ -25,7 +36,7 @@ class MCPListTool(BaseTool):
         super().__init__()
         self._mcp_service = mcp_service
 
-    def _input_schema(self) -> dict:
+    def _input_schema(self) -> dict[str, Any]:
         return {
             "type": "object",
             "properties": {},
@@ -52,7 +63,7 @@ class MCPConnectTool(BaseTool):
         self._mcp_service = mcp_service
         self._tool_registry = tool_registry
 
-    def _input_schema(self) -> dict:
+    def _input_schema(self) -> dict[str, Any]:
         return {
             "type": "object",
             "properties": {
@@ -67,7 +78,7 @@ class MCPConnectTool(BaseTool):
                 "command": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "Command and arguments for a local MCP server (e.g. [\"npx\", \"-y\", \"@modelcontextprotocol/server-everything\"])",
+                    "description": 'Command and arguments for a local MCP server (e.g. ["npx", "-y", "@modelcontextprotocol/server-everything"])',
                 },
                 "transport": {
                     "type": "string",
@@ -91,6 +102,22 @@ class MCPConnectTool(BaseTool):
         command = params.get("command")
         url = params.get("url")
 
+        if url:
+            parsed = urllib.parse.urlparse(url)
+            if parsed.scheme not in ("https",):
+                return "Only https:// URLs are allowed for remote MCP servers"
+            host = parsed.hostname or ""
+            # Block private/internal IP ranges
+            import ipaddress
+            try:
+                addr = ipaddress.ip_address(host)
+                if addr.is_private or addr.is_loopback or addr.is_link_local:
+                    return "Connecting to private/internal IP addresses is not allowed"
+            except ValueError:
+                pass  # hostname, not IP - OK
+            if host in ("localhost", "127.0.0.1", "::1", "0.0.0.0"):
+                return "Connecting to localhost is not allowed"
+
         if command:
             if not command or command[0] not in _ALLOWED_MCP_COMMANDS:
                 allowed = ", ".join(sorted(_ALLOWED_MCP_COMMANDS))
@@ -98,6 +125,19 @@ class MCPConnectTool(BaseTool):
                     f"Command '{command[0] if command else ''}' is not allowed. "
                     f"Allowed commands: {allowed}"
                 )
+            # Argument validation to prevent inline code execution
+            args = command[1:]
+            executable = command[0]
+            if executable in ("python", "python3") and "-c" in args:
+                return f"Using '-c' with {executable} is not allowed (inline code execution)"
+            if executable == "node" and "-e" in args:
+                return "Using '-e' with node is not allowed (inline code execution)"
+            if executable == "deno" and "eval" in args:
+                return "Using 'eval' with deno is not allowed (inline code execution)"
+            # Block shell metacharacters in args
+            import re
+            if any(re.search(r'[;|`$()]', arg) for arg in args):
+                return "Arguments contain shell metacharacters which are not allowed"
             cfg: LocalMCPConfig | RemoteMCPConfig = LocalMCPConfig(
                 command=command,
             )
@@ -114,7 +154,7 @@ class MCPConnectTool(BaseTool):
             tool_defs = await self._mcp_service.connect_server(name, cfg)
         except Exception as e:
             logger.error(f"MCP '{name}' connection failed: {e}")
-            return f"Failed to connect to MCP server '{name}': {e}"
+            return f"Failed to connect to MCP server '{name}': connection failed"
 
         # Register discovered tools with the tool registry
         for td in tool_defs:
@@ -138,7 +178,7 @@ class MCPDisconnectTool(BaseTool):
         self._mcp_service = mcp_service
         self._tool_registry = tool_registry
 
-    def _input_schema(self) -> dict:
+    def _input_schema(self) -> dict[str, Any]:
         return {
             "type": "object",
             "properties": {
@@ -158,13 +198,12 @@ class MCPDisconnectTool(BaseTool):
         # Unregister tools from this server
         prefix = f"mcp_{name}_"
         unregistered = 0
-        for tool_name in list(self._tool_registry._tools.keys()):
+        for tool_name in list(self._tool_registry.list_tools()):
             if tool_name.startswith(prefix):
                 self._tool_registry.unregister_tool(tool_name)
                 unregistered += 1
 
         await self._mcp_service.disconnect(name)
         return (
-            f"Disconnected MCP server '{name}' "
-            f"and unregistered {unregistered} tool(s)."
+            f"Disconnected MCP server '{name}' and unregistered {unregistered} tool(s)."
         )

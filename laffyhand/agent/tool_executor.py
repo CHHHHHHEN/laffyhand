@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from loguru import logger
 
@@ -35,7 +35,7 @@ def _try_parse_json(raw: str) -> dict[str, Any] | None:
 
     # Direct parse first
     try:
-        return json.loads(cleaned)
+        return cast(dict[str, Any], json.loads(cleaned))
     except json.JSONDecodeError:
         pass
 
@@ -52,7 +52,7 @@ def _try_parse_json(raw: str) -> dict[str, Any] | None:
         cleaned = cleaned.replace(old, new)
 
     try:
-        return json.loads(cleaned)
+        return cast(dict[str, Any], json.loads(cleaned))
     except json.JSONDecodeError:
         pass
 
@@ -61,7 +61,7 @@ def _try_parse_json(raw: str) -> dict[str, Any] | None:
     # Remove the second occurrence of any consecutive identical token.
     # This handles: "commandcommand" -> "command",
     # "获取获取" -> "获取", etc.
-    def _dedup(m: re.Match) -> str:
+    def _dedup(m: re.Match[str]) -> str:
         word = m.group(0)
         half = len(word) // 2
         if len(word) >= 4 and word[:half] == word[half:]:
@@ -69,10 +69,12 @@ def _try_parse_json(raw: str) -> dict[str, Any] | None:
         return word
 
     # Match JSON string contents (between quotes), key names, and bare words
-    cleaned = re.sub(r'(?<=["\'])\w{4,}(?=["\'])|(?<=[\s,{])\w{4,}(?=[:])', _dedup, cleaned)
+    cleaned = re.sub(
+        r'(?<=["\'])\w{4,}(?=["\'])|(?<=[\s,{])\w{4,}(?=[:])', _dedup, cleaned
+    )
 
     try:
-        return json.loads(cleaned)
+        return cast(dict[str, Any], json.loads(cleaned))
     except json.JSONDecodeError:
         pass
 
@@ -87,13 +89,15 @@ class ToolExecutor:
     ) -> ToolExecutionResult:
         params = _try_parse_json(tool_call.args)
         if params is None:
-            logger.warning(f"Failed to parse tool args for {tool_call.tool_name}: {tool_call.args[:200]}")
+            logger.warning(
+                f"Failed to parse tool args for {tool_call.tool_name}: {tool_call.args[:200]}"
+            )
             return ToolExecutionResult(
                 message=ToolMessage(
                     tool_call_id=tool_call.tool_call_id,
                     content=f"Error: failed to parse tool arguments for {tool_call.tool_name}. "
-                            f"Args must be valid JSON object like {{\"key\": \"value\"}}. "
-                            f"Received: {tool_call.args}",
+                    f'Args must be valid JSON object like {{"key": "value"}}. '
+                    f"Received: {tool_call.args}",
                 ),
                 event_data=f"Error: invalid JSON args for {tool_call.tool_name}",
                 is_error=True,
@@ -106,9 +110,9 @@ class ToolExecutor:
             return ToolExecutionResult(
                 message=ToolMessage(
                     tool_call_id=tool_call.tool_call_id,
-                    content=f"Error executing tool {tool_call.tool_name}: {e}",
+                    content=f"Error executing tool {tool_call.tool_name}: internal error",
                 ),
-                event_data=f"Error: {tool_call.tool_name} failed: {e}",
+                event_data=f"Error: {tool_call.tool_name} failed: internal error",
                 is_error=True,
             )
 

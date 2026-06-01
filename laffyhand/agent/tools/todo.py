@@ -1,26 +1,34 @@
-import json
-import tempfile
-import uuid
-from pathlib import Path
-from typing import Any
-from datetime import datetime
+from __future__ import annotations
 
-from loguru import logger
+from typing import TYPE_CHECKING, Any
+
+from laffyhand.agent.session.models import TodoCreate, TodoUpdate
 from laffyhand.agent.tools.base import BaseTool
+
+if TYPE_CHECKING:
+    from laffyhand.agent.session.todo import TodoManager
 
 
 class TodoTool(BaseTool):
-    name = "todo"
-    description = "Manage a task list with priorities and status tracking."
+    name = "todowrite"
+    description = "Manage a session-level task list with DAG dependency tracking."
 
-    def _input_schema(self) -> dict:
+    def __init__(self, todo_manager: TodoManager) -> None:
+        super().__init__()
+        self._todo_manager = todo_manager
+
+    def _input_schema(self) -> dict[str, Any]:
         return {
             "type": "object",
             "properties": {
-                "action": {
+                "operation": {
                     "type": "string",
-                    "enum": ["read", "add", "update", "delete"],
-                    "description": "Action to perform on todos",
+                    "enum": ["read", "add", "update", "delete", "plan"],
+                    "description": "Operation to perform",
+                },
+                "id": {
+                    "type": "string",
+                    "description": "Task ID (required for update/delete)",
                 },
                 "content": {
                     "type": "string",
@@ -29,110 +37,123 @@ class TodoTool(BaseTool):
                 "status": {
                     "type": "string",
                     "enum": ["pending", "in_progress", "completed", "cancelled"],
-                    "description": "Status to set (required for update)",
+                    "description": "New status (for update)",
                 },
                 "priority": {
                     "type": "string",
                     "enum": ["high", "medium", "low"],
                     "description": "Priority (default: medium)",
                 },
-                "id": {
+                "depends_on": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Task IDs this task depends on (for add/plan)",
+                },
+                "tasks": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "id": {"type": "string", "description": "Optional task ID"},
+                            "content": {"type": "string"},
+                            "priority": {
+                                "type": "string",
+                                "enum": ["high", "medium", "low"],
+                            },
+                            "depends_on": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "Task IDs this task depends on",
+                            },
+                        },
+                        "required": ["content"],
+                    },
+                    "description": "List of tasks for plan operation",
+                },
+                "session_id": {
                     "type": "string",
-                    "description": "Todo ID (required for update/delete)",
+                    "description": "Session ID (default: current session)",
                 },
             },
-            "required": ["action"],
+            "required": ["operation"],
         }
 
-    def __init__(self, todo_path: str | None = None) -> None:
-        super().__init__()
-        self._todo_path = todo_path or ".todos.json"
-
-    def _load(self) -> list[dict]:
-        path = Path(self._todo_path)
-        if not path.is_absolute():
-            path = Path.cwd() / path
-        path = path.resolve()
-        if path.exists():
-            try:
-                return json.loads(path.read_text(encoding="utf-8"))
-            except json.JSONDecodeError:
-                return []
-        return []
-
-    def _save(self, todos: list[dict]) -> None:
-        path = Path(self._todo_path)
-        if not path.is_absolute():
-            path = Path.cwd() / path
-        path = path.resolve()
-        path.parent.mkdir(parents=True, exist_ok=True)
-        data = json.dumps(todos, indent=2, ensure_ascii=False)
-        fd, tmp = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
-        try:
-            with open(fd, "w", encoding="utf-8") as f:
-                f.write(data)
-            Path(tmp).replace(path)
-        except Exception:
-            Path(tmp).unlink(missing_ok=True)
-            raise
-
     async def run(self, params: dict[str, Any]) -> str:
-        action = params["action"]
-        todos = self._load()
+        op = params["operation"]
+        session_id = params.get("session_id") or ""
+        if not session_id:
+            return "Error: session_id is required"
 
-        if action == "read":
-            if not todos:
-                return "No todos."
-            lines = [
-                f"{t['id']} [{t['status']}] {t.get('priority', 'medium')}: {t['content']}"
-                for t in todos
-            ]
+        if op == "read":
+            status = params.get("status")
+            tasks = self._todo_manager.get_tasks(session_id, status=status)
+            if not tasks:
+                return "No tasks."
+            lines = []
+            for t in tasks:
+                blocked = t.metadata.get("blocked_by", [])
+                blocked_str = f" [blocked by: {', '.join(blocked)}]" if blocked else ""
+                lines.append(
+                    f"{t.id} [{t.status}] {t.priority}: {t.content}{blocked_str}"
+                )
             return "\n".join(lines)
 
-        if action == "add":
+        if op == "plan":
+            raw_tasks: list[dict[str, Any]] = params.get("tasks", [])
+            if not raw_tasks:
+                return "Error: tasks list is required for plan"
+            creates = [
+                TodoCreate(
+                    id=t.get("id"),
+                    content=t.get("content", ""),
+                    priority=t.get("priority", "medium"),
+                    depends_on=t.get("depends_on", []),
+                )
+                for t in raw_tasks
+            ]
+            results = self._todo_manager.add_tasks(session_id, creates)
+            summary = ", ".join(
+                f"#{t.id[:8]} [{t.status}] {t.content}" for t in results
+            )
+            return f"Planned {len(results)} task(s): {summary}"
+
+        if op == "add":
             content = params.get("content")
             if not content:
-                logger.warning("Todo add: content is required")
-                return "content is required for add"
-            todo_id = uuid.uuid4().hex[:8]
-            todos.append({
-                "id": todo_id,
-                "content": content,
-                "status": "pending",
-                "priority": params.get("priority", "medium"),
-                "created": datetime.now().isoformat(),
-            })
-            self._save(todos)
-            logger.info(f"Added todo #{todo_id}")
-            return f"Added todo #{todo_id}: {content}"
+                return "Error: content is required for add"
+            item = self._todo_manager.add_task(
+                session_id,
+                content=content,
+                priority=params.get("priority", "medium"),
+                depends_on=params.get("depends_on"),
+            )
+            return f"Added todo #{item.id[:8]}: {item.content}"
 
-        if action == "update":
-            uid = params.get("id")
-            ust = params.get("status")
-            if not uid or not ust:
-                logger.warning("Todo update: id or status missing")
-                return "id and status are required for update"
-            for t in todos:
-                if t["id"] == uid:
-                    t["status"] = ust
-                    self._save(todos)
-                    logger.info(f"Updated todo #{uid} → {ust}")
-                    return f"Updated todo #{uid} → {ust}"
-            logger.warning(f"Todo #{uid} not found for update")
-            return f"Todo #{uid} not found"
+        if op == "update":
+            task_id = params.get("id")
+            if not task_id:
+                return "Error: id is required for update"
+            status = params.get("status")
+            priority = params.get("priority")
+            content = params.get("content")
+            depends_on = params.get("depends_on")
+            updates = TodoUpdate(
+                content=content,
+                status=status,
+                priority=priority,
+                depends_on=depends_on,
+            )
+            updated = self._todo_manager.update_task(task_id, session_id, updates)
+            if updated is None:
+                return f"Error: task #{task_id} not found"
+            return f"Updated todo #{task_id[:8]} → status={updated.status}, priority={updated.priority}"
 
-        if action == "delete":
-            did = params.get("id")
-            if not did:
-                logger.warning("Todo delete: id is required")
-                return "id is required for delete"
-            new_todos = [t for t in todos if t["id"] != did]
-            if len(new_todos) == len(todos):
-                logger.warning(f"Todo #{did} not found for delete")
-                return f"Todo #{did} not found"
-            self._save(new_todos)
-            logger.info(f"Deleted todo #{did}")
-            return f"Deleted todo #{did}"
+        if op == "delete":
+            task_id = params.get("id")
+            if not task_id:
+                return "Error: id is required for delete"
+            if self._todo_manager.delete_task(task_id):
+                return f"Deleted todo #{task_id[:8]}"
+            return f"Error: task #{task_id} not found"
 
-        logger.warning(f"Unknown todo action: {action}")
-        return f"Unknown action: {action}"
+        return f"Unknown operation: {op}"

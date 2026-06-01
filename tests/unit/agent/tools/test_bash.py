@@ -35,5 +35,7 @@ class TestBashTool(unittest.TestCase):
     def test_workdir_affects_file_operations(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             Path(tmpdir, "marker.txt").touch()
-            result = asyncio.run(self.tool.run({"command": "ls marker.txt", "workdir": tmpdir}))
+            result = asyncio.run(
+                self.tool.run({"command": "ls marker.txt", "workdir": tmpdir})
+            )
             self.assertIn("marker.txt", result)

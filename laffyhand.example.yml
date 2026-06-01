@@ -47,8 +47,6 @@ paths:
   skills: []
   # Directories to scan for .agent.md files (optional)
   agents: []
-  # Path to the todo list JSON file
-  todos: ".todos.json"
 
 mcp:
   # MCP server configurations

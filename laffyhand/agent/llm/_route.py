@@ -15,6 +15,7 @@ def _redact_url(url: str) -> str:
     )
     return redacted.geturl()
 
+
 from laffyhand.agent.schemas import LLMRequest, StreamEvent, StreamFinish, StreamError
 from laffyhand.agent.llm.specs import Protocol, Endpoint, Auth, Framing
 
@@ -24,9 +25,13 @@ class HTTPClient:
         self.timeout = timeout
         self.max_retries = max_retries
 
-    async def stream(self, method: str, url: str, headers: dict, body: bytes) -> AsyncIterator[bytes]:
+    async def stream(
+        self, method: str, url: str, headers: dict[str, str], body: bytes
+    ) -> AsyncIterator[bytes]:
         async with httpx.AsyncClient(timeout=httpx.Timeout(self.timeout)) as client:
-            async with client.stream(method, url, headers=headers, content=body) as response:
+            async with client.stream(
+                method, url, headers=headers, content=body
+            ) as response:
                 logger.debug(f"HTTP {response.status_code} from {_redact_url(url)}")
                 if response.status_code != 200:
                     error_body = await response.aread()
@@ -88,5 +93,7 @@ class Route:
             finished = True
 
         if not finished:
-            logger.error("LLM stream ended without a finish event — the response may be truncated")
+            logger.error(
+                "LLM stream ended without a finish event — the response may be truncated"
+            )
             yield StreamError(error="LLM stream ended without a finish event")

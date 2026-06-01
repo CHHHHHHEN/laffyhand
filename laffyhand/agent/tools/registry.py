@@ -39,10 +39,12 @@ class ToolRegistry:
                     cb()
                 self._defs = [t.to_definition() for t in self._tools.values()]
                 self._dirty = False
-                logger.debug(f"Built {len(self._defs)} tool definition(s): {[d.name for d in self._defs]}")
+                logger.debug(
+                    f"Built {len(self._defs)} tool definition(s): {[d.name for d in self._defs]}"
+                )
         return self._defs
 
-    def _format_params(self, schema: dict) -> str:
+    def _format_params(self, schema: dict[str, Any]) -> str:
         props = schema.get("properties", {})
         required = set(schema.get("required", []))
         if not props:

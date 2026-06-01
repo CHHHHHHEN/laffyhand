@@ -62,7 +62,9 @@ class TestExactMatch(unittest.TestCase):
 
 class TestWhitespaceNormalizedMatch(unittest.TestCase):
     def test_whitespace_difference(self):
-        result = whitespace_normalized_match("def foo():\n    print('x')", "def foo():\n    print('x')")
+        result = whitespace_normalized_match(
+            "def foo():\n    print('x')", "def foo():\n    print('x')"
+        )
         self.assertIsNotNone(result)
 
     def test_whitespace_varying_amounts(self):
@@ -138,7 +140,13 @@ class TestStrategiesOrder(unittest.TestCase):
 
     def test_all_strategies_present(self):
         names = [name for name, _ in STRATEGIES]
-        expected = ["exact", "whitespace normalized", "line trimmed", "trimmed boundary", "escape normalized"]
+        expected = [
+            "exact",
+            "whitespace normalized",
+            "line trimmed",
+            "trimmed boundary",
+            "escape normalized",
+        ]
         self.assertEqual(names, expected)
 
     def test_exact_matched_before_fallback(self):

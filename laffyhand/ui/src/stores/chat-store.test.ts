@@ -117,4 +117,168 @@ describe("chat-store", () => {
     useChatStore.getState().loadMessages(messages)
     expect(useChatStore.getState().messages).toHaveLength(2)
   })
+
+  // ── Per-turn token delta tracking ──
+
+  it("saves turnStartUsage on startStreaming", () => {
+    const store = useChatStore.getState()
+    store.setSessionInfo("test-model", {
+      total_input: 1000,
+      total_output: 500,
+      total_reasoning: 50,
+      context_size: 128000,
+    })
+    store.startStreaming()
+
+    const state = useChatStore.getState()
+    expect(state._turnStartUsage).toEqual({
+      total_input: 1000,
+      total_output: 500,
+      total_reasoning: 50,
+      context_size: 128000,
+    })
+  })
+
+  it("computes turnUsage delta on finalizeMessage", () => {
+    const store = useChatStore.getState()
+    store.setSessionInfo("test-model", {
+      total_input: 1000,
+      total_output: 500,
+      total_reasoning: 50,
+      context_size: 128000,
+    })
+    store.startStreaming()
+    store.appendContent("response")
+    store.finalizeMessage(undefined, {
+      total_input: 1500,
+      total_output: 700,
+      total_reasoning: 80,
+      context_size: 128000,
+    })
+
+    const state = useChatStore.getState()
+    expect(state.turnUsage).toEqual({
+      input: 500,
+      output: 200,
+      reasoning: 30,
+    })
+  })
+
+  it("sets turnUsage to null when finalizeMessage without sessionUsage", () => {
+    const store = useChatStore.getState()
+    store.startStreaming()
+    store.appendContent("no usage")
+    store.finalizeMessage() // no sessionUsage
+
+    const state = useChatStore.getState()
+    expect(state.turnUsage).toBeNull()
+  })
+
+  it("resets turn tracking on clearMessages", () => {
+    const store = useChatStore.getState()
+    store.startStreaming()
+    store.appendContent("test")
+    store.finalizeMessage(undefined, {
+      total_input: 500,
+      total_output: 300,
+      total_reasoning: 0,
+      context_size: 128000,
+    })
+    store.clearMessages()
+
+    const state = useChatStore.getState()
+    expect(state.turnUsage).toBeNull()
+    expect(state._turnStartUsage).toBeNull()
+  })
+
+  it("resets turn tracking on setSessionInfo", () => {
+    const store = useChatStore.getState()
+    store.startStreaming()
+    store.appendContent("test")
+    store.finalizeMessage(undefined, {
+      total_input: 500,
+      total_output: 300,
+      total_reasoning: 0,
+      context_size: 128000,
+    })
+    store.setSessionInfo("new-model", null)
+
+    const state = useChatStore.getState()
+    expect(state.turnUsage).toBeNull()
+    expect(state._turnStartUsage).toBeNull()
+  })
+
+  // ── Content/reasoning promotion ──
+
+  it("promotes reasoning to content when content is empty", () => {
+    const store = useChatStore.getState()
+    store.startStreaming()
+    store.setReasoning("only reasoning no content")
+    store.finalizeMessage()
+
+    const message = useChatStore.getState().messages[0]!
+    expect(message.content).toBe("only reasoning no content")
+    expect(message.reasoning).toBeUndefined()
+  })
+
+  it("keeps reasoning separate when content exists", () => {
+    const store = useChatStore.getState()
+    store.startStreaming()
+    store.setReasoning("thinking step by step")
+    store.appendContent("actual answer")
+    store.finalizeMessage()
+
+    const message = useChatStore.getState().messages[0]!
+    expect(message.content).toBe("actual answer")
+    expect(message.reasoning).toBe("thinking step by step")
+  })
+
+  it("uses empty string when neither content nor reasoning", () => {
+    const store = useChatStore.getState()
+    store.startStreaming()
+    store.finalizeMessage()
+
+    const message = useChatStore.getState().messages[0]!
+    expect(message.content).toBe("")
+    expect(message.reasoning).toBeUndefined()
+  })
+
+  // ── Permission request messages ──
+
+  it("addPermissionRequest appends a permission-request message", () => {
+    const store = useChatStore.getState()
+    store.addPermissionRequest({ requestId: "req-1", permission: "skill", pattern: "test-tool" })
+    const messages = useChatStore.getState().messages
+    expect(messages).toHaveLength(1)
+    const msg = messages[0]!
+    expect(msg.role).toBe("permission-request")
+    expect(msg.permissionInfo?.requestId).toBe("req-1")
+    expect(msg.permissionInfo?.permission).toBe("skill")
+    expect(msg.permissionInfo?.pattern).toBe("test-tool")
+    expect(msg.permissionInfo?.resolved).toBeUndefined()
+  })
+
+  it("addPermissionRequest sets content from permission and pattern", () => {
+    const store = useChatStore.getState()
+    store.addPermissionRequest({ requestId: "r1", permission: "write", pattern: "/tmp/test" })
+    const msg = useChatStore.getState().messages[0]!
+    expect(msg.content).toBe("Allow write '/tmp/test'?")
+  })
+
+  it("resolvePermissionRequest marks message as resolved", () => {
+    const store = useChatStore.getState()
+    store.addPermissionRequest({ requestId: "req-1", permission: "skill", pattern: "test" })
+    const msgId = useChatStore.getState().messages[0]!.id
+    store.resolvePermissionRequest(msgId)
+    const msg = useChatStore.getState().messages[0]!
+    expect(msg.permissionInfo?.resolved).toBe(true)
+  })
+
+  it("resolvePermissionRequest does nothing for unknown id", () => {
+    const store = useChatStore.getState()
+    store.addPermissionRequest({ requestId: "req-1", permission: "skill", pattern: "test" })
+    store.resolvePermissionRequest("nonexistent")
+    const msg = useChatStore.getState().messages[0]!
+    expect(msg.permissionInfo?.resolved).toBeUndefined()
+  })
 })

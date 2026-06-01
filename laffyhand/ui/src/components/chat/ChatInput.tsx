@@ -11,22 +11,25 @@ interface ChatInputProps {
   isStreaming?: boolean
 }
 
-const MODE_LABELS: Record<BusyMode, string> = {
-  interrupt: "Interrupt",
-  steer: "Steer",
-  queue: "Queue",
-}
-
-const MODE_ICONS: Record<BusyMode, string> = {
-  interrupt: "⚡",
-  steer: "↗",
-  queue: "📥",
-}
-
-const MODE_DESCRIPTIONS: Record<BusyMode, string> = {
-  interrupt: "Cancel current response and send",
-  steer: "Guide the AI without interrupting",
-  queue: "Send after current response finishes",
+const MODE_CONFIG: Record<BusyMode, { label: string; icon: string; description: string; color: string }> = {
+  interrupt: {
+    label: "Interrupt",
+    icon: "⚡",
+    description: "Cancel current response and send",
+    color: "text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800",
+  },
+  steer: {
+    label: "Steer",
+    icon: "↗",
+    description: "Guide the AI without interrupting",
+    color: "text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800",
+  },
+  queue: {
+    label: "Queue",
+    icon: "📥",
+    description: "Send after current response finishes",
+    color: "text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/20 border-purple-200 dark:border-purple-800",
+  },
 }
 
 export function ChatInput({ onSend, onInterrupt, onSteer, onQueue, onCancel, isStreaming }: ChatInputProps) {
@@ -83,63 +86,97 @@ export function ChatInput({ onSend, onInterrupt, onSteer, onQueue, onCancel, isS
     textarea.style.height = `${Math.min(textarea.scrollHeight, 200)}px`
   }
 
-  const submitLabel = isStreaming ? MODE_LABELS[busyMode] : "Send"
+  const currentMode = MODE_CONFIG[busyMode]
+  const submitLabel = isStreaming ? currentMode.label : "Send"
 
   return (
     <div className="border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-4 py-3">
+      {/* Busy mode 选择器 */}
       {isStreaming && (
-        <div className="flex items-center gap-1 mb-2">
-          <span className="text-xs text-gray-400 mr-1">When busy:</span>
-          {(Object.keys(MODE_LABELS) as BusyMode[]).map((mode) => (
-            <button
-              key={mode}
-              type="button"
-              onClick={() => setBusyMode(mode)}
-              title={MODE_DESCRIPTIONS[mode]}
-              className={`text-xs px-2 py-1 rounded cursor-pointer transition-colors ${
-                busyMode === mode
-                  ? "bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 font-medium"
-                  : "text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
-              }`}
-            >
-              {MODE_ICONS[mode]} {MODE_LABELS[mode]}
-            </button>
-          ))}
+        <div className="flex items-center gap-2 mb-2 animate-[fade-in_0.15s_ease-out]">
+          <span className="text-[11px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider mr-1">
+            When busy:
+          </span>
+          <div className="flex items-center gap-1 bg-gray-50 dark:bg-gray-800/50 rounded-lg p-0.5 border border-gray-200 dark:border-gray-700">
+            {(Object.keys(MODE_CONFIG) as BusyMode[]).map((mode) => {
+              const config = MODE_CONFIG[mode]
+              const isActive = busyMode === mode
+              return (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => setBusyMode(mode)}
+                  title={config.description}
+                  className={`flex items-center gap-1 px-2.5 py-1 text-xs rounded-md transition-all duration-150 cursor-pointer ${
+                    isActive
+                      ? `${config.color} shadow-sm font-medium`
+                      : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700/50"
+                  }`}
+                >
+                  <span>{config.icon}</span>
+                  <span>{config.label}</span>
+                </button>
+              )
+            })}
+          </div>
         </div>
       )}
+
+      {/* 输入区 */}
       <div className="flex items-end gap-2">
-        <textarea
-          ref={textareaRef}
-          onChange={handleInputChange}
-          onKeyDown={handleKeyDown}
-          placeholder={
-            isStreaming
-              ? "Type a message..."
-              : "Type a message..."
-          }
-          rows={1}
-          className="flex-1 resize-none rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-colors"
-        />
+        <div className="flex-1 relative">
+          <textarea
+            ref={textareaRef}
+            onChange={handleInputChange}
+            onKeyDown={handleKeyDown}
+            placeholder={
+              isStreaming
+                ? "Type a message to steer the AI..."
+                : "Type a message..."
+            }
+            rows={1}
+            className="w-full resize-none rounded-xl border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 pl-4 pr-10 py-2.5 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500/15 transition-all placeholder-gray-400 dark:placeholder-gray-500"
+          />
+          {/* 快捷键提示 */}
+          <div className="absolute right-3 bottom-2.5 flex items-center gap-1 pointer-events-none">
+            <kbd className="hidden sm:inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-700 rounded border border-gray-200 dark:border-gray-600 font-sans">
+              ↵
+            </kbd>
+          </div>
+        </div>
+
+        {/* 取消按钮 */}
         {isStreaming && onCancel && (
           <button
             type="button"
             onClick={onCancel}
             title="Cancel current response"
-            className="self-center p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md transition-colors cursor-pointer"
+            className="self-center p-2.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-colors cursor-pointer"
           >
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="size-5">
               <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
             </svg>
           </button>
         )}
+
+        {/* 发送按钮 */}
         <Button
-          variant="primary"
+          variant={isStreaming ? "secondary" : "primary"}
           onClick={handleSubmit}
           disabled={!inputValue.trim()}
-          className="transition-all"
+          className={`transition-all duration-150 ${inputValue.trim() ? "opacity-100" : "opacity-60"}`}
         >
+          {isStreaming ? currentMode.icon : ""}
+          {' '}
           {submitLabel}
         </Button>
+      </div>
+
+      {/* 底部提示 */}
+      <div className="flex items-center justify-between mt-1.5 px-1">
+        <span className="text-[10px] text-gray-400 dark:text-gray-500">
+          Shift+Enter for new line
+        </span>
       </div>
     </div>
   )

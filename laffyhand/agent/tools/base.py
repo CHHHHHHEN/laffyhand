@@ -16,9 +16,8 @@ class BaseTool(ABC):
             input_schema=self._input_schema(),
         )
 
-    def _input_schema(self) -> dict:
+    def _input_schema(self) -> dict[str, Any]:
         return {"type": "object", "properties": {}}
 
     @abstractmethod
-    async def run(self, params: dict[str, Any]) -> str:
-        ...
+    async def run(self, params: dict[str, Any]) -> str: ...

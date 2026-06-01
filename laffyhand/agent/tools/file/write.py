@@ -1,6 +1,6 @@
 import difflib
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 from laffyhand.agent.tools.base import BaseTool
@@ -13,16 +13,23 @@ from laffyhand.agent.tools.file._text_utils import (
     normalize_newlines,
 )
 
+if TYPE_CHECKING:
+    from laffyhand.agent.tools.permission import PermissionManager
+
 MAX_DIFF_LINES = 50
 
 
 def _compute_diff(path: Path, old_content: str, new_content: str) -> str:
     old_lines = old_content.splitlines(keepends=True)
     new_lines = new_content.splitlines(keepends=True)
-    diff = list(difflib.unified_diff(
-        old_lines, new_lines,
-        fromfile=str(path), tofile=str(path),
-    ))
+    diff = list(
+        difflib.unified_diff(
+            old_lines,
+            new_lines,
+            fromfile=str(path),
+            tofile=str(path),
+        )
+    )
     return "".join(diff)
 
 
@@ -31,10 +38,10 @@ class WriteTool(BaseTool):
     description = "Write content to a file, creating or overwriting it."
     max_result_size = 50000
 
-    def __init__(self, permission_manager: Any | None = None) -> None:
+    def __init__(self, permission_manager: PermissionManager | None = None) -> None:
         self._permission = permission_manager
 
-    def _input_schema(self) -> dict:
+    def _input_schema(self) -> dict[str, Any]:
         return {
             "type": "object",
             "properties": {
@@ -79,9 +86,13 @@ class WriteTool(BaseTool):
         confirm = params.get("confirm", False)
         if confirm:
             if self._permission is None:
-                logger.warning("confirm=True but no permission manager available; skipping")
+                logger.warning(
+                    "confirm=True but no permission manager available; skipping"
+                )
             elif old_content is None:
-                logger.info("confirm=True skipped for new file (no previous content to diff)")
+                logger.info(
+                    "confirm=True skipped for new file (no previous content to diff)"
+                )
             else:
                 allowed = await self._permission.ask(
                     "write",
@@ -94,7 +105,7 @@ class WriteTool(BaseTool):
             atomic_write(path, content)
         except OSError as e:
             logger.error(f"Write failed for {path}: {e}")
-            return f"Write failed for {path}: {e}"
+            return f"Write failed for {path}: internal error"
 
         # Post-write verification
         try:
@@ -113,7 +124,9 @@ class WriteTool(BaseTool):
             diff_lines = diff.splitlines()
             if len(diff_lines) > MAX_DIFF_LINES:
                 diff_lines = diff_lines[:MAX_DIFF_LINES]
-                diff_lines.append(f"... diff truncated ({len(diff.splitlines())} lines total)")
+                diff_lines.append(
+                    f"... diff truncated ({len(diff.splitlines())} lines total)"
+                )
             diff_display = "\n".join(diff_lines)
             if diff_display.strip():
                 result += f"\n\n{diff_display}"

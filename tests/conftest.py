@@ -33,10 +33,12 @@ def session_manager(db_path: str) -> SessionManager:
 
 @pytest.fixture
 def runtime_config(db_path: str) -> LaffyConfig:
-    return LaffyConfig.model_validate({
-        "llm": {
-            "default_provider": "test",
-            "providers": _SAMPLE_PROVIDERS,
-        },
-        "db": {"path": db_path},
-    })
+    return LaffyConfig.model_validate(
+        {
+            "llm": {
+                "default_provider": "test",
+                "providers": _SAMPLE_PROVIDERS,
+            },
+            "db": {"path": db_path},
+        }
+    )

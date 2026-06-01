@@ -29,17 +29,6 @@ class LLMConfig(BaseModel):
     default_provider: str = ""
     providers: dict[str, ProviderConfig] = Field(default_factory=dict)
 
-    @model_validator(mode="before")
-    @classmethod
-    def _detect_old_format(cls, data: Any) -> Any:
-        if isinstance(data, dict):
-            if "base_url" in data or "model_name" in data:
-                raise ValueError(
-                    "The llm config format has changed. "
-                    "See laffyhand.example.yml for the new multi-provider format."
-                )
-        return data
-
 
 class DBConfig(BaseModel):
     path: str = "./laffyhand.db"
@@ -53,7 +42,7 @@ class LogConfig(BaseModel):
 
 
 class AgentConfig(BaseModel):
-    title_mode: Literal["off", "on_create", "on_compact", "auto"] = "on_compact"
+    title_mode: Literal["off", "on_create", "on_compact", "auto"] = "auto"
     compaction_tail_turns: int = 2
     max_steps: int = 50
     max_concurrent_subagents: int = 2
@@ -62,7 +51,6 @@ class AgentConfig(BaseModel):
 class PathsConfig(BaseModel):
     skills: list[str] = Field(default_factory=list)
     agents: list[str] = Field(default_factory=list)
-    todos: str = ".todos.json"
 
 
 class MCPConfig(BaseModel):
@@ -89,12 +77,13 @@ class LaffyConfig(BaseModel):
     mcp: MCPConfig = MCPConfig()
 
 
-def resolve_provider(llm_cfg: LLMConfig, provider: str | None = None) -> tuple[str, ProviderConfig]:
+def resolve_provider(
+    llm_cfg: LLMConfig, provider: str | None = None
+) -> tuple[str, ProviderConfig]:
     key = provider or llm_cfg.default_provider
     if not key:
         raise ValueError(
-            "No provider selected. Set llm.default_provider in config "
-            "or pass --provider on the command line."
+            "No provider selected. Set llm.default_provider in config."
         )
     cfg = llm_cfg.providers.get(key)
     if cfg is None:
@@ -105,15 +94,15 @@ def resolve_provider(llm_cfg: LLMConfig, provider: str | None = None) -> tuple[s
     return key, cfg
 
 
-def resolve_model(provider_cfg: ProviderConfig, model: str | None = None) -> ModelConfig:
+def resolve_model(
+    provider_cfg: ProviderConfig, model: str | None = None
+) -> ModelConfig:
     if model:
         for m in provider_cfg.models:
             if m.name == model:
                 return m
         names = [m.name for m in provider_cfg.models]
-        raise ValueError(
-            f"Model {model!r} not found in provider. Available: {names}"
-        )
+        raise ValueError(f"Model {model!r} not found in provider. Available: {names}")
     return provider_cfg.models[0]
 
 

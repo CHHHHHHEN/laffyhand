@@ -69,3 +69,68 @@ class TestPermissionAsk(unittest.TestCase):
         with patch("asyncio.to_thread", side_effect=OSError):
             with self.assertRaises(RuntimeError):
                 asyncio.run(self.pm.ask("skill", ["test"]))
+
+
+class TestPermissionAskCallback(unittest.TestCase):
+    def setUp(self):
+        self.pm = PermissionManager()
+
+    def test_callback_called_when_no_rule(self):
+        async def callback(permission, pattern):
+            self.assertEqual(permission, "skill")
+            self.assertEqual(pattern, "test")
+            return True
+
+        self.pm.request_callback = callback
+        result = asyncio.run(self.pm.ask("skill", ["test"]))
+        self.assertTrue(result)
+
+    def test_callback_denied(self):
+        async def callback(permission, pattern):
+            return False
+
+        self.pm.request_callback = callback
+        result = asyncio.run(self.pm.ask("skill", ["test"]))
+        self.assertFalse(result)
+
+    def test_callback_not_called_when_rule_exists(self):
+        self.pm.allow("skill:test")
+        self.pm.request_callback = lambda p, pat: (_ for _ in ()).throw(
+            AssertionError("should not be called")
+        )
+        result = asyncio.run(self.pm.ask("skill", ["test"]))
+        self.assertTrue(result)
+
+    def test_callback_not_called_when_blanket_deny(self):
+        self.pm.deny("skill")
+        call_count = 0
+
+        async def callback(permission, pattern):
+            nonlocal call_count
+            call_count += 1
+            return True
+
+        self.pm.request_callback = callback
+        result = asyncio.run(self.pm.ask("skill", ["test"]))
+        self.assertFalse(result)
+        self.assertEqual(call_count, 0)
+
+    def test_callback_multiple_patterns_first_fails(self):
+        results = iter([False])
+
+        async def callback(permission, pattern):
+            return next(results)
+
+        self.pm.request_callback = callback
+        result = asyncio.run(self.pm.ask("skill", ["first", "second"]))
+        self.assertFalse(result)
+
+    def test_callback_multiple_patterns_all_pass(self):
+        results = iter([True, True])
+
+        async def callback(permission, pattern):
+            return next(results)
+
+        self.pm.request_callback = callback
+        result = asyncio.run(self.pm.ask("skill", ["first", "second"]))
+        self.assertTrue(result)

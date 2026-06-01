@@ -9,7 +9,11 @@ from typing import TYPE_CHECKING, Any, Callable, Literal
 from loguru import logger
 
 from laffyhand.agent.schemas import (
-    AgentState, CompactionConfig, SessionUsage, SystemMessage, UserMessage,
+    AgentState,
+    CompactionConfig,
+    SessionUsage,
+    SystemMessage,
+    UserMessage,
 )
 from laffyhand.agent.tools.permission import SubagentPermissions
 
@@ -63,8 +67,7 @@ def build_subagent_state(
         model=agent_info.model or "",
     )
     system_content = (
-        agent_info.prompt
-        or "You are a helpful sub-agent. Complete the assigned task."
+        agent_info.prompt or "You are a helpful sub-agent. Complete the assigned task."
     )
     system_msg = SystemMessage(content=system_content)
     user_msg = UserMessage(content=prompt)
@@ -74,7 +77,8 @@ def build_subagent_state(
         agent_info.permission,
     )
     child_registry = SubagentPermissions.filter_registry(
-        tool_registry, child_permission,
+        tool_registry,
+        child_permission,
     )
 
     child_state = AgentState(
@@ -105,11 +109,16 @@ class SubagentManager:
         parent_permission: PermissionManager,
         session_manager: SessionManager,
         compaction_config: CompactionConfig | None = None,
+        on_complete: Callable[[str, bool], None] | None = None,
     ) -> str:
         task_id = uuid.uuid4().hex[:12]
         child_state, child_registry = build_subagent_state(
-            session_manager, parent_session_id, agent_info, prompt,
-            parent_permission, tool_registry,
+            session_manager,
+            parent_session_id,
+            agent_info,
+            prompt,
+            parent_permission,
+            tool_registry,
         )
 
         async def _run() -> None:
@@ -118,6 +127,7 @@ class SubagentManager:
                 if running is not None:
                     running.status = "running"
 
+                success = False
                 try:
                     from laffyhand.agent.loop import agent_loop
 
@@ -150,6 +160,7 @@ class SubagentManager:
                         status="completed",
                         content=last_content,
                     )
+                    success = True
                 except Exception as e:
                     logger.exception(f"Subagent {task_id} failed: {e}")
                     assert child_state.session_id is not None
@@ -167,10 +178,15 @@ class SubagentManager:
                 if running is not None:
                     running.status = result.status
 
+                if on_complete is not None:
+                    on_complete(task_id, success)
+
                 self._cleanup_task(task_id, parent_session_id)
 
         assert child_state.session_id is not None
-        self._register_task(task_id, child_state.session_id, parent_session_id, agent_info.name, _run)
+        self._register_task(
+            task_id, child_state.session_id, parent_session_id, agent_info.name, _run
+        )
         return task_id
 
     def _register_task(
@@ -202,7 +218,9 @@ class SubagentManager:
                 self._session_tasks.pop(parent_session_id, None)
 
     async def poll_results(
-        self, session_id: str, max_count: int = 5,
+        self,
+        session_id: str,
+        max_count: int = 5,
     ) -> list[SubagentResult]:
         results: list[SubagentResult] = []
         for _ in range(max_count):
@@ -243,12 +261,11 @@ class SubagentManager:
         for task_id in tasks:
             running = self._running.get(task_id)
             if running is not None:
-                result.append({
-                    "task_id": task_id,
-                    "agent_type": running.agent_type,
-                    "status": running.status,
-                })
+                result.append(
+                    {
+                        "task_id": task_id,
+                        "agent_type": running.agent_type,
+                        "status": running.status,
+                    }
+                )
         return result
-
-
-

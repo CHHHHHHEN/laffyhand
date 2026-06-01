@@ -1,26 +1,24 @@
-from typing import Optional, Literal, cast, get_args
+from typing import Any, Optional, Literal, cast, get_args
 from pydantic import BaseModel, Field as F
 from loguru import logger
 
 from laffyhand.agent.schemas import (
-    LLMRequest, Message, AssistantMessage, ToolDefinition, StreamEvent,
-    StreamText, StreamReasoning, StreamToolCall, StreamFinish, Usage, FinishReason,
+    LLMRequest,
+    Message,
+    AssistantMessage,
+    ToolDefinition,
+    StreamEvent,
+    StreamText,
+    StreamReasoning,
+    StreamToolCall,
+    StreamFinish,
+    Usage,
+    FinishReason,
 )
 from laffyhand.agent.llm.specs import Protocol, Endpoint
 
 
 # ─── OpenAI raw wire models ─────────────────────────────────────
-
-
-class OpenAIToolCallFunction(BaseModel):
-    name: str
-    arguments: str
-
-
-class OpenAIToolCall(BaseModel):
-    id: str
-    type: Literal['function'] = 'function'
-    function: OpenAIToolCallFunction
 
 
 class OpenAIToolCallDeltaFunction(BaseModel):
@@ -31,7 +29,7 @@ class OpenAIToolCallDeltaFunction(BaseModel):
 class OpenAIToolCallDelta(BaseModel):
     index: int
     id: Optional[str] = None
-    type: Optional[Literal['function']] = None
+    type: Optional[Literal["function"]] = None
     function: Optional[OpenAIToolCallDeltaFunction] = None
 
 
@@ -76,14 +74,14 @@ class OpenAIChatChunk(BaseModel):
 # ─── Internal → OpenAI conversion ────────────────────────────────
 
 
-def _message_to_openai(msg: Message) -> dict:
+def _message_to_openai(msg: Message) -> dict[str, Any]:
     if msg.role == "system":
         return {"role": "system", "content": msg.content}
     if msg.role == "user":
         return {"role": "user", "content": msg.content}
     if msg.role == "assistant":
         assert isinstance(msg, AssistantMessage)
-        d: dict = {"role": "assistant"}
+        d: dict[str, Any] = {"role": "assistant"}
         if msg.content is not None:
             d["content"] = msg.content
         elif not msg.tool_calls:
@@ -102,12 +100,16 @@ def _message_to_openai(msg: Message) -> dict:
             ]
         return d
     if msg.role == "tool":
-        return {"role": "tool", "tool_call_id": msg.tool_call_id, "content": msg.content}
+        return {
+            "role": "tool",
+            "tool_call_id": msg.tool_call_id,
+            "content": msg.content,
+        }
     logger.warning(f"Unknown message role: {msg.role}")
     return {}
 
 
-def _tool_definitions_to_openai(definitions: list[ToolDefinition]) -> list[dict]:
+def _tool_definitions_to_openai(definitions: list[ToolDefinition]) -> list[dict[str, Any]]:
     return [
         {
             "type": "function",
@@ -126,12 +128,12 @@ def _tool_definitions_to_openai(definitions: list[ToolDefinition]) -> list[dict]
 
 class OpenAIProtocol(Protocol):
     def __init__(self) -> None:
-        self._tool_call_acc: dict[int, dict] = {}
+        self._tool_call_acc: dict[int, dict[str, Any]] = {}
 
-    def build_request(self, request: LLMRequest) -> dict:
+    def build_request(self, request: LLMRequest) -> dict[str, Any]:
         self._tool_call_acc.clear()
         messages = [_message_to_openai(m) for m in request.messages]
-        body: dict = {
+        body: dict[str, Any] = {
             "model": request.model,
             "messages": messages,
             "stream": True,
@@ -139,7 +141,9 @@ class OpenAIProtocol(Protocol):
         }
         if request.tools:
             body["tools"] = _tool_definitions_to_openai(request.tools)
-        logger.debug(f"OpenAI request: model={request.model}, {len(messages)} messages, tools={bool(request.tools)}")
+        logger.debug(
+            f"OpenAI request: model={request.model}, {len(messages)} messages, tools={bool(request.tools)}"
+        )
         return body
 
     @staticmethod
@@ -154,7 +158,7 @@ class OpenAIProtocol(Protocol):
             cache_write_tokens=ptd.cache_write_tokens if ptd else None,
         )
 
-    def parse_frame(self, frame: dict) -> list[StreamEvent]:
+    def parse_frame(self, frame: dict[str, Any]) -> list[StreamEvent]:
         chunk = OpenAIChatChunk.model_validate(frame)
         events: list[StreamEvent] = []
 
@@ -174,7 +178,9 @@ class OpenAIProtocol(Protocol):
             for tc in delta.tool_calls:
                 idx = tc.index
                 if tc.id is not None:
-                    logger.trace(f"Tool call start: idx={idx}, id={tc.id}, name={tc.function.name if tc.function else '?'}")
+                    logger.trace(
+                        f"Tool call start: idx={idx}, id={tc.id}, name={tc.function.name if tc.function else '?'}"
+                    )
                     self._tool_call_acc[idx] = {
                         "tool_call_id": tc.id,
                         "tool_name": tc.function.name if tc.function else "",
@@ -187,17 +193,25 @@ class OpenAIProtocol(Protocol):
             if finish_reason == "tool_calls" and self._tool_call_acc:
                 for idx in sorted(self._tool_call_acc):
                     acc = self._tool_call_acc.pop(idx)
-                    events.append(StreamToolCall(
-                        tool_call_id=acc["tool_call_id"],
-                        tool_name=acc["tool_name"],
-                        args=acc["args"],
-                    ))
+                    events.append(
+                        StreamToolCall(
+                            tool_call_id=acc["tool_call_id"],
+                            tool_name=acc["tool_name"],
+                            args=acc["args"],
+                        )
+                    )
             usage = self._openai_usage_to_internal(chunk.usage) if chunk.usage else None
             if finish_reason not in get_args(FinishReason):
-                logger.warning(f"Unknown finish_reason '{finish_reason}', mapping to 'other'")
+                logger.warning(
+                    f"Unknown finish_reason '{finish_reason}', mapping to 'other'"
+                )
                 finish_reason = "other"
             logger.debug(f"Finish reason: {finish_reason}, usage={usage}")
-            events.append(StreamFinish(finish_reason=cast(FinishReason, finish_reason), usage=usage))
+            events.append(
+                StreamFinish(
+                    finish_reason=cast(FinishReason, finish_reason), usage=usage
+                )
+            )
 
         return events
 

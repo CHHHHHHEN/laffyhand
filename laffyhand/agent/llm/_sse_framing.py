@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import AsyncIterable, AsyncIterator
+from typing import Any, cast
 from loguru import logger
 
 
@@ -17,7 +18,7 @@ class SSEFraming(Framing):
 
     _DONE = object()
 
-    async def frames(self, response: AsyncIterable[bytes]) -> AsyncIterator[dict]:
+    async def frames(self, response: AsyncIterable[bytes]) -> AsyncIterator[dict[str, Any]]:
         buffer = ""
         async for chunk in response:
             buffer += chunk.decode("utf-8", errors="replace")
@@ -34,7 +35,7 @@ class SSEFraming(Framing):
             if isinstance(parsed, dict):
                 yield parsed
 
-    def _parse_event(self, raw: str) -> dict | None | object:
+    def _parse_event(self, raw: str) -> dict[str, Any] | None | object:
         """Parse a single SSE event string.
 
         Returns:
@@ -67,7 +68,7 @@ class SSEFraming(Framing):
 
         payload = "\n".join(payload_lines)
         try:
-            return json.loads(payload)
+            return cast(dict[str, Any], json.loads(payload))
         except json.JSONDecodeError as e:
             logger.warning(
                 f"SSE JSON parse error in event ({len(raw)} chars): {e}\n"

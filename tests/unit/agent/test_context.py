@@ -6,14 +6,28 @@ from unittest.mock import MagicMock
 import pytest
 
 from laffyhand.agent.schemas import (
-    AgentState, AssistantMessage, CompactionConfig, SessionUsage,
-    StreamError, StreamFinish, StreamText, SystemMessage,
-    ToolCallContent, ToolMessage, UserMessage,
+    AgentState,
+    AssistantMessage,
+    CompactionConfig,
+    SessionUsage,
+    StreamError,
+    StreamFinish,
+    StreamText,
+    SystemMessage,
+    ToolCallContent,
+    ToolMessage,
+    UserMessage,
 )
 from laffyhand.agent.compaction import (
-    compact, compact_with_chain, estimate_message_tokens,
-    estimate_messages_tokens, is_overflow, select_tail,
-    build_summary_text, _select_compaction_targets, _is_summary_content,
+    compact,
+    compact_with_chain,
+    estimate_message_tokens,
+    estimate_messages_tokens,
+    is_overflow,
+    select_tail,
+    build_summary_text,
+    _select_compaction_targets,
+    _is_summary_content,
 )
 from laffyhand.agent.prune import prune, PRUNE_PROTECT
 
@@ -36,7 +50,9 @@ class TestEstimateMessageTokens(unittest.TestCase):
         self.assertEqual(estimate_message_tokens(msg), 7)
 
     def test_assistant_tool_calls(self):
-        tc = ToolCallContent(tool_call_id="c1", tool_name="test_tool", args='{"key": "val"}')
+        tc = ToolCallContent(
+            tool_call_id="c1", tool_name="test_tool", args='{"key": "val"}'
+        )
         msg = AssistantMessage(content=None, tool_calls=[tc])
         self.assertGreater(estimate_message_tokens(msg), 0)
 
@@ -87,7 +103,9 @@ class TestSelectTail(unittest.TestCase):
 
     def test_all_fits_in_tail(self):
         msgs = [SystemMessage(content="sys"), UserMessage(content="hi")]
-        head, tail = select_tail(msgs, CompactionConfig(tail_turns=5), context_size=1000)
+        head, tail = select_tail(
+            msgs, CompactionConfig(tail_turns=5), context_size=1000
+        )
         self.assertEqual(head, [])
         self.assertEqual(len(tail), 2)
 
@@ -121,7 +139,9 @@ class TestSelectTail(unittest.TestCase):
         )
         head, tail = select_tail(msgs, config, context_size=100_000)
         tool_in_tail = any(isinstance(m, ToolMessage) for m in tail)
-        self.assertTrue(tool_in_tail, "long tool output should fit in tail when truncated")
+        self.assertTrue(
+            tool_in_tail, "long tool output should fit in tail when truncated"
+        )
 
 
 class TestBuildSummaryText(unittest.TestCase):
@@ -130,7 +150,9 @@ class TestBuildSummaryText(unittest.TestCase):
             UserMessage(content="user hello"),
             AssistantMessage(
                 content="asst hello",
-                tool_calls=[ToolCallContent(tool_call_id="c1", tool_name="my_tool", args="{}")],
+                tool_calls=[
+                    ToolCallContent(tool_call_id="c1", tool_name="my_tool", args="{}")
+                ],
             ),
             ToolMessage(tool_call_id="c1", content="tool result"),
         ]
@@ -162,7 +184,9 @@ class TestPrune(unittest.TestCase):
         content = "x" * (PRUNE_PROTECT * 4 + 5)
         msgs = [ToolMessage(tool_call_id="c1", content=content)]
         result = prune(msgs)
-        self.assertTrue(result[0].content.startswith("[Old tool result content cleared:"))
+        self.assertTrue(
+            result[0].content.startswith("[Old tool result content cleared:")
+        )
         self.assertEqual(msgs[0].content, content, "should not mutate original")
 
     def test_prune_multiple_messages_oldest_first(self):
@@ -171,7 +195,9 @@ class TestPrune(unittest.TestCase):
         msgs = [small, large]
         result = prune(msgs)
         self.assertEqual(result[0].content, "small", "should not prune tiny messages")
-        self.assertTrue(result[1].content.startswith("[Old tool result content cleared:"))
+        self.assertTrue(
+            result[1].content.startswith("[Old tool result content cleared:")
+        )
         self.assertEqual(msgs[1].content, large.content, "should not mutate original")
 
     def test_prune_no_tool_messages(self):
@@ -184,8 +210,12 @@ class TestPrune(unittest.TestCase):
         tiny = ToolMessage(tool_call_id="c2", content="tiny")
         msgs = [tiny, large]
         result = prune(msgs)
-        self.assertEqual(result[0].content, "tiny", "tiny messages should not be pruned")
-        self.assertTrue(result[1].content.startswith("[Old tool result content cleared:"))
+        self.assertEqual(
+            result[0].content, "tiny", "tiny messages should not be pruned"
+        )
+        self.assertTrue(
+            result[1].content.startswith("[Old tool result content cleared:")
+        )
 
     def test_prune_partial_some_kept(self):
         content1 = "x" * (PRUNE_PROTECT * 4 + 5)
@@ -195,7 +225,11 @@ class TestPrune(unittest.TestCase):
             ToolMessage(tool_call_id="c2", content=content2),
         ]
         result = prune(msgs)
-        pruned_count = sum(1 for m in result if m.content.startswith("[Old tool result content cleared:"))
+        pruned_count = sum(
+            1
+            for m in result
+            if m.content.startswith("[Old tool result content cleared:")
+        )
         self.assertGreater(pruned_count, 0)
         self.assertLess(pruned_count, 3)
 
@@ -235,8 +269,14 @@ class TestCompact(unittest.TestCase):
         self.assertTrue(result)
         self.assertLess(len(state.messages), len(msgs))
         # Summary should be wrapped in <summary> tags
-        summary_msgs = [m for m in state.messages if isinstance(m, SystemMessage) and _is_summary_content(m.content)]
-        self.assertEqual(len(summary_msgs), 1, "should have exactly one summary message")
+        summary_msgs = [
+            m
+            for m in state.messages
+            if isinstance(m, SystemMessage) and _is_summary_content(m.content)
+        ]
+        self.assertEqual(
+            len(summary_msgs), 1, "should have exactly one summary message"
+        )
 
     @pytest.mark.anyio
     async def test_compact_stream_error_returns_false(self):
@@ -296,7 +336,9 @@ class TestCompactWithChain(unittest.TestCase):
         summary, system_msgs, tail = result
         self.assertIsInstance(summary, str)
         self.assertGreater(len(summary), 0)
-        self.assertTrue(_is_summary_content(summary), "summary should be wrapped in <summary> tags")
+        self.assertTrue(
+            _is_summary_content(summary), "summary should be wrapped in <summary> tags"
+        )
         self.assertIsInstance(system_msgs, list)
         self.assertIsInstance(tail, list)
         self.assertGreater(len(tail), 0)
@@ -331,7 +373,9 @@ class TestSummaryChain(unittest.TestCase):
 
     def test_build_summary_text_handles_previous_summary(self):
         msgs = [
-            SystemMessage(content="<summary>\nGoal: fix bug\nProgress: done\n</summary>"),
+            SystemMessage(
+                content="<summary>\nGoal: fix bug\nProgress: done\n</summary>"
+            ),
             UserMessage(content="New message"),
         ]
         text = build_summary_text(msgs)
@@ -357,7 +401,9 @@ class TestSummaryChain(unittest.TestCase):
     def test_select_compaction_targets_moves_summary_to_head(self):
         msgs = [
             SystemMessage(content="You are a bot."),  # original system
-            SystemMessage(content="<summary>\nGoal: fix\n</summary>"),  # previous summary
+            SystemMessage(
+                content="<summary>\nGoal: fix\n</summary>"
+            ),  # previous summary
             UserMessage(content="user1"),
             AssistantMessage(content="asst1"),
             UserMessage(content="user2"),  # last user turn, part of tail
@@ -368,14 +414,14 @@ class TestSummaryChain(unittest.TestCase):
         self.assertIsNotNone(result)
         head_to_summarize, original_system, tail = result
         # Previous summary should be in head_to_summarize, not in original_system
-        summary_in_head = any(
-            _is_summary_content(m.content) for m in head_to_summarize
+        summary_in_head = any(_is_summary_content(m.content) for m in head_to_summarize)
+        self.assertTrue(
+            summary_in_head, "previous summary should be in head_to_summarize"
         )
-        self.assertTrue(summary_in_head, "previous summary should be in head_to_summarize")
-        summary_in_system = any(
-            _is_summary_content(m.content) for m in original_system
+        summary_in_system = any(_is_summary_content(m.content) for m in original_system)
+        self.assertFalse(
+            summary_in_system, "previous summary should NOT be in original_system"
         )
-        self.assertFalse(summary_in_system, "previous summary should NOT be in original_system")
 
     @pytest.mark.anyio
     async def test_second_compaction_passes_previous_summary(self):
@@ -429,5 +475,8 @@ class TestSummaryChain(unittest.TestCase):
         # Verify that the first summary was passed to the second compaction
         self.assertGreaterEqual(call_count, 2, "should have called LLM at least twice")
         second_call_input = captured_inputs[1] if len(captured_inputs) > 1 else ""
-        self.assertIn("first pass", second_call_input,
-                      "second compaction should include previous summary content")
+        self.assertIn(
+            "first pass",
+            second_call_input,
+            "second compaction should include previous summary content",
+        )

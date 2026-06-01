@@ -118,6 +118,13 @@ export function useChat() {
                   }
                   break
                 }
+                case "permission-request":
+                  store.addPermissionRequest({
+                    requestId: event.request_id,
+                    permission: event.permission,
+                    pattern: event.pattern,
+                  })
+                  break
                 case "provider-error":
                   store.setError(event.message)
                   break

@@ -13,6 +13,7 @@ def _validate_id(raw_id: Any) -> None:
     if not isinstance(raw_id, (str, int, float)) or isinstance(raw_id, bool):
         raise ValueError("JSON-RPC id must be a string or number")
 
+
 # RPC method names
 INITIALIZE = "initialize"
 SHUTDOWN = "shutdown"
@@ -32,13 +33,19 @@ SESSION_GENERATE_TITLE = "session/generate_title"
 SESSION_ARCHIVE = "session/archive"
 SUBAGENT_LIST_ACTIVE = "subagent/list_active"
 USAGE_GET = "usage/get"
+CONFIG_PROVIDERS = "config/providers"
+MCP_STATUS = "mcp/status"
+SESSION_SET_CONFIG = "session/set_config"
+PERMISSION_RESPOND = "permission/respond"
+TODO_LIST = "todo/list"
+TODO_UPDATE = "todo/update"
 
 
 @dataclass
 class Error:
     code: int
     message: str
-    data: Any = None
+    data: dict[str, Any] | None = None
 
     def json(self) -> str:
         return to_json(self)
@@ -109,7 +116,7 @@ def from_json(data: str) -> JSONRPCMessage:
         )
     obj = json.loads(data)
     if not isinstance(obj, dict):
-        raise ValueError(f"Invalid JSON-RPC message: {data!r:.200}")
+        raise ValueError("Invalid JSON-RPC message")
     jsonrpc = obj.get("jsonrpc", _JSONRPC_VERSION)
     if jsonrpc != _JSONRPC_VERSION:
         raise ValueError(f"Unsupported JSON-RPC version: {jsonrpc}")
@@ -145,23 +152,12 @@ def from_json(data: str) -> JSONRPCMessage:
                 data=err.get("data"),
             ),
         )
-    raise ValueError(f"Cannot classify JSON-RPC message: {data!r:.200}")
-
-
-@dataclass
-class GatewayConfig:
-    host: str = "127.0.0.1"
-    port: int = 9090
-    max_message_size: int = MAX_MESSAGE_SIZE
+    raise ValueError("Cannot classify JSON-RPC message")
 
 
 # Standard JSON-RPC error codes
 PARSE_ERROR = -32700
-INVALID_REQUEST = -32600
 METHOD_NOT_FOUND = -32601
-INVALID_PARAMS = -32602
 INTERNAL_ERROR = -32603
 
-# Custom error codes
-OVERLOADED = -32001
-STREAM_CANCELLED = -32002
+

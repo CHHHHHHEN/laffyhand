@@ -4,20 +4,48 @@ import asyncio
 import itertools
 import os
 import time
+import uuid
 from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
-from laffyhand.agent.loop import StepFinish, Finish
+from laffyhand.agent.loop import StepFinish, Finish, PermissionRequest
+from laffyhand.agent.tools.permission import request_callback as _pm_callback
 from laffyhand.agent.schemas import (
-    SystemMessage, UserMessage, AssistantMessage, ToolMessage,
-    AgentState, SessionUsage,
+    Message,
+    SystemMessage,
+    UserMessage,
+    AssistantMessage,
+    ToolMessage,
+    AgentState,
+    SessionUsage,
 )
 from laffyhand.gateway.protocol import (
-    INITIALIZE, SHUTDOWN, SESSION_CREATE, SESSION_LIST, SESSION_LOAD,
-    SESSION_DELETE, SESSION_FORK, SESSION_SEARCH, SESSION_SET_TITLE,
-    SESSION_GENERATE_TITLE, SESSION_ARCHIVE, SUBAGENT_LIST_ACTIVE,
-    USAGE_GET, CHAT, CHAT_STREAM, CHAT_CANCEL, CHAT_STEER, TOOLS_LIST, Notification,
+    INITIALIZE,
+    SHUTDOWN,
+    SESSION_CREATE,
+    SESSION_LIST,
+    SESSION_LOAD,
+    SESSION_DELETE,
+    SESSION_FORK,
+    SESSION_SEARCH,
+    SESSION_SET_TITLE,
+    SESSION_GENERATE_TITLE,
+    SESSION_ARCHIVE,
+    SUBAGENT_LIST_ACTIVE,
+    USAGE_GET,
+    CHAT,
+    CHAT_STREAM,
+    CHAT_CANCEL,
+    CHAT_STEER,
+    TOOLS_LIST,
+    CONFIG_PROVIDERS,
+    MCP_STATUS,
+    SESSION_SET_CONFIG,
+    PERMISSION_RESPOND,
+    TODO_LIST,
+    TODO_UPDATE,
+    Notification,
 )
 
 if TYPE_CHECKING:
@@ -33,23 +61,27 @@ def _next_msg_id() -> str:
     return f"msg-{int(time.time() * 1000)}-{next(_MESSAGE_COUNTER)}"
 
 
-def _serialize_messages(messages: list) -> list[dict[str, Any]]:
+def _serialize_messages(messages: list[Message]) -> list[dict[str, Any]]:
     result: list[dict[str, Any]] = []
     for msg in messages:
         if isinstance(msg, SystemMessage):
-            result.append({
-                "id": _next_msg_id(),
-                "role": "system",
-                "content": msg.content,
-                "createdAt": int(time.time() * 1000),
-            })
+            result.append(
+                {
+                    "id": _next_msg_id(),
+                    "role": "system",
+                    "content": msg.content,
+                    "createdAt": int(time.time() * 1000),
+                }
+            )
         elif isinstance(msg, UserMessage):
-            result.append({
-                "id": _next_msg_id(),
-                "role": "user",
-                "content": msg.content,
-                "createdAt": int(time.time() * 1000),
-            })
+            result.append(
+                {
+                    "id": _next_msg_id(),
+                    "role": "user",
+                    "content": msg.content,
+                    "createdAt": int(time.time() * 1000),
+                }
+            )
         elif isinstance(msg, AssistantMessage):
             entry: dict[str, Any] = {
                 "id": _next_msg_id(),
@@ -71,18 +103,20 @@ def _serialize_messages(messages: list) -> list[dict[str, Any]]:
                 }
             result.append(entry)
         elif isinstance(msg, ToolMessage):
-            result.append({
-                "id": _next_msg_id(),
-                "role": "tool",
-                "content": msg.content,
-                "tool_call_id": msg.tool_call_id,
-                "createdAt": int(time.time() * 1000),
-            })
+            result.append(
+                {
+                    "id": _next_msg_id(),
+                    "role": "tool",
+                    "content": msg.content,
+                    "tool_call_id": msg.tool_call_id,
+                    "createdAt": int(time.time() * 1000),
+                }
+            )
     return result
 
 
-def _system_prompt(runtime: AgentRuntime, base: str = "") -> str:
-    return runtime.build_system_prompt(base or "You are a helpful assistant.")
+async def _system_prompt(runtime: AgentRuntime, base: str = "") -> str:
+    return await runtime.build_system_prompt(base or "You are a helpful assistant.")
 
 
 async def handle_initialize(
@@ -194,7 +228,6 @@ async def handle_session_delete(
     if not session_id:
         raise ValueError("session_id is required")
     runtime.session_manager.delete(session_id)
-    _session_locks.pop(session_id, None)
     return {"status": "deleted", "session_id": session_id}
 
 
@@ -209,15 +242,6 @@ async def handle_session_fork(
     if child_id is None:
         raise ValueError("No active session to fork")
     return {"session_id": child_id}
-
-
-_session_locks: dict[str, asyncio.Lock] = {}
-
-
-def _get_session_lock(session_id: str) -> asyncio.Lock:
-    if session_id not in _session_locks:
-        _session_locks[session_id] = asyncio.Lock()
-    return _session_locks[session_id]
 
 
 async def _prepare_chat(
@@ -244,7 +268,7 @@ async def _prepare_chat(
         raise RuntimeError(f"Session state not found: {session_id}")
     state.step = 0
     user_message = UserMessage(content=message)
-    async with _get_session_lock(session_id):
+    async with runtime.get_session_lock(session_id):
         state.messages.append(user_message)
     return session_id
 
@@ -263,15 +287,19 @@ async def handle_chat(
     usage_info = None
     logger.debug(f"Chat started (id={request_id}, conn={conn_id})")
 
-    async for event in runtime.run_agent_turn(session_id=session_id):
-        if event.type == "content" and event.data:
-            last_content += event.data
-        if event.finish_reason:
-            finish_reason = event.finish_reason
-        if event.usage:
-            usage_info = event.usage
+    async with runtime.get_session_lock(session_id):
+        async for event in runtime.run_agent_turn(session_id=session_id):
+            if event.type == "content" and event.data:
+                last_content += event.data
+            if event.finish_reason:
+                finish_reason = event.finish_reason
+            if event.usage:
+                usage_info = event.usage
 
-    logger.debug(f"Chat finished (id={request_id}, conn={conn_id}, finish={finish_reason})")
+    logger.debug(
+        f"Chat finished (id={request_id}, conn={conn_id}, finish={finish_reason})"
+    )
+    runtime._schedule_title_generation(session_id, "auto")
     return {
         "content": last_content,
         "finish_reason": finish_reason,
@@ -292,54 +320,93 @@ async def handle_chat_stream(
     finish_reason = ""
     usage_info = None
 
-    try:
-        async for event in runtime.run_agent_turn(session_id=session_id):
-            notif = Notification(
-                method="event",
-                params=event.model_dump(exclude_none=True),
-            )
-            await transport.send(notif.json())
-            if isinstance(event, StepFinish):
-                finish_reason = event.reason
-                usage_info = event.usage
-    except asyncio.CancelledError:
-        finish_reason = "cancelled"
-        logger.info(f"Chat stream cancelled for session {session_id} (conn={conn_id})")
-    except Exception:
-        logger.exception(f"Chat stream error for session {session_id} (conn={conn_id})")
+    async def _permission_callback(permission: str, pattern: str) -> bool:
+        request_id = str(uuid.uuid4())
+        event = asyncio.Event()
+        runtime.pending_permissions[request_id] = (event, permission, pattern, None)
         try:
-            err_notif = Notification(
-                method="event",
-                params={
-                    "type": "error",
-                    "data": "Internal error during streaming",
-                },
+            pr = PermissionRequest(
+                request_id=request_id, permission=permission, pattern=pattern
             )
-            await transport.send(err_notif.json())
-        except Exception:
-            logger.warning("Failed to send error event to client in chat stream")
+            notif = Notification(method="event", params=pr.model_dump())
+            await transport.send(notif.json())
+            try:
+                await asyncio.wait_for(event.wait(), timeout=300.0)
+            except asyncio.TimeoutError:
+                logger.warning(f"Permission request {request_id} timed out")
+                return False
+            _, _, _, result = runtime.pending_permissions.get(
+                request_id, (None, None, None, False)
+            )
+            return bool(result)
+        finally:
+            runtime.pending_permissions.pop(request_id, None)
 
-    # Check for leftover steer that wasn't consumed by tool batch
-    leftover_steer: str | None = None
-    state = runtime.get_state(session_id)
-    if state is not None:
-        async with _get_session_lock(session_id):
-            if state.pending_steer:
-                leftover_steer = state.pending_steer
-                state.pending_steer = None
+    token = _pm_callback.set(_permission_callback)
 
-    done_params = Finish(
-        reason=finish_reason,
-        usage=usage_info,
-        session_id=session_id,
-        session_usage=runtime.state.usage.model_dump() if runtime.state else None,
-        leftover_steer=leftover_steer,
-    ).model_dump(exclude_none=True)
-    done = Notification(method="event", params=done_params)
     try:
-        await transport.send(done.json())
-    except Exception:
-        logger.warning("Failed to send finish event to client (connection may be closed)")
+        async with runtime.get_session_lock(session_id):
+            try:
+                async for event in runtime.run_agent_turn(session_id=session_id):
+                    notif = Notification(
+                        method="event",
+                        params=event.model_dump(exclude_none=True),
+                    )
+                    await transport.send(notif.json())
+                    if isinstance(event, StepFinish):
+                        finish_reason = event.reason
+                        usage_info = event.usage
+            except asyncio.CancelledError:
+                finish_reason = "cancelled"
+                logger.info(
+                    f"Chat stream cancelled for session {session_id} (conn={conn_id})"
+                )
+            except Exception:
+                logger.exception(
+                    f"Chat stream error for session {session_id} (conn={conn_id})"
+                )
+            try:
+                err_notif = Notification(
+                    method="event",
+                    params={
+                        "type": "error",
+                        "data": "Internal error during streaming",
+                    },
+                )
+                await transport.send(err_notif.json())
+            except Exception:
+                logger.warning("Failed to send error event to client in chat stream")
+
+        # Non-blocking title generation
+        state = runtime.get_state(session_id)
+        actual_sid = state.session_id if (state and state.session_id) else session_id
+        runtime._schedule_title_generation(actual_sid, "auto")
+
+        # Check for leftover steer that wasn't consumed by tool batch
+        leftover_steer: str | None = None
+        state = runtime.get_state(session_id)
+        if state is not None:
+            async with runtime.get_session_lock(session_id):
+                if state.pending_steer:
+                    leftover_steer = state.pending_steer
+                    state.pending_steer = None
+
+        done_params = Finish(
+            reason=finish_reason,
+            usage=usage_info,
+            session_id=session_id,
+            session_usage=runtime.state.usage.model_dump() if runtime.state else None,
+            leftover_steer=leftover_steer,
+        ).model_dump(exclude_none=True)
+        done = Notification(method="event", params=done_params)
+        try:
+            await transport.send(done.json())
+        except Exception:
+            logger.warning(
+                "Failed to send finish event to client (connection may be closed)"
+            )
+    finally:
+        _pm_callback.reset(token)
 
 
 async def handle_chat_steer(
@@ -382,7 +449,7 @@ async def handle_chat_cancel(
             runtime.interrupt_session(current)
 
     # 1. Try dispatcher-based cancellation (WS/stdio transports)
-    dispatcher: Dispatcher | None = getattr(transport, "_dispatcher", None)
+    dispatcher: Dispatcher | None = getattr(transport, "dispatcher", None)
     if dispatcher is not None:
         if dispatcher.cancel_connection(conn_id):
             logger.info(f"Streaming task cancelled for connection {conn_id}")
@@ -391,7 +458,7 @@ async def handle_chat_cancel(
         return {"status": "no_active_stream"}
 
     # 2. Try HTTP SSE transport cancellation
-    sse_canceller = getattr(transport, "_sse_canceller", None)
+    sse_canceller = getattr(transport, "sse_canceller", None)
     if sse_canceller is not None:
         if sse_canceller(conn_id):
             logger.info(f"SSE stream cancelled for connection {conn_id}")
@@ -400,7 +467,9 @@ async def handle_chat_cancel(
         return {"status": "no_active_stream"}
 
     # 3. No cancellation mechanism available
-    logger.warning(f"Cancellation not supported for transport {type(transport).__name__} (conn={conn_id})")
+    logger.warning(
+        f"Cancellation not supported for transport {type(transport).__name__} (conn={conn_id})"
+    )
     return {"status": "cancellation_not_supported"}
 
 
@@ -421,7 +490,7 @@ async def _ensure_session(
     runtime: AgentRuntime,
     params: dict[str, Any],
 ) -> str:
-    system_content = _system_prompt(runtime, params.get("system_prompt", ""))
+    system_content = await _system_prompt(runtime, params.get("system_prompt", ""))
     system_message = SystemMessage(content=system_content)
     session = runtime.session_manager.create(
         title=params.get("title", ""),
@@ -434,6 +503,7 @@ async def _ensure_session(
         session_id=session.id,
         usage=SessionUsage(context_size=runtime.context_size),
     )
+    runtime._schedule_title_generation(session.id, "on_create")
     return session.id
 
 
@@ -506,7 +576,6 @@ async def handle_session_archive(
     if not session_id:
         raise ValueError("No active session")
     runtime.session_manager.archive(session_id)
-    _session_locks.pop(session_id, None)
     return {"status": "archived", "session_id": session_id}
 
 
@@ -521,6 +590,93 @@ async def handle_subagent_list_active(
     if not session_id:
         return {"subagents": []}
     return {"subagents": runtime.subagent_manager.list_active(session_id)}
+
+
+async def handle_config_providers(
+    runtime: AgentRuntime,
+    params: dict[str, Any],
+    transport: Transport,
+    _request_id: str | int | None,
+    conn_id: str,
+) -> dict[str, Any]:
+    providers = {}
+    for key, pc in runtime.config.llm.providers.items():
+        providers[key] = {
+            "type": pc.type,
+            "base_url": pc.base_url,
+            "models": [
+                {"name": m.name, "context_size": m.context_size} for m in pc.models
+            ],
+        }
+    logger.debug(
+        f"config/providers: returning {len(providers)} provider(s) (conn={conn_id})"
+    )
+    return {
+        "default_provider": runtime.config.llm.default_provider,
+        "providers": providers,
+    }
+
+
+async def handle_mcp_status(
+    runtime: AgentRuntime,
+    params: dict[str, Any],
+    transport: Transport,
+    _request_id: str | int | None,
+    conn_id: str,
+) -> dict[str, Any]:
+    status = runtime.mcp_service.get_status()
+    logger.debug(f"mcp/status: returning {len(status)} server(s) (conn={conn_id})")
+    return {
+        "servers": [{"name": name, "status": st} for name, st in status.items()],
+    }
+
+
+async def handle_session_set_config(
+    runtime: AgentRuntime,
+    params: dict[str, Any],
+    transport: Transport,
+    _request_id: str | int | None,
+    conn_id: str,
+) -> dict[str, Any]:
+    provider = params.get("provider", "")
+    model = params.get("model", "")
+    if not runtime.state:
+        raise ValueError("No active session")
+    runtime.complete_current_session()
+    runtime.state.session_id = runtime.session_manager.create(
+        provider=provider,
+        model=model,
+    ).id
+    return {"session_id": runtime.state.session_id}
+
+
+async def handle_permission_respond(
+    runtime: AgentRuntime,
+    params: dict[str, Any],
+    transport: Transport,
+    _request_id: str | int | None,
+    conn_id: str,
+) -> dict[str, Any]:
+    req_id: str = params.get("request_id", "")
+    if req_id not in runtime.pending_permissions:
+        raise ValueError(f"Unknown or expired permission request: {req_id}")
+    action: str = params.get("action", "")
+    if action not in ("allow", "always", "deny"):
+        raise ValueError(f"Invalid permission action: {action}")
+    event, permission, pattern, _ = runtime.pending_permissions[req_id]
+    if action == "always":
+        runtime.tool_registry.permission.add_rule(f"{permission}:{pattern}", "allow")
+        result = True
+    elif action == "allow":
+        result = True
+    else:
+        result = False
+    runtime.pending_permissions[req_id] = (event, permission, pattern, result)
+    event.set()
+    logger.info(
+        f"Permission '{permission}:{pattern}' resolved: {action} (conn={conn_id})"
+    )
+    return {"status": "ok"}
 
 
 async def handle_usage_get(
@@ -538,6 +694,77 @@ async def handle_usage_get(
     }
 
 
+async def handle_todo_list(
+    runtime: AgentRuntime,
+    params: dict[str, Any],
+    transport: Transport,
+    _request_id: str | int | None,
+    conn_id: str,
+) -> dict[str, Any]:
+    session_id: str = params.get("session_id") or runtime.current_session_id or ""
+    if not session_id:
+        return {"tasks": []}
+    status = params.get("status")
+    tasks = runtime.todo_manager.get_tasks(session_id, status=status)
+    return {
+        "tasks": [
+            {
+                "id": t.id,
+                "sessionId": t.session_id,
+                "content": t.content,
+                "status": t.status,
+                "priority": t.priority,
+                "dependsOn": t.depends_on,
+                "createdAt": t.created_at.isoformat(),
+                "updatedAt": t.updated_at.isoformat(),
+                "completedAt": t.completed_at.isoformat() if t.completed_at else None,
+                "taskToolId": t.task_tool_id,
+                "blockedBy": t.metadata.get("blocked_by", []),
+            }
+            for t in tasks
+        ],
+    }
+
+
+async def handle_todo_update(
+    runtime: AgentRuntime,
+    params: dict[str, Any],
+    transport: Transport,
+    _request_id: str | int | None,
+    conn_id: str,
+) -> dict[str, Any]:
+    session_id: str = params.get("session_id") or runtime.current_session_id or ""
+    if not session_id:
+        raise ValueError("session_id is required")
+    task_id: str = params.get("task_id", "")
+    if not task_id:
+        raise ValueError("task_id is required")
+
+    from laffyhand.agent.session.models import TodoUpdate as TodoUpdateModel
+
+    updates = TodoUpdateModel(
+        status=params.get("status"),
+        priority=params.get("priority"),
+        content=params.get("content"),
+    )
+    item = runtime.todo_manager.update_task(task_id, session_id, updates)
+    if item is None:
+        raise ValueError(f"Task not found: {task_id}")
+    return {
+        "id": item.id,
+        "sessionId": item.session_id,
+        "content": item.content,
+        "status": item.status,
+        "priority": item.priority,
+        "dependsOn": item.depends_on,
+        "createdAt": item.created_at.isoformat(),
+        "updatedAt": item.updated_at.isoformat(),
+        "completedAt": item.completed_at.isoformat() if item.completed_at else None,
+        "taskToolId": item.task_tool_id,
+        "blockedBy": item.metadata.get("blocked_by", []),
+    }
+
+
 def register_all_handlers(dispatcher: Dispatcher) -> None:
     dispatcher.register(INITIALIZE, handle_initialize)
     dispatcher.register(SHUTDOWN, handle_shutdown)
@@ -552,8 +779,14 @@ def register_all_handlers(dispatcher: Dispatcher) -> None:
     dispatcher.register(SESSION_ARCHIVE, handle_session_archive)
     dispatcher.register(SUBAGENT_LIST_ACTIVE, handle_subagent_list_active)
     dispatcher.register(USAGE_GET, handle_usage_get)
+    dispatcher.register(CONFIG_PROVIDERS, handle_config_providers)
+    dispatcher.register(MCP_STATUS, handle_mcp_status)
+    dispatcher.register(SESSION_SET_CONFIG, handle_session_set_config)
     dispatcher.register(CHAT, handle_chat)
     dispatcher.register(CHAT_STREAM, handle_chat_stream, streaming=True)
     dispatcher.register(CHAT_CANCEL, handle_chat_cancel)
     dispatcher.register(CHAT_STEER, handle_chat_steer)
     dispatcher.register(TOOLS_LIST, handle_tools_list)
+    dispatcher.register(PERMISSION_RESPOND, handle_permission_respond)
+    dispatcher.register(TODO_LIST, handle_todo_list)
+    dispatcher.register(TODO_UPDATE, handle_todo_update)

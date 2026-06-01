@@ -18,7 +18,7 @@ class GlobTool(BaseTool):
     )
     max_result_size = 50000
 
-    def _input_schema(self) -> dict:
+    def _input_schema(self) -> dict[str, Any]:
         return {
             "type": "object",
             "properties": {
@@ -44,7 +44,9 @@ class GlobTool(BaseTool):
             rg_results = rg_glob(root, pattern)
             if rg_results is not None:
                 matches = [root / p for p in rg_results if p]
-                logger.debug(f"Glob: ripgrep returned {len(matches)} results for {pattern} in {root}")
+                logger.debug(
+                    f"Glob: ripgrep returned {len(matches)} results for {pattern} in {root}"
+                )
 
         if not matches:
             for p in glob_module.glob(pattern, root_dir=root, recursive=True):
@@ -55,7 +57,9 @@ class GlobTool(BaseTool):
                     continue
                 if p_obj.is_file():
                     matches.append(p_obj)
-            logger.debug(f"Glob: Python glob returned {len(matches)} results for {pattern} in {root}")
+            logger.debug(
+                f"Glob: Python glob returned {len(matches)} results for {pattern} in {root}"
+            )
 
         if not matches:
             return f"No files found matching `{pattern}` in {root}"
@@ -65,6 +69,7 @@ class GlobTool(BaseTool):
                 return p.stat().st_mtime
             except OSError:
                 return 0.0
+
         matches.sort(key=_mtime, reverse=True)
 
         truncated = len(matches) > MAX_RESULTS

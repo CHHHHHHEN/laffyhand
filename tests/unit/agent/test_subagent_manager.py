@@ -6,10 +6,15 @@ import pytest
 
 from laffyhand.agent.agent import AgentInfo
 from laffyhand.agent.schemas import (
-    AgentState, SessionUsage, SystemMessage, UserMessage,
+    AgentState,
+    SessionUsage,
+    SystemMessage,
+    UserMessage,
 )
 from laffyhand.agent.subagent.manager import (
-    SubagentManager, SubagentResult, build_subagent_state,
+    SubagentManager,
+    SubagentResult,
+    build_subagent_state,
 )
 from laffyhand.agent.tools.permission import PermissionManager
 from laffyhand.agent.tools.registry import ToolRegistry
@@ -57,36 +62,55 @@ def subagent_manager():
 class TestSubagentResult:
     def test_default_content(self):
         r = SubagentResult(
-            task_id="t1", session_id="s1", parent_session_id="p1",
-            agent_type="test", status="completed",
+            task_id="t1",
+            session_id="s1",
+            parent_session_id="p1",
+            agent_type="test",
+            status="completed",
         )
         assert r.content == ""
         assert r.error == ""
 
     def test_error_status(self):
         r = SubagentResult(
-            task_id="t1", session_id="s1", parent_session_id="p1",
-            agent_type="test", status="error", error="Something broke",
+            task_id="t1",
+            session_id="s1",
+            parent_session_id="p1",
+            agent_type="test",
+            status="error",
+            error="Something broke",
         )
         assert r.status == "error"
         assert r.error == "Something broke"
 
 
 class TestBuildSubagentState:
-    def test_creates_child_session(self, session_manager, tool_registry, parent_permission, agent_info):
+    def test_creates_child_session(
+        self, session_manager, tool_registry, parent_permission, agent_info
+    ):
         parent = session_manager.create()
         child_state, child_registry = build_subagent_state(
-            session_manager, parent.id, agent_info, "Do the thing",
-            parent_permission, tool_registry,
+            session_manager,
+            parent.id,
+            agent_info,
+            "Do the thing",
+            parent_permission,
+            tool_registry,
         )
         assert child_state.session_id is not None
         assert child_state.session_id != parent.id
 
-    def test_state_contains_system_and_user_messages(self, session_manager, tool_registry, parent_permission, agent_info):
+    def test_state_contains_system_and_user_messages(
+        self, session_manager, tool_registry, parent_permission, agent_info
+    ):
         parent = session_manager.create()
         child_state, _ = build_subagent_state(
-            session_manager, parent.id, agent_info, "Do the thing",
-            parent_permission, tool_registry,
+            session_manager,
+            parent.id,
+            agent_info,
+            "Do the thing",
+            parent_permission,
+            tool_registry,
         )
         assert len(child_state.messages) == 2
         assert isinstance(child_state.messages[0], SystemMessage)
@@ -94,42 +118,67 @@ class TestBuildSubagentState:
         assert isinstance(child_state.messages[1], UserMessage)
         assert child_state.messages[1].content == "Do the thing"
 
-    def test_default_prompt_when_none(self, session_manager, tool_registry, parent_permission):
+    def test_default_prompt_when_none(
+        self, session_manager, tool_registry, parent_permission
+    ):
         info = AgentInfo(name="minimal")
         parent = session_manager.create()
         child_state, _ = build_subagent_state(
-            session_manager, parent.id, info, "task",
-            parent_permission, tool_registry,
+            session_manager,
+            parent.id,
+            info,
+            "task",
+            parent_permission,
+            tool_registry,
         )
         assert "helpful sub-agent" in child_state.messages[0].content
 
-    def test_permission_filters_registry(self, session_manager, tool_registry, parent_permission, agent_info):
+    def test_permission_filters_registry(
+        self, session_manager, tool_registry, parent_permission, agent_info
+    ):
         parent = session_manager.create()
         _, child_registry = build_subagent_state(
-            session_manager, parent.id, agent_info, "task",
-            parent_permission, tool_registry,
+            session_manager,
+            parent.id,
+            agent_info,
+            "task",
+            parent_permission,
+            tool_registry,
         )
         # "read" is allowed, "write" is denied by agent_info.permission
         assert child_registry.permission.check("read") is True
         assert child_registry.permission.check("write") is False
 
-    def test_task_tool_not_in_filtered_registry(self, session_manager, tool_registry, parent_permission, agent_info):
+    def test_task_tool_not_in_filtered_registry(
+        self, session_manager, tool_registry, parent_permission, agent_info
+    ):
         from laffyhand.agent.tools.task import TaskTool
+
         task_tool = MagicMock(spec=TaskTool)
         task_tool.name = "task"
         tool_registry.register_tool(task_tool)
         parent = session_manager.create()
         _, child_registry = build_subagent_state(
-            session_manager, parent.id, agent_info, "task",
-            parent_permission, tool_registry,
+            session_manager,
+            parent.id,
+            agent_info,
+            "task",
+            parent_permission,
+            tool_registry,
         )
         assert child_registry._tools.get("task") is None
 
-    def test_session_usage_zero_context(self, session_manager, tool_registry, parent_permission, agent_info):
+    def test_session_usage_zero_context(
+        self, session_manager, tool_registry, parent_permission, agent_info
+    ):
         parent = session_manager.create()
         child_state, _ = build_subagent_state(
-            session_manager, parent.id, agent_info, "task",
-            parent_permission, tool_registry,
+            session_manager,
+            parent.id,
+            agent_info,
+            "task",
+            parent_permission,
+            tool_registry,
         )
         assert child_state.usage.context_size == 0
 
@@ -148,11 +197,20 @@ class TestSubagentManager:
         assert subagent_manager.list_active("nonexistent") == []
 
     @pytest.mark.anyio
-    async def test_spawn_returns_task_id(self, subagent_manager, session_manager, tool_registry, parent_permission, agent_info):
+    async def test_spawn_returns_task_id(
+        self,
+        subagent_manager,
+        session_manager,
+        tool_registry,
+        parent_permission,
+        agent_info,
+    ):
         parent = session_manager.create()
         llm = MagicMock()
 
-        with patch("laffyhand.agent.subagent.manager.build_subagent_state") as mock_build:
+        with patch(
+            "laffyhand.agent.subagent.manager.build_subagent_state"
+        ) as mock_build:
             mock_build.return_value = (
                 AgentState(
                     messages=[],
@@ -174,11 +232,20 @@ class TestSubagentManager:
         assert len(task_id) == 12
 
     @pytest.mark.anyio
-    async def test_spawn_registers_task(self, subagent_manager, session_manager, tool_registry, parent_permission, agent_info):
+    async def test_spawn_registers_task(
+        self,
+        subagent_manager,
+        session_manager,
+        tool_registry,
+        parent_permission,
+        agent_info,
+    ):
         parent = session_manager.create()
         llm = MagicMock()
 
-        with patch("laffyhand.agent.subagent.manager.build_subagent_state") as mock_build:
+        with patch(
+            "laffyhand.agent.subagent.manager.build_subagent_state"
+        ) as mock_build:
             mock_build.return_value = (
                 AgentState(
                     messages=[],
@@ -210,11 +277,20 @@ class TestSubagentManager:
         assert results == []
 
     @pytest.mark.anyio
-    async def test_cancel_session_cleans_up(self, subagent_manager, session_manager, tool_registry, parent_permission, agent_info):
+    async def test_cancel_session_cleans_up(
+        self,
+        subagent_manager,
+        session_manager,
+        tool_registry,
+        parent_permission,
+        agent_info,
+    ):
         parent = session_manager.create()
         llm = MagicMock()
 
-        with patch("laffyhand.agent.subagent.manager.build_subagent_state") as mock_build:
+        with patch(
+            "laffyhand.agent.subagent.manager.build_subagent_state"
+        ) as mock_build:
             mock_build.return_value = (
                 AgentState(
                     messages=[],
@@ -244,12 +320,20 @@ class TestSubagentManager:
     @pytest.mark.anyio
     async def test_poll_results_filters_by_session(self, subagent_manager):
         r1 = SubagentResult(
-            task_id="t1", session_id="s1", parent_session_id="session-a",
-            agent_type="test", status="completed", content="done",
+            task_id="t1",
+            session_id="s1",
+            parent_session_id="session-a",
+            agent_type="test",
+            status="completed",
+            content="done",
         )
         r2 = SubagentResult(
-            task_id="t2", session_id="s2", parent_session_id="session-b",
-            agent_type="test", status="completed", content="done",
+            task_id="t2",
+            session_id="s2",
+            parent_session_id="session-b",
+            agent_type="test",
+            status="completed",
+            content="done",
         )
         await subagent_manager._pending_results.put(r1)
         await subagent_manager._pending_results.put(r2)
@@ -266,8 +350,11 @@ class TestSubagentManager:
     async def test_poll_results_max_count(self, subagent_manager):
         for i in range(10):
             r = SubagentResult(
-                task_id=f"t{i}", session_id=f"s{i}", parent_session_id="session-x",
-                agent_type="test", status="completed",
+                task_id=f"t{i}",
+                session_id=f"s{i}",
+                parent_session_id="session-x",
+                agent_type="test",
+                status="completed",
             )
             await subagent_manager._pending_results.put(r)
 
@@ -277,12 +364,18 @@ class TestSubagentManager:
     @pytest.mark.anyio
     async def test_poll_results_non_matching_returned_to_queue(self, subagent_manager):
         r1 = SubagentResult(
-            task_id="t1", session_id="s1", parent_session_id="session-a",
-            agent_type="test", status="completed",
+            task_id="t1",
+            session_id="s1",
+            parent_session_id="session-a",
+            agent_type="test",
+            status="completed",
         )
         r2 = SubagentResult(
-            task_id="t2", session_id="s2", parent_session_id="session-b",
-            agent_type="test", status="completed",
+            task_id="t2",
+            session_id="s2",
+            parent_session_id="session-b",
+            agent_type="test",
+            status="completed",
         )
         await subagent_manager._pending_results.put(r1)
         await subagent_manager._pending_results.put(r2)

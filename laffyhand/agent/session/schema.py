@@ -55,6 +55,25 @@ CREATE TABLE IF NOT EXISTS message (
 CREATE INDEX IF NOT EXISTS idx_message_session ON message(session_id, timestamp);
 CREATE INDEX IF NOT EXISTS idx_session_status ON session(status, updated_at);
 CREATE INDEX IF NOT EXISTS idx_session_created ON session(created_at DESC);
+
+CREATE TABLE IF NOT EXISTS todo (
+    id              TEXT PRIMARY KEY,
+    session_id      TEXT NOT NULL REFERENCES session(id) ON DELETE CASCADE,
+    content         TEXT NOT NULL,
+    status          TEXT NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending','in_progress','completed','cancelled','blocked')),
+    priority        TEXT NOT NULL DEFAULT 'medium'
+        CHECK (priority IN ('high','medium','low')),
+    depends_on      TEXT NOT NULL DEFAULT '[]',
+    created_at      TEXT NOT NULL,
+    updated_at      TEXT NOT NULL,
+    completed_at    TEXT,
+    task_tool_id    TEXT,
+    metadata        TEXT NOT NULL DEFAULT '{}'
+        CHECK (JSON_VALID(metadata))
+);
+
+CREATE INDEX IF NOT EXISTS idx_todo_session ON todo(session_id, status);
 """
 
 FTS5_DDL = """
@@ -129,7 +148,9 @@ def migrate(conn: sqlite3.Connection) -> None:
             try:
                 conn.executescript(_MIGRATIONS[version])
             except sqlite3.OperationalError as e:
-                logger.warning(f"Migration v{version} skipped (may already be applied): {e}")
+                logger.warning(
+                    f"Migration v{version} skipped (may already be applied): {e}"
+                )
         conn.execute(
             "INSERT OR IGNORE INTO _schema_version (version) VALUES (?)",
             (version,),

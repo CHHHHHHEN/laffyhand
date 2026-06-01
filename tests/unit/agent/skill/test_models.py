@@ -6,12 +6,21 @@ from laffyhand.agent.skill.models import SkillInfo, SkillNotFoundError
 
 class TestSkillInfo(unittest.TestCase):
     def test_basic_fields(self):
-        info = SkillInfo(name="my-skill", base_dir=Path("/tmp/skills/my-skill"), filepath=Path("/tmp/skills/my-skill/SKILL.md"))
+        info = SkillInfo(
+            name="my-skill",
+            base_dir=Path("/tmp/skills/my-skill"),
+            filepath=Path("/tmp/skills/my-skill/SKILL.md"),
+        )
         self.assertEqual(info.name, "my-skill")
         self.assertIsNone(info.description)
 
     def test_with_description(self):
-        info = SkillInfo(name="test", description="A test skill", base_dir=Path("."), filepath=Path("./SKILL.md"))
+        info = SkillInfo(
+            name="test",
+            description="A test skill",
+            base_dir=Path("."),
+            filepath=Path("./SKILL.md"),
+        )
         self.assertEqual(info.description, "A test skill")
 
     def test_serialization(self):

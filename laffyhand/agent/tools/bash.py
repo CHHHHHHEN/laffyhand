@@ -3,6 +3,7 @@ import re
 from typing import Any
 
 from loguru import logger
+
 from laffyhand.agent.tools.base import BaseTool
 
 _SENSITIVE_PATTERNS = re.compile(
@@ -14,18 +15,33 @@ _ENV_VAR_PATTERN = re.compile(
     r"(?i)^\s*export\s+(?:[A-Z_]*API[_-]?KEY|[A-Z_]*TOKEN|[A-Z_]*SECRET|[A-Z_]*PASSWORD)\s*=\s*\S+",
 )
 
-_DANGEROUS_COMMANDS: list[tuple[re.Pattern, str]] = [
-    (re.compile(r"\brm\s+(-rf?|--recursive)\s+/\s*$"), "rm -rf / is blocked"),
+_DANGEROUS_COMMANDS: list[tuple[re.Pattern[str], str]] = [
+    (re.compile(r"\brm\s+(-rf?|--recursive)\s+/\s*(\s|$)"), "rm -rf / is blocked"),
     (re.compile(r"\brm\s+(-rf?|--recursive)\s+/\S"), "rm -rf on / paths is blocked"),
     (re.compile(r"\bmkfs\b"), "mkfs is blocked"),
     (re.compile(r"\bdd\s+if="), "dd with if= is blocked"),
-    (re.compile(r"\bchmod\s+777\b"), "chmod 777 is blocked"),
-    (re.compile(r"\bchmod\s+0?777\b"), "chmod 777 (with leading zero) is blocked"),
-    (re.compile(r"\bchmod\s+a=rwx\b"), "chmod a=rwx is blocked"),
+    (re.compile(r"\bchmod\b"), "chmod is blocked"),
     (re.compile(r"\bchown\s+"), "chown is blocked (use chmod instead)"),
-    (re.compile(r"(?<!\S)>\s*/"), "direct file redirect (>) is blocked; use the file tools"),
-    (re.compile(r">>\s*/"), "direct file append (>>) is blocked; use the file tools"),
+    (
+        re.compile(r"(?<!\S)>\s*/"),
+        "direct file redirect (>) is blocked; use the file tools",
+    ),
+    (
+        re.compile(r"(?<!\S)>>\s*/"),
+        "direct file append (>>) is blocked; use the file tools",
+    ),
     (re.compile(r"\bmv\s+/\s+"), "moving / is blocked"),
+    (re.compile(r"\b(curl|wget|fetch)\b"), "network download tool is blocked (data exfiltration risk)"),
+    (re.compile(r"\b(python|python3|perl|ruby|node)\s+-(c|e)\b"), "inline script execution is blocked"),
+    (re.compile(r"\bdeno\s+eval\b"), "deno eval is blocked (arbitrary code execution)"),
+    (re.compile(r"\bsudo\b"), "sudo is blocked (privilege escalation)"),
+    (re.compile(r"\b(ssh|scp|sftp|rsync)\b"), "network transfer tool is blocked (network egress)"),
+    (re.compile(r"\b(nc|ncat)\b"), "netcat is blocked (network connection)"),
+    (re.compile(r"\btelnet\b"), "telnet is blocked (network connection)"),
+    (re.compile(r"\bbase64\s+-(d|-decode)\b"), "base64 decode is blocked (encoded payload)"),
+    (re.compile(r"\bpasswd\b"), "passwd is blocked (password changes)"),
+    (re.compile(r"\bsu\b"), "su is blocked (switch user)"),
+    (re.compile(r"\|\s*(sh|bash|zsh)\b"), "pipe to shell is blocked"),
 ]
 
 
@@ -42,7 +58,7 @@ class BashTool(BaseTool):
     description = "Execute a shell command."
     max_result_size = 50000
 
-    def _input_schema(self) -> dict:
+    def _input_schema(self) -> dict[str, Any]:
         return {
             "type": "object",
             "properties": {
@@ -88,14 +104,18 @@ class BashTool(BaseTool):
                 cwd=workdir,
             )
             try:
-                stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+                stdout, stderr = await asyncio.wait_for(
+                    proc.communicate(), timeout=timeout
+                )
             except asyncio.TimeoutError:
                 proc.kill()
                 try:
                     await asyncio.wait_for(proc.communicate(), timeout=2)
                 except asyncio.TimeoutError:
                     pass
-                logger.warning(f"Bash timed out after {timeout}s: {_redact_command(command)}")
+                logger.warning(
+                    f"Bash timed out after {timeout}s: {_redact_command(command)}"
+                )
                 return f"Command timed out after {timeout}s"
 
             output = stdout.decode(errors="replace")
@@ -105,5 +125,7 @@ class BashTool(BaseTool):
                 output = f"Exit code: {proc.returncode}\n{output}"
             return output.strip()
         except Exception as e:
-            logger.error(f"Bash exception on cmd={_redact_command(command)!r}, timeout={timeout}s, workdir={workdir!r}: {e}")
-            return f"Error: {e}"
+            logger.error(
+                f"Bash exception on cmd={_redact_command(command)!r}, timeout={timeout}s, workdir={workdir!r}: {e}"
+            )
+            return "Error: command execution failed"

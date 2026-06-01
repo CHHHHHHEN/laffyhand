@@ -16,9 +16,13 @@ def prune(messages: list[Message]) -> list[Message]:
         if isinstance(msg, ToolMessage):
             total_tokens += estimate_tokens(msg.content)
             tool_indices.append(i)
-    logger.trace(f"Prune: found {len(tool_indices)} ToolMessages, total_tokens={total_tokens}")
+    logger.trace(
+        f"Prune: found {len(tool_indices)} ToolMessages, total_tokens={total_tokens}"
+    )
     if total_tokens <= PRUNE_PROTECT:
-        logger.trace(f"Total tokens {total_tokens} <= PRUNE_PROTECT {PRUNE_PROTECT}, skipping")
+        logger.trace(
+            f"Total tokens {total_tokens} <= PRUNE_PROTECT {PRUNE_PROTECT}, skipping"
+        )
         return messages
     target = max(PRUNE_MINIMUM, total_tokens // 2)
     pruned = 0
@@ -38,6 +42,8 @@ def prune(messages: list[Message]) -> list[Message]:
             content=new_content,
         )
         pruned += old_t - estimate_tokens(new_content)
-        logger.trace(f"Pruned message at index {idx}: {old_t} -> {estimate_tokens(new_content)} tokens")
+        logger.trace(
+            f"Pruned message at index {idx}: {old_t} -> {estimate_tokens(new_content)} tokens"
+        )
     logger.info(f"Pruned {pruned} tokens from tool outputs")
     return result

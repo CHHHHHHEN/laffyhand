@@ -7,7 +7,11 @@ import pytest
 
 from laffyhand.agent.session import SessionManager
 from laffyhand.agent.schemas import (
-    SystemMessage, UserMessage, AssistantMessage, AgentState, SessionUsage,
+    SystemMessage,
+    UserMessage,
+    AssistantMessage,
+    AgentState,
+    SessionUsage,
 )
 
 

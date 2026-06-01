@@ -2,8 +2,15 @@ import asyncio
 import unittest
 
 from laffyhand.agent.schemas import (
-    AgentState, CompactionConfig, SystemMessage, ToolMessage, Usage, SessionUsage,
-    StreamText, StreamToolCall, StreamFinish,
+    AgentState,
+    CompactionConfig,
+    SystemMessage,
+    ToolMessage,
+    Usage,
+    SessionUsage,
+    StreamText,
+    StreamToolCall,
+    StreamFinish,
 )
 
 from laffyhand.agent.loop import agent_loop
@@ -57,19 +64,27 @@ class TestAgentLoopE2E(unittest.TestCase):
     def _collect(self, gen):
         async def _run():
             return [e async for e in gen]
+
         return asyncio.run(_run())
 
     def test_simple_text_response(self):
         """LLM responds with text and finishes -> loop exits after one turn."""
-        llm = FakeLLM([
+        llm = FakeLLM(
             [
-                StreamText(delta="hello "),
-                StreamText(delta="world"),
-                StreamFinish(finish_reason="stop", usage=Usage(input_tokens=10, output_tokens=5)),
-            ],
-        ])
+                [
+                    StreamText(delta="hello "),
+                    StreamText(delta="world"),
+                    StreamFinish(
+                        finish_reason="stop",
+                        usage=Usage(input_tokens=10, output_tokens=5),
+                    ),
+                ],
+            ]
+        )
         state = self._make_state()
-        events = self._collect(agent_loop(state, llm, self.registry, CompactionConfig(prune=False)))
+        events = self._collect(
+            agent_loop(state, llm, self.registry, CompactionConfig(prune=False))
+        )
         self.assertEqual(state.step, 1)
         self.assertEqual(state.turn_count, 1)
         self.assertGreater(len(events), 0)
@@ -78,18 +93,30 @@ class TestAgentLoopE2E(unittest.TestCase):
 
     def test_tool_call_then_finish(self):
         """LLM calls tool, tool executes, then LLM finishes -> 2 steps."""
-        llm = FakeLLM([
+        llm = FakeLLM(
             [
-                StreamToolCall(tool_call_id="call_1", tool_name="echo", args='{"text": "hi"}'),
-                StreamFinish(finish_reason="tool_calls", usage=Usage(input_tokens=10, output_tokens=5)),
-            ],
-            [
-                StreamText(delta="done"),
-                StreamFinish(finish_reason="stop", usage=Usage(input_tokens=15, output_tokens=3)),
-            ],
-        ])
+                [
+                    StreamToolCall(
+                        tool_call_id="call_1", tool_name="echo", args='{"text": "hi"}'
+                    ),
+                    StreamFinish(
+                        finish_reason="tool_calls",
+                        usage=Usage(input_tokens=10, output_tokens=5),
+                    ),
+                ],
+                [
+                    StreamText(delta="done"),
+                    StreamFinish(
+                        finish_reason="stop",
+                        usage=Usage(input_tokens=15, output_tokens=3),
+                    ),
+                ],
+            ]
+        )
         state = self._make_state()
-        events = self._collect(agent_loop(state, llm, self.registry, CompactionConfig(prune=False)))
+        events = self._collect(
+            agent_loop(state, llm, self.registry, CompactionConfig(prune=False))
+        )
         self.assertEqual(state.step, 2)
         self.assertEqual(state.turn_count, 2)
         types = [e.type for e in events]
@@ -99,53 +126,98 @@ class TestAgentLoopE2E(unittest.TestCase):
     def test_max_steps_limits_iterations(self):
         """LLM keeps calling tools -> stops after max_steps."""
         tool_event = [
-            StreamToolCall(tool_call_id="call_1", tool_name="echo", args='{"text": "x"}'),
-            StreamFinish(finish_reason="tool_calls", usage=Usage(input_tokens=10, output_tokens=5)),
+            StreamToolCall(
+                tool_call_id="call_1", tool_name="echo", args='{"text": "x"}'
+            ),
+            StreamFinish(
+                finish_reason="tool_calls",
+                usage=Usage(input_tokens=10, output_tokens=5),
+            ),
         ]
         llm = FakeLLM([tool_event, tool_event, tool_event])
         state = self._make_state()
-        self._collect(agent_loop(state, llm, self.registry, CompactionConfig(prune=False), max_steps=2))
+        self._collect(
+            agent_loop(
+                state, llm, self.registry, CompactionConfig(prune=False), max_steps=2
+            )
+        )
         self.assertEqual(state.step, 3)
         self.assertEqual(state.turn_count, 2)
 
     def test_reminder_injected_on_step_1(self):
         """Reminder text appears in system message before first LLM call."""
-        llm = FakeLLM([
+        llm = FakeLLM(
             [
-                StreamText(delta="ok"),
-                StreamFinish(finish_reason="stop", usage=Usage(input_tokens=10, output_tokens=2)),
-            ],
-        ])
+                [
+                    StreamText(delta="ok"),
+                    StreamFinish(
+                        finish_reason="stop",
+                        usage=Usage(input_tokens=10, output_tokens=2),
+                    ),
+                ],
+            ]
+        )
         state = self._make_state()
-        self._collect(agent_loop(state, llm, self.registry, CompactionConfig(prune=False), reminder="REMINDER: be short"))
+        self._collect(
+            agent_loop(
+                state,
+                llm,
+                self.registry,
+                CompactionConfig(prune=False),
+                reminder="REMINDER: be short",
+            )
+        )
         self.assertIn("REMINDER: be short", state.messages[0].content)
 
     def test_increments_step_and_turn_count(self):
         """Step and turn_count both increment correctly."""
-        llm = FakeLLM([
-            [StreamFinish(finish_reason="stop", usage=Usage(input_tokens=5, output_tokens=5))],
-        ])
+        llm = FakeLLM(
+            [
+                [
+                    StreamFinish(
+                        finish_reason="stop",
+                        usage=Usage(input_tokens=5, output_tokens=5),
+                    )
+                ],
+            ]
+        )
         state = self._make_state()
         self.assertEqual(state.step, 0)
         self.assertEqual(state.turn_count, 0)
-        self._collect(agent_loop(state, llm, self.registry, CompactionConfig(prune=False)))
+        self._collect(
+            agent_loop(state, llm, self.registry, CompactionConfig(prune=False))
+        )
         self.assertEqual(state.step, 1)
         self.assertEqual(state.turn_count, 1)
 
     def test_tool_execution_appends_messages(self):
         """After tool call, ToolMessage is appended to state."""
-        llm = FakeLLM([
+        llm = FakeLLM(
             [
-                StreamToolCall(tool_call_id="call_1", tool_name="echo", args='{"text": "hello"}'),
-                StreamFinish(finish_reason="tool_calls", usage=Usage(input_tokens=10, output_tokens=5)),
-            ],
-            [
-                StreamText(delta="done"),
-                StreamFinish(finish_reason="stop", usage=Usage(input_tokens=15, output_tokens=3)),
-            ],
-        ])
+                [
+                    StreamToolCall(
+                        tool_call_id="call_1",
+                        tool_name="echo",
+                        args='{"text": "hello"}',
+                    ),
+                    StreamFinish(
+                        finish_reason="tool_calls",
+                        usage=Usage(input_tokens=10, output_tokens=5),
+                    ),
+                ],
+                [
+                    StreamText(delta="done"),
+                    StreamFinish(
+                        finish_reason="stop",
+                        usage=Usage(input_tokens=15, output_tokens=3),
+                    ),
+                ],
+            ]
+        )
         state = self._make_state()
-        self._collect(agent_loop(state, llm, self.registry, CompactionConfig(prune=False)))
+        self._collect(
+            agent_loop(state, llm, self.registry, CompactionConfig(prune=False))
+        )
         tool_msgs = [m for m in state.messages if isinstance(m, ToolMessage)]
         self.assertEqual(len(tool_msgs), 1)
         self.assertEqual(tool_msgs[0].tool_call_id, "call_1")

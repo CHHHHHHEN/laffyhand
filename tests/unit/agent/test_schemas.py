@@ -1,8 +1,16 @@
 import unittest
 from laffyhand.agent.schemas import (
-    SystemMessage, UserMessage, AssistantMessage, ToolMessage,
-    ToolCallContent, ToolDefinition, Usage, SessionUsage,
-    estimate_tokens, AgentState, CompactionConfig,
+    SystemMessage,
+    UserMessage,
+    AssistantMessage,
+    ToolMessage,
+    ToolCallContent,
+    ToolDefinition,
+    Usage,
+    SessionUsage,
+    estimate_tokens,
+    AgentState,
+    CompactionConfig,
 )
 
 
@@ -62,14 +70,6 @@ class TestUsage(unittest.TestCase):
         su.add(u)
         self.assertEqual(su.total_input, 10)
         self.assertEqual(su.total_output, 20)
-
-    def test_session_usage_display(self):
-        su = SessionUsage(context_size=100_000)
-        u = Usage(input_tokens=1000, output_tokens=2000)
-        su.add(u)
-        display = su.display(u)
-        self.assertIn("3k", display)
-
 
 class TestCompactionConfig(unittest.TestCase):
     def test_defaults(self):

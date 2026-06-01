@@ -2,7 +2,12 @@ import unittest
 from collections.abc import AsyncIterator
 
 from laffyhand.agent.schemas import (
-    AgentState, AssistantMessage, CompactionConfig, SessionUsage, SystemMessage, UserMessage,
+    AgentState,
+    AssistantMessage,
+    CompactionConfig,
+    SessionUsage,
+    SystemMessage,
+    UserMessage,
     Usage,
 )
 from laffyhand.agent.loop import agent_loop
@@ -56,9 +61,13 @@ class TestAgentLoopAssistantMessage(unittest.TestCase):
         async def _collect():
             nonlocal events
             async for event in agent_loop(
-                state, llm, self.tool_registry,
+                state,
+                llm,
+                self.tool_registry,
                 compaction_config=CompactionConfig(
-                    tail_turns=1, auto_continue=False, prune=False,
+                    tail_turns=1,
+                    auto_continue=False,
+                    prune=False,
                 ),
                 max_steps=1,
             ):
@@ -66,6 +75,7 @@ class TestAgentLoopAssistantMessage(unittest.TestCase):
             return state
 
         import asyncio
+
         result = asyncio.run(_collect())
 
         # Find the assistant message
@@ -75,48 +85,75 @@ class TestAgentLoopAssistantMessage(unittest.TestCase):
     def test_error_finish_sets_content(self):
         """When finish_reason is 'error' and no content generated, content should be set to error text."""
         from laffyhand.agent.schemas import StreamError, StreamFinish
-        msgs, events = self._run_loop([
-            StreamError(error="API connection failed"),
-            StreamFinish(finish_reason="error", usage=Usage(input_tokens=10, output_tokens=0)),
-        ])
+
+        msgs, events = self._run_loop(
+            [
+                StreamError(error="API connection failed"),
+                StreamFinish(
+                    finish_reason="error", usage=Usage(input_tokens=10, output_tokens=0)
+                ),
+            ]
+        )
         self.assertEqual(len(msgs), 1, "expected one AssistantMessage")
         asst = msgs[0]
-        self.assertIsNotNone(asst.content, "AssistantMessage must have content even after error")
+        self.assertIsNotNone(
+            asst.content, "AssistantMessage must have content even after error"
+        )
         self.assertIn("Error", asst.content)
         self.assertIsNone(asst.tool_calls)
 
     def test_empty_response_sets_content(self):
         """When LLM returns stop with no content, content should be set to empty placeholder."""
         from laffyhand.agent.schemas import StreamFinish
-        msgs, events = self._run_loop([
-            StreamFinish(finish_reason="stop", usage=Usage(input_tokens=10, output_tokens=0)),
-        ])
+
+        msgs, events = self._run_loop(
+            [
+                StreamFinish(
+                    finish_reason="stop", usage=Usage(input_tokens=10, output_tokens=0)
+                ),
+            ]
+        )
         self.assertEqual(len(msgs), 1)
         asst = msgs[0]
-        self.assertIsNotNone(asst.content, "AssistantMessage must have content even with empty response")
+        self.assertIsNotNone(
+            asst.content, "AssistantMessage must have content even with empty response"
+        )
         # The placeholder for empty response when there's no reasoning
         self.assertEqual(asst.content, "[Empty response]")
 
     def test_content_with_tool_calls_unchanged(self):
         """When tool_calls are present, content should be None (no fallback needed)."""
         from laffyhand.agent.schemas import StreamToolCall, StreamFinish
-        msgs, events = self._run_loop([
-            StreamToolCall(tool_call_id="c1", tool_name="noop", args="{}"),
-            StreamFinish(finish_reason="tool_calls", usage=Usage(input_tokens=10, output_tokens=5)),
-        ])
+
+        msgs, events = self._run_loop(
+            [
+                StreamToolCall(tool_call_id="c1", tool_name="noop", args="{}"),
+                StreamFinish(
+                    finish_reason="tool_calls",
+                    usage=Usage(input_tokens=10, output_tokens=5),
+                ),
+            ]
+        )
         self.assertEqual(len(msgs), 1)
         asst = msgs[0]
-        self.assertIsNone(asst.content, "AssistantMessage with tool_calls should have content=None")
+        self.assertIsNone(
+            asst.content, "AssistantMessage with tool_calls should have content=None"
+        )
         self.assertEqual(len(asst.tool_calls), 1)
         self.assertEqual(asst.tool_calls[0].tool_name, "noop")
 
     def test_text_content_preserved(self):
         """Normal text response should remain unchanged."""
         from laffyhand.agent.schemas import StreamText, StreamFinish
-        msgs, events = self._run_loop([
-            StreamText(delta="Hello, I'm a test assistant."),
-            StreamFinish(finish_reason="stop", usage=Usage(input_tokens=10, output_tokens=5)),
-        ])
+
+        msgs, events = self._run_loop(
+            [
+                StreamText(delta="Hello, I'm a test assistant."),
+                StreamFinish(
+                    finish_reason="stop", usage=Usage(input_tokens=10, output_tokens=5)
+                ),
+            ]
+        )
         self.assertEqual(len(msgs), 1)
         asst = msgs[0]
         self.assertEqual(asst.content, "Hello, I'm a test assistant.")

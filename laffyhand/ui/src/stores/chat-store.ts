@@ -1,6 +1,12 @@
 import { create } from "zustand"
-import type { Message, ToolCall, ToolResult } from "@/types/session"
+import type { Message, ToolCall, ToolResult, PermissionInfo } from "@/types/session"
 import type { SessionUsage } from "@/types/rpc"
+
+export interface TurnUsage {
+  input: number
+  output: number
+  reasoning: number
+}
 
 export interface ChatState {
   messages: Message[]
@@ -15,6 +21,10 @@ export interface ChatState {
   // Persistent session info
   model: string
   sessionUsage: SessionUsage | null
+
+  // Per-turn token delta tracking
+  turnUsage: TurnUsage | null
+  _turnStartUsage: SessionUsage | null
 
   // Queue for busy_mode="queue"
   pendingQueue: string[]
@@ -33,6 +43,8 @@ export interface ChatState {
   enqueueMessage: (content: string) => void
   dequeueMessage: () => string | undefined
   hasPendingMessages: () => boolean
+  addPermissionRequest: (req: PermissionInfo) => void
+  resolvePermissionRequest: (messageId: string) => void
 }
 
 let messageCounter = 0
@@ -55,7 +67,32 @@ export const useChatStore = create<ChatState>((set, get) => ({
   error: null,
   model: "",
   sessionUsage: null,
+  turnUsage: null,
+  _turnStartUsage: null,
   pendingQueue: [],
+
+  addPermissionRequest: (req) =>
+    set((state) => ({
+      messages: [
+        ...state.messages,
+        {
+          id: nextMessageId(),
+          role: "permission-request",
+          content: `Allow ${req.permission} '${req.pattern}'?`,
+          permissionInfo: req,
+          createdAt: Date.now(),
+        },
+      ],
+    })),
+
+  resolvePermissionRequest: (messageId) =>
+    set((state) => ({
+      messages: state.messages.map((msg) =>
+        msg.id === messageId && msg.permissionInfo
+          ? { ...msg, permissionInfo: { ...msg.permissionInfo, resolved: true } }
+          : msg,
+      ),
+    })),
 
   addUserMessage: (content) =>
     set((state) => ({
@@ -73,6 +110,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   startStreaming: () => {
     const id = nextMessageId()
+    const { sessionUsage } = get()
     set({
       isStreaming: true,
       streamContent: "",
@@ -81,6 +119,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       streamToolResults: [],
       currentAssistantMessageId: id,
       error: null,
+      _turnStartUsage: sessionUsage,
     })
   },
 
@@ -106,11 +145,15 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   finalizeMessage: (usage, sessionUsage) =>
     set((state) => {
+      // If content empty but reasoning exists, promote reasoning to content
+      const content = state.streamContent || state.streamReasoning || ""
+      const reasoning = state.streamContent ? (state.streamReasoning || undefined) : undefined
+
       const assistantMessage: Message = {
         id: state.currentAssistantMessageId ?? nextMessageId(),
         role: "assistant",
-        content: state.streamContent,
-        reasoning: state.streamReasoning || undefined,
+        content,
+        reasoning,
         toolCalls:
           state.streamToolCalls.length > 0
             ? state.streamToolCalls
@@ -124,6 +167,16 @@ export const useChatStore = create<ChatState>((set, get) => ({
         createdAt: Date.now(),
       }
 
+      // Compute per-turn token delta
+      let turnUsage: TurnUsage | null = null
+      if (sessionUsage && state._turnStartUsage) {
+        turnUsage = {
+          input: sessionUsage.total_input - state._turnStartUsage.total_input,
+          output: sessionUsage.total_output - state._turnStartUsage.total_output,
+          reasoning: sessionUsage.total_reasoning - state._turnStartUsage.total_reasoning,
+        }
+      }
+
       return {
         messages: [...state.messages, assistantMessage],
         isStreaming: false,
@@ -133,6 +186,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
         streamToolResults: [],
         currentAssistantMessageId: null,
         sessionUsage: sessionUsage ?? state.sessionUsage,
+        turnUsage,
+        _turnStartUsage: null,
       }
     }),
 
@@ -149,6 +204,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
       streamToolResults: [],
       currentAssistantMessageId: null,
       error: null,
+      turnUsage: null,
+      _turnStartUsage: null,
     }),
 
   loadMessages: (messages) =>
@@ -161,10 +218,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
       streamToolResults: [],
       currentAssistantMessageId: null,
       error: null,
+      turnUsage: null,
+      _turnStartUsage: null,
     }),
 
   setSessionInfo: (model, usage) =>
-    set({ model, sessionUsage: usage }),
+    set({ model, sessionUsage: usage, turnUsage: null, _turnStartUsage: null }),
 
   enqueueMessage: (content) =>
     set((state) => ({

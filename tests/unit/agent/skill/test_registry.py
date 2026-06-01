@@ -8,8 +8,18 @@ from laffyhand.agent.skill.registry import SkillRegistry
 class TestSkillRegistry(unittest.TestCase):
     def setUp(self):
         self.registry = SkillRegistry()
-        self.info_a = SkillInfo(name="skill-a", description="First", base_dir=Path("/a"), filepath=Path("/a/SKILL.md"))
-        self.info_b = SkillInfo(name="skill-b", description="Second", base_dir=Path("/b"), filepath=Path("/b/SKILL.md"))
+        self.info_a = SkillInfo(
+            name="skill-a",
+            description="First",
+            base_dir=Path("/a"),
+            filepath=Path("/a/SKILL.md"),
+        )
+        self.info_b = SkillInfo(
+            name="skill-b",
+            description="Second",
+            base_dir=Path("/b"),
+            filepath=Path("/b/SKILL.md"),
+        )
 
     def test_empty_initially(self):
         self.assertEqual(len(self.registry.all()), 0)

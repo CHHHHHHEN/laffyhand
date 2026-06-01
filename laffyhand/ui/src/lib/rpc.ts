@@ -12,6 +12,8 @@ import type {
   CancelResult,
   ToolsListResult,
   StreamEvent,
+  TodoListResult,
+  TodoItemData,
 } from "@/types/rpc"
 
 export class RpcError extends Error {
@@ -185,6 +187,19 @@ export async function chatStream(
   }
 }
 
+export interface ConfigProvidersResult {
+  default_provider: string
+  providers: Record<string, {
+    type: string
+    base_url: string
+    models: { name: string; context_size: number }[]
+  }>
+}
+
+export interface MCPStatusResult {
+  servers: { name: string; status: string }[]
+}
+
 export const rpcClient = {
   initialize(): Promise<ServerInfo> {
     return call<ServerInfo>("initialize")
@@ -220,6 +235,18 @@ export const rpcClient = {
     return call<ToolsListResult>("tools/list")
   },
 
+  configProviders(): Promise<ConfigProvidersResult> {
+    return call<ConfigProvidersResult>("config/providers")
+  },
+
+  mcpStatus(): Promise<MCPStatusResult> {
+    return call<MCPStatusResult>("mcp/status")
+  },
+
+  sessionSetConfig(params: { provider: string; model: string }): Promise<{ session_id: string }> {
+    return call<{ session_id: string }>("session/set_config", params)
+  },
+
   cancelStream(): Promise<CancelResult> {
     return call<CancelResult>("chat/cancel")
   },
@@ -233,6 +260,22 @@ export const rpcClient = {
       params.session_id = sessionId
     }
     return call<{ status: string; session_id: string }>("chat/steer", params)
+  },
+
+  permissionRespond(requestId: string, action: "allow" | "always" | "deny"): Promise<{ status: string }> {
+    return call<{ status: string }>("permission/respond", { request_id: requestId, action })
+  },
+
+  todoList(sessionId?: string): Promise<TodoListResult> {
+    const params: Record<string, unknown> = {}
+    if (sessionId) params.session_id = sessionId
+    return call<TodoListResult>("todo/list", params)
+  },
+
+  todoUpdate(taskId: string, updates: { status?: string; priority?: string; content?: string }, sessionId?: string): Promise<TodoItemData> {
+    const params: Record<string, unknown> = { task_id: taskId, ...updates }
+    if (sessionId) params.session_id = sessionId
+    return call<TodoItemData>("todo/update", params)
   },
 
   chatStream: (

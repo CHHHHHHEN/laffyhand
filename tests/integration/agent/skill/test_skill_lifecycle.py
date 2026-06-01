@@ -14,9 +14,13 @@ class TestSkillLifecycle(unittest.TestCase):
 
     def setUp(self):
         self.tmpdir = Path(tempfile.mkdtemp())
-        self.addCleanup(lambda: __import__("shutil").rmtree(self.tmpdir, ignore_errors=True))
+        self.addCleanup(
+            lambda: __import__("shutil").rmtree(self.tmpdir, ignore_errors=True)
+        )
 
-    def _write_skill(self, name: str, description: str = "", extra_file: str | None = None) -> None:
+    def _write_skill(
+        self, name: str, description: str = "", extra_file: str | None = None
+    ) -> None:
         skill_dir = self.tmpdir / name
         skill_dir.mkdir(parents=True, exist_ok=True)
         content = f"---\nname: {name}\n"
@@ -78,6 +82,7 @@ class TestSkillLifecycle(unittest.TestCase):
         registry = SkillRegistry()
         registry.discover([self.tmpdir])
         from laffyhand.agent.skill.models import SkillNotFoundError
+
         with self.assertRaises(SkillNotFoundError) as ctx:
             registry.require("missing")
         self.assertIn("existing", str(ctx.exception))

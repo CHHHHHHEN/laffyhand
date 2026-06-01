@@ -34,6 +34,7 @@ def transport_pair():
 
 async def _run_gateway(gateway: GatewayServer) -> None:
     import asyncio
+
     try:
         await asyncio.wait_for(gateway.serve(), timeout=5)
     except asyncio.TimeoutError:
@@ -48,8 +49,11 @@ async def _shutdown_gateway(client_t: InProcessTransport) -> None:
 async def _mock_run_agent_turn(**kwargs):
     from laffyhand.agent.loop import TextDelta, StepFinish
     from laffyhand.agent.schemas import Usage
+
     yield TextDelta(id="text-1", text="Hello from LLM")
-    yield StepFinish(index=1, reason="stop", usage=Usage(input_tokens=10, output_tokens=5))
+    yield StepFinish(
+        index=1, reason="stop", usage=Usage(input_tokens=10, output_tokens=5)
+    )
 
 
 @pytest.mark.anyio
@@ -60,6 +64,7 @@ async def test_initialize(transport_pair):
     gateway = GatewayServer(runtime, server_t)
 
     import asyncio
+
     task = asyncio.create_task(_run_gateway(gateway))
     await asyncio.sleep(0.05)
 
@@ -84,6 +89,7 @@ async def test_tools_list_empty(transport_pair):
     gateway = GatewayServer(runtime, server_t)
 
     import asyncio
+
     task = asyncio.create_task(_run_gateway(gateway))
     await asyncio.sleep(0.05)
 
@@ -105,6 +111,7 @@ async def test_method_not_found(transport_pair):
     gateway = GatewayServer(runtime, server_t)
 
     import asyncio
+
     task = asyncio.create_task(_run_gateway(gateway))
     await asyncio.sleep(0.05)
 
@@ -127,6 +134,7 @@ async def test_invalid_json(transport_pair):
     gateway = GatewayServer(runtime, server_t)
 
     import asyncio
+
     task = asyncio.create_task(_run_gateway(gateway))
     await asyncio.sleep(0.05)
 
@@ -146,6 +154,7 @@ async def test_session_lifecycle(runtime, transport_pair):
     gateway = GatewayServer(runtime, server_t)
 
     import asyncio
+
     task = asyncio.create_task(_run_gateway(gateway))
     await asyncio.sleep(0.05)
 
@@ -155,7 +164,7 @@ async def test_session_lifecycle(runtime, transport_pair):
     runtime.session_manager.create.return_value = session
     runtime.state = MagicMock()
     runtime.state.session_id = "sess-new"
-    runtime.build_system_prompt = MagicMock(return_value="You are a helpful assistant.")
+    runtime.build_system_prompt = AsyncMock(return_value="You are a helpful assistant.")
 
     req = Request(id=1, method="session/create", params={})
     await client_t.send(req.json())
@@ -188,12 +197,13 @@ async def test_chat_stream_via_gateway(transport_pair):
     runtime.tool_registry.build_tool_definitions = MagicMock(return_value=[])
     runtime.tool_registry.build_tool_prompt = MagicMock(return_value="")
     runtime.skill_registry.all = MagicMock(return_value=[])
-    runtime.build_system_prompt = MagicMock(return_value="You are helpful.")
+    runtime.build_system_prompt = AsyncMock(return_value="You are helpful.")
     runtime.session_manager = MagicMock()
     runtime.session_manager.create = MagicMock(return_value=MagicMock(id="sess-stream"))
     runtime.run_agent_turn = _mock_run_agent_turn
 
     import asyncio
+
     gateway = GatewayServer(runtime, server_t)
     task = asyncio.create_task(_run_gateway(gateway))
     await asyncio.sleep(0.05)
@@ -216,6 +226,7 @@ async def test_chat_stream_via_gateway(transport_pair):
     while True:
         raw = await asyncio.wait_for(client_t.recv(), timeout=5)
         from laffyhand.gateway.protocol import from_json, Notification
+
         msg = from_json(raw)
         if isinstance(msg, Notification) and msg.method == "event":
             notifications.append(msg.params)
@@ -245,6 +256,7 @@ async def test_session_set_title_via_gateway(transport_pair):
     gateway = GatewayServer(runtime, server_t)
 
     import asyncio
+
     task = asyncio.create_task(_run_gateway(gateway))
     await asyncio.sleep(0.05)
 
@@ -273,6 +285,7 @@ async def test_usage_get_via_gateway(transport_pair):
     gateway = GatewayServer(runtime, server_t)
 
     import asyncio
+
     task = asyncio.create_task(_run_gateway(gateway))
     await asyncio.sleep(0.05)
 
@@ -303,6 +316,7 @@ async def test_rpc_handler_error_logging(transport_pair):
     gateway.dispatcher = dispatcher
 
     import asyncio
+
     task = asyncio.create_task(_run_gateway(gateway))
     await asyncio.sleep(0.05)
 

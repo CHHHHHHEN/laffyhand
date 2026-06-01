@@ -2,19 +2,33 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator
-from typing import Any
+from typing import Any, cast
 
 from loguru import logger
 
 from laffyhand.agent.loop import (
-    StepStart, TextStart, TextDelta, TextEnd,
-    ReasoningStart, ReasoningDelta, ReasoningEnd,
-    ToolCall, ToolResult, ToolError,
-    StepFinish, Finish, ProviderError, Compacting,
+    StepStart,
+    TextStart,
+    TextDelta,
+    TextEnd,
+    ReasoningStart,
+    ReasoningDelta,
+    ReasoningEnd,
+    ToolCall,
+    ToolResult,
+    ToolError,
+    StepFinish,
+    Finish,
+    ProviderError,
+    Compacting,
     StreamEvent,
 )
 from laffyhand.gateway.protocol import (
-    Request, Response, ErrorResponse, Notification, from_json,
+    Request,
+    Response,
+    ErrorResponse,
+    Notification,
+    from_json,
 )
 from laffyhand.gateway.transport import Transport
 
@@ -62,6 +76,7 @@ def event_from_params(params: dict[str, Any]) -> StreamEvent:
 
 # ── Client ─────────────────────────────────────────────────────
 
+
 class GatewayClient:
     def __init__(self, transport: Transport) -> None:
         self._transport = transport
@@ -106,6 +121,11 @@ class GatewayClient:
             msg = from_json(raw)
             if isinstance(msg, ErrorResponse) and msg.id == req_id:
                 raise RPCError(msg.error.code, msg.error.message)
+            if isinstance(msg, Response) and msg.id == req_id:
+                logger.warning(
+                    f"Received unexpected Response (id={req_id}) in stream, ignoring"
+                )
+                continue
             if isinstance(msg, Notification) and msg.method == "event":
                 if msg.params is None:
                     logger.warning("Received event notification with null params")
@@ -116,7 +136,7 @@ class GatewayClient:
 
     async def initialize(self) -> dict[str, Any]:
         result = await self._request("initialize")
-        return result  # type: ignore[return-value]
+        return cast(dict[str, Any], result)
 
     async def shutdown(self) -> None:
         await self._request("shutdown")
@@ -129,14 +149,17 @@ class GatewayClient:
         provider: str = "",
         model: str = "",
     ) -> str:
-        result = await self._request("session/create", {
-            "system_prompt": system_prompt,
-            "title": title,
-            "cwd": cwd,
-            "provider": provider,
-            "model": model,
-        })
-        return result["session_id"]  # type: ignore[return-value]
+        result = await self._request(
+            "session/create",
+            {
+                "system_prompt": system_prompt,
+                "title": title,
+                "cwd": cwd,
+                "provider": provider,
+                "model": model,
+            },
+        )
+        return cast(str, result["session_id"])
 
     async def list_sessions(
         self,
@@ -144,29 +167,36 @@ class GatewayClient:
         limit: int = 20,
         offset: int = 0,
     ) -> list[dict[str, Any]]:
-        result = await self._request("session/list", {
-            "status": status,
-            "limit": limit,
-            "offset": offset,
-        })
-        return result["sessions"]  # type: ignore[return-value]
+        result = await self._request(
+            "session/list",
+            {
+                "status": status,
+                "limit": limit,
+                "offset": offset,
+            },
+        )
+        return cast(list[dict[str, Any]], result["sessions"])
 
     async def load_session(self, session_id: str) -> dict[str, Any]:
         result = await self._request("session/load", {"session_id": session_id})
-        return result  # type: ignore[return-value]
+        return cast(dict[str, Any], result)
 
     async def delete_session(self, session_id: str) -> None:
         await self._request("session/delete", {"session_id": session_id})
 
     async def fork_session(self) -> str:
         result = await self._request("session/fork")
-        return result["session_id"]  # type: ignore[return-value]
+        return cast(str, result["session_id"])
 
-    async def search_sessions(self, query: str, limit: int = 20) -> list[dict[str, Any]]:
+    async def search_sessions(
+        self, query: str, limit: int = 20
+    ) -> list[dict[str, Any]]:
         result = await self._request("session/search", {"query": query, "limit": limit})
-        return result["sessions"]  # type: ignore[return-value]
+        return cast(list[dict[str, Any]], result["sessions"])
 
-    async def set_session_title(self, title: str, session_id: str | None = None) -> None:
+    async def set_session_title(
+        self, title: str, session_id: str | None = None
+    ) -> None:
         params: dict[str, Any] = {"title": title}
         if session_id is not None:
             params["session_id"] = session_id
@@ -174,7 +204,7 @@ class GatewayClient:
 
     async def generate_session_title(self) -> str | None:
         result = await self._request("session/generate_title")
-        return result.get("title")  # type: ignore[return-value]
+        return cast(str | None, result.get("title"))
 
     async def archive_session(self, session_id: str = "") -> None:
         params: dict[str, Any] = {}
@@ -203,8 +233,8 @@ class GatewayClient:
 
     async def list_active_subagents(self) -> list[dict[str, Any]]:
         result = await self._request("subagent/list_active")
-        return result["subagents"]  # type: ignore[return-value]
+        return cast(list[dict[str, Any]], result["subagents"])
 
     async def get_usage(self) -> dict[str, Any]:
         result = await self._request("usage/get")
-        return result  # type: ignore[return-value]
+        return cast(dict[str, Any], result)

@@ -27,7 +27,7 @@ class ReadTool(BaseTool):
         self._read_cache: dict[str, tuple[float, str]] = {}
         self._consecutive: dict[str, int] = {}
 
-    def _input_schema(self) -> dict:
+    def _input_schema(self) -> dict[str, Any]:
         return {
             "type": "object",
             "properties": {
@@ -58,17 +58,16 @@ class ReadTool(BaseTool):
         if not path.parent.exists():
             return []
         try:
-            candidates = [
-                p.name for p in path.parent.iterdir()
-                if p.is_file()
-            ]
+            candidates = [p.name for p in path.parent.iterdir() if p.is_file()]
         except PermissionError:
             return []
         return difflib.get_close_matches(path.name, candidates, n=5, cutoff=0.3)
 
     def _list_directory(self, path: Path, offset: int | None, limit: int | None) -> str:
         try:
-            entries = sorted(path.iterdir(), key=lambda p: (0 if p.is_dir() else 1, p.name.lower()))
+            entries = sorted(
+                path.iterdir(), key=lambda p: (0 if p.is_dir() else 1, p.name.lower())
+            )
         except PermissionError:
             return f"Permission denied: {path}"
         total = len(entries)
@@ -94,7 +93,9 @@ class ReadTool(BaseTool):
             return msg
 
         if path.is_dir():
-            result = self._list_directory(path, params.get("offset"), params.get("limit"))
+            result = self._list_directory(
+                path, params.get("offset"), params.get("limit")
+            )
             logger.info(f"Read: listed directory {path}")
             return result
 
@@ -161,7 +162,9 @@ class ReadTool(BaseTool):
         if offset is None and limit is None and len(text) > 512 * 1024:
             result += f"\n[File is large ({len(text)} bytes). Use offset and limit to read specific sections.]"
 
-        logger.info(f"Read: {path} ({total_lines} lines, offset={offset}, limit={limit})")
+        logger.info(
+            f"Read: {path} ({total_lines} lines, offset={offset}, limit={limit})"
+        )
         self._read_cache[key] = (current_mtime, result)
         if len(self._read_cache) > MAX_CACHE_SIZE:
             oldest = next(iter(self._read_cache))

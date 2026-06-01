@@ -62,7 +62,7 @@ class TestHttpStreamTransport:
         mock_response = AsyncMock()
         transport = _HTTPStreamTransport(mock_response, "conn-1")
         await transport.send('{"key": "value"}')
-        mock_response.write.assert_awaited_once_with(b"data: {\"key\": \"value\"}\n\n")
+        mock_response.write.assert_awaited_once_with(b'data: {"key": "value"}\n\n')
 
     @pytest.mark.anyio
     async def test_send_respects_closed(self):
@@ -118,7 +118,9 @@ class TestSetupRoutes:
         # Verify the /health GET route
         app.router.add_get.assert_any_call("/health", http_transport._handle_health)
         # Verify the /rpc OPTIONS route
-        app.router.add_options.assert_called_once_with("/rpc", http_transport._handle_cors_preflight)
+        app.router.add_options.assert_called_once_with(
+            "/rpc", http_transport._handle_cors_preflight
+        )
 
 
 class TestCorsPreflight:
@@ -128,7 +130,9 @@ class TestCorsPreflight:
         request.headers.get = MagicMock(return_value="http://localhost:1420")
         response = await http_transport._handle_cors_preflight(request)
         assert response.status == 204
-        assert response.headers["Access-Control-Allow-Origin"] == "http://localhost:1420"
+        assert (
+            response.headers["Access-Control-Allow-Origin"] == "http://localhost:1420"
+        )
 
 
 class TestHandleHealth:
@@ -139,7 +143,9 @@ class TestHandleHealth:
         response = await http_transport._handle_health(request)
         body = json.loads(response.body)
         assert body["status"] == "ok"
-        assert response.headers["Access-Control-Allow-Origin"] == "http://localhost:1420"
+        assert (
+            response.headers["Access-Control-Allow-Origin"] == "http://localhost:1420"
+        )
 
 
 class TestHandleRpcParseError:
@@ -178,7 +184,10 @@ class TestHandleRpcCall:
         message.params = {"limit": 10}
 
         response = await http_transport._handle_rpc_call(
-            message, entry, http_transport._dispatcher, "http://localhost:1420",
+            message,
+            entry,
+            http_transport._dispatcher,
+            "http://localhost:1420",
         )
         assert response.status == 200
         body = json.loads(response.body)
@@ -199,14 +208,17 @@ class TestHandleRpcCall:
         message.params = {}
 
         await http_transport._handle_rpc_call(
-            message, entry, http_transport._dispatcher, "http://localhost:1420",
+            message,
+            entry,
+            http_transport._dispatcher,
+            "http://localhost:1420",
         )
 
-        # Verify the handler was called with a transport that has _sse_canceller
+        # Verify the handler was called with a transport that has sse_canceller
         _, kwargs = handler_fn.call_args
         transport_arg = kwargs.get("transport") or handler_fn.call_args[0][2]
-        assert hasattr(transport_arg, "_sse_canceller")
-        assert transport_arg._sse_canceller == http_transport._cancel_sse_task
+        assert hasattr(transport_arg, "sse_canceller")
+        assert transport_arg.sse_canceller == http_transport._cancel_sse_task
 
     @pytest.mark.anyio
     async def test_handler_error_returns_500(self, http_transport):
@@ -220,7 +232,10 @@ class TestHandleRpcCall:
         message.params = {}
 
         response = await http_transport._handle_rpc_call(
-            message, entry, http_transport._dispatcher, "http://localhost:1420",
+            message,
+            entry,
+            http_transport._dispatcher,
+            "http://localhost:1420",
         )
         assert response.status == 500
         body = json.loads(response.body)
@@ -229,7 +244,9 @@ class TestHandleRpcCall:
 
 class TestSseTaskTracking:
     @pytest.mark.anyio
-    async def test_cancel_sse_task_cancels_all_when_conn_id_is_http(self, http_transport):
+    async def test_cancel_sse_task_cancels_all_when_conn_id_is_http(
+        self, http_transport
+    ):
         """_cancel_sse_task with conn_id='http' cancels all tracked SSE tasks."""
         task1 = asyncio_task_mock()
         task2 = asyncio_task_mock()
@@ -328,7 +345,11 @@ class TestSseStreamHandler:
             patch("aiohttp.web.StreamResponse.write_eof", return_value=None),
         ):
             response = await http_transport._handle_sse_stream(
-                _make_sse_request(), message, entry, http_transport._dispatcher, "http://localhost:1420",
+                _make_sse_request(),
+                message,
+                entry,
+                http_transport._dispatcher,
+                "http://localhost:1420",
             )
 
         # After the stream completes, the task should have been added then cleaned up
@@ -357,9 +378,13 @@ class TestSseStreamHandler:
             patch("aiohttp.web.StreamResponse.write_eof", return_value=None),
         ):
             await http_transport._handle_sse_stream(
-                _make_sse_request(), message, entry, http_transport._dispatcher, "http://localhost:1420",
+                _make_sse_request(),
+                message,
+                entry,
+                http_transport._dispatcher,
+                "http://localhost:1420",
             )
 
         transport = captured_transport["transport"]
-        assert hasattr(transport, "_sse_canceller")
-        assert transport._sse_canceller == http_transport._cancel_sse_task
+        assert hasattr(transport, "sse_canceller")
+        assert transport.sse_canceller == http_transport._cancel_sse_task

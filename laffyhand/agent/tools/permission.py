@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import contextvars
+from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any, Literal
 
 from loguru import logger
@@ -11,10 +13,15 @@ if TYPE_CHECKING:
 
 Rule = Literal["allow", "deny"]
 
+request_callback: contextvars.ContextVar[
+    Callable[[str, str], Awaitable[bool]] | None
+] = contextvars.ContextVar("request_callback", default=None)
+
 
 class PermissionManager:
     def __init__(self) -> None:
         self._rules: dict[str, Rule] = {}
+        self.request_callback: Callable[[str, str], Awaitable[bool]] | None = None
 
     def allow(self, tool_name: str) -> None:
         self._rules[tool_name] = "allow"
@@ -25,9 +32,14 @@ class PermissionManager:
     def get_rules(self) -> dict[str, Rule]:
         return dict(self._rules)
 
+    def add_rule(self, key: str, rule: Rule) -> None:
+        self._rules[key] = rule
+
     def check(self, tool_name: str) -> bool:
         result = self._rules.get(tool_name, "allow") == "allow"
-        logger.trace(f"Permission check {tool_name}: {'allowed' if result else 'denied'}")
+        logger.trace(
+            f"Permission check {tool_name}: {'allowed' if result else 'denied'}"
+        )
         return result
 
     async def ask(self, permission: str, patterns: list[str]) -> bool:
@@ -47,6 +59,19 @@ class PermissionManager:
             if rule == "allow":
                 logger.info(f"Permission '{permission}:{pattern}' allowed by rule")
                 continue
+            callback = request_callback.get() or self.request_callback
+            if callback is not None:
+                allowed = await callback(permission, pattern)
+                if allowed:
+                    logger.info(
+                        f"Permission '{permission}:{pattern}' allowed via callback"
+                    )
+                else:
+                    logger.info(
+                        f"Permission '{permission}:{pattern}' denied via callback"
+                    )
+                    return False
+                continue
             prompt = f"\nAllow {permission} '{pattern}'? [y/N/a] "
             try:
                 answer = (await asyncio.to_thread(input, prompt)).strip().lower()
@@ -65,6 +90,9 @@ class PermissionManager:
                 logger.info(f"Permission '{permission}:{pattern}' denied")
                 return False
         return True
+
+
+_SUBAGENT_EXCLUDED_TOOLS: frozenset[str] = frozenset({"task"})
 
 
 class SubagentPermissions:
@@ -98,7 +126,7 @@ class SubagentPermissions:
 
         filtered = _ToolRegistry(permission=permission)
         for name, tool in registry.list_tools().items():
-            if name == "task":
+            if name in _SUBAGENT_EXCLUDED_TOOLS:
                 continue
             if permission.check(name):
                 filtered.register_tool(tool)

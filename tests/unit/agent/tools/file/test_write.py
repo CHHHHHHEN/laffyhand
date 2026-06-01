@@ -39,15 +39,19 @@ class TestWriteTool(unittest.TestCase):
         orig_cwd = Path.cwd()
         try:
             import os
+
             os.chdir(self.root)
             tool = WriteTool()
-            result = asyncio.run(tool.run({"file_path": "relative.txt", "content": "relative-path"}))
+            result = asyncio.run(
+                tool.run({"file_path": "relative.txt", "content": "relative-path"})
+            )
             self.assertIn("File written", result)
             target = self.root / "relative.txt"
             self.assertTrue(target.exists())
             self.assertEqual(target.read_text(), "relative-path")
         finally:
             import os
+
             os.chdir(orig_cwd)
 
     def test_write_line_ending_preservation_crlf(self):
@@ -78,7 +82,9 @@ class TestWriteTool(unittest.TestCase):
     def test_write_blocked_git_credentials(self):
         f = self.root / ".git-credentials"
         tool = WriteTool()
-        result = asyncio.run(tool.run({"file_path": str(f), "content": "https://user:pass@host"}))
+        result = asyncio.run(
+            tool.run({"file_path": str(f), "content": "https://user:pass@host"})
+        )
         self.assertIn("Blocked", result)
         self.assertFalse(f.exists())
 
@@ -86,7 +92,9 @@ class TestWriteTool(unittest.TestCase):
         f = self.root / "editable.txt"
         f.write_text("old content\nline2\n")
         tool = WriteTool()
-        result = asyncio.run(tool.run({"file_path": str(f), "content": "new content\nline2\n"}))
+        result = asyncio.run(
+            tool.run({"file_path": str(f), "content": "new content\nline2\n"})
+        )
         self.assertIn("File written", result)
         self.assertIn("-old content", result)
         self.assertIn("+new content", result)
