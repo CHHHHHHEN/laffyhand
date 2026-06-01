@@ -133,6 +133,11 @@ export function MessageBubble({ message, onResolvePermission }: MessageBubblePro
         {isUser ? (
           <div className="bg-blue-500 text-white rounded-2xl rounded-tr-md px-4 py-2.5 shadow-sm">
             <p className="whitespace-pre-wrap text-sm leading-relaxed">{message.content}</p>
+            {message.createdAt && (
+              <div className="mt-1 text-[10px] text-blue-200 text-right">
+                {new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </div>
+            )}
           </div>
         ) : (
           <div className="bg-gray-100 dark:bg-gray-700/80 text-gray-900 dark:text-gray-100 rounded-2xl rounded-tl-md px-4 py-2.5 shadow-sm">
@@ -154,6 +159,12 @@ export function MessageBubble({ message, onResolvePermission }: MessageBubblePro
             )}
 
             {message.usage && <UsageBadge usage={message.usage} />}
+
+            {message.createdAt && (
+              <div className="mt-1 text-[10px] text-gray-400 dark:text-gray-500 text-right">
+                {new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </div>
+            )}
           </div>
         )}
       </div>

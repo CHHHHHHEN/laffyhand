@@ -34,7 +34,7 @@ export function ReasoningBlock({ text }: { text: string }) {
         className="w-full flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/50 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors cursor-pointer"
       >
         <svg
-          className={`w-3 h-3 transition-transform duration-150 ${expanded ? "rotate-90" : ""}`}
+          className={`w-3 h-3 transition-transform duration-200 ${expanded ? "rotate-90" : ""}`}
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
@@ -47,7 +47,7 @@ export function ReasoningBlock({ text }: { text: string }) {
         </span>
       </button>
       {expanded && (
-        <div className="px-3 py-2 text-xs text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-800 whitespace-pre-wrap leading-relaxed border-t border-gray-100 dark:border-gray-700">
+        <div className="px-3 py-2 text-xs text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-800 whitespace-pre-wrap leading-relaxed border-t border-gray-100 dark:border-gray-700 animate-[fade-in_0.15s_ease-out]">
           {text}
         </div>
       )}
@@ -58,7 +58,7 @@ export function ReasoningBlock({ text }: { text: string }) {
 /** 工具调用卡片 */
 export function ToolCallCard({ toolCall }: { toolCall: ToolCall }) {
   return (
-    <div className="bg-gray-50 dark:bg-gray-800/80 rounded-lg px-3 py-2 text-xs font-mono border border-gray-200 dark:border-gray-700 transition-colors hover:border-blue-300 dark:hover:border-blue-700">
+    <div className="bg-gray-50 dark:bg-gray-800/80 rounded-lg px-3 py-2.5 text-xs font-mono border border-gray-200 dark:border-gray-700 transition-all duration-150 hover:border-blue-300 dark:hover:border-blue-700 hover:shadow-sm">
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-1.5 min-w-0">
           <svg className="w-3 h-3 shrink-0 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">

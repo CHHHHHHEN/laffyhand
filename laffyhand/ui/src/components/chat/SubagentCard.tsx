@@ -72,7 +72,7 @@ export function SubagentCard({
 
       {/* Expanded details */}
       {expanded && (
-        <div className="border-t border-gray-200/50 dark:border-gray-700/30 px-3 py-2 space-y-1.5 text-xs">
+        <div className="border-t border-gray-200/50 dark:border-gray-700/30 px-3 py-2 space-y-1.5 text-xs animate-[fade-in_0.15s_ease-out]">
           {/* Reasoning */}
           {subagent.reasoning && (
             <div className="text-gray-500 dark:text-gray-400 italic leading-relaxed whitespace-pre-wrap">
