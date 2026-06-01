@@ -25,7 +25,7 @@ export function AppShell() {
   }, [darkMode])
 
   return (
-    <div className="flex h-full overflow-hidden">
+    <div className="flex h-full overflow-hidden transition-colors duration-200">
       {/* 左侧边栏 */}
       <div
         className={`${

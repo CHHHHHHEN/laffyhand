@@ -21,7 +21,7 @@ export function StatusBar() {
   const ctxSize = sessionUsage?.context_size ?? 0
 
   return (
-    <div className="flex items-center gap-3 px-4 py-1.5 text-xs text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900/50 shrink-0">
+    <div className="flex items-center gap-3 px-4 py-1.5 text-xs text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900/50 shrink-0 transition-colors duration-200">
       {/* Model */}
       {model && (
         <span className="font-mono flex items-center gap-1.5 text-[11px]" title="Model">
@@ -42,6 +42,30 @@ export function StatusBar() {
             <span className="font-medium">{formatTokens(turnUsage.input + turnUsage.output)}</span>
             <span className="text-gray-400 dark:text-gray-500">/ {formatTokens(totalTokens)}</span>
             <span className="text-gray-300 dark:text-gray-500">/ {formatTokens(ctxSize)}</span>
+            {ctxSize > 0 && (
+              <span className={`text-[10px] font-medium ${
+                totalTokens / ctxSize > 0.8
+                  ? "text-amber-500 dark:text-amber-400"
+                  : "text-gray-400 dark:text-gray-500"
+              }`}>
+                ({Math.round((totalTokens / ctxSize) * 100)}%)
+              </span>
+            )}
+            {/* Context 进度条 */}
+            {ctxSize > 0 && (
+              <span className="w-12 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden shrink-0">
+                <span
+                  className={`block h-full rounded-full transition-all duration-300 ${
+                    totalTokens / ctxSize > 0.8
+                      ? "bg-amber-400"
+                      : totalTokens / ctxSize > 0.5
+                        ? "bg-blue-400"
+                        : "bg-green-400"
+                  }`}
+                  style={{ width: `${Math.min((totalTokens / ctxSize) * 100, 100)}%` }}
+                />
+              </span>
+            )}
           </span>
 
           <span className="flex items-center gap-1.5" title="Input → Output">
@@ -84,6 +108,30 @@ export function StatusBar() {
             </svg>
             <span className="font-medium">{formatTokens(totalTokens)}</span>
             <span className="text-gray-400 dark:text-gray-500">/ {formatTokens(ctxSize)}</span>
+            {ctxSize > 0 && (
+              <span className={`text-[10px] font-medium ${
+                totalTokens / ctxSize > 0.8
+                  ? "text-amber-500 dark:text-amber-400"
+                  : "text-gray-400 dark:text-gray-500"
+              }`}>
+                ({Math.round((totalTokens / ctxSize) * 100)}%)
+              </span>
+            )}
+            {/* Context 进度条 */}
+            {ctxSize > 0 && (
+              <span className="w-12 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden shrink-0">
+                <span
+                  className={`block h-full rounded-full transition-all duration-300 ${
+                    totalTokens / ctxSize > 0.8
+                      ? "bg-amber-400"
+                      : totalTokens / ctxSize > 0.5
+                        ? "bg-blue-400"
+                        : "bg-green-400"
+                  }`}
+                  style={{ width: `${Math.min((totalTokens / ctxSize) * 100, 100)}%` }}
+                />
+              </span>
+            )}
           </span>
         </>
       )}

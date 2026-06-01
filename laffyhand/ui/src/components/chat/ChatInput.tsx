@@ -90,7 +90,7 @@ export function ChatInput({ onSend, onInterrupt, onSteer, onQueue, onCancel, isS
   const submitLabel = isStreaming ? currentMode.label : "Send"
 
   return (
-    <div className="border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-4 py-3">
+    <div className="border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-4 py-3 transition-colors duration-200">
       {/* Busy mode 选择器 */}
       {isStreaming && (
         <div className="flex items-center gap-2 mb-2 animate-[fade-in_0.15s_ease-out]">
