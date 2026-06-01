@@ -10,7 +10,7 @@ from typing import Any, TYPE_CHECKING
 from loguru import logger
 
 if TYPE_CHECKING:
-    from aiohttp.web import Application, Request, Response
+    from aiohttp.web import Application, Request, Response, StreamResponse
     from laffyhand.agent.runtime import AgentRuntime
 
 
@@ -68,11 +68,11 @@ async def run_ui_server(
     _add_security_middleware(app)
 
     if os.path.isdir(ui_dir):
-        async def _serve_index(request: Request) -> Response:
+        async def _serve_index(request: Request) -> StreamResponse:
             import aiohttp.web
             return aiohttp.web.FileResponse(os.path.join(ui_dir, "index.html"))
 
-        async def _spa_fallback(request: Request) -> Response:
+        async def _spa_fallback(request: Request) -> StreamResponse:
             import aiohttp.web
             # Don't intercept RPC or health endpoints
             if request.path.startswith(("/rpc", "/health")):

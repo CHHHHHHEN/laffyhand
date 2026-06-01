@@ -35,6 +35,10 @@ describe("ChatInput", () => {
     expect(textarea).toBeEnabled()
 
     const steerButton = screen.getByRole("button", { name: /steer/i })
+    // Button is disabled when textarea is empty (controlled input)
+    expect(steerButton).toBeDisabled()
+
+    fireEvent.input(textarea, { target: { value: "steer message" } })
     expect(steerButton).toBeEnabled()
   })
 

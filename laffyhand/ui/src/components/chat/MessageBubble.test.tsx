@@ -34,7 +34,8 @@ describe("MessageBubble", () => {
         })}
       />,
     )
-    expect(screen.getByText(/bash\(/)).toBeInTheDocument()
+    expect(screen.getByText("bash")).toBeInTheDocument()
+    expect(screen.getByText('{', { exact: false })).toBeInTheDocument()
   })
 
   it("renders usage info when present", () => {
