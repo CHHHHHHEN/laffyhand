@@ -1,5 +1,5 @@
 import { create } from "zustand"
-import type { Message, ToolCall, ToolResult, PermissionInfo } from "@/types/session"
+import type { Message, ToolCall, ToolResult, PermissionInfo, ActiveSubagent } from "@/types/session"
 import type { SessionUsage } from "@/types/rpc"
 
 export interface TurnUsage {
@@ -26,6 +26,10 @@ export interface ChatState {
   turnUsage: TurnUsage | null
   _turnStartUsage: SessionUsage | null
 
+  // Subagent activity tracking
+  foregroundSubagents: ActiveSubagent[]
+  backgroundSubagents: ActiveSubagent[]
+
   // Queue for busy_mode="queue"
   pendingQueue: string[]
 
@@ -45,6 +49,10 @@ export interface ChatState {
   hasPendingMessages: () => boolean
   addPermissionRequest: (req: PermissionInfo) => void
   resolvePermissionRequest: (messageId: string) => void
+  startSubagent: (event: { id: string; parent_id?: string; agent_type: string; description: string; mode: "foreground" | "background"; depth: number }) => void
+  updateSubagent: (id: string, event: { kind: string; content?: string; tool_name?: string; tool_input?: string }) => void
+  endSubagent: (id: string, event: { status: string; summary?: string; tool_count?: number; input_tokens?: number; output_tokens?: number }) => void
+  clearForegroundSubagents: () => void
 }
 
 let messageCounter = 0
@@ -69,6 +77,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
   sessionUsage: null,
   turnUsage: null,
   _turnStartUsage: null,
+  foregroundSubagents: [],
+  backgroundSubagents: [],
   pendingQueue: [],
 
   addPermissionRequest: (req) =>
@@ -185,6 +195,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         streamToolCalls: [],
         streamToolResults: [],
         currentAssistantMessageId: null,
+        foregroundSubagents: [],
         sessionUsage: sessionUsage ?? state.sessionUsage,
         turnUsage,
         _turnStartUsage: null,
@@ -203,6 +214,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
       streamToolCalls: [],
       streamToolResults: [],
       currentAssistantMessageId: null,
+      foregroundSubagents: [],
+      backgroundSubagents: [],
       error: null,
       turnUsage: null,
       _turnStartUsage: null,
@@ -239,4 +252,74 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   hasPendingMessages: () => get().pendingQueue.length > 0,
+
+  startSubagent: (event) =>
+    set((state) => {
+      const sa: ActiveSubagent = {
+        id: event.id,
+        parentId: event.parent_id ?? null,
+        agentType: event.agent_type,
+        description: event.description,
+        mode: event.mode,
+        depth: event.depth,
+        status: "running",
+        text: "",
+        reasoning: "",
+        tools: [],
+        toolCount: 0,
+        inputTokens: 0,
+        outputTokens: 0,
+      }
+      if (event.mode === "foreground") {
+        return { foregroundSubagents: [...state.foregroundSubagents, sa] }
+      } else {
+        return { backgroundSubagents: [...state.backgroundSubagents, sa] }
+      }
+    }),
+
+  updateSubagent: (id, event) =>
+    set((state) => {
+      const update = (sa: ActiveSubagent): ActiveSubagent => {
+        if (sa.id !== id) return sa
+        switch (event.kind) {
+          case "text":
+            return { ...sa, text: sa.text + (event.content ?? "") }
+          case "reasoning":
+            return { ...sa, reasoning: sa.reasoning + (event.content ?? "") }
+          case "tool":
+            return {
+              ...sa,
+              tools: [...sa.tools, { name: event.tool_name ?? "", input: event.tool_input ?? "" }],
+              toolCount: sa.toolCount + 1,
+            }
+          default:
+            return sa
+        }
+      }
+      return {
+        foregroundSubagents: state.foregroundSubagents.map(update),
+        backgroundSubagents: state.backgroundSubagents.map(update),
+      }
+    }),
+
+  endSubagent: (id, event) =>
+    set((state) => {
+      const update = (sa: ActiveSubagent): ActiveSubagent => {
+        if (sa.id !== id) return sa
+        return {
+          ...sa,
+          status: event.status as ActiveSubagent["status"],
+          summary: event.summary ?? sa.summary,
+          inputTokens: event.input_tokens ?? sa.inputTokens,
+          outputTokens: event.output_tokens ?? sa.outputTokens,
+        }
+      }
+      return {
+        foregroundSubagents: state.foregroundSubagents.map(update),
+        backgroundSubagents: state.backgroundSubagents.map(update),
+      }
+    }),
+
+  clearForegroundSubagents: () =>
+    set({ foregroundSubagents: [] }),
 }))

@@ -6,6 +6,7 @@ import { TodoPanel } from "@/components/todo/TodoPanel"
 import { useTodoStore } from "@/stores/todo-store"
 import { useChatStore } from "@/stores/chat-store"
 import { ConfigPanel } from "@/components/chat/ConfigPanel"
+import { SubagentFooter } from "@/components/chat/SubagentFooter"
 
 function formatTokens(n: number): string {
   if (n < 1000) return `${n}`
@@ -131,6 +132,7 @@ export function AppShell() {
         <ErrorBoundary>
           <Outlet />
         </ErrorBoundary>
+        <SubagentFooter />
       </div>
 
       {/* 右侧 TODO 面板 */}

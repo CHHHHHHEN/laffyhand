@@ -158,6 +158,15 @@ export function useChat() {
                     pattern: event.pattern,
                   })
                   break
+                case "subagent-start":
+                  store.startSubagent(event)
+                  break
+                case "subagent-delta":
+                  store.updateSubagent(event.id, event)
+                  break
+                case "subagent-end":
+                  store.endSubagent(event.id, event)
+                  break
                 case "provider-error":
                   store.setError(event.message)
                   break

@@ -342,12 +342,25 @@ async def handle_chat_stream(
         finally:
             runtime.pending_permissions.pop(request_id, None)
 
+    async def _event_sink(event: Any) -> None:
+        notif = Notification(method="event", params=event.model_dump(exclude_none=True))
+        await transport.send(notif.json())
+
     token = _pm_callback.set(_permission_callback)
 
     try:
         async with runtime.get_session_lock(session_id):
             try:
-                async for event in runtime.run_agent_turn(session_id=session_id):
+                async for event in runtime.run_agent_turn(
+                    session_id=session_id,
+                    event_sink=_event_sink,
+                ):
+                    # Drain background subagent events
+                    if runtime.subagent_manager:
+                        bg_events = await runtime.subagent_manager.drain_events(session_id)
+                        for bg_event in bg_events:
+                            await _event_sink(bg_event)
+
                     notif = Notification(
                         method="event",
                         params=event.model_dump(exclude_none=True),
@@ -356,6 +369,12 @@ async def handle_chat_stream(
                     if isinstance(event, StepFinish):
                         finish_reason = event.reason
                         usage_info = event.usage
+
+                # Final drain after loop ends
+                if runtime.subagent_manager:
+                    bg_events = await runtime.subagent_manager.drain_events(session_id)
+                    for bg_event in bg_events:
+                        await _event_sink(bg_event)
             except asyncio.CancelledError:
                 finish_reason = "cancelled"
                 logger.info(

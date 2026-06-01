@@ -4,6 +4,7 @@ import { useChatStore } from "@/stores/chat-store"
 import { Spinner } from "@/components/ui/Spinner"
 import { MessageBubble } from "./MessageBubble"
 import { AiAvatar, ToolCallCard, ReasoningBlock } from "./ChatComponents"
+import { SubagentCard } from "./SubagentCard"
 
 export function MessageList() {
   const messages = useChatStore((s) => s.messages)
@@ -11,6 +12,7 @@ export function MessageList() {
   const streamContent = useChatStore((s) => s.streamContent)
   const streamReasoning = useChatStore((s) => s.streamReasoning)
   const streamToolCalls = useChatStore((s) => s.streamToolCalls)
+  const foregroundSubagents = useChatStore((s) => s.foregroundSubagents)
   const error = useChatStore((s) => s.error)
   const resolvePermissionRequest = useChatStore((s) => s.resolvePermissionRequest)
   const bottomRef = useRef<HTMLDivElement>(null)
@@ -71,6 +73,15 @@ export function MessageList() {
                 <div className="flex items-center gap-2.5 py-1">
                   <Spinner size="sm" />
                   <span className="text-sm text-gray-400">Thinking</span>
+                </div>
+              )}
+
+              {/* 流式 subagents */}
+              {foregroundSubagents.length > 0 && (
+                <div className="mt-3 space-y-2">
+                  {foregroundSubagents.map((sa) => (
+                    <SubagentCard key={sa.id} subagent={sa} />
+                  ))}
                 </div>
               )}
 

@@ -60,6 +60,30 @@ export interface ToolResult {
   isError?: boolean
 }
 
+export interface SubagentEvent {
+  kind: "text" | "reasoning" | "tool" | "tool_result" | "error"
+  content?: string
+  toolName?: string
+  toolInput?: string
+}
+
+export interface ActiveSubagent {
+  id: string
+  parentId: string | null
+  agentType: string
+  description: string
+  mode: "foreground" | "background"
+  depth: number
+  status: "running" | "completed" | "error" | "cancelled"
+  text: string
+  reasoning: string
+  tools: { name: string; input: string }[]
+  toolCount: number
+  summary?: string
+  inputTokens: number
+  outputTokens: number
+}
+
 export interface StreamChunk {
   type: "reasoning" | "content" | "tool_calls" | "tool_result" | "finish" | "error"
   text: string
