@@ -122,6 +122,10 @@ class SessionManager:
 
     # ── Connection ────────────────────────────────────────────
 
+    @property
+    def connection(self) -> sqlite3.Connection:
+        return self._conn
+
     def close(self) -> None:
         self._conn.close()
 

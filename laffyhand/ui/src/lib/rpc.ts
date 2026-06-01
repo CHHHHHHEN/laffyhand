@@ -12,6 +12,8 @@ import type {
   CancelResult,
   ToolsListResult,
   StreamEvent,
+  TodoListResult,
+  TodoItemData,
 } from "@/types/rpc"
 
 export class RpcError extends Error {
@@ -262,6 +264,18 @@ export const rpcClient = {
 
   permissionRespond(requestId: string, action: "allow" | "always" | "deny"): Promise<{ status: string }> {
     return call<{ status: string }>("permission/respond", { request_id: requestId, action })
+  },
+
+  todoList(sessionId?: string): Promise<TodoListResult> {
+    const params: Record<string, unknown> = {}
+    if (sessionId) params.session_id = sessionId
+    return call<TodoListResult>("todo/list", params)
+  },
+
+  todoUpdate(taskId: string, updates: { status?: string; priority?: string; content?: string }, sessionId?: string): Promise<TodoItemData> {
+    const params: Record<string, unknown> = { task_id: taskId, ...updates }
+    if (sessionId) params.session_id = sessionId
+    return call<TodoItemData>("todo/update", params)
   },
 
   chatStream: (

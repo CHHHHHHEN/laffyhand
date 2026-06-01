@@ -21,7 +21,7 @@ from laffyhand.gateway.protocol import (
     SESSION_GENERATE_TITLE, SESSION_ARCHIVE, SUBAGENT_LIST_ACTIVE,
     USAGE_GET, CHAT, CHAT_STREAM, CHAT_CANCEL, CHAT_STEER, TOOLS_LIST,
     CONFIG_PROVIDERS, MCP_STATUS, SESSION_SET_CONFIG, PERMISSION_RESPOND,
-    Notification,
+    TODO_LIST, TODO_UPDATE, Notification,
 )
 
 if TYPE_CHECKING:
@@ -655,6 +655,77 @@ async def handle_usage_get(
     }
 
 
+async def handle_todo_list(
+    runtime: AgentRuntime,
+    params: dict[str, Any],
+    transport: Transport,
+    _request_id: str | int | None,
+    conn_id: str,
+) -> dict[str, Any]:
+    session_id: str = params.get("session_id") or runtime.current_session_id or ""
+    if not session_id:
+        return {"tasks": []}
+    status = params.get("status")
+    tasks = runtime.todo_manager.get_tasks(session_id, status=status)
+    return {
+        "tasks": [
+            {
+                "id": t.id,
+                "sessionId": t.session_id,
+                "content": t.content,
+                "status": t.status,
+                "priority": t.priority,
+                "dependsOn": t.depends_on,
+                "createdAt": t.created_at.isoformat(),
+                "updatedAt": t.updated_at.isoformat(),
+                "completedAt": t.completed_at.isoformat() if t.completed_at else None,
+                "taskToolId": t.task_tool_id,
+                "blockedBy": t.metadata.get("blocked_by", []),
+            }
+            for t in tasks
+        ],
+    }
+
+
+async def handle_todo_update(
+    runtime: AgentRuntime,
+    params: dict[str, Any],
+    transport: Transport,
+    _request_id: str | int | None,
+    conn_id: str,
+) -> dict[str, Any]:
+    session_id: str = params.get("session_id") or runtime.current_session_id or ""
+    if not session_id:
+        raise ValueError("session_id is required")
+    task_id: str = params.get("task_id", "")
+    if not task_id:
+        raise ValueError("task_id is required")
+
+    from laffyhand.agent.session.models import TodoUpdate as TodoUpdateModel
+
+    updates = TodoUpdateModel(
+        status=params.get("status"),
+        priority=params.get("priority"),
+        content=params.get("content"),
+    )
+    item = runtime.todo_manager.update_task(task_id, session_id, updates)
+    if item is None:
+        raise ValueError(f"Task not found: {task_id}")
+    return {
+        "id": item.id,
+        "sessionId": item.session_id,
+        "content": item.content,
+        "status": item.status,
+        "priority": item.priority,
+        "dependsOn": item.depends_on,
+        "createdAt": item.created_at.isoformat(),
+        "updatedAt": item.updated_at.isoformat(),
+        "completedAt": item.completed_at.isoformat() if item.completed_at else None,
+        "taskToolId": item.task_tool_id,
+        "blockedBy": item.metadata.get("blocked_by", []),
+    }
+
+
 def register_all_handlers(dispatcher: Dispatcher) -> None:
     dispatcher.register(INITIALIZE, handle_initialize)
     dispatcher.register(SHUTDOWN, handle_shutdown)
@@ -678,3 +749,5 @@ def register_all_handlers(dispatcher: Dispatcher) -> None:
     dispatcher.register(CHAT_STEER, handle_chat_steer)
     dispatcher.register(TOOLS_LIST, handle_tools_list)
     dispatcher.register(PERMISSION_RESPOND, handle_permission_respond)
+    dispatcher.register(TODO_LIST, handle_todo_list)
+    dispatcher.register(TODO_UPDATE, handle_todo_update)

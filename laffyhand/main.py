@@ -58,7 +58,7 @@ async def create_runtime(config: LaffyConfig) -> AgentRuntime:
     skill_dirs = config.paths.skills if config.paths.skills else ["skills/"]
     runtime.load_skills(skill_dirs)
     runtime.load_agents(config.paths.agents)
-    await runtime.init_tools(todo_path=config.paths.todos)
+    await runtime.init_tools()
     return runtime
 
 

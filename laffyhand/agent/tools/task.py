@@ -43,6 +43,10 @@ class TaskTool(BaseTool):
                     "description": "Run in background (non-blocking)",
                     "default": False,
                 },
+                "todo_id": {
+                    "type": "string",
+                    "description": "Link to a TODO task ID (auto-updates status)",
+                },
             },
             "required": ["subagent_type", "prompt"],
         }
@@ -54,11 +58,13 @@ class TaskTool(BaseTool):
         prompt = params["prompt"]
         description = params.get("description", "")
         background = params.get("background", False)
+        todo_id = params.get("todo_id")
 
         agent_info = self._runtime.agent_registry.get(subagent_type)
         if agent_info is None:
             return f"Error: unknown sub-agent '{subagent_type}'"
 
-        return await self._runtime.create_subagent(
-            agent_info, prompt, description=description, background=background,
+        result = await self._runtime.create_subagent(
+            agent_info, prompt, description=description, background=background, todo_id=todo_id,
         )
+        return result

@@ -105,6 +105,7 @@ class SubagentManager:
         parent_permission: PermissionManager,
         session_manager: SessionManager,
         compaction_config: CompactionConfig | None = None,
+        on_complete: Callable[[str, bool], None] | None = None,
     ) -> str:
         task_id = uuid.uuid4().hex[:12]
         child_state, child_registry = build_subagent_state(
@@ -118,6 +119,7 @@ class SubagentManager:
                 if running is not None:
                     running.status = "running"
 
+                success = False
                 try:
                     from laffyhand.agent.loop import agent_loop
 
@@ -150,6 +152,7 @@ class SubagentManager:
                         status="completed",
                         content=last_content,
                     )
+                    success = True
                 except Exception as e:
                     logger.exception(f"Subagent {task_id} failed: {e}")
                     assert child_state.session_id is not None
@@ -166,6 +169,9 @@ class SubagentManager:
 
                 if running is not None:
                     running.status = result.status
+
+                if on_complete is not None:
+                    on_complete(task_id, success)
 
                 self._cleanup_task(task_id, parent_session_id)
 

@@ -3,7 +3,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { rpcClient } from "@/lib/rpc"
 import { useSessionStore } from "@/stores/session-store"
 import { useChatStore } from "@/stores/chat-store"
-import type { Session, Message } from "@/types/session"
+import { useTodoStore } from "@/stores/todo-store"
+import type { Session, Message, TodoItem } from "@/types/session"
 import type { SessionInfo, MessageData } from "@/types/rpc"
 
 function toSession(rpc: SessionInfo): Session {
@@ -133,6 +134,24 @@ export function useCurrentSession(sessionId: string | undefined) {
       if (session.messages) {
         loadMessages(session.messages.map(toStoreMessage))
       }
+      rpcClient.todoList(sessionId).then((result) => {
+        const tasks: TodoItem[] = result.tasks.map((t) => ({
+          id: t.id,
+          sessionId: t.sessionId,
+          content: t.content,
+          status: t.status as TodoItem["status"],
+          priority: t.priority as TodoItem["priority"],
+          dependsOn: t.dependsOn,
+          blockedBy: t.blockedBy,
+          createdAt: t.createdAt,
+          updatedAt: t.updatedAt,
+          completedAt: t.completedAt,
+          taskToolId: t.taskToolId,
+        }))
+        useTodoStore.getState().setTasks(tasks)
+      }).catch(() => {
+        // best effort
+      })
     }
   }, [session, sessionId, setCurrentSessionId, loadMessages])
 

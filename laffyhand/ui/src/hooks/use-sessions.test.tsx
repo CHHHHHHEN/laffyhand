@@ -12,6 +12,7 @@ const mockSessionCreate = vi.fn()
 const mockSessionDelete = vi.fn()
 const mockSessionFork = vi.fn()
 const mockSessionLoad = vi.fn()
+const mockTodoList = vi.fn().mockResolvedValue({ tasks: [] })
 
 vi.mock("@/lib/rpc", () => ({
   rpcClient: {
@@ -20,6 +21,7 @@ vi.mock("@/lib/rpc", () => ({
     sessionDelete: (...args: unknown[]) => mockSessionDelete(...args),
     sessionFork: (...args: unknown[]) => mockSessionFork(...args),
     sessionLoad: (...args: unknown[]) => mockSessionLoad(...args),
+    todoList: (...args: unknown[]) => mockTodoList(...args),
   },
   RpcError: class extends Error {
     constructor(

@@ -153,3 +153,21 @@ export interface ToolsListResult {
 export interface CancelResult {
   status: "cancelled" | "no_active_stream"
 }
+
+export interface TodoItemData {
+  id: string
+  sessionId: string
+  content: string
+  status: string
+  priority: string
+  dependsOn: string[]
+  blockedBy: string[]
+  createdAt: string
+  updatedAt: string
+  completedAt: string | null
+  taskToolId: string | null
+}
+
+export interface TodoListResult {
+  tasks: TodoItemData[]
+}

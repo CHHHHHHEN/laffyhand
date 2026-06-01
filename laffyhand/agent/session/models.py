@@ -61,6 +61,44 @@ class MessageRecord(BaseModel):
     turn_index: int = 0
 
 
+TodoStatus = Literal["pending", "in_progress", "completed", "cancelled", "blocked"]
+TodoPriority = Literal["high", "medium", "low"]
+
+
+class TodoItem(BaseModel):
+    id: str = ""
+    session_id: str = ""
+    content: str = ""
+    status: TodoStatus = "pending"
+    priority: TodoPriority = "medium"
+    depends_on: list[str] = []
+    created_at: datetime = _utcnow()
+    updated_at: datetime = _utcnow()
+    completed_at: Optional[datetime] = None
+    task_tool_id: Optional[str] = None
+    metadata: dict = {}
+
+    def model_post_init(self, _context) -> None:
+        if not self.id:
+            self.id = _generate_session_id()
+
+
+class TodoCreate(BaseModel):
+    content: str
+    priority: TodoPriority = "medium"
+    depends_on: list[str] = []
+    id: Optional[str] = None  # custom ID for plan references
+
+
+class TodoUpdate(BaseModel):
+    content: Optional[str] = None
+    status: Optional[TodoStatus] = None
+    priority: Optional[TodoPriority] = None
+    depends_on: Optional[list[str]] = None
+    task_tool_id: Optional[str] = None
+    metadata: Optional[dict] = None
+
+
 class TitleConfig(BaseModel):
     mode: Literal["off", "on_create", "on_compact", "auto"] = "auto"
     model: Optional[str] = None
