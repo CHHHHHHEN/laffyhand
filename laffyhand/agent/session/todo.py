@@ -116,12 +116,13 @@ class TodoManager:
                     _serialize_json(item.metadata),
                 ),
             )
+            self._conn.commit()
         except sqlite3.IntegrityError as e:
+            self._conn.rollback()
             raise ValueError(
                 f"Session '{session_id}' does not exist. "
                 "Cannot add todo task without a valid session."
             ) from e
-        self._conn.commit()
         return item
 
     def add_tasks(
@@ -175,6 +176,7 @@ class TodoManager:
                     ),
                 )
             except sqlite3.IntegrityError as e:
+                self._conn.rollback()
                 raise ValueError(
                     f"Session '{session_id}' does not exist. "
                     "Cannot add todo tasks without a valid session."
@@ -216,24 +218,28 @@ class TodoManager:
                 item.completed_at = None
 
         item.updated_at = _utcnow()
-        self._conn.execute(
-            """UPDATE todo SET
-                content=?, status=?, priority=?, depends_on=?,
-                updated_at=?, completed_at=?, task_tool_id=?, metadata=?
-               WHERE id=?""",
-            (
-                item.content,
-                item.status,
-                item.priority,
-                _serialize_json(item.depends_on),
-                _ts(item.updated_at),
-                _ts(item.completed_at),
-                item.task_tool_id,
-                _serialize_json(item.metadata),
-                item.id,
-            ),
-        )
-        self._conn.commit()
+        try:
+            self._conn.execute(
+                """UPDATE todo SET
+                    content=?, status=?, priority=?, depends_on=?,
+                    updated_at=?, completed_at=?, task_tool_id=?, metadata=?
+                   WHERE id=?""",
+                (
+                    item.content,
+                    item.status,
+                    item.priority,
+                    _serialize_json(item.depends_on),
+                    _ts(item.updated_at),
+                    _ts(item.completed_at),
+                    item.task_tool_id,
+                    _serialize_json(item.metadata),
+                    item.id,
+                ),
+            )
+            self._conn.commit()
+        except Exception:
+            self._conn.rollback()
+            raise
 
         if updates.status == "completed":
             self.resolve_blocked(task_id, session_id)
@@ -244,12 +250,16 @@ class TodoManager:
         ):
             all_tasks = self.get_tasks(session_id)
             now = _utcnow()
-            for t in all_tasks:
-                self._conn.execute(
-                    "UPDATE todo SET status=?, updated_at=?, metadata=? WHERE id=?",
-                    (t.status, _ts(now), _serialize_json(t.metadata), t.id),
-                )
-            self._conn.commit()
+            try:
+                for t in all_tasks:
+                    self._conn.execute(
+                        "UPDATE todo SET status=?, updated_at=?, metadata=? WHERE id=?",
+                        (t.status, _ts(now), _serialize_json(t.metadata), t.id),
+                    )
+                self._conn.commit()
+            except Exception:
+                self._conn.rollback()
+                raise
 
         return item
 
@@ -262,16 +272,20 @@ class TodoManager:
             "SELECT id, depends_on FROM todo WHERE depends_on LIKE ?",
             (f"%{task_id}%",),
         ).fetchall()
-        for dep in dependents:
-            deps = _deserialize_str_list(dep["depends_on"])
-            if task_id in deps:
-                deps.remove(task_id)
-                self._conn.execute(
-                    "UPDATE todo SET depends_on = ? WHERE id = ?",
-                    (_serialize_json(deps), dep["id"]),
-                )
-        self._conn.execute("DELETE FROM todo WHERE id = ?", (task_id,))
-        self._conn.commit()
+        try:
+            for dep in dependents:
+                deps = _deserialize_str_list(dep["depends_on"])
+                if task_id in deps:
+                    deps.remove(task_id)
+                    self._conn.execute(
+                        "UPDATE todo SET depends_on = ? WHERE id = ?",
+                        (_serialize_json(deps), dep["id"]),
+                    )
+            self._conn.execute("DELETE FROM todo WHERE id = ?", (task_id,))
+            self._conn.commit()
+        except Exception:
+            self._conn.rollback()
+            raise
         return True
 
     def delete_tasks(self, task_ids: list[str]) -> int:
@@ -306,8 +320,12 @@ class TodoManager:
         return self.delete_tasks(ids)
 
     def delete_session_tasks(self, session_id: str) -> None:
-        self._conn.execute("DELETE FROM todo WHERE session_id = ?", (session_id,))
-        self._conn.commit()
+        try:
+            self._conn.execute("DELETE FROM todo WHERE session_id = ?", (session_id,))
+            self._conn.commit()
+        except Exception:
+            self._conn.rollback()
+            raise
 
     # ── DAG ───────────────────────────────────────────────────
 
@@ -372,28 +390,32 @@ class TodoManager:
     def resolve_blocked(self, task_id: str, session_id: str) -> None:
         """After task completes, re-evaluate blocked status for dependents."""
         tasks = self.get_tasks(session_id)
-        for t in tasks:
-            if task_id in t.depends_on and t.status == "blocked":
-                blocked_by = t.metadata.get("blocked_by", [])
-                if task_id in blocked_by:
-                    remaining = [d for d in blocked_by if d != task_id]
-                    if remaining:
-                        t.metadata["blocked_by"] = remaining
-                    else:
-                        t.metadata.pop("blocked_by", None)
-                        t.status = "pending"
-                        t.updated_at = _utcnow()
-                        self._conn.execute(
-                            """UPDATE todo SET status=?, updated_at=?, metadata=?
-                               WHERE id=?""",
-                            (
-                                t.status,
-                                _ts(t.updated_at),
-                                _serialize_json(t.metadata),
-                                t.id,
-                            ),
-                        )
-        self._conn.commit()
+        try:
+            for t in tasks:
+                if task_id in t.depends_on and t.status == "blocked":
+                    blocked_by = t.metadata.get("blocked_by", [])
+                    if task_id in blocked_by:
+                        remaining = [d for d in blocked_by if d != task_id]
+                        if remaining:
+                            t.metadata["blocked_by"] = remaining
+                        else:
+                            t.metadata.pop("blocked_by", None)
+                            t.status = "pending"
+                            t.updated_at = _utcnow()
+                            self._conn.execute(
+                                """UPDATE todo SET status=?, updated_at=?, metadata=?
+                                   WHERE id=?""",
+                                (
+                                    t.status,
+                                    _ts(t.updated_at),
+                                    _serialize_json(t.metadata),
+                                    t.id,
+                                ),
+                            )
+            self._conn.commit()
+        except Exception:
+            self._conn.rollback()
+            raise
 
     # ── TaskTool integration ──────────────────────────────────
 
