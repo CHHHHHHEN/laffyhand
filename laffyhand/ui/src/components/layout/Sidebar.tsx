@@ -160,7 +160,7 @@ export function Sidebar() {
           return (
             <div
               key={s.id}
-              className="group relative animate-[fade-in_0.2s_ease-out]"
+              className="group relative animate-[fade-in_0.2s_ease-out] border-b border-gray-100 dark:border-gray-800 last:border-0"
             >
               <button
                 onClick={() => navigate(`/chat/${s.id}`)}
@@ -175,14 +175,14 @@ export function Sidebar() {
                     {s.title || "Untitled"}
                   </div>
                   {s.updatedAt && (
-                    <span className="shrink-0 text-xs text-gray-400 dark:text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <span className="shrink-0 text-[10px] text-gray-400 dark:text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity">
                       {formatRelativeTime(s.updatedAt)}
                     </span>
                   )}
                 </div>
                 <div className="flex items-center gap-2 mt-0.5">
-                  <span className="text-xs text-gray-500 dark:text-gray-400">
-                    {s.messageCount} msgs
+                  <span className="text-[11px] text-gray-400 dark:text-gray-500">
+                    {s.messageCount} {s.messageCount === 1 ? "msg" : "msgs"}
                   </span>
                 </div>
               </button>
