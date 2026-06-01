@@ -3,6 +3,8 @@ import { useParams } from "react-router-dom"
 import { useQueryClient } from "@tanstack/react-query"
 import { rpcClient } from "@/lib/rpc"
 import { useChatStore } from "@/stores/chat-store"
+import { useTodoStore } from "@/stores/todo-store"
+import type { TodoItem } from "@/types/session"
 
 export function useChat() {
   const queryClient = useQueryClient()
@@ -10,7 +12,7 @@ export function useChat() {
   const leftoverSteerRef = useRef<string | null>(null)
   const { sessionId: urlSessionId } = useParams()
 
-  // Refresh session list when streaming ends (title was already generated on backend)
+  // Refresh session list and TODO list when streaming ends
   const isStreaming = useChatStore((s) => s.isStreaming)
   const prevStreamingRef = useRef(isStreaming)
   useEffect(() => {
@@ -18,8 +20,26 @@ export function useChat() {
     prevStreamingRef.current = isStreaming
     if (wasStreaming && !isStreaming) {
       queryClient.invalidateQueries({ queryKey: ["sessions"] })
+      if (urlSessionId) {
+        rpcClient.todoList(urlSessionId).then((result) => {
+          const tasks: TodoItem[] = result.tasks.map((t) => ({
+            id: t.id,
+            sessionId: t.sessionId,
+            content: t.content,
+            status: t.status as TodoItem["status"],
+            priority: t.priority as TodoItem["priority"],
+            dependsOn: t.dependsOn,
+            blockedBy: t.blockedBy,
+            createdAt: t.createdAt,
+            updatedAt: t.updatedAt,
+            completedAt: t.completedAt,
+            taskToolId: t.taskToolId,
+          }))
+          useTodoStore.getState().setTasks(tasks)
+        }).catch(() => {})
+      }
     }
-  }, [isStreaming, queryClient])
+  }, [isStreaming, queryClient, urlSessionId])
 
   const _cancelAndFinalize = useCallback(async () => {
     if (abortRef.current) {
