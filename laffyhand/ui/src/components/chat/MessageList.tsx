@@ -9,12 +9,13 @@ export function MessageList() {
   const isStreaming = useChatStore((s) => s.isStreaming)
   const streamContent = useChatStore((s) => s.streamContent)
   const streamReasoning = useChatStore((s) => s.streamReasoning)
+  const streamToolCalls = useChatStore((s) => s.streamToolCalls)
   const error = useChatStore((s) => s.error)
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" })
-  }, [messages, streamContent, streamReasoning])
+  }, [messages, streamContent, streamReasoning, streamToolCalls])
 
   if (messages.length === 0 && !isStreaming && !error) {
     return (
@@ -52,6 +53,31 @@ export function MessageList() {
               <div className="flex items-center gap-2">
                 <Spinner size="sm" />
                 <span className="text-sm text-gray-500">Thinking...</span>
+              </div>
+            )}
+            {streamToolCalls.length > 0 && (
+              <div className="mt-2 border-t border-gray-300 dark:border-gray-600 pt-2">
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">
+                  Tool calls:
+                </p>
+                {streamToolCalls.map((tc) => (
+                  <div
+                    key={tc.id}
+                    className="bg-gray-100 dark:bg-gray-800 rounded-md px-3 py-2 mb-2 text-xs font-mono border border-gray-200 dark:border-gray-700"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-blue-600 dark:text-blue-400">
+                        {tc.name}
+                      </span>
+                      <span className="text-gray-400 dark:text-gray-500 text-xs">
+                        {tc.id.slice(0, 8)}
+                      </span>
+                    </div>
+                    <pre className="mt-1 text-gray-600 dark:text-gray-300 whitespace-pre-wrap break-all">
+                      {JSON.stringify(tc.arguments, null, 2)}
+                    </pre>
+                  </div>
+                ))}
               </div>
             )}
           </div>

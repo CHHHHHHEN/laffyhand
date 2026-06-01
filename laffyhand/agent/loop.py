@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import AsyncIterator
-from typing import TYPE_CHECKING, Optional, Literal
+from typing import TYPE_CHECKING, Union
 
 from loguru import logger
 from pydantic import BaseModel
@@ -26,14 +26,90 @@ if TYPE_CHECKING:
     from laffyhand.agent.subagent.manager import SubagentManager
 
 
-class AgentEvent(BaseModel):
-    type: Literal["reasoning", "tool_calls", "content", "tool_result", "compacting"]
-    data: str
-    finish_reason: Optional[FinishReason] = None
-    usage: Optional[Usage] = None
-    session_usage: Optional[dict] = None
-    leftover_steer: Optional[str] = None
+# ── Streaming event types ──────────────────────────────────────
 
+class StepStart(BaseModel):
+    type: str = "step-start"
+    index: int
+
+class TextStart(BaseModel):
+    type: str = "text-start"
+    id: str
+
+class TextDelta(BaseModel):
+    type: str = "text-delta"
+    id: str
+    text: str
+
+class TextEnd(BaseModel):
+    type: str = "text-end"
+    id: str
+
+class ReasoningStart(BaseModel):
+    type: str = "reasoning-start"
+    id: str
+
+class ReasoningDelta(BaseModel):
+    type: str = "reasoning-delta"
+    id: str
+    text: str
+
+class ReasoningEnd(BaseModel):
+    type: str = "reasoning-end"
+    id: str
+
+class ToolCall(BaseModel):
+    type: str = "tool-call"
+    id: str
+    name: str
+    input: str
+
+class ToolResult(BaseModel):
+    type: str = "tool-result"
+    id: str
+    name: str
+    result: str
+
+class ToolError(BaseModel):
+    type: str = "tool-error"
+    id: str
+    name: str
+    message: str
+    error: bool = True
+
+class StepFinish(BaseModel):
+    type: str = "step-finish"
+    index: int
+    reason: str
+    usage: Usage | None = None
+
+class Finish(BaseModel):
+    type: str = "finish"
+    reason: str
+    usage: Usage | None = None
+    session_id: str | None = None
+    session_usage: dict | None = None
+    leftover_steer: str | None = None
+
+class ProviderError(BaseModel):
+    type: str = "provider-error"
+    message: str
+    retryable: bool = False
+
+class Compacting(BaseModel):
+    type: str = "compacting"
+    data: str
+
+
+StreamEvent = Union[
+    StepStart, TextStart, TextDelta, TextEnd,
+    ReasoningStart, ReasoningDelta, ReasoningEnd,
+    ToolCall, ToolResult, ToolError,
+    StepFinish, Finish, ProviderError, Compacting,
+]
+
+
+# ── Helpers ────────────────────────────────────────────────────
 
 async def _compact_on_overflow(
     agent_state: AgentState,
@@ -71,6 +147,8 @@ async def _compact_on_overflow(
     return False
 
 
+# ── Main agent loop ────────────────────────────────────────────
+
 async def agent_loop(
     agent_state: AgentState,
     llm: LLM,
@@ -80,7 +158,7 @@ async def agent_loop(
     reminder: str | None = None,
     session_manager: SessionManager | None = None,
     subagent_manager: SubagentManager | None = None,
-) -> AsyncIterator[AgentEvent]:
+) -> AsyncIterator[StreamEvent]:
     context_size = agent_state.usage.context_size
     _compacted_this_step = False
 
@@ -109,7 +187,7 @@ async def agent_loop(
                 agent_state, llm, compaction_config, session_manager,
             ):
                 _compacted_this_step = True
-                yield AgentEvent(type="compacting", data="Compacting conversation history...")
+                yield Compacting(data="Compacting conversation history...")
                 continue
 
         # ── Mid-turn injection: drain background subagent results ──
@@ -131,30 +209,37 @@ async def agent_loop(
         tool_calls: list[ToolCallContent] = []
         finish_reason: FinishReason | None = None
         usage: Usage | None = None
+        step_index = agent_state.step
+        text_id: str | None = None
+        reasoning_id: str | None = None
         tool_definitions = await tool_registry.build_tool_definitions()
         logger.debug(f"Sending {len(agent_state.messages)} messages to LLM, {len(tool_definitions)} tools")
+
+        yield StepStart(index=step_index)
 
         async for event in llm.stream(agent_state.messages, tools=tool_definitions):
             if isinstance(event, StreamReasoning):
                 reasoning_buf.append(event.delta)
-                yield AgentEvent(type="reasoning", data=event.delta)
+                if reasoning_id is None:
+                    reasoning_id = f"reasoning-{step_index}"
+                    yield ReasoningStart(id=reasoning_id)
+                yield ReasoningDelta(id=reasoning_id, text=event.delta)
             elif isinstance(event, StreamText):
                 content_buf.append(event.delta)
-                yield AgentEvent(type="content", data=event.delta)
+                if text_id is None:
+                    text_id = f"text-{step_index}"
+                    yield TextStart(id=text_id)
+                yield TextDelta(id=text_id, text=event.delta)
             elif isinstance(event, StreamToolCall):
                 tool_calls.append(ToolCallContent(
                     tool_call_id=event.tool_call_id,
                     tool_name=event.tool_name,
                     args=event.args,
                 ))
-                yield AgentEvent(
-                    type="tool_calls",
-                    data=json.dumps([{
-                        "id": event.tool_call_id,
-                        "name": event.tool_name,
-                        "arguments": event.args,
-                    }]),
-                    finish_reason="tool_calls",
+                yield ToolCall(
+                    id=event.tool_call_id,
+                    name=event.tool_name,
+                    input=event.args,
                 )
             elif isinstance(event, StreamFinish):
                 finish_reason = event.finish_reason
@@ -162,6 +247,12 @@ async def agent_loop(
             elif isinstance(event, StreamError):
                 logger.error(f"Stream error: {event.error}")
                 finish_reason = "error"
+
+        # End in-flight content segments
+        if text_id is not None:
+            yield TextEnd(id=text_id)
+        if reasoning_id is not None:
+            yield ReasoningEnd(id=reasoning_id)
 
         agent_state.turn_count += 1
         logger.debug(f"Turn {agent_state.turn_count} complete, finish_reason={finish_reason}")
@@ -194,14 +285,26 @@ async def agent_loop(
         )
         agent_state.messages.append(assistant_msg)
         agent_state.usage.add(usage)
-        yield AgentEvent(type="content", data="", finish_reason=finish_reason, usage=usage)
+
+        yield StepFinish(index=step_index, reason=finish_reason or "stop", usage=usage)
 
         if finish_reason == "tool_calls" and tool_calls:
             logger.debug(f"Executing {len(tool_calls)} tool call(s)")
             for tc in tool_calls:
                 exec_result = await ToolExecutor.execute(tool_registry, tc)
                 agent_state.messages.append(exec_result.message)
-                yield AgentEvent(type="tool_result", data=exec_result.event_data)
+                if exec_result.is_error:
+                    yield ToolError(
+                        id=tc.tool_call_id,
+                        name=tc.tool_name,
+                        message=exec_result.event_data,
+                    )
+                else:
+                    yield ToolResult(
+                        id=tc.tool_call_id,
+                        name=tc.tool_name,
+                        result=exec_result.event_data,
+                    )
 
             # Inject pending steer into the last tool result
             if agent_state.pending_steer and agent_state.messages and isinstance(agent_state.messages[-1], ToolMessage):
@@ -229,11 +332,11 @@ async def agent_loop(
                 agent_state, llm, compaction_config, session_manager,
             ):
                 _compacted_this_step = True
-                yield AgentEvent(type="compacting", data="Compacting conversation history...")
+                yield Compacting(data="Compacting conversation history...")
                 if compaction_config.auto_continue:
                     agent_state.messages.append(UserMessage(
                         content="Continue if you have next steps, or stop and ask for clarification if you are unsure how to proceed.",
                     ))
-                    yield AgentEvent(type="compacting", data="Continuing after compaction...")
+                    yield Compacting(data="Continuing after compaction...")
                     continue
             break

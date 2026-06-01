@@ -11,7 +11,7 @@ import type {
   SessionForkResult,
   CancelResult,
   ToolsListResult,
-  AgentEvent,
+  StreamEvent,
 } from "@/types/rpc"
 
 export class RpcError extends Error {
@@ -122,7 +122,7 @@ async function callStream(
 }
 
 export interface ChatStreamCallbacks {
-  onEvent: (event: AgentEvent) => void
+  onEvent: (event: StreamEvent) => void
   onError: (error: Error) => void
   onComplete: () => void
 }
@@ -159,14 +159,12 @@ export async function chatStream(
             const raw = JSON.parse(line.slice(6))
             const notification = raw as {
               method?: string
-              params?: AgentEvent
+              params?: Record<string, unknown>
             }
-            const event: AgentEvent | undefined =
-              notification.params !== undefined
-                ? notification.params
-                : (notification as AgentEvent)
+            const event: Record<string, unknown> | undefined =
+              notification.params ?? (raw as Record<string, unknown>)
             if (event?.type) {
-              callbacks.onEvent(event)
+              callbacks.onEvent(event as StreamEvent)
             }
             if (event?.type === "finish") {
               callbacks.onComplete()

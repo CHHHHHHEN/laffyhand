@@ -29,7 +29,7 @@ from laffyhand.agent.tools.mcp_manage import (
     MCPDisconnectTool,
 )
 from laffyhand.agent.mcp import MCPService
-from laffyhand.agent.loop import agent_loop
+from laffyhand.agent.loop import agent_loop, StepFinish
 
 if TYPE_CHECKING:
     from laffyhand.agent.agent import AgentInfo
@@ -300,7 +300,7 @@ class AgentRuntime:
             max_steps=agent_info.max_steps,
             session_manager=self.session_manager,
         ):
-            if event.type == "content" and event.finish_reason is not None:
+            if isinstance(event, StepFinish):
                 last_msg = child_state.messages[-1]
                 if hasattr(last_msg, "content") and last_msg.content:
                     if not isinstance(last_msg, SystemMessage):

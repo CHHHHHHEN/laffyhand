@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
+from laffyhand.agent.loop import StepFinish, Finish
 from laffyhand.agent.schemas import (
     SystemMessage, UserMessage, AssistantMessage, ToolMessage,
     AgentState, SessionUsage,
@@ -289,26 +290,17 @@ async def handle_chat_stream(
 
     finish_reason = ""
     usage_info = None
-    last_content = ""
 
     try:
         async for event in runtime.run_agent_turn(session_id=session_id):
             notif = Notification(
                 method="event",
-                params={
-                    "type": event.type,
-                    "data": event.data,
-                    "finish_reason": event.finish_reason,
-                    "usage": event.usage.model_dump() if event.usage else None,
-                },
+                params=event.model_dump(exclude_none=True),
             )
             await transport.send(notif.json())
-            if event.finish_reason:
-                finish_reason = event.finish_reason
-            if event.usage:
+            if isinstance(event, StepFinish):
+                finish_reason = event.reason
                 usage_info = event.usage
-            if event.type == "content" and event.data:
-                last_content += event.data
     except asyncio.CancelledError:
         finish_reason = "cancelled"
         logger.info(f"Chat stream cancelled for session {session_id} (conn={conn_id})")
@@ -335,18 +327,14 @@ async def handle_chat_stream(
                 leftover_steer = state.pending_steer
                 state.pending_steer = None
 
-    done = Notification(
-        method="event",
-        params={
-            "type": "finish",
-            "data": last_content,
-            "finish_reason": finish_reason,
-            "usage": usage_info.model_dump() if usage_info else None,
-            "session_id": session_id,
-            "session_usage": runtime.state.usage.model_dump() if runtime.state else None,
-            "leftover_steer": leftover_steer,
-        },
-    )
+    done_params = Finish(
+        reason=finish_reason,
+        usage=usage_info,
+        session_id=session_id,
+        session_usage=runtime.state.usage.model_dump() if runtime.state else None,
+        leftover_steer=leftover_steer,
+    ).model_dump(exclude_none=True)
+    done = Notification(method="event", params=done_params)
     try:
         await transport.send(done.json())
     except Exception:

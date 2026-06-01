@@ -278,9 +278,9 @@ class TestChatStream:
     @pytest.mark.anyio
     async def test_yields_agent_events(self, client, transport):
         transport.recv = AsyncMock(side_effect=[
-            Notification(method="event", params={"type": "content", "data": "Hello"}).json(),
+            Notification(method="event", params={"type": "text-delta", "id": "t1", "text": "Hello"}).json(),
             Notification(method="event", params={
-                "type": "finish", "data": "", "finish_reason": "stop",
+                "type": "finish", "reason": "stop",
                 "usage": {"input_tokens": 10, "output_tokens": 20},
                 "session_usage": {"total_input": 10, "total_output": 20},
             }).json(),
@@ -289,9 +289,9 @@ class TestChatStream:
         async for event in client.chat_stream("hi"):
             events.append(event)
         assert len(events) == 2
-        assert events[0].type == "content"
-        assert events[0].data == "Hello"
-        assert events[1].finish_reason == "stop"
+        assert events[0].type == "text-delta"
+        assert events[0].text == "Hello"
+        assert events[1].reason == "stop"
         assert events[1].usage is not None
         assert events[1].usage.input_tokens == 10
         assert events[1].session_usage == {"total_input": 10, "total_output": 20}
@@ -299,7 +299,7 @@ class TestChatStream:
     @pytest.mark.anyio
     async def test_handles_no_usage(self, client, transport):
         transport.recv = AsyncMock(side_effect=[
-            Notification(method="event", params={"type": "finish"}).json(),
+            Notification(method="event", params={"type": "finish", "reason": "stop"}).json(),
         ])
         events = []
         async for event in client.chat_stream("hi"):

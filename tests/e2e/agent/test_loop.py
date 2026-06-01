@@ -73,7 +73,8 @@ class TestAgentLoopE2E(unittest.TestCase):
         self.assertEqual(state.step, 1)
         self.assertEqual(state.turn_count, 1)
         self.assertGreater(len(events), 0)
-        self.assertIn("hello", "".join(e.data for e in events if e.type == "content"))
+        self.assertIn("hello", "".join(e.text for e in events if hasattr(e, "text")))
+        self.assertTrue(any(e.type == "text-delta" for e in events))
 
     def test_tool_call_then_finish(self):
         """LLM calls tool, tool executes, then LLM finishes -> 2 steps."""
@@ -92,8 +93,8 @@ class TestAgentLoopE2E(unittest.TestCase):
         self.assertEqual(state.step, 2)
         self.assertEqual(state.turn_count, 2)
         types = [e.type for e in events]
-        self.assertIn("tool_calls", types)
-        self.assertIn("tool_result", types)
+        self.assertIn("tool-call", types)
+        self.assertIn("tool-result", types)
 
     def test_max_steps_limits_iterations(self):
         """LLM keeps calling tools -> stops after max_steps."""

@@ -27,52 +27,62 @@ export function useChat() {
             onEvent: (event) => {
               const store = useChatStore.getState()
               switch (event.type) {
-                case "content":
-                  store.appendContent(event.data)
+                case "step-start":
+                  // Subsequent steps (after tool execution) need a fresh streaming segment.
+                  if (!store.isStreaming) {
+                    store.startStreaming()
+                  }
                   break
-                case "reasoning":
-                  store.setReasoning(event.data)
+                case "text-delta":
+                  if (event.text) {
+                    store.appendContent(event.text)
+                  }
                   break
-                case "tool_calls":
+                case "reasoning-delta":
+                  if (event.text) {
+                    store.setReasoning(event.text)
+                  }
+                  break
+                case "tool-call": {
+                  let args: Record<string, unknown> = {}
                   try {
-                    const calls = JSON.parse(event.data)
-                    if (Array.isArray(calls)) {
-                      for (const call of calls) {
-                        let args: Record<string, unknown> = {}
-                        try {
-                          args =
-                            typeof call.arguments === "string"
-                              ? JSON.parse(call.arguments)
-                              : (call.arguments ?? {})
-                        } catch {
-                          args = {}
+                    args = JSON.parse(event.input)
+                  } catch {
+                    args = {}
+                  }
+                  store.addToolCall({
+                    id: event.id,
+                    name: event.name,
+                    arguments: args,
+                  })
+                  break
+                }
+                case "tool-result":
+                  store.addToolResult({
+                    id: event.id,
+                    name: event.name,
+                    result: event.result,
+                    isError: event.error,
+                  })
+                  break
+                case "tool-error":
+                  store.addToolResult({
+                    id: event.id,
+                    name: event.name,
+                    result: event.message,
+                    isError: true,
+                  })
+                  break
+                case "step-finish":
+                  if (event.reason === "tool_calls") {
+                    const stepUsage = event.usage
+                      ? {
+                          inputTokens: event.usage.input_tokens,
+                          outputTokens: event.usage.output_tokens,
                         }
-                        store.addToolCall({
-                          id: call.id ?? "unknown",
-                          name: call.name ?? "unknown",
-                          arguments: args,
-                        })
-                      }
-                    }
-                  } catch {
-                    // skip unparseable tool calls
+                      : undefined
+                    store.finalizeMessage(stepUsage)
                   }
-                  break
-                case "tool_result":
-                  try {
-                    const result = JSON.parse(event.data)
-                    store.addToolResult({
-                      id: result.id ?? "unknown",
-                      name: result.name ?? "unknown",
-                      result: result.result ?? event.data,
-                      isError: result.isError,
-                    })
-                  } catch {
-                    // skip unparseable
-                  }
-                  break
-                case "error":
-                  store.setError(event.data)
                   break
                 case "finish": {
                   const usage = event.usage
@@ -84,6 +94,9 @@ export function useChat() {
                   store.finalizeMessage(usage, event.session_usage ?? null)
                   break
                 }
+                case "provider-error":
+                  store.setError(event.message)
+                  break
               }
             },
             onError: (error) => {

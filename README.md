@@ -55,6 +55,24 @@ Route 是 Protocol、Endpoint、Auth、Framing 四个组件的组合容器，每
 
 需要在内部定义统一的数据类型/错误类型，将运营商层面的差异限制在 Protocol 层面。
 
+事件	type 标签	关键字段
+StepStart	step-start	index
+TextStart	text-start	id
+TextDelta	text-delta	id, text
+TextEnd	text-end	id
+ReasoningStart	reasoning-start	id
+ReasoningDelta	reasoning-delta	id, text
+ReasoningEnd	reasoning-end	id
+ToolInputStart	tool-input-start	id, name
+ToolInputDelta	tool-input-delta	id, name, text
+ToolInputEnd	tool-input-end	id, name
+ToolCall	tool-call	id, name, input
+ToolResult	tool-result	id, name, result
+ToolError	tool-error	id, name, message, error?
+StepFinish	step-finish	index, reason, usage?
+Finish	finish	reason, usage?
+ProviderError	provider-error	message, retryable?
+
 ## Agent Tools
 
 | Tool | Description | Design Detail |

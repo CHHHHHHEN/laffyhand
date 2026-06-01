@@ -123,22 +123,21 @@ export interface Usage {
   total_tokens?: number
 }
 
-export interface AgentEvent {
-  type: AgentEventType
-  data: string
-  finish_reason?: string
-  usage?: Usage
-  session_usage?: SessionUsage
-}
-
-export type AgentEventType =
-  | "reasoning"
-  | "content"
-  | "tool_calls"
-  | "tool_result"
-  | "compacting"
-  | "finish"
-  | "error"
+export type StreamEvent =
+  | { type: "step-start"; index: number }
+  | { type: "text-start"; id: string }
+  | { type: "text-delta"; id: string; text: string }
+  | { type: "text-end"; id: string }
+  | { type: "reasoning-start"; id: string }
+  | { type: "reasoning-delta"; id: string; text: string }
+  | { type: "reasoning-end"; id: string }
+  | { type: "tool-call"; id: string; name: string; input: string }
+  | { type: "tool-result"; id: string; name: string; result: string; error?: boolean }
+  | { type: "tool-error"; id: string; name: string; message: string; error?: boolean }
+  | { type: "step-finish"; index: number; reason: string; usage?: Usage }
+  | { type: "finish"; reason: string; usage?: Usage; session_id?: string; session_usage?: SessionUsage; leftover_steer?: string }
+  | { type: "provider-error"; message: string; retryable?: boolean }
+  | { type: "compacting"; data: string }
 
 export interface ToolDefinition {
   name: string

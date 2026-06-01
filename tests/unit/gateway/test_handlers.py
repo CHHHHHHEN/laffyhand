@@ -340,6 +340,8 @@ class TestHandleSessionLoadWithMessages:
 class TestHandleChatStream:
     @pytest.mark.anyio
     async def test_streams_events_and_finish(self, runtime, transport):
+        from laffyhand.agent.loop import TextDelta
+
         runtime.state = MagicMock()
         runtime.state.session_id = "sess-1"
         runtime.state.messages = []
@@ -350,14 +352,8 @@ class TestHandleChatStream:
         runtime.current_session_id = "sess-1"
         runtime.get_state = MagicMock(return_value=runtime.state)
 
-        class FakeEvent:
-            type = "content"
-            data = "hello"
-            finish_reason = None
-            usage = None
-
         runtime.run_agent_turn = MagicMock()
-        runtime.run_agent_turn.return_value = _async_gen([FakeEvent()])
+        runtime.run_agent_turn.return_value = _async_gen([TextDelta(id="t1", text="hello")])
 
         await handle_chat_stream(runtime, {"message": "hi"}, transport, 1, "c1")
 
@@ -368,7 +364,6 @@ class TestHandleChatStream:
         import json
         last_data = json.loads(last_call[0][0])
         assert last_data["params"]["type"] == "finish"
-        assert last_data["params"]["data"] == "hello"
 
     @pytest.mark.anyio
     async def test_streams_error_as_event_on_exception(self, runtime, transport):
@@ -423,7 +418,7 @@ class TestHandleChatStream:
         last_call = transport.send.await_args_list[-1]
         last_data = json.loads(last_call[0][0])
         assert last_data["params"]["type"] == "finish"
-        assert last_data["params"]["data"] == ""
+        assert last_data["params"]["reason"] == ""
 
 
 def _async_gen(items):

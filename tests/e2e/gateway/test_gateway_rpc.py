@@ -46,13 +46,10 @@ async def _shutdown_gateway(client_t: InProcessTransport) -> None:
 
 
 async def _mock_run_agent_turn(**kwargs):
-    from laffyhand.agent.loop import AgentEvent
+    from laffyhand.agent.loop import TextDelta, StepFinish
     from laffyhand.agent.schemas import Usage
-    yield AgentEvent(type="content", data="Hello from LLM")
-    yield AgentEvent(
-        type="content", data="", finish_reason="stop",
-        usage=Usage(input_tokens=10, output_tokens=5),
-    )
+    yield TextDelta(id="text-1", text="Hello from LLM")
+    yield StepFinish(index=1, reason="stop", usage=Usage(input_tokens=10, output_tokens=5))
 
 
 @pytest.mark.anyio
@@ -206,6 +203,7 @@ async def test_chat_stream_via_gateway(transport_pair):
     runtime.state.session_id = "sess-stream"
     runtime.state.messages = []
     runtime.state.step = 0
+    runtime.state.pending_steer = None
     runtime.state.usage = MagicMock()
     runtime.state.usage.model_dump.return_value = {"total_input": 10, "total_output": 5}
     runtime.current_session_id = "sess-stream"
@@ -225,12 +223,12 @@ async def test_chat_stream_via_gateway(transport_pair):
                 break
 
     assert len(notifications) >= 2
-    content_notif = notifications[0]
-    assert content_notif["type"] == "content"
-    assert "Hello" in content_notif["data"]
+    text_notif = notifications[0]
+    assert text_notif["type"] == "text-delta"
+    assert "Hello" in text_notif["text"]
     finish_notif = notifications[-1]
     assert finish_notif["type"] == "finish"
-    assert finish_notif["finish_reason"] == "stop"
+    assert finish_notif["reason"] == "stop"
     assert finish_notif["session_id"] == "sess-stream"
     assert finish_notif["session_usage"] == {"total_input": 10, "total_output": 5}
 

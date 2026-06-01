@@ -6,7 +6,13 @@ from typing import Any
 
 from loguru import logger
 
-from laffyhand.agent.loop import AgentEvent
+from laffyhand.agent.loop import (
+    StepStart, TextStart, TextDelta, TextEnd,
+    ReasoningStart, ReasoningDelta, ReasoningEnd,
+    ToolCall, ToolResult, ToolError,
+    StepFinish, Finish, ProviderError, Compacting,
+    StreamEvent,
+)
 from laffyhand.agent.schemas import Usage
 from laffyhand.gateway.protocol import (
     Request, Response, ErrorResponse, Notification, from_json,
@@ -22,6 +28,40 @@ class RPCError(Exception):
         self.message = message
         super().__init__(f"RPC error ({code}): {message}")
 
+
+# ── Event reconstruction ───────────────────────────────────────
+# Map type strings to the corresponding Pydantic model.
+
+_EVENT_TYPE_MAP: dict[str, type[StreamEvent]] = {
+    "step-start": StepStart,
+    "text-start": TextStart,
+    "text-delta": TextDelta,
+    "text-end": TextEnd,
+    "reasoning-start": ReasoningStart,
+    "reasoning-delta": ReasoningDelta,
+    "reasoning-end": ReasoningEnd,
+    "tool-call": ToolCall,
+    "tool-result": ToolResult,
+    "tool-error": ToolError,
+    "step-finish": StepFinish,
+    "finish": Finish,
+    "provider-error": ProviderError,
+    "compacting": Compacting,
+}
+
+
+def event_from_params(params: dict[str, Any]) -> StreamEvent:
+    type_ = params.get("type", "")
+    cls = _EVENT_TYPE_MAP.get(type_)
+    if cls is None:
+        raise ValueError(f"Unknown event type: {type_}")
+    # Pass all keys; pydantic ignores extras via model_config (extra="forbid" is default,
+    # but we allow extra keys by constructing with only the known fields).
+    # Use model_validate to handle aliases/strictness gracefully.
+    return cls.model_validate(params)
+
+
+# ── Client ─────────────────────────────────────────────────────
 
 class GatewayClient:
     def __init__(self, transport: Transport) -> None:
@@ -141,29 +181,12 @@ class GatewayClient:
             params["session_id"] = session_id
         await self._request("session/archive", params)
 
-    async def chat_stream(self, message: str) -> AsyncIterator[AgentEvent]:
+    async def chat_stream(self, message: str) -> AsyncIterator[StreamEvent]:
         async for params in self._request_stream("chat/stream", {"message": message}):
             if params.get("type") == "finish":
-                yield AgentEvent(
-                    type="content",
-                    data="",
-                    finish_reason=params.get("finish_reason"),
-                    usage=Usage(**params["usage"]) if params.get("usage") else None,
-                    session_usage=params.get("session_usage"),
-                    leftover_steer=params.get("leftover_steer"),
-                )
+                yield event_from_params(params)
                 return
-            usage = None
-            raw_usage = params.get("usage")
-            if raw_usage:
-                usage = Usage(**raw_usage)
-            yield AgentEvent(
-                type=params.get("type", "content"),  # type: ignore[arg-type]
-                data=params.get("data", ""),
-                finish_reason=params.get("finish_reason"),
-                usage=usage,
-                session_usage=params.get("session_usage"),
-            )
+            yield event_from_params(params)
 
     async def cancel_chat(self, session_id: str | None = None) -> None:
         params: dict[str, Any] = {}
