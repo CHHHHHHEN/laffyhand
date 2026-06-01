@@ -4,11 +4,12 @@ import asyncio
 import itertools
 import os
 import time
+import uuid
 from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
-from laffyhand.agent.loop import StepFinish, Finish
+from laffyhand.agent.loop import StepFinish, Finish, PermissionRequest
 from laffyhand.agent.schemas import (
     SystemMessage, UserMessage, AssistantMessage, ToolMessage,
     AgentState, SessionUsage,
@@ -18,7 +19,8 @@ from laffyhand.gateway.protocol import (
     SESSION_DELETE, SESSION_FORK, SESSION_SEARCH, SESSION_SET_TITLE,
     SESSION_GENERATE_TITLE, SESSION_ARCHIVE, SUBAGENT_LIST_ACTIVE,
     USAGE_GET, CHAT, CHAT_STREAM, CHAT_CANCEL, CHAT_STEER, TOOLS_LIST,
-    CONFIG_PROVIDERS, MCP_STATUS, SESSION_SET_CONFIG, Notification,
+    CONFIG_PROVIDERS, MCP_STATUS, SESSION_SET_CONFIG, PERMISSION_RESPOND,
+    Notification,
 )
 
 if TYPE_CHECKING:
@@ -293,54 +295,77 @@ async def handle_chat_stream(
     finish_reason = ""
     usage_info = None
 
-    try:
-        async for event in runtime.run_agent_turn(session_id=session_id):
-            notif = Notification(
-                method="event",
-                params=event.model_dump(exclude_none=True),
-            )
-            await transport.send(notif.json())
-            if isinstance(event, StepFinish):
-                finish_reason = event.reason
-                usage_info = event.usage
-    except asyncio.CancelledError:
-        finish_reason = "cancelled"
-        logger.info(f"Chat stream cancelled for session {session_id} (conn={conn_id})")
-    except Exception:
-        logger.exception(f"Chat stream error for session {session_id} (conn={conn_id})")
+    async def _permission_callback(permission: str, pattern: str) -> bool:
+        request_id = str(uuid.uuid4())
+        event = asyncio.Event()
+        runtime._pending_permissions[request_id] = (event, permission, pattern, None)
         try:
-            err_notif = Notification(
-                method="event",
-                params={
-                    "type": "error",
-                    "data": "Internal error during streaming",
-                },
-            )
-            await transport.send(err_notif.json())
-        except Exception:
-            logger.warning("Failed to send error event to client in chat stream")
+            pr = PermissionRequest(request_id=request_id, permission=permission, pattern=pattern)
+            notif = Notification(method="event", params=pr.model_dump())
+            await transport.send(notif.json())
+            try:
+                await asyncio.wait_for(event.wait(), timeout=300.0)
+            except asyncio.TimeoutError:
+                logger.warning(f"Permission request {request_id} timed out")
+                return False
+            _, _, _, result = runtime._pending_permissions.get(request_id, (None, None, None, False))
+            return bool(result)
+        finally:
+            runtime._pending_permissions.pop(request_id, None)
 
-    # Check for leftover steer that wasn't consumed by tool batch
-    leftover_steer: str | None = None
-    state = runtime.get_state(session_id)
-    if state is not None:
-        async with _get_session_lock(session_id):
-            if state.pending_steer:
-                leftover_steer = state.pending_steer
-                state.pending_steer = None
+    runtime.tool_registry.permission.request_callback = _permission_callback
 
-    done_params = Finish(
-        reason=finish_reason,
-        usage=usage_info,
-        session_id=session_id,
-        session_usage=runtime.state.usage.model_dump() if runtime.state else None,
-        leftover_steer=leftover_steer,
-    ).model_dump(exclude_none=True)
-    done = Notification(method="event", params=done_params)
     try:
-        await transport.send(done.json())
-    except Exception:
-        logger.warning("Failed to send finish event to client (connection may be closed)")
+        try:
+            async for event in runtime.run_agent_turn(session_id=session_id):
+                notif = Notification(
+                    method="event",
+                    params=event.model_dump(exclude_none=True),
+                )
+                await transport.send(notif.json())
+                if isinstance(event, StepFinish):
+                    finish_reason = event.reason
+                    usage_info = event.usage
+        except asyncio.CancelledError:
+            finish_reason = "cancelled"
+            logger.info(f"Chat stream cancelled for session {session_id} (conn={conn_id})")
+        except Exception:
+            logger.exception(f"Chat stream error for session {session_id} (conn={conn_id})")
+            try:
+                err_notif = Notification(
+                    method="event",
+                    params={
+                        "type": "error",
+                        "data": "Internal error during streaming",
+                    },
+                )
+                await transport.send(err_notif.json())
+            except Exception:
+                logger.warning("Failed to send error event to client in chat stream")
+
+        # Check for leftover steer that wasn't consumed by tool batch
+        leftover_steer: str | None = None
+        state = runtime.get_state(session_id)
+        if state is not None:
+            async with _get_session_lock(session_id):
+                if state.pending_steer:
+                    leftover_steer = state.pending_steer
+                    state.pending_steer = None
+
+        done_params = Finish(
+            reason=finish_reason,
+            usage=usage_info,
+            session_id=session_id,
+            session_usage=runtime.state.usage.model_dump() if runtime.state else None,
+            leftover_steer=leftover_steer,
+        ).model_dump(exclude_none=True)
+        done = Notification(method="event", params=done_params)
+        try:
+            await transport.send(done.json())
+        except Exception:
+            logger.warning("Failed to send finish event to client (connection may be closed)")
+    finally:
+        runtime.tool_registry.permission.request_callback = None
 
 
 async def handle_chat_steer(
@@ -577,6 +602,32 @@ async def handle_session_set_config(
     return {"session_id": runtime.state.session_id}
 
 
+async def handle_permission_respond(
+    runtime: AgentRuntime,
+    params: dict[str, Any],
+    transport: Transport,
+    _request_id: str | int | None,
+    conn_id: str,
+) -> dict[str, Any]:
+    req_id: str = params.get("request_id", "")
+    if req_id not in runtime._pending_permissions:
+        raise ValueError(f"Unknown or expired permission request: {req_id}")
+    action: str = params.get("action", "")
+    if action not in ("allow", "always", "deny"):
+        raise ValueError(f"Invalid permission action: {action}")
+    event, permission, pattern, _ = runtime._pending_permissions[req_id]
+    if action == "always":
+        runtime.tool_registry.permission._rules[f"{permission}:{pattern}"] = "allow"
+        result = True
+    elif action == "allow":
+        result = True
+    else:
+        result = False
+    runtime._pending_permissions[req_id] = (event, permission, pattern, result)
+    event.set()
+    return {"status": "ok"}
+
+
 async def handle_usage_get(
     runtime: AgentRuntime,
     params: dict[str, Any],
@@ -614,3 +665,4 @@ def register_all_handlers(dispatcher: Dispatcher) -> None:
     dispatcher.register(CHAT_CANCEL, handle_chat_cancel)
     dispatcher.register(CHAT_STEER, handle_chat_steer)
     dispatcher.register(TOOLS_LIST, handle_tools_list)
+    dispatcher.register(PERMISSION_RESPOND, handle_permission_respond)

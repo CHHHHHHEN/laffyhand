@@ -8,6 +8,12 @@ export interface TurnUsage {
   reasoning: number
 }
 
+export interface PermissionRequest {
+  requestId: string
+  permission: string
+  pattern: string
+}
+
 export interface ChatState {
   messages: Message[]
   isStreaming: boolean
@@ -29,6 +35,9 @@ export interface ChatState {
   // Queue for busy_mode="queue"
   pendingQueue: string[]
 
+  // Permission request from backend
+  pendingPermission: PermissionRequest | null
+
   addUserMessage: (content: string) => void
   startStreaming: () => void
   appendContent: (text: string) => void
@@ -43,6 +52,7 @@ export interface ChatState {
   enqueueMessage: (content: string) => void
   dequeueMessage: () => string | undefined
   hasPendingMessages: () => boolean
+  setPendingPermission: (req: PermissionRequest | null) => void
 }
 
 let messageCounter = 0
@@ -68,6 +78,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
   turnUsage: null,
   _turnStartUsage: null,
   pendingQueue: [],
+  pendingPermission: null,
+
+  setPendingPermission: (req) => set({ pendingPermission: req }),
 
   addUserMessage: (content) =>
     set((state) => ({

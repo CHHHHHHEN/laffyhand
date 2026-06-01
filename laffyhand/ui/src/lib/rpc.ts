@@ -260,6 +260,10 @@ export const rpcClient = {
     return call<{ status: string; session_id: string }>("chat/steer", params)
   },
 
+  permissionRespond(requestId: string, action: "allow" | "always" | "deny"): Promise<{ status: string }> {
+    return call<{ status: string }>("permission/respond", { request_id: requestId, action })
+  },
+
   chatStream: (
     message: string,
     callbacks: ChatStreamCallbacks,

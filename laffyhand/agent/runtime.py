@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import os
 import sys
 from collections.abc import Sequence
@@ -80,6 +81,7 @@ class AgentRuntime:
         self.skill_registry = SkillRegistry()
 
         self._states: dict[str, AgentState] = {}
+        self._pending_permissions: dict[str, tuple[asyncio.Event, str, str, bool | None]] = {}
         self._session_id: str | None = None
         self._active_session_id: str | None = None
         self._task_tool: TaskTool | None = None

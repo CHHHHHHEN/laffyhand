@@ -99,12 +99,19 @@ class Compacting(BaseModel):
     type: str = "compacting"
     data: str
 
+class PermissionRequest(BaseModel):
+    type: str = "permission-request"
+    request_id: str
+    permission: str
+    pattern: str
+
 
 StreamEvent = Union[
     StepStart, TextStart, TextDelta, TextEnd,
     ReasoningStart, ReasoningDelta, ReasoningEnd,
     ToolCall, ToolResult, ToolError,
     StepFinish, Finish, ProviderError, Compacting,
+    PermissionRequest,
 ]
 
 

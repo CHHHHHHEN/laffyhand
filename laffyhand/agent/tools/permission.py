@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any, Literal
 
 from loguru import logger
@@ -15,6 +16,7 @@ Rule = Literal["allow", "deny"]
 class PermissionManager:
     def __init__(self) -> None:
         self._rules: dict[str, Rule] = {}
+        self.request_callback: Callable[[str, str], Awaitable[bool]] | None = None
 
     def allow(self, tool_name: str) -> None:
         self._rules[tool_name] = "allow"
@@ -46,6 +48,14 @@ class PermissionManager:
                 return False
             if rule == "allow":
                 logger.info(f"Permission '{permission}:{pattern}' allowed by rule")
+                continue
+            if self.request_callback is not None:
+                allowed = await self.request_callback(permission, pattern)
+                if allowed:
+                    logger.info(f"Permission '{permission}:{pattern}' allowed via callback")
+                else:
+                    logger.info(f"Permission '{permission}:{pattern}' denied via callback")
+                    return False
                 continue
             prompt = f"\nAllow {permission} '{pattern}'? [y/N/a] "
             try:
