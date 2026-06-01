@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from laffyhand.agent.schemas import (
     AgentState, AssistantMessage, CompactionConfig, StreamText, StreamReasoning,
     StreamToolCall, StreamFinish, StreamError, FinishReason,
-    ToolCallContent, ToolMessage, Usage, UserMessage, estimate_tokens,
+    SystemMessage, ToolCallContent, ToolMessage, Usage, UserMessage, estimate_tokens,
 )
 from laffyhand.agent.compaction import (
     compact, compact_with_chain, wrap_last_user, attach_reminder,
@@ -58,7 +58,7 @@ async def _compact_on_overflow(
             summary_content=summary,
             tail_messages=tail,
         )
-        summary_msg = UserMessage(content=summary.strip())
+        summary_msg = SystemMessage(content=summary.strip())
         agent_state.session_id = child.id
         agent_state.messages = original_system + [summary_msg] + tail
         agent_state.step = 0
@@ -81,7 +81,6 @@ async def agent_loop(
     session_manager: SessionManager | None = None,
     subagent_manager: SubagentManager | None = None,
 ) -> AsyncIterator[AgentEvent]:
-    messages = agent_state.messages
     context_size = agent_state.usage.context_size
     _compacted_this_step = False
 
@@ -100,19 +99,16 @@ async def agent_loop(
             break
 
         if reminder and agent_state.step == 1:
-            messages = attach_reminder(messages, reminder)
-            agent_state.messages = messages
+            agent_state.messages = attach_reminder(agent_state.messages, reminder)
 
         if agent_state.step > 1:
-            messages = wrap_last_user(messages)
-            agent_state.messages = messages
+            agent_state.messages = wrap_last_user(agent_state.messages)
 
         if agent_state.step > 1 and context_size and not _compacted_this_step:
             if await _compact_on_overflow(
                 agent_state, llm, compaction_config, session_manager,
             ):
                 _compacted_this_step = True
-                messages = agent_state.messages
                 yield AgentEvent(type="compacting", data="Compacting conversation history...")
                 continue
 
@@ -127,8 +123,7 @@ async def agent_loop(
                         f"{content}"
                     ),
                 )
-                messages.append(injected)
-                agent_state.messages = messages
+                agent_state.messages.append(injected)
                 logger.info(f"Injected subagent result: {bg.task_id[:8]}")
 
         reasoning_buf: list[str] = []
@@ -137,9 +132,9 @@ async def agent_loop(
         finish_reason: FinishReason | None = None
         usage: Usage | None = None
         tool_definitions = await tool_registry.build_tool_definitions()
-        logger.debug(f"Sending {len(messages)} messages to LLM, {len(tool_definitions)} tools")
+        logger.debug(f"Sending {len(agent_state.messages)} messages to LLM, {len(tool_definitions)} tools")
 
-        async for event in llm.stream(messages, tools=tool_definitions):
+        async for event in llm.stream(agent_state.messages, tools=tool_definitions):
             if isinstance(event, StreamReasoning):
                 reasoning_buf.append(event.delta)
                 yield AgentEvent(type="reasoning", data=event.delta)
@@ -174,7 +169,7 @@ async def agent_loop(
         if usage is None:
             logger.warning("API did not return usage, falling back to estimate_tokens")
             usage = Usage(
-                input_tokens=estimate_messages_tokens(messages),
+                input_tokens=estimate_messages_tokens(agent_state.messages),
                 output_tokens=estimate_tokens("".join(content_buf)),
             )
 
@@ -197,7 +192,7 @@ async def agent_loop(
             tool_calls=tool_calls if tool_calls else None,
             tokens=usage,
         )
-        messages.append(assistant_msg)
+        agent_state.messages.append(assistant_msg)
         agent_state.usage.add(usage)
         yield AgentEvent(type="content", data="", finish_reason=finish_reason, usage=usage)
 
@@ -205,20 +200,24 @@ async def agent_loop(
             logger.debug(f"Executing {len(tool_calls)} tool call(s)")
             for tc in tool_calls:
                 exec_result = await ToolExecutor.execute(tool_registry, tc)
-                messages.append(exec_result.message)
+                agent_state.messages.append(exec_result.message)
                 yield AgentEvent(type="tool_result", data=exec_result.event_data)
 
             # Inject pending steer into the last tool result
-            if agent_state.pending_steer and messages and isinstance(messages[-1], ToolMessage):
+            if agent_state.pending_steer and agent_state.messages and isinstance(agent_state.messages[-1], ToolMessage):
                 steer_text = agent_state.pending_steer
                 agent_state.pending_steer = None
-                messages[-1].content += f"\n\n[User steers: {steer_text}]"
+                last_tool: ToolMessage = agent_state.messages[-1]
+                steer_content = last_tool.content + f"\n\n[User steers: {steer_text}]" if last_tool.content else f"[User steers: {steer_text}]"
+                agent_state.messages[-1] = ToolMessage(
+                    tool_call_id=last_tool.tool_call_id,
+                    content=steer_content,
+                )
                 logger.debug("Injected steer text into tool result")
 
             if compaction_config.prune:
                 logger.debug("Pruning after tool calls")
-                messages = prune(messages)
-                agent_state.messages = messages
+                agent_state.messages = prune(agent_state.messages)
             if session_manager is not None and agent_state.session_id:
                 session_manager.append_messages(agent_state.session_id, agent_state.messages)
             continue
@@ -230,11 +229,9 @@ async def agent_loop(
                 agent_state, llm, compaction_config, session_manager,
             ):
                 _compacted_this_step = True
-                messages = agent_state.messages
                 yield AgentEvent(type="compacting", data="Compacting conversation history...")
                 if compaction_config.auto_continue:
-                    agent_state.messages = messages
-                    messages.append(UserMessage(
+                    agent_state.messages.append(UserMessage(
                         content="Continue if you have next steps, or stop and ask for clarification if you are unsure how to proceed.",
                     ))
                     yield AgentEvent(type="compacting", data="Continuing after compaction...")

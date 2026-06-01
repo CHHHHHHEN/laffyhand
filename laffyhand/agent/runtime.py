@@ -280,7 +280,7 @@ class AgentRuntime:
         agent_info: AgentInfo,
         prompt: str,
     ) -> str:
-        _, child_state, child_registry = build_subagent_state(
+        child_state, child_registry = build_subagent_state(
             self.session_manager,
             parent_session_id,
             agent_info,

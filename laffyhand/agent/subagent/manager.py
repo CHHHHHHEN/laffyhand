@@ -52,10 +52,10 @@ def build_subagent_state(
     prompt: str,
     parent_permission: PermissionManager,
     tool_registry: ToolRegistry,
-) -> tuple[SessionManager, AgentState, ToolRegistry]:
+) -> tuple[AgentState, ToolRegistry]:
     """Common sub-agent bootstrap — create child session, compose permissions, build AgentState.
 
-    Returns (session_manager, child_state, child_registry) for use by
+    Returns (child_state, child_registry) for use by
     both foreground (_run_foreground) and background (spawn) paths.
     """
     child_session = session_manager.create_child(
@@ -82,7 +82,7 @@ def build_subagent_state(
         session_id=child_session.id,
         usage=SessionUsage(context_size=0),
     )
-    return session_manager, child_state, child_registry
+    return child_state, child_registry
 
 
 class SubagentManager:
@@ -107,7 +107,7 @@ class SubagentManager:
         compaction_config: CompactionConfig | None = None,
     ) -> str:
         task_id = uuid.uuid4().hex[:12]
-        _, child_state, child_registry = build_subagent_state(
+        child_state, child_registry = build_subagent_state(
             session_manager, parent_session_id, agent_info, prompt,
             parent_permission, tool_registry,
         )

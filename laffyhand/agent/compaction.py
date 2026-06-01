@@ -193,21 +193,32 @@ async def _summarize(llm: LLM, head: Sequence[Message], tool_truncate: int = 500
     return "".join(text_parts) if text_parts else None
 
 
-async def compact(agent_state: AgentState, llm: LLM, config: CompactionConfig) -> bool:
-    head, tail = select_tail(
-        agent_state.messages, config, agent_state.usage.context_size,
-    )
+def _select_compaction_targets(
+    messages: list[Message], config: CompactionConfig, context_size: int,
+) -> tuple[list[Message], list[SystemMessage], list[Message]] | None:
+    head, tail = select_tail(messages, config, context_size)
     if not head:
         logger.info("No messages to compact")
-        return False
+        return None
 
-    original_system = [m for m in head if isinstance(m, SystemMessage)]
-    head_to_summarize = [m for m in head if not isinstance(m, SystemMessage)]
+    original_system: list[SystemMessage] = [m for m in head if isinstance(m, SystemMessage)]
+    head_to_summarize: list[Message] = [m for m in head if not isinstance(m, SystemMessage)]
 
     if not head_to_summarize:
         logger.info("Only system messages in head, nothing to compact")
+        return None
+
+    return head_to_summarize, original_system, tail
+
+
+async def compact(agent_state: AgentState, llm: LLM, config: CompactionConfig) -> bool:
+    targets = _select_compaction_targets(
+        agent_state.messages, config, agent_state.usage.context_size,
+    )
+    if targets is None:
         return False
 
+    head_to_summarize, original_system, tail = targets
     logger.info(f"Compacting {len(head_to_summarize)} messages into summary, keeping {len(tail)} messages verbatim")
 
     summary = await _summarize(llm, head_to_summarize, tool_truncate=config.summary_tool_truncate)
@@ -215,7 +226,7 @@ async def compact(agent_state: AgentState, llm: LLM, config: CompactionConfig) -
         logger.warning("Compaction failed: no summary generated")
         return False
 
-    summary_msg = UserMessage(content=summary.strip())
+    summary_msg = SystemMessage(content=summary.strip())
     agent_state.messages = original_system + [summary_msg] + tail
     logger.info(f"Compaction complete: {len(head_to_summarize)} messages -> 1 summary message")
     return True
@@ -226,20 +237,13 @@ async def compact_with_chain(
     llm: LLM,
     config: CompactionConfig,
 ) -> tuple[str, list[SystemMessage], list[Message]] | None:
-    head, tail = select_tail(
+    targets = _select_compaction_targets(
         agent_state.messages, config, agent_state.usage.context_size,
     )
-    if not head:
-        logger.info("No messages to compact")
+    if targets is None:
         return None
 
-    original_system = [m for m in head if isinstance(m, SystemMessage)]
-    head_to_summarize = [m for m in head if not isinstance(m, SystemMessage)]
-
-    if not head_to_summarize:
-        logger.info("Only system messages in head, nothing to compact")
-        return None
-
+    head_to_summarize, original_system, tail = targets
     logger.info(
         f"Chain-compacting {len(head_to_summarize)} messages into summary, "
         f"keeping {len(tail)} messages verbatim"
