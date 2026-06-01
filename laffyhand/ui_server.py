@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import os
 import sys
-import webbrowser
 from pathlib import Path
 from typing import Any, TYPE_CHECKING
 
@@ -54,7 +53,6 @@ async def run_ui_server(
     runtime: AgentRuntime,
     host: str = "127.0.0.1",
     port: int = 9090,
-    open_browser: bool = True,
 ) -> None:
     import aiohttp.web
 
@@ -96,10 +94,7 @@ async def run_ui_server(
     await site.start()
 
     url = f"http://{host}:{port}"
-    logger.info(f"Laffyhand UI running on {url}")
-
-    if open_browser:
-        webbrowser.open(url)
+    logger.info(f"Laffyhand UI running at {url} — open this URL in your browser")
 
     try:
         await asyncio.Event().wait()
