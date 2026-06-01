@@ -15,11 +15,16 @@ export function ChatPage() {
 
   if (!sessionId) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center text-gray-500 dark:text-gray-400 space-y-4">
-        <svg className="w-16 h-16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-        </svg>
-        <p className="text-lg">Select or create a session to start</p>
+      <div className="flex-1 flex flex-col items-center justify-center text-gray-500 dark:text-gray-400 space-y-4 animate-[fade-in_0.3s_ease-out]">
+        <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-blue-900/20 dark:to-indigo-900/20 flex items-center justify-center">
+          <svg className="w-8 h-8 text-blue-400 dark:text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+          </svg>
+        </div>
+        <div className="text-center">
+          <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Select or create a session to start</p>
+          <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Use the sidebar or press Ctrl+K to search</p>
+        </div>
       </div>
     )
   }

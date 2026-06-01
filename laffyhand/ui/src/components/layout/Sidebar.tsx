@@ -89,7 +89,8 @@ export function Sidebar() {
           onClick={handleNewSession}
           disabled={isCreating}
           size="sm"
-          className="w-full"
+          variant="primary"
+          className="w-full font-medium shadow-sm"
         >
           {isCreating ? "Creating..." : "+ New Session"}
         </Button>
@@ -160,7 +161,7 @@ export function Sidebar() {
                 onClick={() => navigate(`/chat/${s.id}`)}
                 className={`w-full text-left px-3 py-2.5 rounded-lg text-sm transition-all duration-150 cursor-pointer ${
                   isActive
-                    ? "bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 shadow-sm"
+                    ? "bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 shadow-sm border-l-2 border-blue-500 dark:border-blue-400"
                     : "text-gray-700 dark:text-gray-300 hover:bg-gray-200/70 dark:hover:bg-gray-800/70 hover:translate-x-0.5"
                 }`}
               >

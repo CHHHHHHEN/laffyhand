@@ -131,7 +131,7 @@ export function MessageBubble({ message, onResolvePermission }: MessageBubblePro
       {/* 消息内容 */}
       <div className={`max-w-[75%] min-w-0 ${isUser ? "items-end" : "items-start"}`}>
         {isUser ? (
-          <div className="bg-blue-600 text-white rounded-2xl rounded-tr-md px-4 py-2.5 shadow-sm">
+          <div className="bg-blue-500 text-white rounded-2xl rounded-tr-md px-4 py-2.5 shadow-sm">
             <p className="whitespace-pre-wrap text-sm leading-relaxed">{message.content}</p>
           </div>
         ) : (
