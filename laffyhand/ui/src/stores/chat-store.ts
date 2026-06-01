@@ -1,5 +1,5 @@
 import { create } from "zustand"
-import type { Message, ToolCall, ToolResult, PermissionInfo, ActiveSubagent } from "@/types/session"
+import type { Message, ToolCall, ToolCallStatus, PermissionInfo, ActiveSubagent } from "@/types/session"
 import type { SessionUsage } from "@/types/rpc"
 
 export interface TurnUsage {
@@ -14,7 +14,6 @@ export interface ChatState {
   streamContent: string
   streamReasoning: string
   streamToolCalls: ToolCall[]
-  streamToolResults: ToolResult[]
   currentAssistantMessageId: string | null
   error: string | null
 
@@ -38,7 +37,7 @@ export interface ChatState {
   appendContent: (text: string) => void
   setReasoning: (text: string) => void
   addToolCall: (toolCall: ToolCall) => void
-  addToolResult: (toolResult: ToolResult) => void
+  updateToolCallStatus: (id: string, status: ToolCallStatus, result?: string, isError?: boolean) => void
   finalizeMessage: (usage?: { inputTokens: number; outputTokens: number }, sessionUsage?: SessionUsage | null) => void
   setError: (error: string) => void
   clearMessages: () => void
@@ -70,7 +69,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
   streamContent: "",
   streamReasoning: "",
   streamToolCalls: [],
-  streamToolResults: [],
   currentAssistantMessageId: null,
   error: null,
   model: "",
@@ -126,7 +124,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
       streamContent: "",
       streamReasoning: "",
       streamToolCalls: [],
-      streamToolResults: [],
       currentAssistantMessageId: id,
       error: null,
       _turnStartUsage: sessionUsage,
@@ -145,12 +142,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   addToolCall: (toolCall) =>
     set((state) => ({
-      streamToolCalls: [...state.streamToolCalls, toolCall],
+      streamToolCalls: [...state.streamToolCalls, { ...toolCall, status: "running" as const }],
     })),
 
-  addToolResult: (toolResult) =>
+  updateToolCallStatus: (id, status, result, isError) =>
     set((state) => ({
-      streamToolResults: [...state.streamToolResults, toolResult],
+      streamToolCalls: state.streamToolCalls.map((tc) =>
+        tc.id === id ? { ...tc, status, ...(result !== undefined ? { result } : {}), ...(isError !== undefined ? { isError } : {}) } : tc,
+      ),
     })),
 
   finalizeMessage: (usage, sessionUsage) =>
@@ -159,19 +158,20 @@ export const useChatStore = create<ChatState>((set, get) => ({
       const content = state.streamContent || state.streamReasoning || ""
       const reasoning = state.streamContent ? (state.streamReasoning || undefined) : undefined
 
+      // Finalize tool calls — set any still-running to "completed"
+      const finalizedToolCalls = state.streamToolCalls.length > 0
+        ? state.streamToolCalls.map((tc) => ({
+            ...tc,
+            status: tc.status === "running" ? "completed" as const : tc.status,
+          }))
+        : undefined
+
       const assistantMessage: Message = {
         id: state.currentAssistantMessageId ?? nextMessageId(),
         role: "assistant",
         content,
         reasoning,
-        toolCalls:
-          state.streamToolCalls.length > 0
-            ? state.streamToolCalls
-            : undefined,
-        toolResults:
-          state.streamToolResults.length > 0
-            ? state.streamToolResults
-            : undefined,
+        toolCalls: finalizedToolCalls as Message["toolCalls"],
         finishReason: "stop",
         usage,
         createdAt: Date.now(),
@@ -193,7 +193,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
         streamContent: "",
         streamReasoning: "",
         streamToolCalls: [],
-        streamToolResults: [],
         currentAssistantMessageId: null,
         foregroundSubagents: [],
         sessionUsage: sessionUsage ?? state.sessionUsage,
@@ -212,7 +211,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
       streamContent: "",
       streamReasoning: "",
       streamToolCalls: [],
-      streamToolResults: [],
       currentAssistantMessageId: null,
       foregroundSubagents: [],
       backgroundSubagents: [],
@@ -228,7 +226,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
       streamContent: "",
       streamReasoning: "",
       streamToolCalls: [],
-      streamToolResults: [],
       currentAssistantMessageId: null,
       error: null,
       turnUsage: null,

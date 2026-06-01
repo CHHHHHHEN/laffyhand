@@ -111,20 +111,10 @@ export function useChat() {
                   break
                 }
                 case "tool-result":
-                  store.addToolResult({
-                    id: event.id,
-                    name: event.name,
-                    result: event.result,
-                    isError: event.error,
-                  })
+                  store.updateToolCallStatus(event.id, "completed", event.result)
                   break
                 case "tool-error":
-                  store.addToolResult({
-                    id: event.id,
-                    name: event.name,
-                    result: event.message,
-                    isError: true,
-                  })
+                  store.updateToolCallStatus(event.id, "error", event.message, true)
                   break
                 case "step-finish":
                   if (event.reason === "tool_calls") {

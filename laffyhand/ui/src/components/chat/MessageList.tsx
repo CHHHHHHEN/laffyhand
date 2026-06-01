@@ -12,7 +12,6 @@ export function MessageList() {
   const streamContent = useChatStore((s) => s.streamContent)
   const streamReasoning = useChatStore((s) => s.streamReasoning)
   const streamToolCalls = useChatStore((s) => s.streamToolCalls)
-  const streamToolResults = useChatStore((s) => s.streamToolResults)
   const foregroundSubagents = useChatStore((s) => s.foregroundSubagents)
   const error = useChatStore((s) => s.error)
   const resolvePermissionRequest = useChatStore((s) => s.resolvePermissionRequest)
@@ -40,7 +39,7 @@ export function MessageList() {
     if (isNearBottom) {
       bottomRef.current?.scrollIntoView({ behavior: "smooth" })
     }
-  }, [messages, streamContent, streamReasoning, streamToolCalls, streamToolResults, isNearBottom])
+  }, [messages, streamContent, streamReasoning, streamToolCalls, isNearBottom])
 
   // Scroll to bottom button
   const scrollToBottom = () => {
@@ -123,37 +122,6 @@ export function MessageList() {
                   </div>
                   {streamToolCalls.map((tc) => (
                     <ToolCallCard key={tc.id} toolCall={tc} />
-                  ))}
-                </div>
-              )}
-
-              {/* 流式工具调用结果 */}
-              {streamToolResults.length > 0 && (
-                <div className="mt-3 space-y-1.5">
-                  <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500 font-medium">
-                    <span>Tool results</span>
-                    <span className="text-gray-300 dark:text-gray-600">·</span>
-                    <span>{streamToolResults.length}</span>
-                  </div>
-                  {streamToolResults.map((tr, i) => (
-                    <div
-                      key={tr.id || i}
-                      className={`rounded-lg px-3 py-2 text-[11px] font-mono border ${
-                        tr.isError
-                          ? "bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-800/40"
-                          : "bg-gray-50 dark:bg-gray-800/80 border-gray-200 dark:border-gray-700"
-                      }`}
-                    >
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className={`font-semibold text-[10px] ${tr.isError ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400"}`}>
-                          {tr.isError ? "✕" : "✓"} {tr.name}
-                        </span>
-                        <span className="text-gray-400 dark:text-gray-500">{tr.id.slice(0, 8)}</span>
-                      </div>
-                      <pre className="text-gray-600 dark:text-gray-300 whitespace-pre-wrap break-all leading-relaxed max-h-32 overflow-y-auto">
-                        {tr.result?.length > 500 ? tr.result.slice(0, 500) + '...' : tr.result}
-                      </pre>
-                    </div>
                   ))}
                 </div>
               )}

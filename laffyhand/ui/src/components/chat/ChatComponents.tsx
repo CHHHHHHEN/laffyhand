@@ -82,44 +82,167 @@ export function ReasoningBlock({ text }: { text: string }) {
   )
 }
 
-/** 工具调用卡片 */
+/** 状态指示器圆点 */
+function StatusDot({ status }: { status: ToolCall["status"] }) {
+  switch (status) {
+    case "running":
+      return (
+        <span className="relative flex h-3 w-3 shrink-0">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
+          <span className="relative inline-flex rounded-full h-3 w-3 bg-blue-500" />
+        </span>
+      )
+    case "completed":
+      return <span className="w-3 h-3 shrink-0 rounded-full bg-green-500 flex items-center justify-center">
+        <svg className="w-2 h-2 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+        </svg>
+      </span>
+    case "error":
+      return <span className="w-3 h-3 shrink-0 rounded-full bg-red-500 flex items-center justify-center">
+        <svg className="w-2 h-2 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </span>
+    default:
+      return <span className="w-3 h-3 shrink-0 rounded-full bg-gray-300 dark:bg-gray-600" />
+  }
+}
+
+/** 工具调用卡片：支持流式状态 + 可展开结果 */
 export function ToolCallCard({ toolCall }: { toolCall: ToolCall }) {
   const argStr = JSON.stringify(toolCall.arguments, null, 2)
-  const argLines = argStr.split('\n').length
-  const [showAll, setShowAll] = useState(argLines <= 6)
+  const displayInput = argStr
+  const argLines = displayInput.split('\n').length
+  const [showAllArgs, setShowAllArgs] = useState(argLines <= 6)
+
+  // Result expand/collapse
+  const hasResult = toolCall.status === "completed" || toolCall.status === "error"
+  const [resultExpanded, setResultExpanded] = useState(false)
+  const [resultShowAll, setResultShowAll] = useState(false)
+
+  // Border color by status
+  const borderColor = toolCall.status === "error"
+    ? "border-red-300 dark:border-red-700"
+    : toolCall.status === "completed"
+      ? "border-green-200 dark:border-green-700"
+      : toolCall.status === "running"
+        ? "border-blue-300 dark:border-blue-600 animate-pulse"
+        : "border-gray-200 dark:border-gray-700"
+
+  const bgColor = toolCall.status === "error"
+    ? "bg-red-50/50 dark:bg-red-900/10"
+    : toolCall.status === "completed"
+      ? "bg-green-50/50 dark:bg-green-900/10"
+      : toolCall.status === "running"
+        ? "bg-blue-50/60 dark:bg-blue-900/15"
+        : "bg-gray-50 dark:bg-gray-800/80"
 
   return (
-    <div className="bg-gray-50 dark:bg-gray-800/80 rounded-lg px-3 py-2 text-xs font-mono border border-gray-200 dark:border-gray-700 transition-all duration-150 hover:border-blue-300 dark:hover:border-blue-700 hover:shadow-sm">
+    <div className={`rounded-lg px-3 py-2 text-xs font-mono border transition-all duration-150 ${borderColor} ${bgColor}`}>
+      {/* Header: status + name + id */}
       <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5 min-w-0">
-          <svg className="w-3 h-3 shrink-0 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-          </svg>
-          <span className="font-semibold text-blue-600 dark:text-blue-400 truncate">
+        <div className="flex items-center gap-2 min-w-0">
+          <StatusDot status={toolCall.status || "pending"} />
+          <span className="font-semibold text-gray-700 dark:text-gray-200 truncate">
             {toolCall.name}
           </span>
+          <span className="text-gray-400 dark:text-gray-500 text-[10px]">
+            {toolCall.id?.slice(0, 6)}
+          </span>
+          {/* Status label badge */}
+          {toolCall.status === "error" && (
+            <span className="text-[9px] px-1 py-0.5 rounded bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 font-medium">
+              failed
+            </span>
+          )}
+          {toolCall.status === "completed" && (
+            <span className="text-[9px] px-1 py-0.5 rounded bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 font-medium">
+              done
+            </span>
+          )}
         </div>
-        <span className="shrink-0 text-gray-400 dark:text-gray-500">
-          {toolCall.id.slice(0, 6)}
-        </span>
       </div>
-      {showAll ? (
-        <pre className="mt-1.5 text-gray-600 dark:text-gray-300 whitespace-pre-wrap break-all leading-relaxed">
-          {argStr}
-        </pre>
-      ) : (
-        <pre className="mt-1.5 text-gray-600 dark:text-gray-300 whitespace-pre-wrap break-all leading-relaxed line-clamp-3">
-          {argStr}
-        </pre>
+
+      {/* Arguments area */}
+      {displayInput && (
+        <>
+          {showAllArgs ? (
+            <pre className="mt-1.5 text-gray-600 dark:text-gray-300 whitespace-pre-wrap break-all leading-relaxed">
+              {displayInput}
+            </pre>
+          ) : (
+            <pre className="mt-1.5 text-gray-600 dark:text-gray-300 whitespace-pre-wrap break-all leading-relaxed line-clamp-3">
+              {displayInput}
+            </pre>
+          )}
+          {argLines > 6 && (
+            <button
+              onClick={() => setShowAllArgs(!showAllArgs)}
+              className="mt-1 text-[10px] text-blue-500 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors cursor-pointer font-sans"
+            >
+              {showAllArgs ? "Show less" : `Show all (${argLines} lines)`}
+            </button>
+          )}
+        </>
       )}
-      {argLines > 6 && (
-        <button
-          onClick={() => setShowAll(!showAll)}
-          className="mt-1 text-[10px] text-blue-500 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors cursor-pointer font-sans"
-        >
-          {showAll ? "Show less" : `Show all (${argLines} lines)`}
-        </button>
+
+      {/* Result area (only for completed/error tool calls) */}
+      {hasResult && toolCall.result && (
+        <div className="mt-2 pt-2 border-t border-dashed border-gray-200 dark:border-gray-700">
+          <button
+            onClick={() => {
+              setResultExpanded(!resultExpanded)
+              setResultShowAll(false)
+            }}
+            className="flex items-center gap-1 text-[10px] text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 transition-colors cursor-pointer font-sans"
+          >
+            <svg
+              className={`w-2.5 h-2.5 transition-transform duration-150 ${resultExpanded ? "rotate-90" : ""}`}
+              fill="none" stroke="currentColor" viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+            <span className={toolCall.isError ? "text-red-500" : "text-green-600 dark:text-green-400"}>
+              {toolCall.isError ? "Error" : "Result"}
+            </span>
+            {!resultExpanded && (
+              <span className="text-gray-400 dark:text-gray-500 truncate max-w-[200px]">
+                — {toolCall.result.length > 60 ? toolCall.result.slice(0, 60) + "..." : toolCall.result}
+              </span>
+            )}
+          </button>
+          {resultExpanded && (
+            <div className="relative mt-1">
+              <pre
+                className={`text-[11px] text-gray-600 dark:text-gray-300 whitespace-pre-wrap break-all leading-relaxed bg-white/50 dark:bg-gray-900/30 rounded px-2 py-1.5 border border-gray-100 dark:border-gray-700/50 ${
+                  !resultShowAll ? "max-h-40 overflow-hidden" : ""
+                }`}
+              >
+                {toolCall.result}
+              </pre>
+              {!resultShowAll && toolCall.result.length > 1000 && (
+                <>
+                  <div className="absolute bottom-0 left-0 right-0 h-6 bg-gradient-to-t from-white/80 dark:from-gray-900/80 to-transparent pointer-events-none" />
+                  <button
+                    onClick={() => setResultShowAll(true)}
+                    className="w-full text-[10px] py-0.5 text-blue-500 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors cursor-pointer font-sans"
+                  >
+                    Show full result ({toolCall.result.length} chars)
+                  </button>
+                </>
+              )}
+              {resultShowAll && toolCall.result.length > 1000 && (
+                <button
+                  onClick={() => setResultShowAll(false)}
+                  className="w-full text-[10px] py-0.5 text-blue-500 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors cursor-pointer font-sans"
+                >
+                  Show less
+                </button>
+              )}
+            </div>
+          )}
+        </div>
       )}
     </div>
   )

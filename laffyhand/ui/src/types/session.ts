@@ -40,23 +40,20 @@ export interface Message {
   content: string
   reasoning?: string
   toolCalls?: ToolCall[]
-  toolResults?: ToolResult[]
   finishReason?: string
   usage?: { inputTokens: number; outputTokens: number }
   permissionInfo?: PermissionInfo
   createdAt: number
 }
 
+export type ToolCallStatus = "pending" | "running" | "completed" | "error"
+
 export interface ToolCall {
   id: string
   name: string
   arguments: Record<string, unknown>
-}
-
-export interface ToolResult {
-  id: string
-  name: string
-  result: string
+  status?: ToolCallStatus
+  result?: string
   isError?: boolean
 }
 
@@ -85,10 +82,9 @@ export interface ActiveSubagent {
 }
 
 export interface StreamChunk {
-  type: "reasoning" | "content" | "tool_calls" | "tool_result" | "finish" | "error"
+  type: "reasoning" | "content" | "tool_calls" | "finish" | "error"
   text: string
   finishReason?: string
   usage?: { inputTokens: number; outputTokens: number }
   toolCalls?: ToolCall[]
-  toolResults?: ToolResult[]
 }
