@@ -299,7 +299,7 @@ async def handle_chat(
     logger.debug(
         f"Chat finished (id={request_id}, conn={conn_id}, finish={finish_reason})"
     )
-    runtime._schedule_title_generation(session_id, "auto")
+    await runtime._generate_title(session_id, "auto")
     return {
         "content": last_content,
         "finish_reason": finish_reason,
@@ -361,11 +361,18 @@ async def handle_chat_stream(
                 logger.info(
                     f"Chat stream cancelled for session {session_id} (conn={conn_id})"
                 )
+                err_notif = Notification(
+                    method="event",
+                    params={
+                        "type": "error",
+                        "data": "Stream cancelled",
+                    },
+                )
+                await transport.send(err_notif.json())
             except Exception:
                 logger.exception(
                     f"Chat stream error for session {session_id} (conn={conn_id})"
                 )
-            try:
                 err_notif = Notification(
                     method="event",
                     params={
@@ -373,14 +380,15 @@ async def handle_chat_stream(
                         "data": "Internal error during streaming",
                     },
                 )
-                await transport.send(err_notif.json())
-            except Exception:
-                logger.warning("Failed to send error event to client in chat stream")
+                try:
+                    await transport.send(err_notif.json())
+                except Exception:
+                    logger.warning("Failed to send error event to client in chat stream")
 
-        # Non-blocking title generation
+        # Generate title synchronously before finish event
         state = runtime.get_state(session_id)
         actual_sid = state.session_id if (state and state.session_id) else session_id
-        runtime._schedule_title_generation(actual_sid, "auto")
+        await runtime._generate_title(actual_sid, "auto")
 
         # Check for leftover steer that wasn't consumed by tool batch
         leftover_steer: str | None = None

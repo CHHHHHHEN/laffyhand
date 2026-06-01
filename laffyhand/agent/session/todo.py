@@ -96,25 +96,31 @@ class TodoManager:
         if depends_on:
             self._validate_depends(depends_on, existing, task_id=item.id)
         now = _utcnow()
-        self._conn.execute(
-            """INSERT INTO todo
-               (id, session_id, content, status, priority, depends_on,
-                created_at, updated_at, completed_at, task_tool_id, metadata)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
-                item.id,
-                item.session_id,
-                item.content,
-                item.status,
-                item.priority,
-                _serialize_json(item.depends_on),
-                _ts(now),
-                _ts(now),
-                None,
-                None,
-                _serialize_json(item.metadata),
-            ),
-        )
+        try:
+            self._conn.execute(
+                """INSERT INTO todo
+                   (id, session_id, content, status, priority, depends_on,
+                    created_at, updated_at, completed_at, task_tool_id, metadata)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    item.id,
+                    item.session_id,
+                    item.content,
+                    item.status,
+                    item.priority,
+                    _serialize_json(item.depends_on),
+                    _ts(now),
+                    _ts(now),
+                    None,
+                    None,
+                    _serialize_json(item.metadata),
+                ),
+            )
+        except sqlite3.IntegrityError as e:
+            raise ValueError(
+                f"Session '{session_id}' does not exist. "
+                "Cannot add todo task without a valid session."
+            ) from e
         self._conn.commit()
         return item
 
@@ -148,25 +154,31 @@ class TodoManager:
             else:
                 item.depends_on = []
             now = _utcnow()
-            self._conn.execute(
-                """INSERT INTO todo
-                   (id, session_id, content, status, priority, depends_on,
-                    created_at, updated_at, completed_at, task_tool_id, metadata)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (
-                    item.id,
-                    item.session_id,
-                    item.content,
-                    item.status,
-                    item.priority,
-                    _serialize_json(item.depends_on),
-                    _ts(now),
-                    _ts(now),
-                    None,
-                    None,
-                    _serialize_json(item.metadata),
-                ),
-            )
+            try:
+                self._conn.execute(
+                    """INSERT INTO todo
+                       (id, session_id, content, status, priority, depends_on,
+                        created_at, updated_at, completed_at, task_tool_id, metadata)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        item.id,
+                        item.session_id,
+                        item.content,
+                        item.status,
+                        item.priority,
+                        _serialize_json(item.depends_on),
+                        _ts(now),
+                        _ts(now),
+                        None,
+                        None,
+                        _serialize_json(item.metadata),
+                    ),
+                )
+            except sqlite3.IntegrityError as e:
+                raise ValueError(
+                    f"Session '{session_id}' does not exist. "
+                    "Cannot add todo tasks without a valid session."
+                ) from e
             ids.append(item.id)
             existing = self.get_tasks(session_id)
             existing_ids = {t.id for t in existing}

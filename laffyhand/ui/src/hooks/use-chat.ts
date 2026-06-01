@@ -1,12 +1,25 @@
-import { useCallback, useRef } from "react"
+import { useCallback, useEffect, useRef } from "react"
 import { useParams } from "react-router-dom"
+import { useQueryClient } from "@tanstack/react-query"
 import { rpcClient } from "@/lib/rpc"
 import { useChatStore } from "@/stores/chat-store"
 
 export function useChat() {
+  const queryClient = useQueryClient()
   const abortRef = useRef<AbortController | null>(null)
   const leftoverSteerRef = useRef<string | null>(null)
   const { sessionId: urlSessionId } = useParams()
+
+  // Refresh session list when streaming ends (title was already generated on backend)
+  const isStreaming = useChatStore((s) => s.isStreaming)
+  const prevStreamingRef = useRef(isStreaming)
+  useEffect(() => {
+    const wasStreaming = prevStreamingRef.current
+    prevStreamingRef.current = isStreaming
+    if (wasStreaming && !isStreaming) {
+      queryClient.invalidateQueries({ queryKey: ["sessions"] })
+    }
+  }, [isStreaming, queryClient])
 
   const _cancelAndFinalize = useCallback(async () => {
     if (abortRef.current) {

@@ -362,8 +362,11 @@ async def agent_loop(
 
         if finish_reason == "tool_calls" and tool_calls:
             logger.debug(f"Executing {len(tool_calls)} tool call(s)")
+            exec_context = {"session_id": agent_state.session_id}
             for tc in tool_calls:
-                exec_result = await ToolExecutor.execute(tool_registry, tc)
+                exec_result = await ToolExecutor.execute(
+                    tool_registry, tc, context=exec_context,
+                )
                 agent_state.messages.append(exec_result.message)
                 if exec_result.is_error:
                     yield ToolError(

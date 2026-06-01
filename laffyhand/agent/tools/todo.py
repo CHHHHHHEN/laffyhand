@@ -70,10 +70,6 @@ class TodoTool(BaseTool):
                     },
                     "description": "List of tasks for plan operation",
                 },
-                "session_id": {
-                    "type": "string",
-                    "description": "Session ID (default: current session)",
-                },
             },
             "required": ["operation"],
         }
@@ -82,7 +78,7 @@ class TodoTool(BaseTool):
         op = params["operation"]
         session_id = params.get("session_id") or ""
         if not session_id:
-            return "Error: session_id is required"
+            return "Error: session_id is required (runtime did not inject it)"
 
         if op == "read":
             status = params.get("status")
@@ -111,7 +107,10 @@ class TodoTool(BaseTool):
                 )
                 for t in raw_tasks
             ]
-            results = self._todo_manager.add_tasks(session_id, creates)
+            try:
+                results = self._todo_manager.add_tasks(session_id, creates)
+            except ValueError as e:
+                return f"Error: {e}"
             summary = ", ".join(
                 f"#{t.id[:8]} [{t.status}] {t.content}" for t in results
             )
@@ -121,12 +120,15 @@ class TodoTool(BaseTool):
             content = params.get("content")
             if not content:
                 return "Error: content is required for add"
-            item = self._todo_manager.add_task(
-                session_id,
-                content=content,
-                priority=params.get("priority", "medium"),
-                depends_on=params.get("depends_on"),
-            )
+            try:
+                item = self._todo_manager.add_task(
+                    session_id,
+                    content=content,
+                    priority=params.get("priority", "medium"),
+                    depends_on=params.get("depends_on"),
+                )
+            except ValueError as e:
+                return f"Error: {e}"
             return f"Added todo #{item.id[:8]}: {item.content}"
 
         if op == "update":

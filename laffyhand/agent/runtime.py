@@ -534,17 +534,30 @@ class AgentRuntime:
             self.title_config,
         )
 
-    def _schedule_title_generation(self, session_id: str, trigger: str) -> None:
+    def _should_generate_title(self, session_id: str, trigger: str) -> bool:
+        """Check if title generation should proceed based on mode, trigger, and session state."""
         if self.title_config.mode == "off":
-            return
+            return False
         if self.title_config.mode != trigger:
-            return
+            return False
         session = self.session_manager.get(session_id)
-        if session is None or session.title:
+        return session is not None and not session.title
+
+    def _schedule_title_generation(self, session_id: str, trigger: str) -> None:
+        """Fire-and-forget title generation for background triggers (on_create, on_compact)."""
+        if not self._should_generate_title(session_id, trigger):
             return
         asyncio.create_task(self._do_generate_title(session_id))
 
-    async def _do_generate_title(self, session_id: str) -> None:
+    async def _generate_title(self, session_id: str, trigger: str) -> bool:
+        """Synchronously generate and save title. Returns True if title was generated."""
+        if not self._should_generate_title(session_id, trigger):
+            return False
+        title = await self._do_generate_title(session_id)
+        return bool(title)
+
+    async def _do_generate_title(self, session_id: str) -> str | None:
+        """Call LLM to generate a title and save to DB. Returns the title or None."""
         try:
             from laffyhand.agent.title import generate_title
 
@@ -557,8 +570,10 @@ class AgentRuntime:
             )
             if title:
                 logger.info(f"Auto-generated title for session {session_id}: {title}")
+            return title
         except Exception:
             logger.exception(f"Title generation failed for session {session_id}")
+            return None
 
     def interrupt_session(self, session_id: str) -> bool:
         state = self._states.get(session_id)

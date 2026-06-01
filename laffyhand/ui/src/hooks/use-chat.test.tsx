@@ -1,13 +1,26 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { renderHook, act } from "@testing-library/react"
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { useChat } from "./use-chat"
 import { useChatStore, resetMessageCounter } from "@/stores/chat-store"
 import type { StreamEvent } from "@/types/rpc"
+import type { ReactNode } from "react"
 
 // Mock react-router-dom
 vi.mock("react-router-dom", () => ({
   useParams: () => ({ sessionId: "sess-test" }),
 }))
+
+function createWrapper() {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  })
+  return function Wrapper({ children }: { children: ReactNode }) {
+    return (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    )
+  }
+}
 
 // Mock rpcClient
 const mockChatStream = vi.fn()
@@ -63,7 +76,7 @@ describe("useChat", () => {
       },
     )
 
-    const { result } = renderHook(() => useChat())
+    const { result } = renderHook(() => useChat(), { wrapper: createWrapper() })
 
     await act(async () => {
       await result.current.sendMessage("hi")
@@ -77,7 +90,7 @@ describe("useChat", () => {
   })
 
   it("does not send empty messages", async () => {
-    const { result } = renderHook(() => useChat())
+    const { result } = renderHook(() => useChat(), { wrapper: createWrapper() })
 
     await act(async () => {
       await result.current.sendMessage("  ")
@@ -89,7 +102,7 @@ describe("useChat", () => {
   it("does not send when already streaming", async () => {
     useChatStore.setState({ isStreaming: true })
 
-    const { result } = renderHook(() => useChat())
+    const { result } = renderHook(() => useChat(), { wrapper: createWrapper() })
 
     await act(async () => {
       await result.current.sendMessage("hello")
@@ -101,7 +114,7 @@ describe("useChat", () => {
   it("sets error on stream failure", async () => {
     mockChatStream.mockRejectedValue(new Error("Network error"))
 
-    const { result } = renderHook(() => useChat())
+    const { result } = renderHook(() => useChat(), { wrapper: createWrapper() })
 
     await act(async () => {
       await result.current.sendMessage("hello")
@@ -134,7 +147,7 @@ describe("useChat", () => {
       },
     )
 
-    const { result } = renderHook(() => useChat())
+    const { result } = renderHook(() => useChat(), { wrapper: createWrapper() })
 
     // Start sending
     await act(async () => {
@@ -162,7 +175,7 @@ describe("useChat", () => {
       },
     )
 
-    const { result } = renderHook(() => useChat())
+    const { result } = renderHook(() => useChat(), { wrapper: createWrapper() })
 
     await act(async () => {
       // Don't await - it won't resolve
