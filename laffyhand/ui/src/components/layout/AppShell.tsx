@@ -37,6 +37,8 @@ export function AppShell() {
     ? sessionUsage.total_input + sessionUsage.total_output
     : 0
   const ctxSize = sessionUsage?.context_size ?? 0
+  // contextTokens = 最后一次请求的输入 Token（即当前上下文的实际大小）
+  const contextTokens = turnUsage?.input ?? 0
 
   return (
     <div className="flex h-full overflow-hidden transition-colors duration-200">
@@ -92,26 +94,26 @@ export function AppShell() {
                     <span className="font-medium">{formatTokens(turnUsage.input + turnUsage.output)}</span>
                     <span className="text-gray-400 dark:text-gray-500">/ {formatTokens(totalTokens)}</span>
                     <span className="text-gray-300 dark:text-gray-500">/ {formatTokens(ctxSize)}</span>
-                    {ctxSize > 0 && (
+                    {ctxSize > 0 && contextTokens > 0 && (
                       <span className={`text-[10px] font-medium ${
-                        totalTokens / ctxSize > 0.8
+                        contextTokens / ctxSize > 0.8
                           ? "text-amber-500 dark:text-amber-400"
                           : "text-gray-400 dark:text-gray-500"
                       }`}>
-                        ({Math.round((totalTokens / ctxSize) * 100)}%)
+                        ({Math.round((contextTokens / ctxSize) * 100)}%)
                       </span>
                     )}
-                    {ctxSize > 0 && (
+                    {ctxSize > 0 && contextTokens > 0 && (
                       <span className="w-12 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden shrink-0">
                         <span
                           className={`block h-full rounded-full transition-all duration-300 ${
-                            totalTokens / ctxSize > 0.8
+                            contextTokens / ctxSize > 0.8
                               ? "bg-amber-400"
-                              : totalTokens / ctxSize > 0.5
+                              : contextTokens / ctxSize > 0.5
                                 ? "bg-blue-400"
                                 : "bg-green-400"
                           }`}
-                          style={{ width: `${Math.min((totalTokens / ctxSize) * 100, 100)}%` }}
+                          style={{ width: `${Math.min((contextTokens / ctxSize) * 100, 100)}%` }}
                         />
                       </span>
                     )}
