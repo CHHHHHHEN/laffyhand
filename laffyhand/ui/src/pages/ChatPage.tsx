@@ -1,3 +1,4 @@
+import { useEffect } from "react"
 import { useParams } from "react-router-dom"
 import { ChatInput } from "@/components/chat/ChatInput"
 import { MessageList } from "@/components/chat/MessageList"
@@ -10,9 +11,17 @@ import { Spinner } from "@/components/ui/Spinner"
 export function ChatPage() {
   const { sessionId } = useParams()
   const { sendMessage, interruptMessage, steerMessage, queueMessage, cancelStream } = useChat()
-  const { isLoading } = useCurrentSession(sessionId)
+  const { isLoading, session } = useCurrentSession(sessionId)
   const isStreaming = useChatStore((s) => s.isStreaming)
   const messages = useChatStore((s) => s.messages)
+
+  // Update page title with session name
+  useEffect(() => {
+    const title = session?.title
+      ? `${session.title} — Laffyhand`
+      : "Laffyhand"
+    document.title = title
+  }, [session?.title])
 
   if (!sessionId) {
     return (
