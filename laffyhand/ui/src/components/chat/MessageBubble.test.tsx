@@ -35,7 +35,22 @@ describe("MessageBubble", () => {
       />,
     )
     expect(screen.getByText("bash")).toBeInTheDocument()
-    expect(screen.getByText('{', { exact: false })).toBeInTheDocument()
+    expect(screen.getByText(/"cmd"/)).toBeInTheDocument()
+    expect(screen.getByText(/"ls"/)).toBeInTheDocument()
+  })
+
+  it("does not render tool calls section for empty array", () => {
+    render(
+      <MessageBubble
+        message={makeMessage({
+          role: "assistant",
+          content: "no tools",
+          toolCalls: [],
+        })}
+      />,
+    )
+    expect(screen.getByText("no tools")).toBeInTheDocument()
+    expect(screen.queryByText("Tool calls:")).not.toBeInTheDocument()
   })
 
   it("renders usage info when present", () => {

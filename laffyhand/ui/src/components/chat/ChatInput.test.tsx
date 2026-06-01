@@ -8,10 +8,10 @@ describe("ChatInput", () => {
     render(<ChatInput onSend={onSend} />)
 
     const textarea = screen.getByPlaceholderText("Type a message...")
-    fireEvent.input(textarea, { target: { value: "hello" } })
+    fireEvent.input(textarea, { target: { value: "  hello world  " } })
     fireEvent.keyDown(textarea, { key: "Enter" })
 
-    expect(onSend).toHaveBeenCalledWith("hello")
+    expect(onSend).toHaveBeenCalledWith("hello world")
     expect(textarea).toHaveValue("")
   })
 
@@ -64,5 +64,26 @@ describe("ChatInput", () => {
     fireEvent.keyDown(textarea, { key: "Enter", shiftKey: true })
 
     expect(onSend).not.toHaveBeenCalled()
+  })
+
+  it("calls onSteer when submitting during streaming", () => {
+    const onSteer = vi.fn()
+    render(<ChatInput onSend={vi.fn()} onSteer={onSteer} isStreaming={true} />)
+
+    const textarea = screen.getByPlaceholderText("Type to steer the AI...")
+    fireEvent.input(textarea, { target: { value: "steer message" } })
+    fireEvent.keyDown(textarea, { key: "Enter" })
+
+    expect(onSteer).toHaveBeenCalledWith("steer message")
+  })
+
+  it("renders and triggers cancel button during streaming", () => {
+    const onCancel = vi.fn()
+    render(<ChatInput onSend={vi.fn()} onCancel={onCancel} isStreaming={true} />)
+
+    const cancelButton = screen.getByTitle("Cancel current response")
+    expect(cancelButton).toBeInTheDocument()
+    fireEvent.click(cancelButton)
+    expect(onCancel).toHaveBeenCalled()
   })
 })
