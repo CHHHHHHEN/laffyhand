@@ -242,4 +242,28 @@ describe("chat-store", () => {
     expect(message.content).toBe("")
     expect(message.reasoning).toBeUndefined()
   })
+
+  // ── Permission pending state ──
+
+  it("pendingPermission defaults to null", () => {
+    const state = useChatStore.getState()
+    expect(state.pendingPermission).toBeNull()
+  })
+
+  it("setPendingPermission stores the request", () => {
+    const store = useChatStore.getState()
+    store.setPendingPermission({ requestId: "req-1", permission: "skill", pattern: "test-tool" })
+    const state = useChatStore.getState()
+    expect(state.pendingPermission).not.toBeNull()
+    expect(state.pendingPermission!.requestId).toBe("req-1")
+    expect(state.pendingPermission!.permission).toBe("skill")
+    expect(state.pendingPermission!.pattern).toBe("test-tool")
+  })
+
+  it("setPendingPermission(null) clears pending request", () => {
+    const store = useChatStore.getState()
+    store.setPendingPermission({ requestId: "req-1", permission: "skill", pattern: "test-tool" })
+    store.setPendingPermission(null)
+    expect(useChatStore.getState().pendingPermission).toBeNull()
+  })
 })

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
@@ -18,6 +20,7 @@ from laffyhand.gateway.handlers import (
     handle_config_providers,
     handle_mcp_status,
     handle_session_set_config,
+    handle_permission_respond,
     handle_tools_list,
     _serialize_messages,
     _next_msg_id,
@@ -692,6 +695,70 @@ class TestHandleSessionSetConfig:
         )
         assert result["session_id"] == "sess-new"
         runtime.session_manager.create.assert_called_once_with(provider="", model="")
+
+
+class TestHandlePermissionRespond:
+    @pytest.fixture
+    def runtime_with_pending(self, runtime):
+        runtime._pending_permissions = {}
+        runtime.tool_registry = MagicMock()
+        runtime.tool_registry.permission = MagicMock()
+        runtime.tool_registry.permission._rules = {}
+        return runtime
+
+    @pytest.mark.anyio
+    async def test_allow_resolves_true(self, runtime_with_pending, transport):
+        event = asyncio.Event()
+        runtime_with_pending._pending_permissions["req-1"] = (event, "skill", "test-tool", None)
+        result = await handle_permission_respond(
+            runtime_with_pending, {"request_id": "req-1", "action": "allow"}, transport, 1, "c1",
+        )
+        assert result["status"] == "ok"
+        assert event.is_set()
+        _, _, _, stored_result = runtime_with_pending._pending_permissions.get("req-1", (None, None, None, None))
+        assert stored_result is True
+
+    @pytest.mark.anyio
+    async def test_deny_resolves_false(self, runtime_with_pending, transport):
+        event = asyncio.Event()
+        runtime_with_pending._pending_permissions["req-1"] = (event, "skill", "test-tool", None)
+        result = await handle_permission_respond(
+            runtime_with_pending, {"request_id": "req-1", "action": "deny"}, transport, 1, "c1",
+        )
+        assert result["status"] == "ok"
+        assert event.is_set()
+        _, _, _, stored_result = runtime_with_pending._pending_permissions.get("req-1", (None, None, None, None))
+        assert stored_result is False
+
+    @pytest.mark.anyio
+    async def test_always_sets_rule_and_resolves_true(self, runtime_with_pending, transport):
+        event = asyncio.Event()
+        runtime_with_pending._pending_permissions["req-1"] = (event, "skill", "test-tool", None)
+        result = await handle_permission_respond(
+            runtime_with_pending, {"request_id": "req-1", "action": "always"}, transport, 1, "c1",
+        )
+        assert result["status"] == "ok"
+        assert event.is_set()
+        assert runtime_with_pending.tool_registry.permission._rules.get("skill:test-tool") == "allow"
+        _, _, _, stored_result = runtime_with_pending._pending_permissions.get("req-1", (None, None, None, None))
+        assert stored_result is True
+
+    @pytest.mark.anyio
+    async def test_unknown_request_id_raises(self, runtime_with_pending, transport):
+        runtime_with_pending._pending_permissions = {}
+        with pytest.raises(ValueError, match="Unknown or expired"):
+            await handle_permission_respond(
+                runtime_with_pending, {"request_id": "nonexistent", "action": "allow"}, transport, 1, "c1",
+            )
+
+    @pytest.mark.anyio
+    async def test_invalid_action_raises(self, runtime_with_pending, transport):
+        event = asyncio.Event()
+        runtime_with_pending._pending_permissions["req-1"] = (event, "skill", "test-tool", None)
+        with pytest.raises(ValueError, match="Invalid permission action"):
+            await handle_permission_respond(
+                runtime_with_pending, {"request_id": "req-1", "action": "invalid"}, transport, 1, "c1",
+            )
 
 
 def _async_gen(items):
