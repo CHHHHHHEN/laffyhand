@@ -29,6 +29,7 @@ vi.mock("@/lib/rpc", () => ({
   rpcClient: {
     chatStream: (...args: unknown[]) => mockChatStream(...args),
     cancelStream: () => mockCancelStream(),
+    todoList: () => Promise.resolve({ tasks: [] }),
   },
   RpcError: class extends Error {
     constructor(
