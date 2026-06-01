@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react"
+import { useState, useMemo, useRef, useEffect } from "react"
 import { marked } from "marked"
 import DOMPurify from "dompurify"
 import type { Message } from "@/types/session"
@@ -21,8 +21,38 @@ function MarkdownContent({ content }: { content: string }) {
     }
   }, [content])
 
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!containerRef.current) return
+    // Add copy buttons to code blocks
+    containerRef.current.querySelectorAll('pre').forEach((pre) => {
+      if (pre.parentElement?.classList.contains('code-block-wrapper')) return
+      const wrapper = document.createElement('div')
+      wrapper.className = 'code-block-wrapper relative group'
+      pre.parentNode?.insertBefore(wrapper, pre)
+      wrapper.appendChild(pre)
+
+      const copyBtn = document.createElement('button')
+      copyBtn.className = 'copy-code-btn absolute top-2 right-2 px-2 py-1 text-[10px] rounded-md bg-gray-200/70 dark:bg-gray-700/70 text-gray-500 dark:text-gray-400 opacity-0 group-hover:opacity-100 hover:bg-gray-300 dark:hover:bg-gray-600 transition-all duration-150 cursor-pointer font-sans'
+      copyBtn.textContent = 'Copy'
+      copyBtn.onclick = async () => {
+        const code = pre.querySelector('code') || pre
+        try {
+          await navigator.clipboard.writeText(code.textContent || '')
+          copyBtn.textContent = 'Copied!'
+          setTimeout(() => { copyBtn.textContent = 'Copy' }, 2000)
+        } catch {
+          copyBtn.textContent = 'Failed'
+        }
+      }
+      wrapper.appendChild(copyBtn)
+    })
+  }, [html])
+
   return (
     <div
+      ref={containerRef}
       className="prose prose-sm dark:prose-invert max-w-none break-words"
       dangerouslySetInnerHTML={{ __html: html }}
     />

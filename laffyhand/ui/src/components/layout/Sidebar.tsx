@@ -100,9 +100,14 @@ export function Sidebar() {
             disabled={isForking}
             variant="secondary"
             size="sm"
-            className="w-full"
+            className="w-full text-xs"
           >
-            {isForking ? "Forking..." : "Fork"}
+            <span className="flex items-center gap-1">
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5v14l9-7-9-7z" />
+              </svg>
+              {isForking ? "Forking..." : "Fork"}
+            </span>
           </Button>
         )}
         {/* 搜索框 */}
