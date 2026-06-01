@@ -1,4 +1,4 @@
-import { useRef, useEffect, useCallback } from "react"
+import { useRef, useEffect, useCallback, useState } from "react"
 import DOMPurify from "dompurify"
 import { useChatStore } from "@/stores/chat-store"
 import { Spinner } from "@/components/ui/Spinner"
@@ -16,16 +16,38 @@ export function MessageList() {
   const foregroundSubagents = useChatStore((s) => s.foregroundSubagents)
   const error = useChatStore((s) => s.error)
   const resolvePermissionRequest = useChatStore((s) => s.resolvePermissionRequest)
+  const containerRef = useRef<HTMLDivElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
+  const [isNearBottom, setIsNearBottom] = useState(true)
+  const [showScrollBtn, setShowScrollBtn] = useState(false)
 
   const handleResolvePermission = useCallback(
     (messageId: string) => resolvePermissionRequest(messageId),
     [resolvePermissionRequest],
   )
 
+  // Check if user is near bottom
+  const checkNearBottom = useCallback(() => {
+    const el = containerRef.current
+    if (!el) return
+    const near = el.scrollHeight - el.scrollTop - el.clientHeight < 150
+    setIsNearBottom(near)
+    setShowScrollBtn(!near)
+  }, [])
+
+  // Auto-scroll only when near bottom
   useEffect(() => {
+    if (isNearBottom) {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" })
+    }
+  }, [messages, streamContent, streamReasoning, streamToolCalls, streamToolResults, isNearBottom])
+
+  // Scroll to bottom button
+  const scrollToBottom = () => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" })
-  }, [messages, streamContent, streamReasoning, streamToolCalls])
+    setShowScrollBtn(false)
+    setIsNearBottom(true)
+  }
 
   if (messages.length === 0 && !isStreaming && !error) {
     return (
@@ -44,7 +66,12 @@ export function MessageList() {
   }
 
   return (
-    <div className="flex-1 overflow-y-auto px-4 py-5 space-y-1">
+    <div className="flex-1 relative min-h-0">
+      <div
+        ref={containerRef}
+        onScroll={checkNearBottom}
+        className="h-full overflow-y-auto px-4 py-5 space-y-1"
+      >
       {messages.map((msg) => (
         <MessageBubble key={msg.id} message={msg} onResolvePermission={handleResolvePermission} />
       ))}
@@ -148,6 +175,20 @@ export function MessageList() {
       )}
 
       <div ref={bottomRef} />
+      </div>
+
+      {/* Scroll to bottom button */}
+      {showScrollBtn && (
+        <button
+          onClick={scrollToBottom}
+          className="absolute bottom-4 right-8 w-8 h-8 rounded-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-lg flex items-center justify-center text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:shadow-xl transition-all duration-200 cursor-pointer z-10 animate-[fade-in_0.15s_ease-out]"
+          title="Scroll to bottom"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+          </svg>
+        </button>
+      )}
     </div>
   )
 }
