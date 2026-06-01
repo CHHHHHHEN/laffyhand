@@ -6,7 +6,13 @@ from loguru import logger
 
 from laffyhand.gateway.dispatcher import Dispatcher
 from laffyhand.gateway.handlers import register_all_handlers
-from laffyhand.gateway.protocol import from_json, Request, ErrorResponse, Error, PARSE_ERROR
+from laffyhand.gateway.protocol import (
+    from_json,
+    Request,
+    ErrorResponse,
+    Error,
+    PARSE_ERROR,
+)
 
 if TYPE_CHECKING:
     from laffyhand.agent.runtime import AgentRuntime
@@ -14,7 +20,7 @@ if TYPE_CHECKING:
 
 
 class GatewayServer:
-    def __init__(self, runtime: AgentRuntime, transport: Transport) -> None:
+    def __init__(self, runtime: AgentRuntime | None, transport: Transport) -> None:
         self.runtime = runtime
         self.transport = transport
         self.dispatcher = Dispatcher(runtime=runtime)
@@ -32,7 +38,7 @@ class GatewayServer:
         self._running = True
         transport = self.transport
         conn_id = transport.connection_id
-        transport._dispatcher = self.dispatcher  # type: ignore[attr-defined]
+        transport.dispatcher = self.dispatcher
         logger.info(f"Gateway serving on {type(transport).__name__} ({conn_id})")
 
         try:
@@ -45,13 +51,17 @@ class GatewayServer:
                 try:
                     message = from_json(raw)
                 except Exception as e:
-                    logger.warning(f"Failed to parse message ({conn_id}): {e} raw={raw!r:.200}")
+                    logger.warning(
+                        f"Failed to parse message ({conn_id}): {e} raw={raw!r:.200}"
+                    )
                     err = Error(code=PARSE_ERROR, message="Parse error")
                     await transport.send(ErrorResponse(id=None, error=err).json())
                     continue
 
                 if not isinstance(message, Request):
-                    logger.warning(f"Unexpected message type ({conn_id}): {type(message).__name__}")
+                    logger.warning(
+                        f"Unexpected message type ({conn_id}): {type(message).__name__}"
+                    )
                     continue
 
                 await self.dispatcher.dispatch(message, transport, conn_id)

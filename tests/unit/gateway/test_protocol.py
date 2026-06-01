@@ -5,19 +5,35 @@ import json
 import pytest
 
 from laffyhand.gateway.protocol import (
-    Request, Response, Notification, ErrorResponse, Error,
+    Request,
+    Response,
+    Notification,
+    ErrorResponse,
+    Error,
     from_json,
-    PARSE_ERROR, INVALID_REQUEST, METHOD_NOT_FOUND, INVALID_PARAMS,
-    INTERNAL_ERROR, OVERLOADED, STREAM_CANCELLED, MAX_MESSAGE_SIZE,
-    GatewayConfig,
-    INITIALIZE, SHUTDOWN, SESSION_CREATE, SESSION_LIST, SESSION_LOAD,
-    SESSION_DELETE, SESSION_FORK, CHAT, CHAT_STREAM, CHAT_CANCEL, TOOLS_LIST,
+    PARSE_ERROR,
+    METHOD_NOT_FOUND,
+    INTERNAL_ERROR,
+    MAX_MESSAGE_SIZE,
+    INITIALIZE,
+    SHUTDOWN,
+    SESSION_CREATE,
+    SESSION_LIST,
+    SESSION_LOAD,
+    SESSION_DELETE,
+    SESSION_FORK,
+    CHAT,
+    CHAT_STREAM,
+    CHAT_CANCEL,
+    TOOLS_LIST,
 )
 
 _REQUEST_JSON = '{"jsonrpc":"2.0","id":1,"method":"test","params":{"key":"val"}}'
 _NOTIFICATION_JSON = '{"jsonrpc":"2.0","method":"notify"}'
 _RESPONSE_JSON = '{"jsonrpc":"2.0","id":1,"result":"ok"}'
-_ERROR_JSON = '{"jsonrpc":"2.0","id":1,"error":{"code":-32601,"message":"not found","data":null}}'
+_ERROR_JSON = (
+    '{"jsonrpc":"2.0","id":1,"error":{"code":-32601,"message":"not found","data":null}}'
+)
 
 
 class TestRequest:
@@ -79,7 +95,12 @@ class TestErrorResponse:
         assert err.error.message == "not found"
 
     def test_with_data(self):
-        err = ErrorResponse(id=None, error=Error(code=-32700, message="parse error", data={"detail": "bad json"}))
+        err = ErrorResponse(
+            id=None,
+            error=Error(
+                code=-32700, message="parse error", data={"detail": "bad json"}
+            ),
+        )
         assert err.error.data == {"detail": "bad json"}
 
     def test_to_json(self):
@@ -181,15 +202,8 @@ class TestMaxMessageSize:
 class TestErrorCodes:
     def test_standard_codes(self):
         assert PARSE_ERROR == -32700
-        assert INVALID_REQUEST == -32600
         assert METHOD_NOT_FOUND == -32601
-        assert INVALID_PARAMS == -32602
         assert INTERNAL_ERROR == -32603
-
-    def test_custom_codes(self):
-        assert OVERLOADED == -32001
-        assert STREAM_CANCELLED == -32002
-
 
 class TestErrorJson:
     def test_error_json(self):
@@ -205,20 +219,6 @@ class TestErrorJson:
         assert data["code"] == -32601
         assert data["message"] == "not found"
         assert data["data"] is None
-
-
-class TestGatewayConfig:
-    def test_defaults(self):
-        cfg = GatewayConfig()
-        assert cfg.host == "127.0.0.1"
-        assert cfg.port == 9090
-        assert cfg.max_message_size == MAX_MESSAGE_SIZE
-
-    def test_custom(self):
-        cfg = GatewayConfig(host="0.0.0.0", port=8080, max_message_size=4096)
-        assert cfg.host == "0.0.0.0"
-        assert cfg.port == 8080
-        assert cfg.max_message_size == 4096
 
 
 class TestMethodConstants:

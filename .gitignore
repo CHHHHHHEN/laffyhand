@@ -22,7 +22,6 @@ laffybot.db
 *.db-shm
 *.db-wal
 skills/
-.todos.json
 test.txt
 test_*.txt
 *.tmp

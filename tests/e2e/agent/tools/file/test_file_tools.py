@@ -34,33 +34,49 @@ class TestFileToolsE2E(unittest.TestCase):
         edit_tool = EditTool()
 
         # Step 1: grep for "def " to find functions
-        grep_result = asyncio.run(grep_tool.run({
-            "pattern": r"^def ",
-            "path": str(self.root),
-            "include": "*.py",
-        }))
+        grep_result = asyncio.run(
+            grep_tool.run(
+                {
+                    "pattern": r"^def ",
+                    "path": str(self.root),
+                    "include": "*.py",
+                }
+            )
+        )
         self.assertIn("main.py", grep_result)
         self.assertIn("utils.py", grep_result)
 
         # Step 2: read utils.py
-        read_result = asyncio.run(read_tool.run({
-            "file_path": str(src / "utils.py"),
-        }))
+        read_result = asyncio.run(
+            read_tool.run(
+                {
+                    "file_path": str(src / "utils.py"),
+                }
+            )
+        )
         self.assertIn("helper", read_result)
 
         # Step 3: edit utils.py to add a new function
         time.sleep(0.02)
-        edit_result = asyncio.run(edit_tool.run({
-            "file_path": str(src / "utils.py"),
-            "old_string": "def helper():\n    return 42",
-            "new_string": "def helper():\n    return 43",
-        }))
+        edit_result = asyncio.run(
+            edit_tool.run(
+                {
+                    "file_path": str(src / "utils.py"),
+                    "old_string": "def helper():\n    return 42",
+                    "new_string": "def helper():\n    return 43",
+                }
+            )
+        )
         self.assertIn("Edited", edit_result)
 
         # Step 4: verify the edit took effect
-        verify = asyncio.run(read_tool.run({
-            "file_path": str(src / "utils.py"),
-        }))
+        verify = asyncio.run(
+            read_tool.run(
+                {
+                    "file_path": str(src / "utils.py"),
+                }
+            )
+        )
         self.assertIn("return 43", verify)
         self.assertNotIn("return 42", verify)
 
@@ -73,23 +89,35 @@ class TestFileToolsE2E(unittest.TestCase):
 
         # Step 1: write multiple files
         for name in ["a.py", "b.py", "c.py"]:
-            asyncio.run(write_tool.run({
-                "file_path": str(self.root / name),
-                "content": f"# {name}\nprint('hello')\n",
-            }))
+            asyncio.run(
+                write_tool.run(
+                    {
+                        "file_path": str(self.root / name),
+                        "content": f"# {name}\nprint('hello')\n",
+                    }
+                )
+            )
 
         # Step 2: read one file
-        read_result = asyncio.run(read_tool.run({
-            "file_path": str(self.root / "a.py"),
-        }))
+        read_result = asyncio.run(
+            read_tool.run(
+                {
+                    "file_path": str(self.root / "a.py"),
+                }
+            )
+        )
         self.assertIn("a.py", read_result)
         self.assertIn("print", read_result)
 
         # Step 3: glob to find all py files
-        glob_result = asyncio.run(glob_tool.run({
-            "pattern": "*.py",
-            "path": str(self.root),
-        }))
+        glob_result = asyncio.run(
+            glob_tool.run(
+                {
+                    "pattern": "*.py",
+                    "path": str(self.root),
+                }
+            )
+        )
         self.assertIn("a.py", glob_result)
         self.assertIn("b.py", glob_result)
         self.assertIn("c.py", glob_result)
@@ -105,17 +133,25 @@ class TestFileToolsE2E(unittest.TestCase):
         content = "\n".join(lines)
 
         # Step 1: write a larger file
-        asyncio.run(write_tool.run({
-            "file_path": str(self.root / "large.txt"),
-            "content": content,
-        }))
+        asyncio.run(
+            write_tool.run(
+                {
+                    "file_path": str(self.root / "large.txt"),
+                    "content": content,
+                }
+            )
+        )
 
         # Step 2: read with offset and limit
-        read_result = asyncio.run(read_tool.run({
-            "file_path": str(self.root / "large.txt"),
-            "offset": 5,
-            "limit": 3,
-        }))
+        read_result = asyncio.run(
+            read_tool.run(
+                {
+                    "file_path": str(self.root / "large.txt"),
+                    "offset": 5,
+                    "limit": 3,
+                }
+            )
+        )
         self.assertIn("5|line4", read_result)
         self.assertIn("6|line5", read_result)
         self.assertIn("7|line6", read_result)
@@ -123,19 +159,27 @@ class TestFileToolsE2E(unittest.TestCase):
         self.assertNotIn("8|line7", read_result)
 
         # Step 3: edit a line
-        edit_result = asyncio.run(edit_tool.run({
-            "file_path": str(self.root / "large.txt"),
-            "old_string": "line10",
-            "new_string": "line10: modified",
-        }))
+        edit_result = asyncio.run(
+            edit_tool.run(
+                {
+                    "file_path": str(self.root / "large.txt"),
+                    "old_string": "line10",
+                    "new_string": "line10: modified",
+                }
+            )
+        )
         self.assertIn("Edited", edit_result)
 
         # Step 4: verify
-        verify = asyncio.run(read_tool.run({
-            "file_path": str(self.root / "large.txt"),
-            "offset": 11,
-            "limit": 1,
-        }))
+        verify = asyncio.run(
+            read_tool.run(
+                {
+                    "file_path": str(self.root / "large.txt"),
+                    "offset": 11,
+                    "limit": 1,
+                }
+            )
+        )
         self.assertIn("modified", verify)
 
     # ─── workflow: blocked path across tools ────────────────
@@ -145,27 +189,39 @@ class TestFileToolsE2E(unittest.TestCase):
         edit_tool = EditTool()
 
         # Both WriteTool and EditTool should block .env
-        write_result = asyncio.run(write_tool.run({
-            "file_path": str(self.root / ".env"),
-            "content": "SECRET=xxx",
-        }))
+        write_result = asyncio.run(
+            write_tool.run(
+                {
+                    "file_path": str(self.root / ".env"),
+                    "content": "SECRET=xxx",
+                }
+            )
+        )
         self.assertIn("Blocked", write_result)
 
-        edit_result = asyncio.run(edit_tool.run({
-            "file_path": str(self.root / "some" / ".." / ".env"),
-            "old_string": "",
-            "new_string": "SECRET=xxx",
-        }))
+        edit_result = asyncio.run(
+            edit_tool.run(
+                {
+                    "file_path": str(self.root / "some" / ".." / ".env"),
+                    "old_string": "",
+                    "new_string": "SECRET=xxx",
+                }
+            )
+        )
         self.assertIn("Blocked", edit_result)
 
     # ─── workflow: glob with ripgrep fallback ───────────────
 
     def test_glob_no_match_clean_message(self):
         glob_tool = GlobTool()
-        result = asyncio.run(glob_tool.run({
-            "pattern": "*.nonexistent",
-            "path": str(self.root),
-        }))
+        result = asyncio.run(
+            glob_tool.run(
+                {
+                    "pattern": "*.nonexistent",
+                    "path": str(self.root),
+                }
+            )
+        )
         self.assertIn("No files found", result)
 
     # ─── workflow: grep with all output modes ───────────────
@@ -175,27 +231,39 @@ class TestFileToolsE2E(unittest.TestCase):
         grep_tool = GrepTool()
 
         # content mode
-        content_result = asyncio.run(grep_tool.run({
-            "pattern": "target",
-            "path": str(self.root),
-            "output_mode": "content",
-        }))
+        content_result = asyncio.run(
+            grep_tool.run(
+                {
+                    "pattern": "target",
+                    "path": str(self.root),
+                    "output_mode": "content",
+                }
+            )
+        )
         self.assertIn("target", content_result)
 
         # files_only mode
-        files_result = asyncio.run(grep_tool.run({
-            "pattern": "target",
-            "path": str(self.root),
-            "output_mode": "files_only",
-        }))
+        files_result = asyncio.run(
+            grep_tool.run(
+                {
+                    "pattern": "target",
+                    "path": str(self.root),
+                    "output_mode": "files_only",
+                }
+            )
+        )
         self.assertIn("data.py", files_result)
 
         # count mode
-        count_result = asyncio.run(grep_tool.run({
-            "pattern": "target",
-            "path": str(self.root),
-            "output_mode": "count",
-        }))
+        count_result = asyncio.run(
+            grep_tool.run(
+                {
+                    "pattern": "target",
+                    "path": str(self.root),
+                    "output_mode": "count",
+                }
+            )
+        )
         self.assertIn("3", count_result)
 
     # ─── workflow: write with line ending preservation ──────
@@ -204,10 +272,14 @@ class TestFileToolsE2E(unittest.TestCase):
         write_tool = WriteTool()
 
         # Write with CRLF
-        asyncio.run(write_tool.run({
-            "file_path": str(self.root / "crlf.txt"),
-            "content": "line1\nline2\n",
-        }))
+        asyncio.run(
+            write_tool.run(
+                {
+                    "file_path": str(self.root / "crlf.txt"),
+                    "content": "line1\nline2\n",
+                }
+            )
+        )
 
         # Verify CRLF content
         raw = (self.root / "crlf.txt").read_bytes()
@@ -215,11 +287,15 @@ class TestFileToolsE2E(unittest.TestCase):
 
         # Now edit it
         edit_tool = EditTool()
-        asyncio.run(edit_tool.run({
-            "file_path": str(self.root / "crlf.txt"),
-            "old_string": "line1",
-            "new_string": "modified",
-        }))
+        asyncio.run(
+            edit_tool.run(
+                {
+                    "file_path": str(self.root / "crlf.txt"),
+                    "old_string": "line1",
+                    "new_string": "modified",
+                }
+            )
+        )
 
         # Verify line ending preserved (LF)
         raw_after = (self.root / "crlf.txt").read_bytes()
@@ -231,13 +307,21 @@ class TestFileToolsE2E(unittest.TestCase):
         write_tool = WriteTool()
         read_tool = ReadTool()
 
-        asyncio.run(write_tool.run({
-            "file_path": str(self.root / "data.zip"),
-            "content": "fake zip content",
-        }))
-        read_result = asyncio.run(read_tool.run({
-            "file_path": str(self.root / "data.zip"),
-        }))
+        asyncio.run(
+            write_tool.run(
+                {
+                    "file_path": str(self.root / "data.zip"),
+                    "content": "fake zip content",
+                }
+            )
+        )
+        read_result = asyncio.run(
+            read_tool.run(
+                {
+                    "file_path": str(self.root / "data.zip"),
+                }
+            )
+        )
         self.assertIn("binary", read_result.lower())
 
     # ─── workflow: grep skips oversized files ─────────────
@@ -248,9 +332,13 @@ class TestFileToolsE2E(unittest.TestCase):
         (self.root / "huge.txt").write_text(content)
         (self.root / "small.txt").write_text("match\n")
         grep_tool = GrepTool()
-        result = asyncio.run(grep_tool.run({
-            "pattern": "match",
-            "path": str(self.root),
-        }))
+        result = asyncio.run(
+            grep_tool.run(
+                {
+                    "pattern": "match",
+                    "path": str(self.root),
+                }
+            )
+        )
         self.assertIn("small.txt", result)
         self.assertNotIn("huge.txt", result)

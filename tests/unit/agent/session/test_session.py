@@ -4,8 +4,13 @@ import pytest
 
 from laffyhand.agent.session import SessionManager
 from laffyhand.agent.schemas import (
-    AgentState, AssistantMessage, SystemMessage, ToolCallContent,
-    ToolMessage, UserMessage, SessionUsage,
+    AgentState,
+    AssistantMessage,
+    SystemMessage,
+    ToolCallContent,
+    ToolMessage,
+    UserMessage,
+    SessionUsage,
 )
 
 
@@ -136,7 +141,9 @@ class TestMessages:
         assert len(loaded) == 1
         assert loaded[0].content == "New system."
 
-    def test_assistant_message_with_tool_calls(self, session_manager: SessionManager) -> None:
+    def test_assistant_message_with_tool_calls(
+        self, session_manager: SessionManager
+    ) -> None:
         tc = ToolCallContent(
             tool_call_id="call_1",
             tool_name="test_tool",
@@ -209,7 +216,9 @@ class TestCompactionChain:
         tip = session_manager.get_compression_tip(session.id)
         assert tip == session.id
 
-    def test_compression_tip_skips_completed(self, session_manager: SessionManager) -> None:
+    def test_compression_tip_skips_completed(
+        self, session_manager: SessionManager
+    ) -> None:
         root = session_manager.create()
         child = session_manager.create(parent_id=root.id)
         session_manager.complete(child.id)
@@ -302,7 +311,9 @@ class TestResolve:
         assert state.usage.context_size == 128000
         assert any(isinstance(m, SystemMessage) for m in state.messages)
 
-    def test_resolve_inserts_system_message(self, session_manager: SessionManager) -> None:
+    def test_resolve_inserts_system_message(
+        self, session_manager: SessionManager
+    ) -> None:
         msgs = [UserMessage(content="hi")]
         session = session_manager.create(messages=msgs)
         sys_msg = SystemMessage(content="You are a helpful assistant.")
@@ -311,7 +322,9 @@ class TestResolve:
         assert state.messages[0].content == "You are a helpful assistant."
         assert state.messages[1].content == "hi"
 
-    def test_resolve_follows_compression_chain(self, session_manager: SessionManager) -> None:
+    def test_resolve_follows_compression_chain(
+        self, session_manager: SessionManager
+    ) -> None:
         parent = session_manager.create()
         child = session_manager.create_compacted_child(
             parent_id=parent.id,
@@ -334,6 +347,7 @@ class TestHelpers:
     def test_ts_roundtrip(self) -> None:
         from laffyhand.agent.session.manager import _ts, _from_ts
         from datetime import datetime, timezone
+
         dt = datetime(2026, 5, 29, 12, 30, 0, tzinfo=timezone.utc)
         ts = _ts(dt)
         assert isinstance(ts, str)
@@ -342,11 +356,16 @@ class TestHelpers:
 
     def test_ts_none(self) -> None:
         from laffyhand.agent.session.manager import _ts, _from_ts
+
         assert _ts(None) is None
         assert _from_ts(None) is None
 
     def test_serialize_metadata_roundtrip(self) -> None:
-        from laffyhand.agent.session.manager import _serialize_metadata, _deserialize_metadata
+        from laffyhand.agent.session.manager import (
+            _serialize_metadata,
+            _deserialize_metadata,
+        )
+
         meta = {"key": "value", "nested": {"a": 1}}
         raw = _serialize_metadata(meta)
         assert isinstance(raw, str)
@@ -355,10 +374,12 @@ class TestHelpers:
 
     def test_deserialize_metadata_empty(self) -> None:
         from laffyhand.agent.session.manager import _deserialize_metadata
+
         assert _deserialize_metadata("") == {}
 
     def test_deserialize_metadata_invalid_json(self) -> None:
         from laffyhand.agent.session.manager import _deserialize_metadata
+
         result = _deserialize_metadata("{invalid")
         assert result == {}
 
@@ -374,6 +395,7 @@ class TestHelpers:
     def test_record_to_message_unknown_role(self) -> None:
         from laffyhand.agent.session.manager import _record_to_message
         from laffyhand.agent.session.models import MessageRecord
+
         rec = MessageRecord(session_id="sid", role="unknown", content="x")
         with pytest.raises(ValueError, match="Unknown role"):
             _record_to_message(rec)
@@ -381,7 +403,10 @@ class TestHelpers:
     def test_message_to_record_assistant_with_tokens(self) -> None:
         from laffyhand.agent.session.manager import _message_to_record
         from laffyhand.agent.schemas import Usage
-        msg = AssistantMessage(content="Hello", tokens=Usage(input_tokens=10, output_tokens=5))
+
+        msg = AssistantMessage(
+            content="Hello", tokens=Usage(input_tokens=10, output_tokens=5)
+        )
         rec = _message_to_record("sid", msg, 1)
         assert rec.role == "assistant"
         assert rec.token_count == 15
@@ -389,8 +414,11 @@ class TestHelpers:
     def test_record_to_message_assistant_with_tool_calls(self) -> None:
         from laffyhand.agent.session.manager import _record_to_message
         from laffyhand.agent.session.models import MessageRecord
+
         rec = MessageRecord(
-            session_id="sid", role="assistant", content="calling...",
+            session_id="sid",
+            role="assistant",
+            content="calling...",
             tool_args='[{"tool_call_id": "c1", "tool_name": "t", "args": "{}", "type": "tool-call"}]',
         )
         msg = _record_to_message(rec)
@@ -436,11 +464,15 @@ class TestAdvancedCRUD:
         assert len(page2) == 2
         assert page1[0].id != page2[0].id
 
-    def test_append_messages_error_nonexistent(self, session_manager: SessionManager) -> None:
+    def test_append_messages_error_nonexistent(
+        self, session_manager: SessionManager
+    ) -> None:
         with pytest.raises(ValueError, match="Session not found"):
             session_manager.append_messages("nonexistent", [UserMessage(content="hi")])
 
-    def test_sync_messages_error_nonexistent(self, session_manager: SessionManager) -> None:
+    def test_sync_messages_error_nonexistent(
+        self, session_manager: SessionManager
+    ) -> None:
         with pytest.raises(ValueError, match="Session not found"):
             session_manager.sync_messages("nonexistent", [])
 
@@ -455,18 +487,22 @@ class TestAdvancedCRUD:
 class TestSchema:
     def test_has_fts5_default(self, session_manager: SessionManager) -> None:
         from laffyhand.agent.session.schema import has_fts5
+
         assert has_fts5(session_manager._conn) is True
 
     def test_create_tables_idempotent(self, session_manager: SessionManager) -> None:
         from laffyhand.agent.session.schema import create_tables
+
         create_tables(session_manager._conn)  # should not raise
 
     def test_migrate_fresh_db(self, db_path: str) -> None:
         import sqlite3
+
         conn = sqlite3.connect(db_path)
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA foreign_keys=ON")
         from laffyhand.agent.session.schema import create_tables
+
         create_tables(conn)
         row = conn.execute("SELECT MAX(version) FROM _schema_version").fetchone()
         assert row[0] == 3

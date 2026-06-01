@@ -18,7 +18,9 @@ class TestToolExecutionResult:
 
     def test_error_result(self):
         msg = ToolMessage(tool_call_id="c1", content="error")
-        result = ToolExecutionResult(message=msg, event_data="Error: bad", is_error=True)
+        result = ToolExecutionResult(
+            message=msg, event_data="Error: bad", is_error=True
+        )
         assert result.is_error is True
 
 
@@ -28,7 +30,9 @@ class TestToolExecutor:
         registry = MagicMock()
         registry.run_tool = AsyncMock(return_value="tool result")
         tool_call = ToolCallContent(
-            tool_call_id="tc1", tool_name="my_tool", args='{"key": "val"}',
+            tool_call_id="tc1",
+            tool_name="my_tool",
+            args='{"key": "val"}',
         )
 
         result = await ToolExecutor.execute(registry, tool_call)
@@ -45,7 +49,9 @@ class TestToolExecutor:
         registry = MagicMock()
         registry.run_tool = AsyncMock()
         tool_call = ToolCallContent(
-            tool_call_id="tc1", tool_name="my_tool", args="not valid json",
+            tool_call_id="tc1",
+            tool_name="my_tool",
+            args="not valid json",
         )
 
         result = await ToolExecutor.execute(registry, tool_call)
@@ -61,7 +67,9 @@ class TestToolExecutor:
         registry = MagicMock()
         registry.run_tool = AsyncMock(return_value="ok")
         tool_call = ToolCallContent(
-            tool_call_id="tc2", tool_name="empty_args", args="{}",
+            tool_call_id="tc2",
+            tool_name="empty_args",
+            args="{}",
         )
 
         result = await ToolExecutor.execute(registry, tool_call)
@@ -76,7 +84,9 @@ class TestToolExecutor:
         registry.run_tool = AsyncMock()
         long_args = "x" * 500
         tool_call = ToolCallContent(
-            tool_call_id="tc3", tool_name="big", args=long_args,
+            tool_call_id="tc3",
+            tool_name="big",
+            args=long_args,
         )
 
         await ToolExecutor.execute(registry, tool_call)

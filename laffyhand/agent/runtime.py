@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+import copy
 import os
 import sys
 from collections.abc import Sequence
-from threading import Lock
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from loguru import logger
 
@@ -23,7 +23,7 @@ from laffyhand.agent.subagent.manager import SubagentManager, build_subagent_sta
 from laffyhand.agent.tools.registry import ToolRegistry
 from laffyhand.agent.tools.file import ReadTool, WriteTool, EditTool, GlobTool, GrepTool
 from laffyhand.agent.tools.bash import BashTool
-from laffyhand.agent.tools.todo import TodowriteTool
+from laffyhand.agent.tools.todo import TodoTool
 from laffyhand.agent.session.todo import TodoManager
 from laffyhand.agent.tools.skill_tool import SkillTool
 from laffyhand.agent.tools.task import TaskTool
@@ -50,7 +50,7 @@ class AgentRuntime:
     def __init__(
         self,
         config: LaffyConfig,
-        llm: Any = None,
+        llm: LLM | None = None,
         *,
         session_manager: SessionManager | None = None,
         mcp_service: MCPService | None = None,
@@ -63,13 +63,14 @@ class AgentRuntime:
         self.compaction_config = CompactionConfig(
             tail_turns=config.agent.compaction_tail_turns,
         )
-        self.title_config = TitleConfig(mode=config.agent.title_mode)  # type: ignore[arg-type]
+        self.title_config = TitleConfig(mode=config.agent.title_mode)
         self.max_steps = config.agent.max_steps
         self.subagent_manager = SubagentManager(
             max_concurrent=config.agent.max_concurrent_subagents,
         )
         try:
             from laffyhand.config import resolve_provider, resolve_model
+
             _, provider_cfg = resolve_provider(config.llm)
             model_cfg = resolve_model(provider_cfg)
             self._context_size = model_cfg.context_size
@@ -81,21 +82,27 @@ class AgentRuntime:
         self.agent_registry = AgentRegistry()
         self.skill_registry = SkillRegistry()
 
-        self.todo_manager = TodoManager(self.session_manager.connection)
+        self.todo_manager = TodoManager.from_session_manager(self.session_manager)
 
         self._states: dict[str, AgentState] = {}
-        self._pending_permissions: dict[str, tuple[asyncio.Event, str, str, bool | None]] = {}
+        self._session_locks: dict[str, asyncio.Lock] = {}
+        self._pending_permissions: dict[
+            str, tuple[asyncio.Event, str, str, bool | None]
+        ] = {}
         self._session_id: str | None = None
         self._active_session_id: str | None = None
         self._task_tool: TaskTool | None = None
         self._preferences: str | None = None
         self._preference_files: dict[str, str] = {}
-        self._pref_lock = Lock()
+        self._pref_lock = asyncio.Lock()
 
     def _build_llm(self, provider: str, model: str) -> LLM:
         from laffyhand.config import resolve_provider
+
         provider_key, provider_cfg = resolve_provider(self._config.llm, provider)
-        route = build_route(provider_cfg.type, provider_cfg.base_url, provider_cfg.api_key)
+        route = build_route(
+            provider_cfg.type, provider_cfg.base_url, provider_cfg.api_key
+        )
         logger.info(f"Built LLM: provider={provider_key}, model={model}")
         return LLM(model=model, route=route)
 
@@ -110,7 +117,7 @@ class AgentRuntime:
         self.tool_registry.register_tool(GlobTool())
         self.tool_registry.register_tool(GrepTool())
         self.tool_registry.register_tool(BashTool())
-        self.tool_registry.register_tool(TodowriteTool(self.todo_manager))
+        self.tool_registry.register_tool(TodoTool(self.todo_manager))
 
         skill_tool = SkillTool(self.skill_registry, self.tool_registry.permission)
         self.tool_registry.register_tool(skill_tool)
@@ -127,10 +134,12 @@ class AgentRuntime:
             MCPDisconnectTool(self.mcp_service, self.tool_registry)
         )
 
-        def _update_skill_description():
+        def _update_skill_description() -> None:
             summary = self.skill_registry.build_skills_summary()
             if summary:
-                skill_tool.description = f"Load and inject a skill into context.\n\n{summary}"
+                skill_tool.description = (
+                    f"Load and inject a skill into context.\n\n{summary}"
+                )
             else:
                 skill_tool.description = "Load and inject a skill into context."
 
@@ -160,6 +169,21 @@ class AgentRuntime:
     def get_state(self, session_id: str) -> AgentState | None:
         return self._states.get(session_id)
 
+    def get_session_lock(self, session_id: str) -> asyncio.Lock:
+        if session_id not in self._session_locks:
+            self._session_locks[session_id] = asyncio.Lock()
+        return self._session_locks[session_id]
+
+    @property
+    def pending_permissions(
+        self,
+    ) -> dict[str, tuple[asyncio.Event, str, str, bool | None]]:
+        return self._pending_permissions
+
+    @property
+    def config(self) -> LaffyConfig:
+        return self._config
+
     def load_agents(self, agent_dirs: Sequence[str | Path]) -> None:
         self.agent_registry.discover(list(agent_dirs))
 
@@ -178,8 +202,8 @@ class AgentRuntime:
                 result[str(path)] = path.read_text(encoding="utf-8").strip()
         return result
 
-    def _load_preferences(self) -> str:
-        with self._pref_lock:
+    async def _load_preferences(self) -> str:
+        async with self._pref_lock:
             if self._preferences is not None:
                 return self._preferences
             self._preference_files = self._read_preference_files()
@@ -190,12 +214,12 @@ class AgentRuntime:
             self._preferences = "\n".join(sections) if sections else ""
             return self._preferences
 
-    def poll_new_preferences(self) -> str:
+    async def poll_new_preferences(self) -> str:
         current = self._read_preference_files()
         changed = False
         sections: list[str] = []
 
-        with self._pref_lock:
+        async with self._pref_lock:
             # Detect new/changed files
             for path, text in current.items():
                 prev = self._preference_files.get(path)
@@ -214,10 +238,12 @@ class AgentRuntime:
                     logger.info(f"Removed preferences from deleted file: {path}")
 
             if changed:
-                self._preferences = None  # invalidate cache so next _load_preferences re-reads
+                self._preferences = (
+                    None  # invalidate cache so next _load_preferences re-reads
+                )
         return "\n".join(sections) if sections else ""
 
-    def build_system_prompt(self, base_prompt: str) -> str:
+    async def build_system_prompt(self, base_prompt: str) -> str:
         parts: list[str] = []
         parts.append(f"<soul>\n{base_prompt.strip()}\n</soul>")
 
@@ -232,7 +258,7 @@ class AgentRuntime:
         if self.skill_registry.all():
             parts.append(self.skill_registry.build_skills_summary())
 
-        preferences = self._load_preferences()
+        preferences = await self._load_preferences()
         if preferences:
             parts.append(preferences)
 
@@ -245,7 +271,9 @@ class AgentRuntime:
         model: str = "",
     ) -> AgentState:
         session = self.session_manager.create(
-            cwd=os.getcwd(), provider=provider, model=model,
+            cwd=os.getcwd(),
+            provider=provider,
+            model=model,
         )
         state = AgentState(
             messages=[system_message],
@@ -264,7 +292,9 @@ class AgentRuntime:
                 if self.session_manager.get(sid):
                     self.session_manager.save_state(sid, state)
                 else:
-                    logger.warning(f"save_current_state: session {sid} not found in DB, skipping")
+                    logger.warning(
+                        f"save_current_state: session {sid} not found in DB, skipping"
+                    )
 
     def complete_current_session(self) -> None:
         if self._session_id is not None:
@@ -295,7 +325,9 @@ class AgentRuntime:
     ) -> AgentState:
         self.complete_current_session()
         session = self.session_manager.create(
-            cwd=os.getcwd(), provider=provider, model=model,
+            cwd=os.getcwd(),
+            provider=provider,
+            model=model,
         )
         state = AgentState(
             messages=[system_message] if system_message else [],
@@ -316,7 +348,6 @@ class AgentRuntime:
             return None
         self.save_current_state()
         child = self.session_manager.fork(state.session_id)
-        import copy
         forked = copy.deepcopy(state)
         forked.session_id = child.id
         self._states[child.id] = forked
@@ -342,10 +373,10 @@ class AgentRuntime:
         if provider and model:
             return self._build_llm(provider, model)
         if self.llm is not None:
-            return self.llm  # type: ignore[return-value]
+            return self.llm
         raise RuntimeError("No LLM available for session")
 
-    async def run_agent_turn(self, session_id: str | None = None):
+    async def run_agent_turn(self, session_id: str | None = None):  # type: ignore[no-untyped-def]
         sid = session_id or self._session_id
         assert sid is not None
         state = self._states.get(sid)
@@ -362,7 +393,9 @@ class AgentRuntime:
                 session_manager=self.session_manager,
                 subagent_manager=self.subagent_manager,
                 preference_checker=self.poll_new_preferences,
-                on_compacted=lambda child_sid: self._schedule_title_generation(child_sid, "on_compact"),
+                on_compacted=lambda child_sid: self._schedule_title_generation(
+                    child_sid, "on_compact"
+                ),
             ):
                 yield event
         finally:
@@ -388,8 +421,10 @@ class AgentRuntime:
 
         if todo_id:
             from laffyhand.agent.session.models import TodoUpdate
+
             self.todo_manager.update_task(
-                todo_id, parent_session_id,
+                todo_id,
+                parent_session_id,
                 TodoUpdate(status="in_progress"),
             )
 
@@ -400,8 +435,10 @@ class AgentRuntime:
             def _on_complete(_task_id: str, success: bool) -> None:
                 if todo_id:
                     from laffyhand.agent.session.models import TodoUpdate
+
                     self.todo_manager.update_task(
-                        todo_id, parent_session_id,
+                        todo_id,
+                        parent_session_id,
                         TodoUpdate(
                             status="completed" if success else "pending",
                         ),
@@ -428,8 +465,10 @@ class AgentRuntime:
 
         if todo_id:
             from laffyhand.agent.session.models import TodoUpdate
+
             self.todo_manager.update_task(
-                todo_id, parent_session_id,
+                todo_id,
+                parent_session_id,
                 TodoUpdate(status="completed"),
             )
 
@@ -511,7 +550,10 @@ class AgentRuntime:
 
             llm = self._llm_for_session(session_id)
             title = await generate_title(
-                self.session_manager, session_id, llm, self.title_config,
+                self.session_manager,
+                session_id,
+                llm,
+                self.title_config,
             )
             if title:
                 logger.info(f"Auto-generated title for session {session_id}: {title}")

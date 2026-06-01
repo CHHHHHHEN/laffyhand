@@ -190,7 +190,12 @@ class TestReadTool(unittest.TestCase):
 
     def test_read_directory_offset_out_of_range(self):
         tool = ReadTool()
-        result = asyncio.run(tool.run({
-            "file_path": str(self.root), "offset": 100,
-        }))
+        result = asyncio.run(
+            tool.run(
+                {
+                    "file_path": str(self.root),
+                    "offset": 100,
+                }
+            )
+        )
         self.assertIn("out of range", result.lower())

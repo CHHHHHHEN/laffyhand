@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 from loguru import logger
 from pydantic import BaseModel
-from typing_extensions import Literal
 
 
 AgentMode = Literal["primary", "subagent", "all"]
@@ -24,9 +23,6 @@ class AgentInfo(BaseModel):
     top_p: float | None = None
     hidden: bool = False
     options: dict[str, Any] = {}
-
-
-_AGENTS_DIR_VAR = "AGENTS_PATHS"
 
 
 BUILTIN_AGENTS: dict[str, AgentInfo] = {
@@ -106,7 +102,7 @@ class AgentRegistry:
             if not path.is_dir():
                 continue
             for f in sorted(path.iterdir()):
-                if f.suffix in (".agent.md", ".md") and f.stem != "README":
+                if f.suffix == ".md" and f.stem != "README":
                     info = _load_agent_file(f)
                     if info is not None:
                         self.register(info)

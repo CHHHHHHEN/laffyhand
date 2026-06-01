@@ -10,7 +10,9 @@ from laffyhand.agent.tools.base import BaseTool
 
 
 class MCPWrappedTool(BaseTool):
-    def __init__(self, server_name: str, tool_def: MCPToolDef, service: 'MCPService') -> None:
+    def __init__(
+        self, server_name: str, tool_def: MCPToolDef, service: "MCPService"
+    ) -> None:
         self._tool_def = tool_def
         self._server_name = server_name
         self._service = service
@@ -18,7 +20,7 @@ class MCPWrappedTool(BaseTool):
         self.name = f"mcp_{server_name}_{safe_name}"
         self.description = tool_def.description
 
-    def _input_schema(self) -> dict:
+    def _input_schema(self) -> dict[str, Any]:
         schema = dict(self._tool_def.input_schema)
         if "type" not in schema:
             schema["type"] = "object"
@@ -28,32 +30,38 @@ class MCPWrappedTool(BaseTool):
     async def run(self, params: dict[str, Any]) -> str:
         client = self._service.get_client(self._server_name)
         if client is None:
-            logger.warning(f"MCP server '{self._server_name}' not connected for tool '{self.name}'")
+            logger.warning(
+                f"MCP server '{self._server_name}' not connected for tool '{self.name}'"
+            )
             return f"[MCP Error: server '{self._server_name}' is not connected]"
 
         try:
             logger.info(f"MCP tool call: {self.name}")
             return await client.call_tool(self._tool_def.name, params)
         except Exception as e:
-            logger.warning(f"MCP tool call '{self.name}' failed: {e}, attempting reconnect...")
+            logger.warning(
+                f"MCP tool call '{self.name}' failed: {e}, attempting reconnect..."
+            )
             ok = await self._service.reconnect(self._server_name)
             if not ok:
                 return f"[MCP Error: server '{self._server_name}' reconnection failed]"
             client = self._service.get_client(self._server_name)
             if client is None:
                 return f"[MCP Error: server '{self._server_name}' not available after reconnect]"
-            logger.info(f"MCP retrying tool call '{self._tool_def.name}' after reconnect")
+            logger.info(
+                f"MCP retrying tool call '{self._tool_def.name}' after reconnect"
+            )
             return await client.call_tool(self._tool_def.name, params)
 
 
-def _normalize_schema(schema: dict) -> dict:
+def _normalize_schema(schema: dict[str, Any]) -> dict[str, Any]:
     """Normalize JSON schema for OpenAI compatibility (recursive)."""
     result = copy.deepcopy(schema)
     _normalize_schema_node(result)
     return result
 
 
-def _normalize_schema_node(node: dict) -> None:
+def _normalize_schema_node(node: dict[str, Any]) -> None:
     """In-place normalize a single schema node and recurse into children."""
     _strip_null(node)
 
@@ -98,7 +106,7 @@ def _normalize_schema_node(node: dict) -> None:
         _normalize_schema_node(else_schema)
 
 
-def _strip_null(node: dict) -> None:
+def _strip_null(node: dict[str, Any]) -> None:
     """Handle nullable types in a single schema node."""
     type_val = node.get("type")
     if isinstance(type_val, list):
@@ -112,7 +120,9 @@ def _strip_null(node: dict) -> None:
         subs = node.get(key)
         if not isinstance(subs, list):
             continue
-        null_types = [s for s in subs if isinstance(s, dict) and s.get("type") == "null"]
+        null_types = [
+            s for s in subs if isinstance(s, dict) and s.get("type") == "null"
+        ]
         if not null_types:
             continue
         non_null = [s for s in subs if isinstance(s, dict) and s.get("type") != "null"]
@@ -233,7 +243,9 @@ class MCPService:
         for attempt in range(1, max_attempts + 1):
             total_attempt = current_attempts + attempt
             try:
-                logger.info(f"MCP '{name}' reconnect attempt {attempt}/{max_attempts}...")
+                logger.info(
+                    f"MCP '{name}' reconnect attempt {attempt}/{max_attempts}..."
+                )
                 client = MCPClient(name, cfg)
                 await client.connect()
                 old = self._clients.pop(name, None)
@@ -242,17 +254,23 @@ class MCPService:
                 self._clients[name] = client
                 self._status[name] = "connected"
                 self._reconnect_attempts[name] = 0
-                logger.info(f"MCP '{name}' reconnected after {total_attempt} total attempt(s)")
+                logger.info(
+                    f"MCP '{name}' reconnected after {total_attempt} total attempt(s)"
+                )
                 return True
             except Exception as e:
                 self._reconnect_attempts[name] = total_attempt
-                logger.warning(f"MCP '{name}' reconnect attempt {attempt}/{max_attempts} failed: {e}")
+                logger.warning(
+                    f"MCP '{name}' reconnect attempt {attempt}/{max_attempts} failed: {e}"
+                )
                 if attempt < max_attempts:
                     delay = min(base_delay * (2 ** (attempt - 1)), 30.0)
                     logger.debug(f"MCP '{name}' retrying in {delay:.1f}s...")
                     await asyncio.sleep(delay)
 
-        self._status[name] = f"disconnected (after {max_attempts} reconnection attempts)"
+        self._status[name] = (
+            f"disconnected (after {max_attempts} reconnection attempts)"
+        )
         logger.error(f"MCP '{name}' failed to reconnect after {max_attempts} attempts")
         return False
 

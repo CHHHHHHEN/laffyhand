@@ -1,5 +1,5 @@
 from contextlib import AsyncExitStack
-from typing import Any
+from typing import Any, cast
 
 import httpx
 from loguru import logger
@@ -13,7 +13,7 @@ from laffyhand.agent.mcp.config import MCPConfig, LocalMCPConfig, RemoteMCPConfi
 
 
 class MCPToolDef:
-    def __init__(self, name: str, description: str, input_schema: dict) -> None:
+    def __init__(self, name: str, description: str, input_schema: dict[str, Any]) -> None:
         self.name = name
         self.description = description
         self.input_schema = input_schema
@@ -42,24 +42,20 @@ class MCPClient:
 
     async def _connect_stdio(self) -> None:
         assert self._exit_stack is not None
-        cfg: LocalMCPConfig = self.config  # type: ignore[assignment]
+        cfg = cast("LocalMCPConfig", self.config)
         params = StdioServerParameters(
             command=cfg.command[0],
             args=cfg.command[1:],
             env=cfg.env or None,
         )
-        read, write = await self._exit_stack.enter_async_context(
-            stdio_client(params)
-        )
-        session = await self._exit_stack.enter_async_context(
-            ClientSession(read, write)
-        )
+        read, write = await self._exit_stack.enter_async_context(stdio_client(params))
+        session = await self._exit_stack.enter_async_context(ClientSession(read, write))
         await session.initialize()
         self._session = session
 
     async def _connect_remote(self) -> None:
         assert self._exit_stack is not None
-        cfg: RemoteMCPConfig = self.config  # type: ignore[assignment]
+        cfg = cast("RemoteMCPConfig", self.config)
         transport = cfg.transport
         if transport is None:
             base = cfg.url.split("?")[0].rstrip("/")
@@ -77,6 +73,7 @@ class MCPClient:
 
     async def _connect_sse(self, cfg: RemoteMCPConfig) -> None:
         assert self._exit_stack is not None
+
         def _client_factory(
             headers: dict[str, str] | None = None,
             timeout: httpx.Timeout | None = None,
@@ -94,25 +91,25 @@ class MCPClient:
             )
 
         read, write = await self._exit_stack.enter_async_context(
-            sse_client(cfg.url, httpx_client_factory=_client_factory, timeout=cfg.timeout)
+            sse_client(
+                cfg.url, httpx_client_factory=_client_factory, timeout=cfg.timeout
+            )
         )
-        session = await self._exit_stack.enter_async_context(
-            ClientSession(read, write)
-        )
+        session = await self._exit_stack.enter_async_context(ClientSession(read, write))
         await session.initialize()
         self._session = session
 
     async def _connect_streamable_http(self, cfg: RemoteMCPConfig) -> None:
         assert self._exit_stack is not None
         http_client = await self._exit_stack.enter_async_context(
-            httpx.AsyncClient(headers=cfg.headers, follow_redirects=True, timeout=cfg.timeout)
+            httpx.AsyncClient(
+                headers=cfg.headers, follow_redirects=True, timeout=cfg.timeout
+            )
         )
         read, write, _ = await self._exit_stack.enter_async_context(
             streamable_http_client(cfg.url, http_client=http_client)
         )
-        session = await self._exit_stack.enter_async_context(
-            ClientSession(read, write)
-        )
+        session = await self._exit_stack.enter_async_context(ClientSession(read, write))
         await session.initialize()
         self._session = session
 
@@ -122,11 +119,17 @@ class MCPClient:
                 await self._exit_stack.aclose()
             except RuntimeError as e:
                 if "different task" in str(e):
-                    logger.debug(f"Ignoring task-context error on disconnect for '{self.name}': {e}")
+                    logger.debug(
+                        f"Ignoring task-context error on disconnect for '{self.name}': {e}"
+                    )
                 else:
-                    logger.warning(f"Error closing MCP client '{self.name}': {type(e).__name__}: {e}")
+                    logger.warning(
+                        f"Error closing MCP client '{self.name}': {type(e).__name__}: {e}"
+                    )
             except Exception as e:
-                logger.warning(f"Error closing MCP client '{self.name}': {type(e).__name__}: {e}")
+                logger.warning(
+                    f"Error closing MCP client '{self.name}': {type(e).__name__}: {e}"
+                )
         self._session = None
         self._exit_stack = None
         logger.info(f"MCP client '{self.name}' disconnected")

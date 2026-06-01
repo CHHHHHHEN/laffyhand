@@ -148,7 +148,9 @@ def migrate(conn: sqlite3.Connection) -> None:
             try:
                 conn.executescript(_MIGRATIONS[version])
             except sqlite3.OperationalError as e:
-                logger.warning(f"Migration v{version} skipped (may already be applied): {e}")
+                logger.warning(
+                    f"Migration v{version} skipped (may already be applied): {e}"
+                )
         conn.execute(
             "INSERT OR IGNORE INTO _schema_version (version) VALUES (?)",
             (version,),

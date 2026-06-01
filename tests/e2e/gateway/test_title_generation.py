@@ -6,8 +6,11 @@ import pytest
 
 from laffyhand.agent.runtime import AgentRuntime
 from laffyhand.agent.schemas import (
-    AgentState, SessionUsage, UserMessage,
-    StreamText, StreamFinish,
+    AgentState,
+    SessionUsage,
+    UserMessage,
+    StreamText,
+    StreamFinish,
 )
 
 
@@ -39,7 +42,8 @@ def runtime(runtime_config, fake_llm) -> AgentRuntime:
 
 @pytest.mark.anyio
 async def test_do_generate_title_persists_to_db(
-    runtime: AgentRuntime, fake_llm,
+    runtime: AgentRuntime,
+    fake_llm,
 ) -> None:
     """_do_generate_title generates and persists a title via real generate_title()."""
     sm = runtime.session_manager
@@ -73,6 +77,7 @@ async def test_auto_mode_creates_title_after_background_task(
     runtime._schedule_title_generation(session.id, "auto")
     # Give the background task time to complete
     import asyncio
+
     await asyncio.sleep(0.1)
 
     fetched = sm.get(session.id)
@@ -98,6 +103,7 @@ async def test_existing_title_not_overwritten(
 
     runtime._schedule_title_generation(session.id, "auto")
     import asyncio
+
     await asyncio.sleep(0.1)
 
     fetched = sm.get(session.id)

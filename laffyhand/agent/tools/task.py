@@ -14,9 +14,9 @@ class TaskTool(BaseTool):
 
     def __init__(self, runtime: AgentRuntime) -> None:
         self._runtime = runtime
-        self._cached_schema: dict | None = None
+        self._cached_schema: dict[str, Any] | None = None
 
-    def _input_schema(self) -> dict:
+    def _input_schema(self) -> dict[str, Any]:
         if self._cached_schema is not None:
             return self._cached_schema
         agents = self._runtime.agent_registry.list_subagents()
@@ -65,6 +65,10 @@ class TaskTool(BaseTool):
             return f"Error: unknown sub-agent '{subagent_type}'"
 
         result = await self._runtime.create_subagent(
-            agent_info, prompt, description=description, background=background, todo_id=todo_id,
+            agent_info,
+            prompt,
+            description=description,
+            background=background,
+            todo_id=todo_id,
         )
         return result

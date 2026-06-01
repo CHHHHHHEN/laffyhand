@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from loguru import logger
 from pydantic import BaseModel
-from typing import Optional, Literal, List, Union
+from typing import Any, Optional, Literal, List, Union
 
 
 CHARS_PER_TOKEN = 4
@@ -14,14 +14,15 @@ def estimate_tokens(text: str) -> int:
 
 # ─── Tool Definition (provider-agnostic) ────────────────────────
 
+
 class ToolDefinition(BaseModel):
     name: str
     description: str
-    input_schema: dict
+    input_schema: dict[str, Any]
 
 
 class ToolCallContent(BaseModel):
-    type: Literal['tool-call'] = 'tool-call'
+    type: Literal["tool-call"] = "tool-call"
     tool_call_id: str
     tool_name: str
     args: str
@@ -29,26 +30,27 @@ class ToolCallContent(BaseModel):
 
 # ─── Prompt Messages ────────────────────────────────────────────────
 
+
 class SystemMessage(BaseModel):
-    role: Literal['system'] = 'system'
+    role: Literal["system"] = "system"
     content: str
 
 
 class UserMessage(BaseModel):
-    role: Literal['user'] = 'user'
+    role: Literal["user"] = "user"
     content: str
 
 
 class AssistantMessage(BaseModel):
-    role: Literal['assistant'] = 'assistant'
+    role: Literal["assistant"] = "assistant"
     content: Optional[str] = None
     reasoning: Optional[str] = None
     tool_calls: Optional[List[ToolCallContent]] = None
-    tokens: Optional['Usage'] = None
+    tokens: Optional["Usage"] = None
 
 
 class ToolMessage(BaseModel):
-    role: Literal['tool'] = 'tool'
+    role: Literal["tool"] = "tool"
     tool_call_id: str
     content: str
 
@@ -73,6 +75,7 @@ Message = Union[SystemMessage, UserMessage, AssistantMessage, ToolMessage]
 
 # ─── LLM Request ─────────────────────────────────────────────────────
 
+
 class LLMRequest(BaseModel):
     model: str
     messages: list[Message]
@@ -81,17 +84,13 @@ class LLMRequest(BaseModel):
 
 # ─── Usage ──────────────────────────────────────────────────────────
 
+
 class Usage(BaseModel):
     input_tokens: Optional[int] = None
     output_tokens: Optional[int] = None
     reasoning_tokens: Optional[int] = None
     cache_read_tokens: Optional[int] = None
     cache_write_tokens: Optional[int] = None
-
-
-def _k(n: int) -> str:
-    s = f"{n / 1000:.1f}".rstrip("0").rstrip(".")
-    return f"{s}k"
 
 
 class SessionUsage(BaseModel):
@@ -106,61 +105,44 @@ class SessionUsage(BaseModel):
         self.total_output += usage.output_tokens or 0
         self.total_reasoning += usage.reasoning_tokens or 0
         self.total_cache_read += usage.cache_read_tokens or 0
-        logger.debug(f"Usage added: +{usage.input_tokens or 0} in, +{usage.output_tokens or 0} out")
-
-    def display(self, usage: Usage) -> str:
-        inp = usage.input_tokens or 0
-        out = usage.output_tokens or 0
-        cache = usage.cache_read_tokens or 0
-        reasoning = usage.reasoning_tokens or 0
-        sess_total = self.total_input + self.total_output
-        if self.context_size:
-            pct = f" ({sess_total / self.context_size * 100:.2f}%)"
-            limit = _k(self.context_size)
-        else:
-            pct = ""
-            limit = _k(sess_total)
-        parts = [f"⬆{_k(inp)}", f"⬇{_k(out)}"]
-        if reasoning:
-            parts.append(f"[r:{_k(reasoning)}]")
-        if cache:
-            parts.append(f"[c:{_k(cache)}]")
-        if self.total_reasoning:
-            parts.append(f"[Σr:{_k(self.total_reasoning)}]")
-        if self.total_cache_read:
-            parts.append(f"[Σc:{_k(self.total_cache_read)}]")
-        return f"[{' / '.join(parts)} | {_k(sess_total)}/{limit}{pct}]"
+        logger.debug(
+            f"Usage added: +{usage.input_tokens or 0} in, +{usage.output_tokens or 0} out"
+        )
 
 
 # ─── Stream Events ──────────────────────────────────────────────────
 
+
 class StreamText(BaseModel):
-    type: Literal['text'] = 'text'
+    type: Literal["text"] = "text"
     delta: str
 
 
 class StreamReasoning(BaseModel):
-    type: Literal['reasoning'] = 'reasoning'
+    type: Literal["reasoning"] = "reasoning"
     delta: str
 
 
 class StreamToolCall(BaseModel):
-    type: Literal['tool-call'] = 'tool-call'
+    type: Literal["tool-call"] = "tool-call"
     tool_call_id: str
     tool_name: str
     args: str
 
 
-FinishReason = Literal['stop', 'length', 'content_filter', 'tool_calls', 'error', 'other']
+FinishReason = Literal[
+    "stop", "length", "content_filter", "tool_calls", "error", "other"
+]
+
 
 class StreamFinish(BaseModel):
-    type: Literal['finish'] = 'finish'
+    type: Literal["finish"] = "finish"
     finish_reason: FinishReason
     usage: Optional[Usage] = None
 
 
 class StreamError(BaseModel):
-    type: Literal['error'] = 'error'
+    type: Literal["error"] = "error"
     error: str
 
 
@@ -174,4 +156,6 @@ class AgentState(BaseModel):
     pending_steer: Optional[str] = None
 
 
-StreamEvent = Union[StreamText, StreamReasoning, StreamToolCall, StreamFinish, StreamError]
+StreamEvent = Union[
+    StreamText, StreamReasoning, StreamToolCall, StreamFinish, StreamError
+]

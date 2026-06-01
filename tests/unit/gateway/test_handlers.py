@@ -26,8 +26,12 @@ from laffyhand.gateway.handlers import (
     _next_msg_id,
 )
 from laffyhand.agent.schemas import (
-    SystemMessage, UserMessage, AssistantMessage, ToolMessage,
-    ToolCallContent, Usage,
+    SystemMessage,
+    UserMessage,
+    AssistantMessage,
+    ToolMessage,
+    ToolCallContent,
+    Usage,
 )
 
 
@@ -41,7 +45,7 @@ def runtime():
     r.state.turn_count = 0
     r.session_manager = MagicMock()
     r._context_size = 8192
-    r.build_system_prompt = MagicMock(return_value="You are a helpful assistant.")
+    r.build_system_prompt = AsyncMock(return_value="You are a helpful assistant.")
     return r
 
 
@@ -73,7 +77,9 @@ class TestHandleSessionCreate:
         result = await handle_session_create(runtime, {}, transport, 1, "c1")
 
         assert result["session_id"] == "sess-new"
-        runtime._schedule_title_generation.assert_called_once_with("sess-new", "on_create")
+        runtime._schedule_title_generation.assert_called_once_with(
+            "sess-new", "on_create"
+        )
 
     @pytest.mark.anyio
     async def test_raises_on_failure(self, runtime, transport):
@@ -108,7 +114,9 @@ class TestHandleSessionList:
         runtime.session_manager.list_sessions = MagicMock(return_value=[])
         await handle_session_list(runtime, {}, transport, 1, "c1")
         runtime.session_manager.list_sessions.assert_called_once_with(
-            status=None, limit=20, offset=0,
+            status=None,
+            limit=20,
+            offset=0,
         )
 
 
@@ -121,7 +129,9 @@ class TestHandleSessionLoad:
         runtime.state.messages = ["m1", "m2"]
         runtime.state.turn_count = 7
 
-        result = await handle_session_load(runtime, {"session_id": "sess-target"}, transport, 1, "c1")
+        result = await handle_session_load(
+            runtime, {"session_id": "sess-target"}, transport, 1, "c1"
+        )
 
         assert result["session_id"] == "sess-target"
         assert result["messages_count"] == 2
@@ -136,14 +146,18 @@ class TestHandleSessionLoad:
     async def test_raises_on_not_found(self, runtime, transport):
         runtime.switch_session = MagicMock(return_value=False)
         with pytest.raises(ValueError, match="not found"):
-            await handle_session_load(runtime, {"session_id": "invalid"}, transport, 1, "c1")
+            await handle_session_load(
+                runtime, {"session_id": "invalid"}, transport, 1, "c1"
+            )
 
 
 class TestHandleSessionDelete:
     @pytest.mark.anyio
     async def test_deletes_session(self, runtime, transport):
         runtime.session_manager.delete = MagicMock()
-        result = await handle_session_delete(runtime, {"session_id": "sess-del"}, transport, 1, "c1")
+        result = await handle_session_delete(
+            runtime, {"session_id": "sess-del"}, transport, 1, "c1"
+        )
         assert result["status"] == "deleted"
         runtime.session_manager.delete.assert_called_once_with("sess-del")
 
@@ -217,10 +231,10 @@ class TestHandleChat:
 class TestHandleChatCancel:
     @pytest.mark.anyio
     async def test_cancels_when_dispatcher_on_transport(self, runtime, transport):
-        """transport._dispatcher is set -> used directly."""
+        """transport.dispatcher is set -> used directly."""
         dispatcher = MagicMock()
         dispatcher.cancel_connection = MagicMock(return_value=True)
-        transport._dispatcher = dispatcher  # type: ignore[attr-defined]
+        transport.dispatcher = dispatcher
         result = await handle_chat_cancel(runtime, {}, transport, 1, "c1")
         assert result["status"] == "cancelled"
         dispatcher.cancel_connection.assert_called_once_with("c1")
@@ -230,15 +244,15 @@ class TestHandleChatCancel:
         """cancel_connection returns False -> no_active_stream."""
         dispatcher = MagicMock()
         dispatcher.cancel_connection = MagicMock(return_value=False)
-        transport._dispatcher = dispatcher  # type: ignore[attr-defined]
+        transport.dispatcher = dispatcher
         result = await handle_chat_cancel(runtime, {}, transport, 1, "c1")
         assert result["status"] == "no_active_stream"
 
     @pytest.mark.anyio
     async def test_cancellation_not_supported(self, runtime, transport):
         """No dispatcher or SSE canceller on transport -> cancellation_not_supported."""
-        transport._dispatcher = None  # type: ignore[attr-defined]
-        transport._sse_canceller = None  # type: ignore[attr-defined]
+        transport.dispatcher = None
+        transport.sse_canceller = None
         result = await handle_chat_cancel(runtime, {}, transport, 1, "c1")
         assert result["status"] == "cancellation_not_supported"
 
@@ -265,12 +279,18 @@ class TestSerializeMessages:
         assert result[0]["content"] == "hi"
 
     def test_assistant_message_with_reasoning(self):
-        result = _serialize_messages([AssistantMessage(content="answer", reasoning="thinking...")])
+        result = _serialize_messages(
+            [AssistantMessage(content="answer", reasoning="thinking...")]
+        )
         assert result[0]["reasoning"] == "thinking..."
 
     def test_assistant_message_with_tool_calls(self):
-        tc = ToolCallContent(tool_call_id="call-1", tool_name="read_file", args='{"path": "/test"}')
-        result = _serialize_messages([AssistantMessage(content="using tool", tool_calls=[tc])])
+        tc = ToolCallContent(
+            tool_call_id="call-1", tool_name="read_file", args='{"path": "/test"}'
+        )
+        result = _serialize_messages(
+            [AssistantMessage(content="using tool", tool_calls=[tc])]
+        )
         assert len(result[0]["toolCalls"]) == 1
         assert result[0]["toolCalls"][0]["id"] == "call-1"
         assert result[0]["toolCalls"][0]["name"] == "read_file"
@@ -286,7 +306,9 @@ class TestSerializeMessages:
         assert result[0]["content"] == ""
 
     def test_tool_message(self):
-        result = _serialize_messages([ToolMessage(content="tool output", tool_call_id="call-1")])
+        result = _serialize_messages(
+            [ToolMessage(content="tool output", tool_call_id="call-1")]
+        )
         assert result[0]["role"] == "tool"
         assert result[0]["content"] == "tool output"
         assert result[0]["tool_call_id"] == "call-1"
@@ -339,7 +361,9 @@ class TestHandleSessionLoadWithMessages:
         ]
         runtime.state.turn_count = 2
 
-        result = await handle_session_load(runtime, {"session_id": "sess-target"}, transport, 1, "c1")
+        result = await handle_session_load(
+            runtime, {"session_id": "sess-target"}, transport, 1, "c1"
+        )
 
         assert "messages" in result
         assert len(result["messages"]) == 2
@@ -358,12 +382,17 @@ class TestHandleChatStream:
         runtime.state.step = 0
         runtime.state.pending_steer = None
         runtime.state.usage = MagicMock()
-        runtime.state.usage.model_dump.return_value = {"total_input": 0, "total_output": 0}
+        runtime.state.usage.model_dump.return_value = {
+            "total_input": 0,
+            "total_output": 0,
+        }
         runtime.current_session_id = "sess-1"
         runtime.get_state = MagicMock(return_value=runtime.state)
 
         runtime.run_agent_turn = MagicMock()
-        runtime.run_agent_turn.return_value = _async_gen([TextDelta(id="t1", text="hello")])
+        runtime.run_agent_turn.return_value = _async_gen(
+            [TextDelta(id="t1", text="hello")]
+        )
 
         await handle_chat_stream(runtime, {"message": "hi"}, transport, 1, "c1")
 
@@ -374,6 +403,7 @@ class TestHandleChatStream:
         # The finish should be the last call
         last_call = transport.send.await_args_list[-1]
         import json
+
         last_data = json.loads(last_call[0][0])
         assert last_data["params"]["type"] == "finish"
 
@@ -385,7 +415,10 @@ class TestHandleChatStream:
         runtime.state.step = 0
         runtime.state.pending_steer = None
         runtime.state.usage = MagicMock()
-        runtime.state.usage.model_dump.return_value = {"total_input": 0, "total_output": 0}
+        runtime.state.usage.model_dump.return_value = {
+            "total_input": 0,
+            "total_output": 0,
+        }
         runtime.current_session_id = "sess-1"
         runtime.get_state = MagicMock(return_value=runtime.state)
 
@@ -401,6 +434,7 @@ class TestHandleChatStream:
         # Should have sent both error event and finish
         assert transport.send.await_count >= 2
         import json
+
         # Find the error event
         sent_events = []
         for call in transport.send.await_args_list:
@@ -417,7 +451,10 @@ class TestHandleChatStream:
         runtime.state.step = 0
         runtime.state.pending_steer = None
         runtime.state.usage = MagicMock()
-        runtime.state.usage.model_dump.return_value = {"total_input": 0, "total_output": 0}
+        runtime.state.usage.model_dump.return_value = {
+            "total_input": 0,
+            "total_output": 0,
+        }
         runtime.current_session_id = "sess-1"
         runtime.get_state = MagicMock(return_value=runtime.state)
 
@@ -427,6 +464,7 @@ class TestHandleChatStream:
         await handle_chat_stream(runtime, {"message": "hi"}, transport, 1, "c1")
 
         import json
+
         last_call = transport.send.await_args_list[-1]
         last_data = json.loads(last_call[0][0])
         assert last_data["params"]["type"] == "finish"
@@ -437,6 +475,7 @@ def _async_gen(items):
     async def gen():
         for item in items:
             yield item
+
     return gen()
 
 
@@ -447,7 +486,9 @@ class TestHandleToolsList:
         tool1.model_dump.return_value = {"name": "read"}
         tool2 = MagicMock()
         tool2.model_dump.return_value = {"name": "write"}
-        runtime.tool_registry.build_tool_definitions = AsyncMock(return_value=[tool1, tool2])
+        runtime.tool_registry.build_tool_definitions = AsyncMock(
+            return_value=[tool1, tool2]
+        )
 
         result = await handle_tools_list(runtime, {}, transport, 1, "c1")
 
@@ -544,9 +585,7 @@ class TestHandleSessionArchive:
 
     @pytest.mark.anyio
     async def test_archives_current(self, runtime, transport):
-        await handlers.handle_session_archive(
-            runtime, {}, transport, 1, "c1"
-        )
+        await handlers.handle_session_archive(runtime, {}, transport, 1, "c1")
         runtime.session_manager.archive.assert_called_once_with("sess-1")
 
     @pytest.mark.anyio
@@ -560,9 +599,11 @@ class TestHandleSubagentListActive:
     @pytest.mark.anyio
     async def test_returns_active_subagents(self, runtime, transport):
         runtime.subagent_manager = MagicMock()
-        runtime.subagent_manager.list_active = MagicMock(return_value=[
-            {"task_id": "t1", "agent_type": "explore", "status": "running"},
-        ])
+        runtime.subagent_manager.list_active = MagicMock(
+            return_value=[
+                {"task_id": "t1", "agent_type": "explore", "status": "running"},
+            ]
+        )
         result = await handlers.handle_subagent_list_active(
             runtime, {}, transport, 1, "c1"
         )
@@ -604,12 +645,12 @@ class TestHandleUsageGet:
 class TestHandleConfigProviders:
     @pytest.mark.anyio
     async def test_returns_providers(self, runtime, transport):
-        runtime._config = MagicMock()
-        runtime._config.llm.default_provider = "opencode"
+        runtime.config = MagicMock()
+        runtime.config.llm.default_provider = "opencode"
         model_mock = MagicMock()
         model_mock.name = "deepseek-v4-flash"
-        model_mock.context_size = 128000
-        runtime._config.llm.providers = {
+        model_mock.context_size = 1000000
+        runtime.config.llm.providers = {
             "opencode": MagicMock(
                 type="deepseek",
                 base_url="https://opencode.ai/zen/go",
@@ -620,13 +661,15 @@ class TestHandleConfigProviders:
         assert result["default_provider"] == "opencode"
         assert "opencode" in result["providers"]
         assert result["providers"]["opencode"]["type"] == "deepseek"
-        assert result["providers"]["opencode"]["models"][0]["name"] == "deepseek-v4-flash"
+        assert (
+            result["providers"]["opencode"]["models"][0]["name"] == "deepseek-v4-flash"
+        )
 
     @pytest.mark.anyio
     async def test_returns_empty_when_no_providers(self, runtime, transport):
-        runtime._config = MagicMock()
-        runtime._config.llm.default_provider = ""
-        runtime._config.llm.providers = {}
+        runtime.config = MagicMock()
+        runtime.config.llm.default_provider = ""
+        runtime.config.llm.providers = {}
         result = await handle_config_providers(runtime, {}, transport, 1, "c1")
         assert result["providers"] == {}
 
@@ -635,10 +678,12 @@ class TestHandleMCPStatus:
     @pytest.mark.anyio
     async def test_returns_server_status(self, runtime, transport):
         runtime.mcp_service = MagicMock()
-        runtime.mcp_service.get_status = MagicMock(return_value={
-            "server-a": "connected",
-            "server-b": "connected",
-        })
+        runtime.mcp_service.get_status = MagicMock(
+            return_value={
+                "server-a": "connected",
+                "server-b": "connected",
+            }
+        )
         result = await handle_mcp_status(runtime, {}, transport, 1, "c1")
         assert len(result["servers"]) == 2
         names = {s["name"] for s in result["servers"]}
@@ -654,10 +699,12 @@ class TestHandleMCPStatus:
     @pytest.mark.anyio
     async def test_includes_status_string(self, runtime, transport):
         runtime.mcp_service = MagicMock()
-        runtime.mcp_service.get_status = MagicMock(return_value={
-            "ok-server": "connected",
-            "failed-server": "failed: Connection refused",
-        })
+        runtime.mcp_service.get_status = MagicMock(
+            return_value={
+                "ok-server": "connected",
+                "failed-server": "failed: Connection refused",
+            }
+        )
         result = await handle_mcp_status(runtime, {}, transport, 1, "c1")
         statuses = {s["name"]: s["status"] for s in result["servers"]}
         assert statuses["ok-server"] == "connected"
@@ -674,11 +721,16 @@ class TestHandleSessionSetConfig:
         runtime.state.session_id = "sess-old"
 
         result = await handle_session_set_config(
-            runtime, {"provider": "opencode", "model": "deepseek-v4"}, transport, 1, "c1",
+            runtime,
+            {"provider": "opencode", "model": "deepseek-v4"},
+            transport,
+            1,
+            "c1",
         )
         assert result["session_id"] == "sess-new"
         runtime.session_manager.create.assert_called_once_with(
-            provider="opencode", model="deepseek-v4",
+            provider="opencode",
+            model="deepseek-v4",
         )
 
     @pytest.mark.anyio
@@ -686,7 +738,11 @@ class TestHandleSessionSetConfig:
         runtime.state = None
         with pytest.raises(ValueError, match="No active session"):
             await handle_session_set_config(
-                runtime, {"provider": "opencode", "model": "deepseek-v4"}, transport, 1, "c1",
+                runtime,
+                {"provider": "opencode", "model": "deepseek-v4"},
+                transport,
+                1,
+                "c1",
             )
 
     @pytest.mark.anyio
@@ -697,7 +753,11 @@ class TestHandleSessionSetConfig:
         runtime.state = MagicMock()
 
         result = await handle_session_set_config(
-            runtime, {}, transport, 1, "c1",
+            runtime,
+            {},
+            transport,
+            1,
+            "c1",
         )
         assert result["session_id"] == "sess-new"
         runtime.session_manager.create.assert_called_once_with(provider="", model="")
@@ -706,7 +766,7 @@ class TestHandleSessionSetConfig:
 class TestHandlePermissionRespond:
     @pytest.fixture
     def runtime_with_pending(self, runtime):
-        runtime._pending_permissions = {}
+        runtime.pending_permissions = {}
         runtime.tool_registry = MagicMock()
         runtime.tool_registry.permission = MagicMock()
         runtime.tool_registry.permission._rules = {}
@@ -715,55 +775,105 @@ class TestHandlePermissionRespond:
     @pytest.mark.anyio
     async def test_allow_resolves_true(self, runtime_with_pending, transport):
         event = asyncio.Event()
-        runtime_with_pending._pending_permissions["req-1"] = (event, "skill", "test-tool", None)
+        runtime_with_pending.pending_permissions["req-1"] = (
+            event,
+            "skill",
+            "test-tool",
+            None,
+        )
         result = await handle_permission_respond(
-            runtime_with_pending, {"request_id": "req-1", "action": "allow"}, transport, 1, "c1",
+            runtime_with_pending,
+            {"request_id": "req-1", "action": "allow"},
+            transport,
+            1,
+            "c1",
         )
         assert result["status"] == "ok"
         assert event.is_set()
-        _, _, _, stored_result = runtime_with_pending._pending_permissions.get("req-1", (None, None, None, None))
+        _, _, _, stored_result = runtime_with_pending.pending_permissions.get(
+            "req-1", (None, None, None, None)
+        )
         assert stored_result is True
 
     @pytest.mark.anyio
     async def test_deny_resolves_false(self, runtime_with_pending, transport):
         event = asyncio.Event()
-        runtime_with_pending._pending_permissions["req-1"] = (event, "skill", "test-tool", None)
+        runtime_with_pending.pending_permissions["req-1"] = (
+            event,
+            "skill",
+            "test-tool",
+            None,
+        )
         result = await handle_permission_respond(
-            runtime_with_pending, {"request_id": "req-1", "action": "deny"}, transport, 1, "c1",
+            runtime_with_pending,
+            {"request_id": "req-1", "action": "deny"},
+            transport,
+            1,
+            "c1",
         )
         assert result["status"] == "ok"
         assert event.is_set()
-        _, _, _, stored_result = runtime_with_pending._pending_permissions.get("req-1", (None, None, None, None))
+        _, _, _, stored_result = runtime_with_pending.pending_permissions.get(
+            "req-1", (None, None, None, None)
+        )
         assert stored_result is False
 
     @pytest.mark.anyio
-    async def test_always_sets_rule_and_resolves_true(self, runtime_with_pending, transport):
+    async def test_always_sets_rule_and_resolves_true(
+        self, runtime_with_pending, transport
+    ):
         event = asyncio.Event()
-        runtime_with_pending._pending_permissions["req-1"] = (event, "skill", "test-tool", None)
+        runtime_with_pending.pending_permissions["req-1"] = (
+            event,
+            "skill",
+            "test-tool",
+            None,
+        )
         result = await handle_permission_respond(
-            runtime_with_pending, {"request_id": "req-1", "action": "always"}, transport, 1, "c1",
+            runtime_with_pending,
+            {"request_id": "req-1", "action": "always"},
+            transport,
+            1,
+            "c1",
         )
         assert result["status"] == "ok"
         assert event.is_set()
-        assert runtime_with_pending.tool_registry.permission._rules.get("skill:test-tool") == "allow"
-        _, _, _, stored_result = runtime_with_pending._pending_permissions.get("req-1", (None, None, None, None))
+        runtime_with_pending.tool_registry.permission.add_rule.assert_called_with(
+            "skill:test-tool", "allow"
+        )
+        _, _, _, stored_result = runtime_with_pending.pending_permissions.get(
+            "req-1", (None, None, None, None)
+        )
         assert stored_result is True
 
     @pytest.mark.anyio
     async def test_unknown_request_id_raises(self, runtime_with_pending, transport):
-        runtime_with_pending._pending_permissions = {}
+        runtime_with_pending.pending_permissions = {}
         with pytest.raises(ValueError, match="Unknown or expired"):
             await handle_permission_respond(
-                runtime_with_pending, {"request_id": "nonexistent", "action": "allow"}, transport, 1, "c1",
+                runtime_with_pending,
+                {"request_id": "nonexistent", "action": "allow"},
+                transport,
+                1,
+                "c1",
             )
 
     @pytest.mark.anyio
     async def test_invalid_action_raises(self, runtime_with_pending, transport):
         event = asyncio.Event()
-        runtime_with_pending._pending_permissions["req-1"] = (event, "skill", "test-tool", None)
+        runtime_with_pending.pending_permissions["req-1"] = (
+            event,
+            "skill",
+            "test-tool",
+            None,
+        )
         with pytest.raises(ValueError, match="Invalid permission action"):
             await handle_permission_respond(
-                runtime_with_pending, {"request_id": "req-1", "action": "invalid"}, transport, 1, "c1",
+                runtime_with_pending,
+                {"request_id": "req-1", "action": "invalid"},
+                transport,
+                1,
+                "c1",
             )
 
 
@@ -771,4 +881,5 @@ def _async_gen(items):
     async def gen():
         for item in items:
             yield item
+
     return gen()

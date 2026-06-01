@@ -24,7 +24,7 @@ class SkillTool(BaseTool):
         self._registry = registry
         self._permission = permission or PermissionManager()
 
-    def _input_schema(self) -> dict:
+    def _input_schema(self) -> dict[str, Any]:
         return {
             "type": "object",
             "properties": {
@@ -53,17 +53,21 @@ class SkillTool(BaseTool):
             logger.warning(f"Permission check failed for skill '{name}': {e}")
             return f"Skill '{name}' cannot be loaded: {e}"
 
+        file_size = skill.filepath.stat().st_size
+        if file_size > MAX_SKILL_FILE_SIZE:
+            logger.warning(
+                f"Skill '{name}' file too large ({file_size} bytes), will truncate"
+            )
         content = skill.filepath.read_text(encoding="utf-8")
         logger.debug(f"Skill '{name}' file size: {len(content)} bytes")
         if len(content) > MAX_SKILL_FILE_SIZE:
-            logger.warning(f"Skill '{name}' file too large ({len(content)} bytes), truncating to {MAX_SKILL_FILE_SIZE}")
             content = content[:MAX_SKILL_FILE_SIZE] + "\n...[truncated]"
 
-        sibling_files = self._discover_siblings(skill.base_dir, max_files=10)
+        sibling_files = SkillTool._discover_siblings(skill.base_dir, max_files=10)
         logger.debug(f"Skill '{name}' sibling files: {[f.name for f in sibling_files]}")
 
         parts: list[str] = [
-            f"<skill_content name=\"{skill.name}\">",
+            f'<skill_content name="{skill.name}">',
             content,
             f"Base directory for this skill: file://{skill.base_dir}",
         ]
@@ -74,7 +78,9 @@ class SkillTool(BaseTool):
             parts.append("</skill_files>")
         parts.append("</skill_content>")
 
-        logger.info(f"Skill '{name}' loaded ({len(content)} chars, {len(sibling_files)} sibling files)")
+        logger.info(
+            f"Skill '{name}' loaded ({len(content)} chars, {len(sibling_files)} sibling files)"
+        )
         return "\n".join(parts)
 
     @staticmethod

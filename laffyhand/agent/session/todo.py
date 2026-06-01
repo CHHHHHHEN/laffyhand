@@ -2,25 +2,26 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Optional, cast
 
-from laffyhand.agent.session.models import TodoCreate, TodoItem, TodoUpdate, TodoPriority, TodoStatus
+from loguru import logger
+from typing import TYPE_CHECKING
+from laffyhand.agent.session.models import (
+    TodoCreate,
+    TodoItem,
+    TodoUpdate,
+    TodoPriority,
+    TodoStatus,
+    _utcnow,
+    _ts,
+    _from_ts,
+)
+
+if TYPE_CHECKING:
+    from laffyhand.agent.session.manager import SessionManager
 
 
-def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
-
-
-def _ts(dt: datetime | None) -> str | None:
-    return dt.isoformat() if dt is not None else None
-
-
-def _from_ts(ts: str | None) -> datetime | None:
-    return datetime.fromisoformat(ts) if ts is not None else None
-
-
-def _serialize_json(val: list | dict) -> str:
+def _serialize_json(val: list[Any] | dict[str, Any]) -> str:
     return json.dumps(val, default=str)
 
 
@@ -28,16 +29,16 @@ def _deserialize_str_list(raw: str) -> list[str]:
     if not raw:
         return []
     try:
-        return json.loads(raw)
+        return cast(list[str], json.loads(raw))
     except (json.JSONDecodeError, TypeError):
         return []
 
 
-def _deserialize_metadata(raw: str) -> dict:
+def _deserialize_metadata(raw: str) -> dict[str, Any]:
     if not raw:
         return {}
     try:
-        return json.loads(raw)
+        return cast(dict[str, Any], json.loads(raw))
     except (json.JSONDecodeError, TypeError):
         return {}
 
@@ -46,15 +47,22 @@ class TodoManager:
     def __init__(self, conn: sqlite3.Connection) -> None:
         self._conn = conn
 
+    @classmethod
+    def from_session_manager(cls, sm: SessionManager) -> TodoManager:
+        return cls(sm.connection)
+
     # ── CRUD ─────────────────────────────────────────────────
 
     def get_task(self, task_id: str) -> Optional[TodoItem]:
         row = self._conn.execute(
-            "SELECT * FROM todo WHERE id = ?", (task_id,),
+            "SELECT * FROM todo WHERE id = ?",
+            (task_id,),
         ).fetchone()
         return self._row_to_todo(row) if row else None
 
-    def get_tasks(self, session_id: str, status: Optional[str] = None) -> list[TodoItem]:
+    def get_tasks(
+        self, session_id: str, status: Optional[str] = None
+    ) -> list[TodoItem]:
         if status:
             rows = self._conn.execute(
                 "SELECT * FROM todo WHERE session_id = ? AND status = ? ORDER BY created_at",
@@ -75,7 +83,7 @@ class TodoManager:
         content: str,
         priority: TodoPriority = "medium",
         depends_on: Optional[list[str]] = None,
-        metadata: Optional[dict] = None,
+        metadata: Optional[dict[str, Any]] = None,
     ) -> TodoItem:
         item = TodoItem(
             session_id=session_id,
@@ -94,9 +102,16 @@ class TodoManager:
                 created_at, updated_at, completed_at, task_tool_id, metadata)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
-                item.id, item.session_id, item.content, item.status, item.priority,
+                item.id,
+                item.session_id,
+                item.content,
+                item.status,
+                item.priority,
                 _serialize_json(item.depends_on),
-                _ts(now), _ts(now), None, None,
+                _ts(now),
+                _ts(now),
+                None,
+                None,
                 _serialize_json(item.metadata),
             ),
         )
@@ -121,8 +136,17 @@ class TodoManager:
             )
             if t.depends_on:
                 resolved = [d for d in t.depends_on if d in ids or d in existing_ids]
+                unresolved = [
+                    d for d in t.depends_on if d not in ids and d not in existing_ids
+                ]
+                if unresolved:
+                    logger.warning(
+                        f"add_tasks: dependencies {unresolved} not resolvable in batch for task {t.content[:50]}"
+                    )
                 self._validate_depends(resolved, existing, task_id=item.id)
-            item.depends_on = [d for d in t.depends_on if d in ids or d in existing_ids]
+                item.depends_on = resolved
+            else:
+                item.depends_on = []
             now = _utcnow()
             self._conn.execute(
                 """INSERT INTO todo
@@ -130,9 +154,16 @@ class TodoManager:
                     created_at, updated_at, completed_at, task_tool_id, metadata)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
-                    item.id, item.session_id, item.content, item.status, item.priority,
+                    item.id,
+                    item.session_id,
+                    item.content,
+                    item.status,
+                    item.priority,
                     _serialize_json(item.depends_on),
-                    _ts(now), _ts(now), None, None,
+                    _ts(now),
+                    _ts(now),
+                    None,
+                    None,
                     _serialize_json(item.metadata),
                 ),
             )
@@ -164,8 +195,8 @@ class TodoManager:
             item.task_tool_id = updates.task_tool_id
         if updates.metadata is not None:
             item.metadata = updates.metadata
+        old_status = item.status
         if updates.status is not None:
-            old_status = item.status
             item.status = updates.status
             if updates.status == "completed" and old_status != "completed":
                 item.completed_at = _utcnow()
@@ -179,10 +210,14 @@ class TodoManager:
                 updated_at=?, completed_at=?, task_tool_id=?, metadata=?
                WHERE id=?""",
             (
-                item.content, item.status, item.priority,
+                item.content,
+                item.status,
+                item.priority,
                 _serialize_json(item.depends_on),
-                _ts(item.updated_at), _ts(item.completed_at),
-                item.task_tool_id, _serialize_json(item.metadata),
+                _ts(item.updated_at),
+                _ts(item.completed_at),
+                item.task_tool_id,
+                _serialize_json(item.metadata),
                 item.id,
             ),
         )
@@ -190,6 +225,19 @@ class TodoManager:
 
         if updates.status == "completed":
             self.resolve_blocked(task_id, session_id)
+        elif (
+            old_status == "completed"
+            and updates.status is not None
+            and updates.status != "completed"
+        ):
+            all_tasks = self.get_tasks(session_id)
+            now = _utcnow()
+            for t in all_tasks:
+                self._conn.execute(
+                    "UPDATE todo SET status=?, updated_at=?, metadata=? WHERE id=?",
+                    (t.status, _ts(now), _serialize_json(t.metadata), t.id),
+                )
+            self._conn.commit()
 
         return item
 
@@ -227,7 +275,8 @@ class TodoManager:
             t.metadata.pop("blocked_by", None)
         for t in tasks:
             blocked_by = [
-                dep_id for dep_id in t.depends_on
+                dep_id
+                for dep_id in t.depends_on
                 if dep_id in task_map and task_map[dep_id].status != "completed"
             ]
             if blocked_by:
@@ -269,7 +318,8 @@ class TodoManager:
                 continue
             visited.add(node)
             row = self._conn.execute(
-                "SELECT depends_on FROM todo WHERE id = ?", (node,),
+                "SELECT depends_on FROM todo WHERE id = ?",
+                (node,),
             ).fetchone()
             if row:
                 deps = _deserialize_str_list(row["depends_on"])
@@ -293,28 +343,41 @@ class TodoManager:
                         self._conn.execute(
                             """UPDATE todo SET status=?, updated_at=?, metadata=?
                                WHERE id=?""",
-                            (t.status, _ts(t.updated_at), _serialize_json(t.metadata), t.id),
+                            (
+                                t.status,
+                                _ts(t.updated_at),
+                                _serialize_json(t.metadata),
+                                t.id,
+                            ),
                         )
         self._conn.commit()
 
     # ── TaskTool integration ──────────────────────────────────
 
     def link_task_tool(self, task_id: str, tool_call_id: str) -> Optional[TodoItem]:
+        item = self.get_task(task_id)
+        if item is None:
+            return None
         return self.update_task(
-            task_id, "",
+            task_id,
+            item.session_id,
             TodoUpdate(task_tool_id=tool_call_id, status="in_progress"),
         )
 
-    def on_subagent_complete(self, tool_call_id: str, success: bool) -> Optional[TodoItem]:
+    def on_subagent_complete(
+        self, tool_call_id: str, success: bool
+    ) -> Optional[TodoItem]:
         row = self._conn.execute(
-            "SELECT * FROM todo WHERE task_tool_id = ?", (tool_call_id,),
+            "SELECT * FROM todo WHERE task_tool_id = ?",
+            (tool_call_id,),
         ).fetchone()
         if row is None:
             return None
         item = self._row_to_todo(row)
         new_status: TodoStatus = "completed" if success else "pending"
         return self.update_task(
-            item.id, item.session_id,
+            item.id,
+            item.session_id,
             TodoUpdate(status=new_status, task_tool_id=None),
         )
 

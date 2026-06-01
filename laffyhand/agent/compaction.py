@@ -3,9 +3,17 @@ from collections.abc import Sequence
 from loguru import logger
 
 from laffyhand.agent.schemas import (
-    AgentState, AssistantMessage, CompactionConfig, Message,
-    StreamError, StreamFinish, StreamText, SystemMessage, ToolMessage,
-    UserMessage, estimate_tokens,
+    AgentState,
+    AssistantMessage,
+    CompactionConfig,
+    Message,
+    StreamError,
+    StreamFinish,
+    StreamText,
+    SystemMessage,
+    ToolMessage,
+    UserMessage,
+    estimate_tokens,
 )
 from laffyhand.agent.llm.facade import LLM
 from laffyhand.agent.truncation import truncate_output
@@ -38,7 +46,9 @@ def is_overflow(tokens: int, context_size: int, reserved: int = 20_000) -> bool:
     usable = max(context_size - reserved, context_size // 10)
     overflow = tokens >= usable
     if overflow:
-        logger.trace(f"Overflow: {tokens} tokens vs usable {usable} (context_size={context_size})")
+        logger.trace(
+            f"Overflow: {tokens} tokens vs usable {usable} (context_size={context_size})"
+        )
     return overflow
 
 
@@ -75,7 +85,11 @@ def select_tail(
 
     for i in range(len(content_msgs) - 1, -1, -1):
         msg = content_msgs[i]
-        if isinstance(msg, ToolMessage) and tool_truncate and len(msg.content) > tool_truncate:
+        if (
+            isinstance(msg, ToolMessage)
+            and tool_truncate
+            and len(msg.content) > tool_truncate
+        ):
             tokens = estimate_tokens(msg.content[:tool_truncate])
         else:
             tokens = estimate_message_tokens(msg)
@@ -153,10 +167,20 @@ def build_summary_text(messages: Sequence[Message], tool_truncate: int = 500) ->
     lines = []
     for msg in messages:
         if isinstance(msg, SystemMessage) and _is_summary_content(msg.content):
-            inner = msg.content.strip().removeprefix("<summary>").removesuffix("</summary>").strip()
+            inner = (
+                msg.content.strip()
+                .removeprefix("<summary>")
+                .removesuffix("</summary>")
+                .strip()
+            )
             lines.append(f"[Previous Summary]:\n{inner}")
         elif isinstance(msg, UserMessage) and _is_summary_content(msg.content):
-            inner = msg.content.strip().removeprefix("<summary>").removesuffix("</summary>").strip()
+            inner = (
+                msg.content.strip()
+                .removeprefix("<summary>")
+                .removesuffix("</summary>")
+                .strip()
+            )
             lines.append(f"[Previous Summary]:\n{inner}")
         elif isinstance(msg, SystemMessage):
             lines.append(f"[System]: {msg.content}")
@@ -171,7 +195,9 @@ def build_summary_text(messages: Sequence[Message], tool_truncate: int = 500) ->
                 for tc in msg.tool_calls:
                     lines.append(f"[Tool Call: {tc.tool_name}]: {tc.args}")
         elif isinstance(msg, ToolMessage):
-            lines.append(f"[Tool Result - {msg.tool_call_id}]: {truncate_output(msg.content, tool_truncate)}")
+            lines.append(
+                f"[Tool Result - {msg.tool_call_id}]: {truncate_output(msg.content, tool_truncate)}"
+            )
     return "\n".join(lines)
 
 
@@ -181,10 +207,14 @@ def wrap_last_user(messages: list[Message]) -> list[Message]:
         msg = result[i]
         if isinstance(msg, UserMessage):
             content = msg.content
-            if content.startswith("<system-reminder>") and content.rstrip().endswith("</system-reminder>"):
+            if content.startswith("<system-reminder>") and content.rstrip().endswith(
+                "</system-reminder>"
+            ):
                 logger.debug("User message already wrapped, skipping")
                 return result
-            result[i] = UserMessage(content=f"<system-reminder>\n{content}\n</system-reminder>")
+            result[i] = UserMessage(
+                content=f"<system-reminder>\n{content}\n</system-reminder>"
+            )
             logger.debug("Last user message wrapped with system-reminder tags")
             return result
     logger.warning("No UserMessage found to wrap")
@@ -205,7 +235,9 @@ def attach_reminder(messages: list[Message], reminder: str) -> list[Message]:
     return list(messages)
 
 
-async def _summarize(llm: LLM, head: Sequence[Message], tool_truncate: int = 500) -> str | None:
+async def _summarize(
+    llm: LLM, head: Sequence[Message], tool_truncate: int = 500
+) -> str | None:
     head_text = build_summary_text(head, tool_truncate=tool_truncate)
     summary_prompt = SUMMARY_PROMPT_TEMPLATE.format(head_text=head_text)
 
@@ -228,7 +260,9 @@ async def _summarize(llm: LLM, head: Sequence[Message], tool_truncate: int = 500
 
 
 def _select_compaction_targets(
-    messages: list[Message], config: CompactionConfig, context_size: int,
+    messages: list[Message],
+    config: CompactionConfig,
+    context_size: int,
 ) -> tuple[list[Message], list[SystemMessage], list[Message]] | None:
     head, tail = select_tail(messages, config, context_size)
     if not head:
@@ -236,7 +270,9 @@ def _select_compaction_targets(
         return None
 
     if _summary_depth(head) >= _MAX_SUMMARY_DEPTH:
-        logger.info(f"Summary depth {_summary_depth(head)} >= max {_MAX_SUMMARY_DEPTH}, skipping")
+        logger.info(
+            f"Summary depth {_summary_depth(head)} >= max {_MAX_SUMMARY_DEPTH}, skipping"
+        )
         return None
 
     original_system: list[SystemMessage] = []
@@ -256,22 +292,30 @@ def _select_compaction_targets(
 
 async def compact(agent_state: AgentState, llm: LLM, config: CompactionConfig) -> bool:
     targets = _select_compaction_targets(
-        agent_state.messages, config, agent_state.usage.context_size,
+        agent_state.messages,
+        config,
+        agent_state.usage.context_size,
     )
     if targets is None:
         return False
 
     head_to_summarize, original_system, tail = targets
-    logger.info(f"Compacting {len(head_to_summarize)} messages into summary, keeping {len(tail)} messages verbatim")
+    logger.info(
+        f"Compacting {len(head_to_summarize)} messages into summary, keeping {len(tail)} messages verbatim"
+    )
 
-    summary = await _summarize(llm, head_to_summarize, tool_truncate=config.summary_tool_truncate)
+    summary = await _summarize(
+        llm, head_to_summarize, tool_truncate=config.summary_tool_truncate
+    )
     if not summary:
         logger.warning("Compaction failed: no summary generated")
         return False
 
     summary_msg = SystemMessage(content=f"<summary>\n{summary.strip()}\n</summary>")
     agent_state.messages = original_system + [summary_msg] + tail
-    logger.info(f"Compaction complete: {len(head_to_summarize)} messages -> 1 summary message")
+    logger.info(
+        f"Compaction complete: {len(head_to_summarize)} messages -> 1 summary message"
+    )
     return True
 
 
@@ -281,7 +325,9 @@ async def compact_with_chain(
     config: CompactionConfig,
 ) -> tuple[str, list[SystemMessage], list[Message]] | None:
     targets = _select_compaction_targets(
-        agent_state.messages, config, agent_state.usage.context_size,
+        agent_state.messages,
+        config,
+        agent_state.usage.context_size,
     )
     if targets is None:
         return None
@@ -292,7 +338,9 @@ async def compact_with_chain(
         f"keeping {len(tail)} messages verbatim"
     )
 
-    summary = await _summarize(llm, head_to_summarize, tool_truncate=config.summary_tool_truncate)
+    summary = await _summarize(
+        llm, head_to_summarize, tool_truncate=config.summary_tool_truncate
+    )
     if not summary:
         logger.warning("Chain compaction failed: no summary generated")
         return None

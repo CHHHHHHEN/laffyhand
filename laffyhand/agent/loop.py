@@ -1,19 +1,35 @@
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Callable
-from typing import TYPE_CHECKING, Union
+from collections.abc import AsyncIterator, Awaitable, Callable
+from typing import TYPE_CHECKING, Any, Union
 
 from loguru import logger
 from pydantic import BaseModel
 
 from laffyhand.agent.schemas import (
-    AgentState, AssistantMessage, CompactionConfig, StreamText, StreamReasoning,
-    StreamToolCall, StreamFinish, StreamError, FinishReason,
-    SystemMessage, ToolCallContent, ToolMessage, Usage, UserMessage, estimate_tokens,
+    AgentState,
+    AssistantMessage,
+    CompactionConfig,
+    StreamText,
+    StreamReasoning,
+    StreamToolCall,
+    StreamFinish,
+    StreamError,
+    FinishReason,
+    SystemMessage,
+    ToolCallContent,
+    ToolMessage,
+    Usage,
+    UserMessage,
+    estimate_tokens,
 )
 from laffyhand.agent.compaction import (
-    compact, compact_with_chain, wrap_last_user, attach_reminder,
-    estimate_messages_tokens, is_overflow,
+    compact,
+    compact_with_chain,
+    wrap_last_user,
+    attach_reminder,
+    estimate_messages_tokens,
+    is_overflow,
 )
 from laffyhand.agent.prune import prune
 from laffyhand.agent.tool_executor import ToolExecutor
@@ -27,35 +43,43 @@ if TYPE_CHECKING:
 
 # ── Streaming event types ──────────────────────────────────────
 
+
 class StepStart(BaseModel):
     type: str = "step-start"
     index: int
 
+
 class TextStart(BaseModel):
     type: str = "text-start"
     id: str
+
 
 class TextDelta(BaseModel):
     type: str = "text-delta"
     id: str
     text: str
 
+
 class TextEnd(BaseModel):
     type: str = "text-end"
     id: str
 
+
 class ReasoningStart(BaseModel):
     type: str = "reasoning-start"
     id: str
+
 
 class ReasoningDelta(BaseModel):
     type: str = "reasoning-delta"
     id: str
     text: str
 
+
 class ReasoningEnd(BaseModel):
     type: str = "reasoning-end"
     id: str
+
 
 class ToolCall(BaseModel):
     type: str = "tool-call"
@@ -63,11 +87,13 @@ class ToolCall(BaseModel):
     name: str
     input: str
 
+
 class ToolResult(BaseModel):
     type: str = "tool-result"
     id: str
     name: str
     result: str
+
 
 class ToolError(BaseModel):
     type: str = "tool-error"
@@ -76,28 +102,33 @@ class ToolError(BaseModel):
     message: str
     error: bool = True
 
+
 class StepFinish(BaseModel):
     type: str = "step-finish"
     index: int
     reason: str
     usage: Usage | None = None
 
+
 class Finish(BaseModel):
     type: str = "finish"
     reason: str
     usage: Usage | None = None
     session_id: str | None = None
-    session_usage: dict | None = None
+    session_usage: dict[str, Any] | None = None
     leftover_steer: str | None = None
+
 
 class ProviderError(BaseModel):
     type: str = "provider-error"
     message: str
     retryable: bool = False
 
+
 class Compacting(BaseModel):
     type: str = "compacting"
     data: str
+
 
 class PermissionRequest(BaseModel):
     type: str = "permission-request"
@@ -105,22 +136,28 @@ class PermissionRequest(BaseModel):
     permission: str
     pattern: str
 
-class TodoUpdate(BaseModel):
-    type: str = "todo-update"
-    action: str  # "added" | "updated" | "deleted"
-    task: dict
-
 
 StreamEvent = Union[
-    StepStart, TextStart, TextDelta, TextEnd,
-    ReasoningStart, ReasoningDelta, ReasoningEnd,
-    ToolCall, ToolResult, ToolError,
-    StepFinish, Finish, ProviderError, Compacting,
-    PermissionRequest, TodoUpdate,
+    StepStart,
+    TextStart,
+    TextDelta,
+    TextEnd,
+    ReasoningStart,
+    ReasoningDelta,
+    ReasoningEnd,
+    ToolCall,
+    ToolResult,
+    ToolError,
+    StepFinish,
+    Finish,
+    ProviderError,
+    Compacting,
+    PermissionRequest,
 ]
 
 
 # ── Helpers ────────────────────────────────────────────────────
+
 
 async def _compact_on_overflow(
     agent_state: AgentState,
@@ -163,6 +200,7 @@ async def _compact_on_overflow(
 
 # ── Main agent loop ────────────────────────────────────────────
 
+
 async def agent_loop(
     agent_state: AgentState,
     llm: LLM,
@@ -172,9 +210,9 @@ async def agent_loop(
     reminder: str | None = None,
     session_manager: SessionManager | None = None,
     subagent_manager: SubagentManager | None = None,
-    preference_checker: Callable[[], str] | None = None,
+    preference_checker: Callable[[], Awaitable[str]] | None = None,
     on_compacted: Callable[[str], None] | None = None,
-) -> AsyncIterator[StreamEvent]:
+) -> AsyncIterator[Any]:
     context_size = agent_state.usage.context_size
     _compacted_this_step = False
 
@@ -200,7 +238,10 @@ async def agent_loop(
 
         if agent_state.step > 1 and context_size and not _compacted_this_step:
             if await _compact_on_overflow(
-                agent_state, llm, compaction_config, session_manager,
+                agent_state,
+                llm,
+                compaction_config,
+                session_manager,
                 on_compacted=on_compacted,
             ):
                 _compacted_this_step = True
@@ -223,7 +264,7 @@ async def agent_loop(
 
         # ── Preference injection: detect new/changed AGENTS.md ──
         if preference_checker is not None:
-            new_prefs = preference_checker()
+            new_prefs = await preference_checker()
             if new_prefs:
                 wrapped = f"<system-reminder>\n{new_prefs}\n</system-reminder>"
                 agent_state.messages.append(SystemMessage(content=wrapped))
@@ -238,7 +279,9 @@ async def agent_loop(
         text_id: str | None = None
         reasoning_id: str | None = None
         tool_definitions = await tool_registry.build_tool_definitions()
-        logger.debug(f"Sending {len(agent_state.messages)} messages to LLM, {len(tool_definitions)} tools")
+        logger.debug(
+            f"Sending {len(agent_state.messages)} messages to LLM, {len(tool_definitions)} tools"
+        )
 
         yield StepStart(index=step_index)
 
@@ -256,11 +299,13 @@ async def agent_loop(
                     yield TextStart(id=text_id)
                 yield TextDelta(id=text_id, text=event.delta)
             elif isinstance(event, StreamToolCall):
-                tool_calls.append(ToolCallContent(
-                    tool_call_id=event.tool_call_id,
-                    tool_name=event.tool_name,
-                    args=event.args,
-                ))
+                tool_calls.append(
+                    ToolCallContent(
+                        tool_call_id=event.tool_call_id,
+                        tool_name=event.tool_name,
+                        args=event.args,
+                    )
+                )
                 yield ToolCall(
                     id=event.tool_call_id,
                     name=event.tool_name,
@@ -280,7 +325,9 @@ async def agent_loop(
             yield ReasoningEnd(id=reasoning_id)
 
         agent_state.turn_count += 1
-        logger.debug(f"Turn {agent_state.turn_count} complete, finish_reason={finish_reason}")
+        logger.debug(
+            f"Turn {agent_state.turn_count} complete, finish_reason={finish_reason}"
+        )
 
         if usage is None:
             logger.warning("API did not return usage, falling back to estimate_tokens")
@@ -332,11 +379,19 @@ async def agent_loop(
                     )
 
             # Inject pending steer into the last tool result
-            if agent_state.pending_steer and agent_state.messages and isinstance(agent_state.messages[-1], ToolMessage):
+            if (
+                agent_state.pending_steer
+                and agent_state.messages
+                and isinstance(agent_state.messages[-1], ToolMessage)
+            ):
                 steer_text = agent_state.pending_steer
                 agent_state.pending_steer = None
                 last_tool: ToolMessage = agent_state.messages[-1]
-                steer_content = last_tool.content + f"\n\n[User steers: {steer_text}]" if last_tool.content else f"[User steers: {steer_text}]"
+                steer_content = (
+                    last_tool.content + f"\n\n[User steers: {steer_text}]"
+                    if last_tool.content
+                    else f"[User steers: {steer_text}]"
+                )
                 agent_state.messages[-1] = ToolMessage(
                     tool_call_id=last_tool.tool_call_id,
                     content=steer_content,
@@ -347,22 +402,35 @@ async def agent_loop(
                 logger.debug("Pruning after tool calls")
                 agent_state.messages = prune(agent_state.messages)
             if session_manager is not None and agent_state.session_id:
-                session_manager.append_messages(agent_state.session_id, agent_state.messages)
+                session_manager.append_messages(
+                    agent_state.session_id, agent_state.messages
+                )
             continue
 
         if finish_reason is not None:
             if session_manager is not None and agent_state.session_id:
-                session_manager.append_messages(agent_state.session_id, agent_state.messages)
-            if context_size and not _compacted_this_step and await _compact_on_overflow(
-                agent_state, llm, compaction_config, session_manager,
-                on_compacted=on_compacted,
+                session_manager.append_messages(
+                    agent_state.session_id, agent_state.messages
+                )
+            if (
+                context_size
+                and not _compacted_this_step
+                and await _compact_on_overflow(
+                    agent_state,
+                    llm,
+                    compaction_config,
+                    session_manager,
+                    on_compacted=on_compacted,
+                )
             ):
                 _compacted_this_step = True
                 yield Compacting(data="Compacting conversation history...")
                 if compaction_config.auto_continue:
-                    agent_state.messages.append(UserMessage(
-                        content="Continue if you have next steps, or stop and ask for clarification if you are unsure how to proceed.",
-                    ))
+                    agent_state.messages.append(
+                        UserMessage(
+                            content="Continue if you have next steps, or stop and ask for clarification if you are unsure how to proceed.",
+                        )
+                    )
                     yield Compacting(data="Continuing after compaction...")
                     continue
             break

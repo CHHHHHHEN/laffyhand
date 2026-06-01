@@ -45,7 +45,9 @@ class TestGlobTool(unittest.TestCase):
 
     def test_glob_subdir(self):
         tool = GlobTool()
-        result = asyncio.run(tool.run({"pattern": "*.py", "path": str(self.root / "sub")}))
+        result = asyncio.run(
+            tool.run({"pattern": "*.py", "path": str(self.root / "sub")})
+        )
         self.assertIn("c.py", result)
 
     def test_glob_truncated(self):
@@ -54,12 +56,18 @@ class TestGlobTool(unittest.TestCase):
         tool = GlobTool()
         result = asyncio.run(tool.run({"pattern": "*.py", "path": str(self.root)}))
         self.assertIn("[Results limited to 100 files]", result)
-        lines = [ln for ln in result.strip().split("\n") if ln.strip() and not ln.startswith("[")]
+        lines = [
+            ln
+            for ln in result.strip().split("\n")
+            if ln.strip() and not ln.startswith("[")
+        ]
         self.assertLessEqual(len(lines), 100)
 
     def test_glob_pattern_no_asterisk(self):
         """Exact file name without wildcard should still find it."""
         (self.root / "unique_name.txt").write_text("data")
         tool = GlobTool()
-        result = asyncio.run(tool.run({"pattern": "unique_name.txt", "path": str(self.root)}))
+        result = asyncio.run(
+            tool.run({"pattern": "unique_name.txt", "path": str(self.root)})
+        )
         self.assertIn("unique_name.txt", result)

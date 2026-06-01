@@ -14,7 +14,11 @@ class TestMCPWrappedTool(unittest.TestCase):
         self.service = MagicMock(spec=MCPService)
         self.service.get_client.return_value = self.client
         self.service.reconnect = AsyncMock(return_value=True)
-        td = MCPToolDef(name="list-files", description="List files in a directory", input_schema={"type": "object", "properties": {"path": {"type": "string"}}})
+        td = MCPToolDef(
+            name="list-files",
+            description="List files in a directory",
+            input_schema={"type": "object", "properties": {"path": {"type": "string"}}},
+        )
         self.tool = MCPWrappedTool("test-server", td, self.service)
 
     def test_tool_name_mangled(self):
@@ -57,21 +61,30 @@ class TestNormalizeSchema(unittest.TestCase):
         self.assertTrue(result["properties"]["x"]["nullable"])
 
     def test_nullable_any_of(self):
-        schema = {"type": "object", "properties": {"x": {"anyOf": [{"type": "string"}, {"type": "null"}]}}}
+        schema = {
+            "type": "object",
+            "properties": {"x": {"anyOf": [{"type": "string"}, {"type": "null"}]}},
+        }
         result = _normalize_schema(schema)
         self.assertEqual(result["properties"]["x"]["type"], "string")
         self.assertTrue(result["properties"]["x"]["nullable"])
         self.assertNotIn("anyOf", result["properties"]["x"])
 
     def test_nullable_one_of(self):
-        schema = {"type": "object", "properties": {"x": {"oneOf": [{"type": "number"}, {"type": "null"}]}}}
+        schema = {
+            "type": "object",
+            "properties": {"x": {"oneOf": [{"type": "number"}, {"type": "null"}]}},
+        }
         result = _normalize_schema(schema)
         self.assertEqual(result["properties"]["x"]["type"], "number")
         self.assertTrue(result["properties"]["x"]["nullable"])
         self.assertNotIn("oneOf", result["properties"]["x"])
 
     def test_preserves_non_nullable_any_of(self):
-        schema = {"type": "object", "properties": {"x": {"anyOf": [{"type": "string"}, {"type": "number"}]}}}
+        schema = {
+            "type": "object",
+            "properties": {"x": {"anyOf": [{"type": "string"}, {"type": "number"}]}},
+        }
         result = _normalize_schema(schema)
         self.assertIn("anyOf", result["properties"]["x"])
         self.assertNotIn("nullable", result["properties"]["x"])
@@ -128,7 +141,10 @@ class TestNormalizeSchema(unittest.TestCase):
             "properties": {
                 "x": {
                     "allOf": [
-                        {"type": "object", "properties": {"y": {"type": ["string", "null"]}}},
+                        {
+                            "type": "object",
+                            "properties": {"y": {"type": ["string", "null"]}},
+                        },
                     ],
                 },
             },

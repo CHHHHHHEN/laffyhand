@@ -4,12 +4,19 @@ import sys
 import asyncio
 from abc import ABC, abstractmethod
 from asyncio import Queue, StreamReader
+from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 from loguru import logger
+
+if TYPE_CHECKING:
+    from laffyhand.gateway.dispatcher import Dispatcher
 
 
 class Transport(ABC):
     connection_id: str = ""
+    dispatcher: Dispatcher | None = None
+    sse_canceller: Callable[[str], bool] | None = None
 
     @abstractmethod
     async def send(self, data: str) -> None: ...
@@ -68,10 +75,16 @@ class InProcessTransport(Transport):
     async def recv(self) -> str:
         if self._closed:
             return ""
-        return await self._recv_queue.get()
+        result = await self._recv_queue.get()
+        if result == "":
+            return ""
+        return result
 
     async def close(self) -> None:
+        if self._closed:
+            return
         self._closed = True
+        self._recv_queue.put_nowait("")
 
     @staticmethod
     def create_pair() -> tuple[InProcessTransport, InProcessTransport]:

@@ -4,6 +4,7 @@ import asyncio
 import os
 import sys
 from pathlib import Path
+from collections.abc import Callable
 from typing import Any, TYPE_CHECKING
 
 from loguru import logger
@@ -29,6 +30,7 @@ def _get_ui_dir() -> str:
 
 async def _fallback_handler(request: Request) -> Response:
     import aiohttp.web
+
     return aiohttp.web.Response(
         text="<h1>UI not built</h1><p>Run <code>cd laffyhand/ui && npm run build</code></p>",
         content_type="text/html",
@@ -40,8 +42,8 @@ def _add_security_middleware(app: Application) -> None:
     import aiohttp.web
 
     @aiohttp.web.middleware
-    async def _middleware(request: Request, handler: Any) -> Response:
-        response = await handler(request)
+    async def _middleware(request: Request, handler: Callable[..., Any]) -> Response:
+        response: Response = await handler(request)
         for key, value in _SECURITY_HEADERS.items():
             response.headers[key] = value
         return response
@@ -66,19 +68,24 @@ async def run_ui_server(
     _add_security_middleware(app)
 
     if os.path.isdir(ui_dir):
+
         async def _serve_index(request: Request) -> StreamResponse:
             import aiohttp.web
+
             return aiohttp.web.FileResponse(os.path.join(ui_dir, "index.html"))
 
         async def _spa_fallback(request: Request) -> StreamResponse:
             import aiohttp.web
+
             # Don't intercept RPC or health endpoints
             if request.path.startswith(("/rpc", "/health")):
                 raise aiohttp.web.HTTPNotFound()
             return aiohttp.web.FileResponse(os.path.join(ui_dir, "index.html"))
 
         # Static assets under /assets/
-        app.router.add_static("/assets", os.path.join(ui_dir, "assets"), show_index=False)
+        app.router.add_static(
+            "/assets", os.path.join(ui_dir, "assets"), show_index=False
+        )
         # Root serves index.html
         app.router.add_get("/", _serve_index)
         # SPA fallback: anything else serves index.html (for client-side routing)

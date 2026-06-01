@@ -18,7 +18,7 @@ def _parse_frontmatter(text: str) -> dict[str, str] | None:
     if end_idx is None:
         return None
     raw = "\n".join(lines[1:end_idx])
-    result: dict = {}
+    result: dict[str, str] = {}
     for line in raw.splitlines():
         line = line.strip()
         if not line or line.startswith("#"):

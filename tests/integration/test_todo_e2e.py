@@ -1,4 +1,4 @@
-"""End-to-end integration test: TodowriteTool → TodoManager → SQLite → RPC handlers.
+"""End-to-end integration test: TodoTool → TodoManager → SQLite → RPC handlers.
 
 Tests the full lifecycle:
   1. Agent calls `todowrite(plan)` → TodoManager persists to SQLite
@@ -18,7 +18,7 @@ import pytest
 
 from laffyhand.agent.session.schema import create_tables
 from laffyhand.agent.session.todo import TodoManager
-from laffyhand.agent.tools.todo import TodowriteTool
+from laffyhand.agent.tools.todo import TodoTool
 
 
 @pytest.fixture
@@ -43,7 +43,7 @@ def mgr(db):
 
 @pytest.fixture
 def tool(mgr):
-    return TodowriteTool(mgr)
+    return TodoTool(mgr)
 
 
 SID = "e2e-session"
@@ -52,85 +52,159 @@ SID = "e2e-session"
 class TestTodoE2E:
     def test_full_dag_lifecycle(self, tool, mgr):
         # 1. Add root task
-        asyncio.run(tool.run({
-            "operation": "add", "content": "Research", "priority": "high", "session_id": SID,
-        }))
+        asyncio.run(
+            tool.run(
+                {
+                    "operation": "add",
+                    "content": "Research",
+                    "priority": "high",
+                    "session_id": SID,
+                }
+            )
+        )
         tasks = mgr.get_tasks(SID)
         research = next(t for t in tasks if t.content == "Research")
 
         # 2. Add child tasks depending on Research
-        asyncio.run(tool.run({
-            "operation": "add", "content": "Implement",
-            "depends_on": [research.id], "session_id": SID,
-        }))
-        asyncio.run(tool.run({
-            "operation": "add", "content": "Test",
-            "depends_on": [research.id], "session_id": SID,
-        }))
+        asyncio.run(
+            tool.run(
+                {
+                    "operation": "add",
+                    "content": "Implement",
+                    "depends_on": [research.id],
+                    "session_id": SID,
+                }
+            )
+        )
+        asyncio.run(
+            tool.run(
+                {
+                    "operation": "add",
+                    "content": "Test",
+                    "depends_on": [research.id],
+                    "session_id": SID,
+                }
+            )
+        )
 
         # 3. Read: verify DAG status (children blocked by Research)
         read1 = asyncio.run(tool.run({"operation": "read", "session_id": SID}))
         assert "Research" in read1
-        lines = [l.strip() for l in read1.split("\n") if l.strip()]
-        research_line = next(l for l in lines if "Research" in l)
+        lines = [line.strip() for line in read1.split("\n") if line.strip()]
+        research_line = next(line for line in lines if "Research" in line)
         assert "pending" in research_line
-        blocked_lines = [l for l in lines if "blocked" in l]
+        blocked_lines = [line for line in lines if "blocked" in line]
         assert len(blocked_lines) == 2
 
         # 4. Add another task depending on Research
-        asyncio.run(tool.run({
-            "operation": "add", "content": "Document",
-            "depends_on": [research.id], "session_id": SID,
-        }))
+        asyncio.run(
+            tool.run(
+                {
+                    "operation": "add",
+                    "content": "Document",
+                    "depends_on": [research.id],
+                    "session_id": SID,
+                }
+            )
+        )
         read2 = asyncio.run(tool.run({"operation": "read", "session_id": SID}))
         assert "Document" in read2
 
         # 5. Complete Research → all blocked children unblocked
-        asyncio.run(tool.run({
-            "operation": "update", "id": research.id,
-            "status": "completed", "session_id": SID,
-        }))
+        asyncio.run(
+            tool.run(
+                {
+                    "operation": "update",
+                    "id": research.id,
+                    "status": "completed",
+                    "session_id": SID,
+                }
+            )
+        )
         read3 = asyncio.run(tool.run({"operation": "read", "session_id": SID}))
         assert "blocked" not in read3
 
     def test_cycle_detection_via_tool(self, tool, mgr):
-        asyncio.run(tool.run({
-            "operation": "add", "content": "A", "session_id": SID,
-        }))
-        asyncio.run(tool.run({
-            "operation": "add", "content": "B", "session_id": SID,
-        }))
+        asyncio.run(
+            tool.run(
+                {
+                    "operation": "add",
+                    "content": "A",
+                    "session_id": SID,
+                }
+            )
+        )
+        asyncio.run(
+            tool.run(
+                {
+                    "operation": "add",
+                    "content": "B",
+                    "session_id": SID,
+                }
+            )
+        )
         tasks = mgr.get_tasks(SID)
         a = next(t for t in tasks if t.content == "A")
         b = next(t for t in tasks if t.content == "B")
 
         # Make B depend on A (OK)
-        result = asyncio.run(tool.run({
-            "operation": "update", "id": b.id, "depends_on": [a.id], "session_id": SID,
-        }))
+        result = asyncio.run(
+            tool.run(
+                {
+                    "operation": "update",
+                    "id": b.id,
+                    "depends_on": [a.id],
+                    "session_id": SID,
+                }
+            )
+        )
         assert "Updated" in result
 
         # Now try to make A depend on B (cycle: A→B→A)
         with pytest.raises(ValueError, match="cycle"):
-            asyncio.run(tool.run({
-                "operation": "update", "id": a.id,
-                "depends_on": [b.id], "session_id": SID,
-            }))
+            asyncio.run(
+                tool.run(
+                    {
+                        "operation": "update",
+                        "id": a.id,
+                        "depends_on": [b.id],
+                        "session_id": SID,
+                    }
+                )
+            )
 
     def test_tool_delete_with_dependents(self, tool, mgr):
-        asyncio.run(tool.run({
-            "operation": "add", "content": "Parent", "session_id": SID,
-        }))
+        asyncio.run(
+            tool.run(
+                {
+                    "operation": "add",
+                    "content": "Parent",
+                    "session_id": SID,
+                }
+            )
+        )
         tasks = mgr.get_tasks(SID)
         parent = next(t for t in tasks if t.content == "Parent")
-        asyncio.run(tool.run({
-            "operation": "add", "content": "Child",
-            "depends_on": [parent.id], "session_id": SID,
-        }))
+        asyncio.run(
+            tool.run(
+                {
+                    "operation": "add",
+                    "content": "Child",
+                    "depends_on": [parent.id],
+                    "session_id": SID,
+                }
+            )
+        )
 
-        asyncio.run(tool.run({
-            "operation": "delete", "id": parent.id, "session_id": SID,
-        }))
+        asyncio.run(
+            tool.run(
+                {
+                    "operation": "delete",
+                    "id": parent.id,
+                    "session_id": SID,
+                }
+            )
+        )
 
         remaining = mgr.get_tasks(SID)
         child = next(t for t in remaining if t.content == "Child")
@@ -138,15 +212,27 @@ class TestTodoE2E:
 
     def test_rpc_list_matches_tool_read(self, tool, mgr):
         """Verify that the data read via todo/list RPC is consistent with tool read."""
-        asyncio.run(tool.run({
-            "operation": "add", "content": "Task A", "session_id": SID,
-        }))
+        asyncio.run(
+            tool.run(
+                {
+                    "operation": "add",
+                    "content": "Task A",
+                    "session_id": SID,
+                }
+            )
+        )
         tasks = mgr.get_tasks(SID)
         a = next(t for t in tasks if t.content == "Task A")
-        asyncio.run(tool.run({
-            "operation": "add", "content": "Task B",
-            "depends_on": [a.id], "session_id": SID,
-        }))
+        asyncio.run(
+            tool.run(
+                {
+                    "operation": "add",
+                    "content": "Task B",
+                    "depends_on": [a.id],
+                    "session_id": SID,
+                }
+            )
+        )
 
         tool_result = asyncio.run(tool.run({"operation": "read", "session_id": SID}))
         tasks = mgr.get_tasks(SID)
@@ -181,22 +267,42 @@ class TestTodoE2E:
         assert got.task_tool_id is None
 
     def test_tool_read_filter_by_status(self, tool, mgr):
-        asyncio.run(tool.run({"operation": "add", "content": "active", "session_id": SID}))
+        asyncio.run(
+            tool.run({"operation": "add", "content": "active", "session_id": SID})
+        )
         tasks = mgr.get_tasks(SID)
         active = next(t for t in tasks if t.content == "active")
-        asyncio.run(tool.run({
-            "operation": "update", "id": active.id,
-            "status": "completed", "session_id": SID,
-        }))
+        asyncio.run(
+            tool.run(
+                {
+                    "operation": "update",
+                    "id": active.id,
+                    "status": "completed",
+                    "session_id": SID,
+                }
+            )
+        )
 
-        result = asyncio.run(tool.run({
-            "operation": "read", "status": "completed", "session_id": SID,
-        }))
+        result = asyncio.run(
+            tool.run(
+                {
+                    "operation": "read",
+                    "status": "completed",
+                    "session_id": SID,
+                }
+            )
+        )
         assert "active" in result
 
-        pending_result = asyncio.run(tool.run({
-            "operation": "read", "status": "pending", "session_id": SID,
-        }))
+        pending_result = asyncio.run(
+            tool.run(
+                {
+                    "operation": "read",
+                    "status": "pending",
+                    "session_id": SID,
+                }
+            )
+        )
         assert pending_result == "No tasks."
 
     def test_session_isolation(self, tool, mgr, db):
@@ -207,10 +313,20 @@ class TestTodoE2E:
         )
         db.commit()
 
-        asyncio.run(tool.run({"operation": "add", "content": "session-1 task", "session_id": SID}))
-        asyncio.run(tool.run({
-            "operation": "add", "content": "session-2 task", "session_id": "other-session",
-        }))
+        asyncio.run(
+            tool.run(
+                {"operation": "add", "content": "session-1 task", "session_id": SID}
+            )
+        )
+        asyncio.run(
+            tool.run(
+                {
+                    "operation": "add",
+                    "content": "session-2 task",
+                    "session_id": "other-session",
+                }
+            )
+        )
 
         s1_tasks = mgr.get_tasks(SID)
         s2_tasks = mgr.get_tasks("other-session")

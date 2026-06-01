@@ -25,7 +25,10 @@ class TestSkillToolInRegistry(unittest.TestCase):
 
     def test_on_build_defs_updates_description(self):
         self.skill_registry._skills["test"] = SkillInfo(
-            name="test", description="A test", base_dir=Path("."), filepath=Path("./SKILL.md"),
+            name="test",
+            description="A test",
+            base_dir=Path("."),
+            filepath=Path("./SKILL.md"),
         )
         callback_called = False
 
@@ -33,7 +36,9 @@ class TestSkillToolInRegistry(unittest.TestCase):
             nonlocal callback_called
             callback_called = True
             summary = self.skill_registry.build_skills_summary()
-            self.skill_tool.description = f"Load skill.\n\n{summary}" if summary else "Load skill."
+            self.skill_tool.description = (
+                f"Load skill.\n\n{summary}" if summary else "Load skill."
+            )
 
         self.tool_registry.on_build_defs(_update)
         asyncio.run(self.tool_registry.build_tool_definitions())

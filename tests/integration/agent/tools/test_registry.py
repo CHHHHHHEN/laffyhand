@@ -12,7 +12,11 @@ class CountTool(BaseTool):
     max_result_size = 50
 
     def _input_schema(self) -> dict:
-        return {"type": "object", "properties": {"text": {"type": "string"}}, "required": ["text"]}
+        return {
+            "type": "object",
+            "properties": {"text": {"type": "string"}},
+            "required": ["text"],
+        }
 
     async def run(self, params: dict) -> str:
         return params.get("text", "")

@@ -29,7 +29,9 @@ class TestSkillTool(unittest.TestCase):
         self.assertIn("not found", result.lower())
 
     def test_permission_denied(self):
-        info = SkillInfo(name="test", base_dir=Path("/tmp"), filepath=Path("/tmp/SKILL.md"))
+        info = SkillInfo(
+            name="test", base_dir=Path("/tmp"), filepath=Path("/tmp/SKILL.md")
+        )
         self.registry.require.return_value = info
         # Mock the permission manager to deny
         self.tool._permission.ask = AsyncMock(return_value=False)  # type: ignore[method-assign]
@@ -71,4 +73,7 @@ class TestSkillTool(unittest.TestCase):
         self.registry.require.return_value = info
         self.tool._permission.ask = AsyncMock(return_value=True)  # type: ignore[method-assign]
         result = asyncio.run(self.tool.run({"name": "s"}))
-        self.assertNotIn("SKILL.md", result.split("skill_files")[1] if "skill_files" in result else "")
+        self.assertNotIn(
+            "SKILL.md",
+            result.split("skill_files")[1] if "skill_files" in result else "",
+        )

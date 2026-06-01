@@ -18,7 +18,7 @@ class EditTool(BaseTool):
     name = "edit"
     description = "Perform an exact string replacement in a file."
 
-    def _input_schema(self) -> dict:
+    def _input_schema(self) -> dict[str, Any]:
         return {
             "type": "object",
             "properties": {

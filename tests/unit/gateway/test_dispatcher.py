@@ -18,6 +18,7 @@ class TestRegister:
     def test_registers_handler(self, dispatcher):
         async def handler(*args):
             return {"ok": True}
+
         dispatcher.register("test", handler)
         assert "test" in dispatcher.handlers
         assert dispatcher.handlers["test"].func is handler
@@ -26,14 +27,17 @@ class TestRegister:
     def test_registers_streaming_handler(self, dispatcher):
         async def handler(*args):
             return None
+
         dispatcher.register("stream", handler, streaming=True)
         assert dispatcher.handlers["stream"].streaming is True
 
     def test_overwrites_existing(self, dispatcher):
         async def h1(*args):
             return 1
+
         async def h2(*args):
             return 2
+
         dispatcher.register("x", h1)
         dispatcher.register("x", h2)
         assert dispatcher.handlers["x"].func is h2
@@ -92,9 +96,12 @@ class TestDispatch:
         assert "not found" in sent["error"]["message"].lower()
 
     @pytest.mark.anyio
-    async def test_handler_exception_returns_internal_error(self, dispatcher, transport):
+    async def test_handler_exception_returns_internal_error(
+        self, dispatcher, transport
+    ):
         async def failing(*args):
             raise RuntimeError("boom")
+
         dispatcher.register("fail", failing)
         req = Request(id=1, method="fail")
 
@@ -140,11 +147,13 @@ class TestRegisteredHandler:
     def test_default_streaming_false(self):
         async def h(*args):
             pass
+
         r = RegisteredHandler(func=h)
         assert r.streaming is False
 
     def test_custom_streaming(self):
         async def h(*args):
             pass
+
         r = RegisteredHandler(func=h, streaming=True)
         assert r.streaming is True

@@ -1,11 +1,22 @@
 import unittest
 from laffyhand.agent.schemas import (
-    AssistantMessage, SystemMessage, UserMessage, ToolMessage,
-    ToolCallContent, LLMRequest, ToolDefinition,
-    StreamText, StreamReasoning, StreamToolCall, StreamFinish,
+    AssistantMessage,
+    SystemMessage,
+    UserMessage,
+    ToolMessage,
+    ToolCallContent,
+    LLMRequest,
+    ToolDefinition,
+    StreamText,
+    StreamReasoning,
+    StreamToolCall,
+    StreamFinish,
 )
 from laffyhand.agent.llm.protocols.openai import (
-    OpenAIProtocol, OpenAIEndpoint, _message_to_openai, _tool_definitions_to_openai,
+    OpenAIProtocol,
+    OpenAIEndpoint,
+    _message_to_openai,
+    _tool_definitions_to_openai,
 )
 from laffyhand.agent.llm.protocols.deepseek import DeepseekProtocol
 
@@ -63,11 +74,14 @@ class TestMessageToOpenAI(unittest.TestCase):
     def test_tool_message_passthrough(self):
         msg = ToolMessage(tool_call_id="call_1", content="result")
         result = _message_to_openai(msg)
-        self.assertEqual(result, {"role": "tool", "tool_call_id": "call_1", "content": "result"})
+        self.assertEqual(
+            result, {"role": "tool", "tool_call_id": "call_1", "content": "result"}
+        )
 
     def test_unknown_role_returns_empty_dict(self):
         """A message with an unknown role returns an empty dict."""
         from unittest.mock import MagicMock
+
         msg = MagicMock()
         msg.role = "custom_role"
         result = _message_to_openai(msg)
@@ -89,7 +103,7 @@ class TestOpenAIProtocolBuildRequest(unittest.TestCase):
         request = LLMRequest(model="test-model", messages=messages, tools=tools)
         body = protocol.build_request(request)
         self.assertEqual(len(body["messages"]), 3)
-        self.assertEqual(body["messages"][2]["content"], '[Empty response]')
+        self.assertEqual(body["messages"][2]["content"], "[Empty response]")
 
     def test_sets_stream_and_stream_options(self):
         protocol = OpenAIProtocol()
@@ -116,37 +130,88 @@ class TestOpenAIProtocolParseFrame(unittest.TestCase):
         self.assertEqual(events, [])
 
     def test_content_delta(self):
-        events = self.protocol.parse_frame({
-            "choices": [{"index": 0, "delta": {"content": "Hello"}, "finish_reason": None}],
-        })
+        events = self.protocol.parse_frame(
+            {
+                "choices": [
+                    {"index": 0, "delta": {"content": "Hello"}, "finish_reason": None}
+                ],
+            }
+        )
         self.assertEqual(len(events), 1)
         self.assertIsInstance(events[0], StreamText)
         self.assertEqual(events[0].delta, "Hello")
 
     def test_reasoning_delta(self):
-        events = self.protocol.parse_frame({
-            "choices": [{"index": 0, "delta": {"reasoning_content": "thinking"}, "finish_reason": None}],
-        })
+        events = self.protocol.parse_frame(
+            {
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {"reasoning_content": "thinking"},
+                        "finish_reason": None,
+                    }
+                ],
+            }
+        )
         self.assertEqual(len(events), 1)
         self.assertIsInstance(events[0], StreamReasoning)
         self.assertEqual(events[0].delta, "thinking")
 
     def test_content_and_reasoning_together(self):
-        events = self.protocol.parse_frame({
-            "choices": [{"index": 0, "delta": {"content": "answer", "reasoning_content": "thinking"}, "finish_reason": None}],
-        })
+        events = self.protocol.parse_frame(
+            {
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {"content": "answer", "reasoning_content": "thinking"},
+                        "finish_reason": None,
+                    }
+                ],
+            }
+        )
         self.assertEqual(len(events), 2)
         self.assertIsInstance(events[0], StreamText)
         self.assertIsInstance(events[1], StreamReasoning)
 
     def test_tool_call_accumulation(self):
-        events = self.protocol.parse_frame({
-            "choices": [{"index": 0, "delta": {"tool_calls": [{"index": 0, "id": "tc1", "function": {"name": "bash", "arguments": "{\"cmd\":"}}]}, "finish_reason": None}],
-        })
+        events = self.protocol.parse_frame(
+            {
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {
+                            "tool_calls": [
+                                {
+                                    "index": 0,
+                                    "id": "tc1",
+                                    "function": {
+                                        "name": "bash",
+                                        "arguments": '{"cmd":',
+                                    },
+                                }
+                            ]
+                        },
+                        "finish_reason": None,
+                    }
+                ],
+            }
+        )
         self.assertEqual(len(events), 0)  # accumulated, not yielded yet
-        finish_events = self.protocol.parse_frame({
-            "choices": [{"index": 0, "delta": {"tool_calls": [{"index": 0, "function": {"arguments": " \"ls\"}"}}]}, "finish_reason": "tool_calls"}],
-        })
+        finish_events = self.protocol.parse_frame(
+            {
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {
+                            "tool_calls": [
+                                {"index": 0, "function": {"arguments": ' "ls"}'}}
+                            ]
+                        },
+                        "finish_reason": "tool_calls",
+                    }
+                ],
+            }
+        )
         self.assertEqual(len(finish_events), 2)
         self.assertIsInstance(finish_events[0], StreamToolCall)
         self.assertEqual(finish_events[0].tool_call_id, "tc1")
@@ -157,18 +222,39 @@ class TestOpenAIProtocolParseFrame(unittest.TestCase):
 
     def test_tool_call_single_frame(self):
         """Tool call completed in one frame (single-shot)."""
-        events = self.protocol.parse_frame({
-            "choices": [{"index": 0, "delta": {"tool_calls": [{"index": 0, "id": "tc1", "function": {"name": "bash", "arguments": "{\"cmd\":\"ls\"}"}}]}, "finish_reason": "tool_calls"}],
-        })
+        events = self.protocol.parse_frame(
+            {
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {
+                            "tool_calls": [
+                                {
+                                    "index": 0,
+                                    "id": "tc1",
+                                    "function": {
+                                        "name": "bash",
+                                        "arguments": '{"cmd":"ls"}',
+                                    },
+                                }
+                            ]
+                        },
+                        "finish_reason": "tool_calls",
+                    }
+                ],
+            }
+        )
         self.assertEqual(len(events), 2)
         self.assertIsInstance(events[0], StreamToolCall)
         self.assertEqual(events[0].tool_name, "bash")
 
     def test_finish_with_usage(self):
-        events = self.protocol.parse_frame({
-            "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
-            "usage": {"prompt_tokens": 10, "completion_tokens": 5},
-        })
+        events = self.protocol.parse_frame(
+            {
+                "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+                "usage": {"prompt_tokens": 10, "completion_tokens": 5},
+            }
+        )
         self.assertEqual(len(events), 1)
         self.assertIsInstance(events[0], StreamFinish)
         self.assertEqual(events[0].finish_reason, "stop")
@@ -177,31 +263,40 @@ class TestOpenAIProtocolParseFrame(unittest.TestCase):
         self.assertEqual(events[0].usage.output_tokens, 5)
 
     def test_finish_without_usage(self):
-        events = self.protocol.parse_frame({
-            "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
-        })
+        events = self.protocol.parse_frame(
+            {
+                "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+            }
+        )
         self.assertEqual(len(events), 1)
         self.assertIsInstance(events[0], StreamFinish)
         self.assertIsNone(events[0].usage)
 
     def test_unknown_finish_reason_mapped_to_other(self):
-        events = self.protocol.parse_frame({
-            "choices": [{"index": 0, "delta": {}, "finish_reason": "rate_limit"}],
-        })
+        events = self.protocol.parse_frame(
+            {
+                "choices": [{"index": 0, "delta": {}, "finish_reason": "rate_limit"}],
+            }
+        )
         self.assertEqual(len(events), 1)
         self.assertIsInstance(events[0], StreamFinish)
         self.assertEqual(events[0].finish_reason, "other")
 
     def test_usage_with_details(self):
-        events = self.protocol.parse_frame({
-            "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
-            "usage": {
-                "prompt_tokens": 100,
-                "completion_tokens": 50,
-                "prompt_tokens_details": {"cached_tokens": 10, "cache_write_tokens": 5},
-                "completion_tokens_details": {"reasoning_tokens": 20},
-            },
-        })
+        events = self.protocol.parse_frame(
+            {
+                "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+                "usage": {
+                    "prompt_tokens": 100,
+                    "completion_tokens": 50,
+                    "prompt_tokens_details": {
+                        "cached_tokens": 10,
+                        "cache_write_tokens": 5,
+                    },
+                    "completion_tokens_details": {"reasoning_tokens": 20},
+                },
+            }
+        )
         u = events[0].usage
         self.assertEqual(u.input_tokens, 100)
         self.assertEqual(u.output_tokens, 50)
@@ -217,51 +312,125 @@ class TestDeepseekProtocol(unittest.TestCase):
         self.protocol = DeepseekProtocol()
 
     def test_build_request_adds_deepseek_extras(self):
-        request = LLMRequest(model="deepseek-test", messages=[UserMessage(content="hi")])
+        request = LLMRequest(
+            model="deepseek-test", messages=[UserMessage(content="hi")]
+        )
         body = self.protocol.build_request(request)
         self.assertEqual(body["thinking"], {"type": "enabled"})
         self.assertEqual(body["reasoning_effort"], "high")
 
     def test_parse_frame_reasoning_content(self):
-        events = self.protocol.parse_frame({
-            "choices": [{"index": 0, "delta": {"reasoning_content": "thinking step"}, "finish_reason": None}],
-        })
+        events = self.protocol.parse_frame(
+            {
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {"reasoning_content": "thinking step"},
+                        "finish_reason": None,
+                    }
+                ],
+            }
+        )
         self.assertEqual(len(events), 1)
         self.assertIsInstance(events[0], StreamReasoning)
         self.assertEqual(events[0].delta, "thinking step")
 
     def test_parse_frame_reasoning_and_content(self):
         """DeepSeek emits both reasoning_content and content in separate frames."""
-        reasoning_events = self.protocol.parse_frame({
-            "choices": [{"index": 0, "delta": {"reasoning_content": "think..."}, "finish_reason": None}],
-        })
+        reasoning_events = self.protocol.parse_frame(
+            {
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {"reasoning_content": "think..."},
+                        "finish_reason": None,
+                    }
+                ],
+            }
+        )
         self.assertEqual(len(reasoning_events), 1)
         self.assertIsInstance(reasoning_events[0], StreamReasoning)
 
-        content_events = self.protocol.parse_frame({
-            "choices": [{"index": 0, "delta": {"content": "answer"}, "finish_reason": "stop"}],
-            "usage": {"prompt_tokens": 5, "completion_tokens": 3},
-        })
+        content_events = self.protocol.parse_frame(
+            {
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {"content": "answer"},
+                        "finish_reason": "stop",
+                    }
+                ],
+                "usage": {"prompt_tokens": 5, "completion_tokens": 3},
+            }
+        )
         self.assertEqual(len(content_events), 2)
         self.assertIsInstance(content_events[0], StreamText)
         self.assertIsInstance(content_events[1], StreamFinish)
 
     def test_parse_frame_no_reasoning_falls_through_to_parent(self):
         """When no reasoning_content, DeepSeek falls through to standard OpenAI parsing."""
-        events = self.protocol.parse_frame({
-            "choices": [{"index": 0, "delta": {"content": "plain answer"}, "finish_reason": "stop"}],
-            "usage": {"prompt_tokens": 5, "completion_tokens": 3},
-        })
+        events = self.protocol.parse_frame(
+            {
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {"content": "plain answer"},
+                        "finish_reason": "stop",
+                    }
+                ],
+                "usage": {"prompt_tokens": 5, "completion_tokens": 3},
+            }
+        )
         self.assertEqual(len(events), 2)
         self.assertIsInstance(events[0], StreamText)
         self.assertIsInstance(events[1], StreamFinish)
 
     def test_tool_call_args_not_doubled(self):
         """Tool call arguments must not be doubled by DeepSeekProtocol's parse_frame."""
-        start = {"choices": [{"delta": {"tool_calls": [{"index": 0, "id": "c1", "function": {"name": "bash", "arguments": ""}}]}, "finish_reason": None}]}
-        chunk1 = {"choices": [{"delta": {"tool_calls": [{"index": 0, "function": {"arguments": "{\"command\":"}}]}, "finish_reason": None}]}
-        chunk2 = {"choices": [{"delta": {"tool_calls": [{"index": 0, "function": {"arguments": " \"pwd\"}"}}]}, "finish_reason": None}]}
-        finish = {"choices": [{"delta": {}, "finish_reason": "tool_calls"}], "usage": {"prompt_tokens": 5, "completion_tokens": 3}}
+        start = {
+            "choices": [
+                {
+                    "delta": {
+                        "tool_calls": [
+                            {
+                                "index": 0,
+                                "id": "c1",
+                                "function": {"name": "bash", "arguments": ""},
+                            }
+                        ]
+                    },
+                    "finish_reason": None,
+                }
+            ]
+        }
+        chunk1 = {
+            "choices": [
+                {
+                    "delta": {
+                        "tool_calls": [
+                            {"index": 0, "function": {"arguments": '{"command":'}}
+                        ]
+                    },
+                    "finish_reason": None,
+                }
+            ]
+        }
+        chunk2 = {
+            "choices": [
+                {
+                    "delta": {
+                        "tool_calls": [
+                            {"index": 0, "function": {"arguments": ' "pwd"}'}}
+                        ]
+                    },
+                    "finish_reason": None,
+                }
+            ]
+        }
+        finish = {
+            "choices": [{"delta": {}, "finish_reason": "tool_calls"}],
+            "usage": {"prompt_tokens": 5, "completion_tokens": 3},
+        }
 
         self.protocol.parse_frame(start)
         self.protocol.parse_frame(chunk1)
@@ -277,7 +446,13 @@ class TestToolDefinitionsToOpenAI(unittest.TestCase):
     """_tool_definitions_to_openai must produce valid OpenAI tool format."""
 
     def test_converts_single_tool(self):
-        tools = [ToolDefinition(name="search", description="  Search the web  ", input_schema={"type": "object"})]
+        tools = [
+            ToolDefinition(
+                name="search",
+                description="  Search the web  ",
+                input_schema={"type": "object"},
+            )
+        ]
         result = _tool_definitions_to_openai(tools)
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0]["type"], "function")
@@ -299,12 +474,18 @@ class TestOpenAIEndpoint(unittest.TestCase):
 
     def test_build_url(self):
         endpoint = OpenAIEndpoint(base_url="https://api.openai.com")
-        self.assertEqual(endpoint.build("gpt-4"), "https://api.openai.com/v1/chat/completions")
+        self.assertEqual(
+            endpoint.build("gpt-4"), "https://api.openai.com/v1/chat/completions"
+        )
 
     def test_strips_trailing_slash(self):
         endpoint = OpenAIEndpoint(base_url="https://api.openai.com/")
-        self.assertEqual(endpoint.build("gpt-4"), "https://api.openai.com/v1/chat/completions")
+        self.assertEqual(
+            endpoint.build("gpt-4"), "https://api.openai.com/v1/chat/completions"
+        )
 
     def test_with_custom_base(self):
         endpoint = OpenAIEndpoint(base_url="http://localhost:8080")
-        self.assertEqual(endpoint.build("test"), "http://localhost:8080/v1/chat/completions")
+        self.assertEqual(
+            endpoint.build("test"), "http://localhost:8080/v1/chat/completions"
+        )

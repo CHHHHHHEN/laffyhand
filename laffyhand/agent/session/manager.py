@@ -2,80 +2,89 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from datetime import datetime, timezone
 from pathlib import Path
 from collections.abc import Sequence
-from typing import Optional
+from typing import Any, Optional, cast
 
 from loguru import logger
 
-from laffyhand.agent.session.models import MessageRecord, Session
+from laffyhand.agent.session.models import (
+    MessageRecord,
+    Session,
+    _utcnow,
+    _ts,
+    _from_ts,
+)
 from laffyhand.agent.session.schema import create_tables, has_fts5
 from laffyhand.agent.schemas import (
-    AgentState, AssistantMessage, Message, SessionUsage, SystemMessage,
-    ToolCallContent, ToolMessage, UserMessage,
+    AgentState,
+    AssistantMessage,
+    Message,
+    SessionUsage,
+    SystemMessage,
+    ToolCallContent,
+    ToolMessage,
+    UserMessage,
 )
 
 
-def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
-
-
-def _ts(dt: datetime | None) -> str | None:
-    return dt.isoformat() if dt is not None else None
-
-
-def _from_ts(ts: str | None) -> datetime | None:
-    return datetime.fromisoformat(ts) if ts is not None else None
-
-
-def _serialize_metadata(meta: dict) -> str:
+def _serialize_metadata(meta: dict[str, Any]) -> str:
     return json.dumps(meta, default=str)
 
 
-def _deserialize_metadata(raw: str) -> dict:
+def _deserialize_metadata(raw: str) -> dict[str, Any]:
     if not raw:
         return {}
     try:
-        return json.loads(raw)
+        return cast(dict[str, Any], json.loads(raw))
     except json.JSONDecodeError:
         logger.warning(f"Failed to parse session metadata JSON: {raw[:200]}")
         return {}
 
 
 def _message_to_record(
-    session_id: str, msg: Message, turn_index: int,
+    session_id: str,
+    msg: Message,
+    turn_index: int,
 ) -> MessageRecord:
     if isinstance(msg, SystemMessage):
         return MessageRecord(
-            session_id=session_id, role="system",
-            content=msg.content, turn_index=turn_index,
+            session_id=session_id,
+            role="system",
+            content=msg.content,
+            turn_index=turn_index,
         )
     if isinstance(msg, UserMessage):
         return MessageRecord(
-            session_id=session_id, role="user",
-            content=msg.content, turn_index=turn_index,
+            session_id=session_id,
+            role="user",
+            content=msg.content,
+            turn_index=turn_index,
         )
     if isinstance(msg, AssistantMessage):
         tool_args = None
         if msg.tool_calls:
             tool_args = json.dumps(
-                [t.model_dump() for t in msg.tool_calls], default=str,
+                [t.model_dump() for t in msg.tool_calls],
+                default=str,
             )
         return MessageRecord(
-            session_id=session_id, role="assistant",
+            session_id=session_id,
+            role="assistant",
             content=msg.content,
             reasoning=msg.reasoning,
             tool_args=tool_args,
             token_count=(
-                (msg.tokens.input_tokens or 0) +
-                (msg.tokens.output_tokens or 0)
-            ) if msg.tokens else None,
+                (msg.tokens.input_tokens or 0) + (msg.tokens.output_tokens or 0)
+            )
+            if msg.tokens
+            else None,
             turn_index=turn_index,
         )
     if isinstance(msg, ToolMessage):
         return MessageRecord(
-            session_id=session_id, role="tool",
+            session_id=session_id,
+            role="tool",
             content=msg.content,
             tool_call_id=msg.tool_call_id,
             turn_index=turn_index,
@@ -91,7 +100,11 @@ def _record_to_message(rec: MessageRecord) -> Message:
     if rec.role == "assistant":
         tool_calls = None
         if rec.tool_args:
-            raw = json.loads(rec.tool_args)
+            try:
+                raw = json.loads(rec.tool_args)
+            except (json.JSONDecodeError, TypeError):
+                logger.warning(f"Failed to parse tool_args JSON for message {rec.id}")
+                raw = []
             tool_calls = [ToolCallContent(**t) for t in raw]
         return AssistantMessage(
             content=rec.content,
@@ -118,7 +131,6 @@ class SessionManager:
         self._fts5_available = has_fts5(self._conn)
         if not self._fts5_available:
             logger.warning("FTS5 unavailable; session search falls back to LIKE")
-
 
     # ── Connection ────────────────────────────────────────────
 
@@ -161,7 +173,8 @@ class SessionManager:
 
     def get(self, session_id: str) -> Optional[Session]:
         row = self._conn.execute(
-            "SELECT * FROM session WHERE id = ?", (session_id,),
+            "SELECT * FROM session WHERE id = ?",
+            (session_id,),
         ).fetchone()
         return self._row_to_session(row) if row else None
 
@@ -201,14 +214,22 @@ class SessionManager:
                 updated_at=?, ended_at=?
             WHERE id=?""",
             (
-                session.status, session.title, session.cwd,
-                session.model, session.agent_version,
-                session.turn_count, session.step_count,
-                session.input_tokens, session.output_tokens,
-                session.reasoning_tokens, session.cache_read_tokens,
-                session.message_count, session.summary,
+                session.status,
+                session.title,
+                session.cwd,
+                session.model,
+                session.agent_version,
+                session.turn_count,
+                session.step_count,
+                session.input_tokens,
+                session.output_tokens,
+                session.reasoning_tokens,
+                session.cache_read_tokens,
+                session.message_count,
+                session.summary,
                 _serialize_metadata(session.metadata),
-                _ts(session.updated_at), _ts(session.ended_at),
+                _ts(session.updated_at),
+                _ts(session.ended_at),
                 session.id,
             ),
         )
@@ -261,7 +282,9 @@ class SessionManager:
     # ── Messages ──────────────────────────────────────────────
 
     def append_messages(
-        self, session_id: str, messages: list[Message],
+        self,
+        session_id: str,
+        messages: list[Message],
     ) -> int:
         self._conn.execute("BEGIN IMMEDIATE")
         try:
@@ -294,7 +317,9 @@ class SessionManager:
         return count
 
     def sync_messages(
-        self, session_id: str, messages: list[Message],
+        self,
+        session_id: str,
+        messages: list[Message],
     ) -> int:
         self._conn.execute("BEGIN IMMEDIATE")
         try:
@@ -319,8 +344,10 @@ class SessionManager:
         return len(messages)
 
     def get_messages(
-        self, session_id: str,
-        offset: int = 0, limit: Optional[int] = None,
+        self,
+        session_id: str,
+        offset: int = 0,
+        limit: Optional[int] = None,
     ) -> list[Message]:
         if limit is not None:
             rows = self._conn.execute(
@@ -337,6 +364,9 @@ class SessionManager:
     # ── State persistence ─────────────────────────────────────
 
     def save_state(self, session_id: str, state: AgentState) -> None:
+        if self.get(session_id) is None:
+            logger.warning(f"save_state: session {session_id} not found, skipping")
+            return
         self.sync_messages(session_id, state.messages)
         self._conn.execute(
             """UPDATE session SET
@@ -346,9 +376,12 @@ class SessionManager:
                 updated_at=?
             WHERE id=?""",
             (
-                state.turn_count, state.step,
-                state.usage.total_input, state.usage.total_output,
-                state.usage.total_reasoning, state.usage.total_cache_read,
+                state.turn_count,
+                state.step,
+                state.usage.total_input,
+                state.usage.total_output,
+                state.usage.total_reasoning,
+                state.usage.total_cache_read,
                 _ts(_utcnow()),
                 session_id,
             ),
@@ -394,6 +427,8 @@ class SessionManager:
 
     def get_compression_tip(self, session_id: str) -> str:
         current = session_id
+        max_depth = 1000
+        depth = 0
         while True:
             row = self._conn.execute(
                 "SELECT id FROM session WHERE parent_id=? AND status='active' LIMIT 1",
@@ -401,7 +436,13 @@ class SessionManager:
             ).fetchone()
             if row is None:
                 return current
-            current = row["id"]
+            current = cast(str, row["id"])
+            depth += 1
+            if depth > max_depth:
+                logger.warning(
+                    f"Compression chain too deep (>{max_depth}) for {session_id}, stopping"
+                )
+                return current
 
     def chain(self, session_id: str) -> list[str]:
         ids: list[str] = []
@@ -409,7 +450,8 @@ class SessionManager:
         while current:
             ids.append(current)
             row = self._conn.execute(
-                "SELECT parent_id FROM session WHERE id=?", (current,),
+                "SELECT parent_id FROM session WHERE id=?",
+                (current,),
             ).fetchone()
             current = row["parent_id"] if row else None
         return ids
@@ -422,9 +464,13 @@ class SessionManager:
         tail_messages: Sequence[Message],
     ) -> Session:
         parent = self.get(parent_id)
-        tail_all = list(system_messages) + [
-            UserMessage(content=summary_content.strip()),
-        ] + list(tail_messages)
+        tail_all = (
+            list(system_messages)
+            + [
+                UserMessage(content=summary_content.strip()),
+            ]
+            + list(tail_messages)
+        )
         child = self.create(
             title=parent.title if parent else "",
             cwd=parent.cwd if parent else "",
@@ -485,16 +531,20 @@ class SessionManager:
 
     def get_parent(self, session_id: str) -> Optional[str]:
         row = self._conn.execute(
-            "SELECT parent_id FROM session WHERE id=?", (session_id,),
+            "SELECT parent_id FROM session WHERE id=?",
+            (session_id,),
         ).fetchone()
         return row["parent_id"] if row else None
 
     def get_depth(self, session_id: str) -> int:
         depth = 0
         current: Optional[str] = session_id
-        while current:
+        max_depth = 1000
+        while current and depth <= max_depth:
             current = self.get_parent(current)
             depth += 1
+        if depth > max_depth:
+            logger.warning(f"Session chain too deep (>{max_depth}) for {session_id}")
         return depth
 
     def get_children(self, session_id: str) -> list[Session]:
@@ -503,17 +553,6 @@ class SessionManager:
             (session_id,),
         ).fetchall()
         return [self._row_to_session(r) for r in rows]
-
-    def get_descendants(self, session_id: str) -> list[Session]:
-        result: list[Session] = []
-        queue = [session_id]
-        while queue:
-            current = queue.pop(0)
-            children = self.get_children(current)
-            for child in children:
-                result.append(child)
-                queue.append(child.id)
-        return result
 
     # ── Title ─────────────────────────────────────────────────
 
@@ -538,22 +577,35 @@ class SessionManager:
                 created_at, updated_at, ended_at
             ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
-                session.id, session.status, session.title, session.cwd,
-                session.provider, session.model, session.agent_version,
-                session.turn_count, session.step_count,
-                session.input_tokens, session.output_tokens,
-                session.reasoning_tokens, session.cache_read_tokens,
-                session.parent_id, session.fork_id,
-                session.message_count, session.summary,
+                session.id,
+                session.status,
+                session.title,
+                session.cwd,
+                session.provider,
+                session.model,
+                session.agent_version,
+                session.turn_count,
+                session.step_count,
+                session.input_tokens,
+                session.output_tokens,
+                session.reasoning_tokens,
+                session.cache_read_tokens,
+                session.parent_id,
+                session.fork_id,
+                session.message_count,
+                session.summary,
                 _serialize_metadata(session.metadata),
-                _ts(session.created_at), _ts(session.updated_at),
+                _ts(session.created_at),
+                _ts(session.updated_at),
                 _ts(session.ended_at),
             ),
         )
         self._conn.commit()
 
     def _insert_messages(
-        self, session_id: str, messages: list[Message],
+        self,
+        session_id: str,
+        messages: list[Message],
     ) -> None:
         turn_index = 0
         for msg in messages:
@@ -570,10 +622,16 @@ class SessionManager:
                 token_count, timestamp, turn_index
             ) VALUES (?,?,?,?,?,?,?,?,?,?)""",
             (
-                rec.session_id, rec.role, rec.content,
-                rec.tool_call_id, rec.tool_name, rec.tool_args,
-                rec.reasoning, rec.token_count,
-                _ts(rec.timestamp), rec.turn_index,
+                rec.session_id,
+                rec.role,
+                rec.content,
+                rec.tool_call_id,
+                rec.tool_name,
+                rec.tool_args,
+                rec.reasoning,
+                rec.token_count,
+                _ts(rec.timestamp),
+                rec.turn_index,
             ),
         )
 

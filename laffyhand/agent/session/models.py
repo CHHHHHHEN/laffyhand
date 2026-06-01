@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel
 
@@ -10,8 +10,17 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _ts(dt: datetime | None) -> str | None:
+    return dt.isoformat() if dt is not None else None
+
+
+def _from_ts(ts: str | None) -> datetime | None:
+    return datetime.fromisoformat(ts) if ts is not None else None
+
+
 def _generate_session_id() -> str:
     from uuid import uuid4
+
     now = _utcnow()
     return now.strftime("%Y%m%d_%H%M%S") + "_" + uuid4().hex[:8]
 
@@ -37,12 +46,12 @@ class Session(BaseModel):
     fork_id: Optional[str] = None
     message_count: int = 0
     summary: Optional[str] = None
-    metadata: dict = {}
+    metadata: dict[str, Any] = {}
     created_at: datetime = _utcnow()
     updated_at: datetime = _utcnow()
     ended_at: Optional[datetime] = None
 
-    def model_post_init(self, _context) -> None:
+    def model_post_init(self, _context: Any) -> None:
         if not self.id:
             self.id = _generate_session_id()
 
@@ -76,9 +85,9 @@ class TodoItem(BaseModel):
     updated_at: datetime = _utcnow()
     completed_at: Optional[datetime] = None
     task_tool_id: Optional[str] = None
-    metadata: dict = {}
+    metadata: dict[str, Any] = {}
 
-    def model_post_init(self, _context) -> None:
+    def model_post_init(self, _context: Any) -> None:
         if not self.id:
             self.id = _generate_session_id()
 
@@ -96,7 +105,7 @@ class TodoUpdate(BaseModel):
     priority: Optional[TodoPriority] = None
     depends_on: Optional[list[str]] = None
     task_tool_id: Optional[str] = None
-    metadata: Optional[dict] = None
+    metadata: Optional[dict[str, Any]] = None
 
 
 class TitleConfig(BaseModel):

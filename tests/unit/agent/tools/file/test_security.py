@@ -22,7 +22,7 @@ class TestLooksBinary(unittest.TestCase):
         self.tmpdir.cleanup()
 
     def test_binary_by_extension(self):
-        for ext in ['.png', '.jpg', '.pdf', '.zip', '.pyc', '.so']:
+        for ext in [".png", ".jpg", ".pdf", ".zip", ".pyc", ".so"]:
             f = self.root / f"test{ext}"
             f.write_text("text content")
             self.assertTrue(looks_binary(f), f"{ext} should be detected as binary")
@@ -54,7 +54,7 @@ class TestLooksBinary(unittest.TestCase):
 
     def test_file_not_found(self):
         f = self.root / "nonexistent.txt"
-        self.assertFalse(looks_binary(f))
+        self.assertTrue(looks_binary(f))
 
 
 class TestBlockedWritePath(unittest.TestCase):

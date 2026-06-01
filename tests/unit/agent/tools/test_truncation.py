@@ -18,7 +18,7 @@ class TestTruncation(unittest.TestCase):
         self.assertEqual(truncate_output("x" * 10, 10), "x" * 10)
 
     def test_none_input(self):
-        self.assertEqual(truncate_output("", 10), "")
+        self.assertEqual(truncate_output(None, 10), "")
 
     def test_default_max_chars(self):
         text = "x" * 3000

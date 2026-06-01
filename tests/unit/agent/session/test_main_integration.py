@@ -31,7 +31,9 @@ class TestGenerateTitle:
         assert result is None
 
     @pytest.mark.anyio
-    async def test_no_user_messages_returns_none(self, session_manager: SessionManager) -> None:
+    async def test_no_user_messages_returns_none(
+        self, session_manager: SessionManager
+    ) -> None:
         from laffyhand.agent.title import generate_title
 
         session = session_manager.create(messages=[SystemMessage(content="sys")])
@@ -59,7 +61,9 @@ class TestGenerateTitle:
         assert fetched.title == "My Title"
 
     @pytest.mark.anyio
-    async def test_stream_error_returns_none(self, session_manager: SessionManager) -> None:
+    async def test_stream_error_returns_none(
+        self, session_manager: SessionManager
+    ) -> None:
         from laffyhand.agent.title import generate_title
 
         async def mock_stream(messages, **kwargs):
@@ -74,7 +78,9 @@ class TestGenerateTitle:
         assert result is None
 
     @pytest.mark.anyio
-    async def test_empty_title_returns_none(self, session_manager: SessionManager) -> None:
+    async def test_empty_title_returns_none(
+        self, session_manager: SessionManager
+    ) -> None:
         from laffyhand.agent.title import generate_title
 
         async def mock_stream(messages, **kwargs):
@@ -95,7 +101,9 @@ class TestGenerateTitle:
 
 class TestCompactOnOverflow:
     @pytest.mark.anyio
-    async def test_no_overflow_returns_false(self, session_manager: SessionManager) -> None:
+    async def test_no_overflow_returns_false(
+        self, session_manager: SessionManager
+    ) -> None:
         from laffyhand.agent.loop import _compact_on_overflow
 
         state = AgentState(
@@ -107,7 +115,9 @@ class TestCompactOnOverflow:
         assert result is False
 
     @pytest.mark.anyio
-    async def test_overflow_with_session_manager(self, session_manager: SessionManager) -> None:
+    async def test_overflow_with_session_manager(
+        self, session_manager: SessionManager
+    ) -> None:
         from laffyhand.agent.loop import _compact_on_overflow
 
         async def mock_stream(messages, **kwargs):

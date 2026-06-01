@@ -5,9 +5,11 @@ from laffyhand.agent.compaction import wrap_last_user, attach_reminder
 
 
 class TestWrapLastUser(unittest.TestCase):
-
     def test_wraps_last_user_message(self):
-        msgs = [SystemMessage(content="sys"), UserMessage(content="Continue if you have next steps")]
+        msgs = [
+            SystemMessage(content="sys"),
+            UserMessage(content="Continue if you have next steps"),
+        ]
         result = wrap_last_user(msgs)
         self.assertTrue(result[1].content.startswith("<system-reminder>"))
         self.assertTrue(result[1].content.endswith("</system-reminder>"))
@@ -23,7 +25,11 @@ class TestWrapLastUser(unittest.TestCase):
         self.assertEqual(len(result), 0)
 
     def test_does_not_double_wrap(self):
-        msgs = [UserMessage(content="<system-reminder>\nalready wrapped\n</system-reminder>")]
+        msgs = [
+            UserMessage(
+                content="<system-reminder>\nalready wrapped\n</system-reminder>"
+            )
+        ]
         result = wrap_last_user(msgs)
         self.assertEqual(result[0].content.count("<system-reminder>"), 1)
 
@@ -41,7 +47,6 @@ class TestWrapLastUser(unittest.TestCase):
 
 
 class TestAttachReminder(unittest.TestCase):
-
     def test_reminder_appended_to_system(self):
         msgs = [SystemMessage(content="original prompt")]
         result = attach_reminder(msgs, "REMINDER: be concise")

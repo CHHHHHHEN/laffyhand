@@ -1,20 +1,29 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
 
 from loguru import logger
 
 from laffyhand.gateway.protocol import MAX_MESSAGE_SIZE
 from laffyhand.gateway.transport import Transport, _NullTransport
 
+if TYPE_CHECKING:
+    import aiohttp.web
+    from laffyhand.agent.runtime import AgentRuntime
+    from laffyhand.gateway.dispatcher import Dispatcher, RegisteredHandler
+    from laffyhand.gateway.protocol import Request
+    from laffyhand.gateway.server import GatewayServer
+
 
 # Default CORS origin for Vite dev server (port 1420).
 # Production: UI served from the same host:port -> same-origin -> CORS irrelevant.
-ALLOWED_CORS_ORIGINS = frozenset({
-    "http://localhost:1420",
-    "http://127.0.0.1:1420",
-})
+ALLOWED_CORS_ORIGINS = frozenset(
+    {
+        "http://localhost:1420",
+        "http://127.0.0.1:1420",
+    }
+)
 _DEFAULT_CORS_ORIGIN = "http://localhost:1420"
 
 
@@ -33,13 +42,16 @@ def _cors_headers(origin: str = _DEFAULT_CORS_ORIGIN) -> dict[str, str]:
     }
 
 
-def _json_response(data: dict[str, Any], status: int = 200, origin: str = _DEFAULT_CORS_ORIGIN) -> Any:
+def _json_response(
+    data: dict[str, Any], status: int = 200, origin: str = _DEFAULT_CORS_ORIGIN
+) -> aiohttp.web.StreamResponse:
     import aiohttp.web
+
     return aiohttp.web.json_response(data, status=status, headers=_cors_headers(origin))
 
 
 class _WSConnection(Transport):
-    def __init__(self, ws: Any, conn_id: str) -> None:
+    def __init__(self, ws: aiohttp.web.WebSocketResponse, conn_id: str) -> None:
         from aiohttp import WSMsgType
 
         self._ws = ws
@@ -61,7 +73,7 @@ class _WSConnection(Transport):
         try:
             msg = await self._ws.receive()
             if msg.type == self._WSMsgType.TEXT:
-                return msg.data
+                return cast(str, msg.data)
             if msg.type in (
                 self._WSMsgType.BINARY,
                 self._WSMsgType.CLOSE,
@@ -88,15 +100,15 @@ class WSTransport:
 
     def __init__(
         self,
-        runtime: Any = None,
+        runtime: AgentRuntime | None = None,
         host: str = "127.0.0.1",
         port: int = 9090,
     ) -> None:
         self.runtime = runtime
         self.host = host
         self.port = port
-        self._runner: Any = None
-        self._gateway_servers: list[Any] = []
+        self._runner: aiohttp.web.AppRunner | None = None
+        self._gateway_servers: list[GatewayServer] = []
 
     async def start(self) -> None:
         import aiohttp.web
@@ -111,7 +123,7 @@ class WSTransport:
         self._runner = runner
         logger.info(f"WebSocket transport listening on ws://{self.host}:{self.port}/ws")
 
-    async def _handle_ws(self, request: Any) -> Any:
+    async def _handle_ws(self, request: aiohttp.web.Request) -> aiohttp.web.WebSocketResponse:
         import aiohttp.web
 
         ws = aiohttp.web.WebSocketResponse(max_msg_size=16 * 1024 * 1024)
@@ -133,7 +145,7 @@ class WSTransport:
 
         return ws
 
-    async def _handle_health(self, request: Any) -> Any:
+    async def _handle_health(self, request: aiohttp.web.Request) -> aiohttp.web.StreamResponse:
         origin = _resolve_cors_origin(request.headers.get("Origin"))
         return _json_response({"status": "ok"}, origin=origin)
 
@@ -147,7 +159,7 @@ class WSTransport:
 class _HTTPStreamTransport(Transport):
     """Transport wrapping an SSE StreamResponse — used per streaming request."""
 
-    def __init__(self, response: Any, conn_id: str, dispatcher: Any = None) -> None:
+    def __init__(self, response: aiohttp.web.StreamResponse, conn_id: str, dispatcher: Dispatcher | None = None) -> None:
         self._response = response
         self.connection_id = conn_id
         self._closed = False
@@ -174,15 +186,15 @@ class HTTPTransport:
 
     def __init__(
         self,
-        runtime: Any = None,
+        runtime: AgentRuntime | None = None,
         host: str = "127.0.0.1",
         port: int = 9090,
     ) -> None:
         self.runtime = runtime
         self.host = host
         self.port = port
-        self._runner: Any = None
-        self._sse_tasks: dict[str, asyncio.Task] = {}
+        self._runner: aiohttp.web.AppRunner | None = None
+        self._sse_tasks: dict[str, asyncio.Task[dict[str, Any] | None]] = {}
 
         from laffyhand.gateway.dispatcher import Dispatcher
         from laffyhand.gateway.handlers import register_all_handlers
@@ -190,7 +202,7 @@ class HTTPTransport:
         self._dispatcher = Dispatcher(runtime=runtime)
         register_all_handlers(self._dispatcher)
 
-    def setup_routes(self, app: Any) -> None:
+    def setup_routes(self, app: aiohttp.web.Application) -> None:
         """Attach RPC routes to an existing aiohttp Application."""
         app.router.add_post("/rpc", self._handle_rpc)
         app.router.add_get("/health", self._handle_health)
@@ -229,16 +241,20 @@ class HTTPTransport:
         self._runner = runner
         logger.info(f"HTTP transport listening on http://{self.host}:{self.port}/rpc")
 
-    async def _handle_cors_preflight(self, request: Any) -> Any:
+    async def _handle_cors_preflight(self, request: aiohttp.web.Request) -> aiohttp.web.StreamResponse:
         origin = _resolve_cors_origin(request.headers.get("Origin"))
         return _json_response({}, status=204, origin=origin)
 
-    async def _handle_rpc(self, request: Any) -> Any:
+    async def _handle_rpc(self, request: aiohttp.web.Request) -> aiohttp.web.StreamResponse:
         body_bytes = await request.read()
         if len(body_bytes) > MAX_MESSAGE_SIZE:
             origin = _resolve_cors_origin(request.headers.get("Origin"))
             return _json_response(
-                {"jsonrpc": "2.0", "error": {"code": -32700, "message": "Request too large"}, "id": None},
+                {
+                    "jsonrpc": "2.0",
+                    "error": {"code": -32700, "message": "Request too large"},
+                    "id": None,
+                },
                 status=413,
                 origin=origin,
             )
@@ -246,14 +262,18 @@ class HTTPTransport:
         if not body:
             origin = _resolve_cors_origin(request.headers.get("Origin"))
             return _json_response(
-                {"jsonrpc": "2.0", "error": {"code": -32700, "message": "Parse error"}, "id": None},
+                {
+                    "jsonrpc": "2.0",
+                    "error": {"code": -32700, "message": "Parse error"},
+                    "id": None,
+                },
                 status=400,
                 origin=origin,
             )
 
         return await self._handle_rpc_inner(request, body)
 
-    async def _handle_rpc_inner(self, request: Any, body: str) -> Any:
+    async def _handle_rpc_inner(self, request: aiohttp.web.Request, body: str) -> aiohttp.web.StreamResponse:
         from laffyhand.gateway.protocol import from_json, Request
 
         origin = _resolve_cors_origin(request.headers.get("Origin"))
@@ -262,14 +282,22 @@ class HTTPTransport:
             message = from_json(body)
         except Exception:
             return _json_response(
-                {"jsonrpc": "2.0", "error": {"code": -32700, "message": "Parse error"}, "id": None},
+                {
+                    "jsonrpc": "2.0",
+                    "error": {"code": -32700, "message": "Parse error"},
+                    "id": None,
+                },
                 status=400,
                 origin=origin,
             )
 
         if not isinstance(message, Request):
             return _json_response(
-                {"jsonrpc": "2.0", "error": {"code": -32600, "message": "Invalid request"}, "id": None},
+                {
+                    "jsonrpc": "2.0",
+                    "error": {"code": -32600, "message": "Invalid request"},
+                    "id": None,
+                },
                 status=400,
                 origin=origin,
             )
@@ -280,19 +308,33 @@ class HTTPTransport:
         entry = dispatcher.handlers.get(message.method)
         if entry is None:
             return _json_response(
-                {"jsonrpc": "2.0", "error": {"code": -32601, "message": f"Method not found: {message.method}"}, "id": message.id},
+                {
+                    "jsonrpc": "2.0",
+                    "error": {
+                        "code": -32601,
+                        "message": f"Method not found: {message.method}",
+                    },
+                    "id": message.id,
+                },
                 status=404,
                 origin=origin,
             )
 
         if wants_sse and entry.streaming:
-            return await self._handle_sse_stream(request, message, entry, dispatcher, origin)
+            return await self._handle_sse_stream(
+                request, message, entry, dispatcher, origin
+            )
 
         return await self._handle_rpc_call(message, entry, dispatcher, origin)
 
     async def _handle_sse_stream(
-        self, request: Any, message: Any, entry: Any, dispatcher: Any, origin: str,
-    ) -> Any:
+        self,
+        request: aiohttp.web.Request,
+        message: Request,
+        entry: RegisteredHandler,
+        dispatcher: Dispatcher,
+        origin: str,
+    ) -> aiohttp.web.StreamResponse:
         import aiohttp.web
 
         response = aiohttp.web.StreamResponse(
@@ -309,13 +351,23 @@ class HTTPTransport:
         conn_id = f"http_{id(response):x}"
         transport = _HTTPStreamTransport(response, conn_id, dispatcher=dispatcher)
         # Attach SSE task canceller so handle_chat_cancel can reach us
-        transport._sse_canceller = self._cancel_sse_task  # type: ignore[attr-defined]
+        transport.sse_canceller = self._cancel_sse_task
 
-        task = asyncio.create_task(
-            entry.func(self.runtime, message.params or {}, transport, message.id, conn_id),
+        runtime = self.runtime
+        assert runtime is not None
+        task: asyncio.Task[dict[str, Any] | None] = asyncio.create_task(
+            entry.func(
+                runtime, message.params or {}, transport, message.id, conn_id
+            ),
         )
         self._sse_tasks[conn_id] = task
-        task.add_done_callback(lambda _: self._sse_tasks.pop(conn_id, None) if self._sse_tasks.get(conn_id) is task else None)
+        task.add_done_callback(
+            lambda _: (
+                self._sse_tasks.pop(conn_id, None)
+                if self._sse_tasks.get(conn_id) is task
+                else None
+            )
+        )
 
         try:
             await task
@@ -323,20 +375,33 @@ class HTTPTransport:
             logger.info(f"SSE stream cancelled (conn={conn_id})")
             try:
                 from laffyhand.gateway.protocol import Notification
+
                 done = Notification(
                     method="event",
                     params={"type": "finish", "data": "", "finish_reason": "cancelled"},
                 )
                 await transport.send(done.json())
             except Exception:
-                logger.debug("Failed to send cancelled finish event (conn may be closed)")
+                logger.debug(
+                    "Failed to send cancelled finish event (conn may be closed)"
+                )
         except Exception:
-            logger.exception(f"SSE stream error for method={message.method} (conn={conn_id})")
+            logger.exception(
+                f"SSE stream error for method={message.method} (conn={conn_id})"
+            )
             try:
                 from laffyhand.gateway.protocol import ErrorResponse, Error
-                await transport.send(ErrorResponse(id=message.id, error=Error(code=-32603, message="Internal error")).json())
+
+                await transport.send(
+                    ErrorResponse(
+                        id=message.id,
+                        error=Error(code=-32603, message="Internal error"),
+                    ).json()
+                )
             except Exception:
-                logger.warning("Failed to send SSE error event to client (connection may be closed)")
+                logger.warning(
+                    "Failed to send SSE error event to client (connection may be closed)"
+                )
         finally:
             try:
                 await response.write_eof()
@@ -345,18 +410,36 @@ class HTTPTransport:
         return response
 
     async def _handle_rpc_call(
-        self, message: Any, entry: Any, dispatcher: Any, origin: str,
-    ) -> Any:
+        self,
+        message: Request,
+        entry: RegisteredHandler,
+        dispatcher: Dispatcher,
+        origin: str,
+    ) -> aiohttp.web.StreamResponse:
         try:
             from laffyhand.gateway.protocol import CHAT_CANCEL
 
+            runtime = self.runtime
+            assert runtime is not None
             if message.method == CHAT_CANCEL:
                 # Attach SSE canceller so handle_chat_cancel can cancel active SSE tasks
                 cancel_transport = _NullTransport()
-                cancel_transport._sse_canceller = self._cancel_sse_task  # type: ignore[attr-defined]
-                result = await entry.func(self.runtime, message.params or {}, cancel_transport, message.id, "http")
+                cancel_transport.sse_canceller = self._cancel_sse_task
+                result = await entry.func(
+                    runtime,
+                    message.params or {},
+                    cancel_transport,
+                    message.id,
+                    "http",
+                )
             else:
-                result = await entry.func(self.runtime, message.params or {}, _NullTransport(), message.id, "http")
+                result = await entry.func(
+                    runtime,
+                    message.params or {},
+                    _NullTransport(),
+                    message.id,
+                    "http",
+                )
             return _json_response(
                 {"jsonrpc": "2.0", "id": message.id, "result": result},
                 origin=origin,
@@ -364,12 +447,16 @@ class HTTPTransport:
         except Exception:
             logger.error(f"HTTP RPC error for method={message.method}")
             return _json_response(
-                {"jsonrpc": "2.0", "error": {"code": -32603, "message": "Internal error"}, "id": message.id},
+                {
+                    "jsonrpc": "2.0",
+                    "error": {"code": -32603, "message": "Internal error"},
+                    "id": message.id,
+                },
                 status=500,
                 origin=origin,
             )
 
-    async def _handle_health(self, request: Any) -> Any:
+    async def _handle_health(self, request: aiohttp.web.Request) -> aiohttp.web.StreamResponse:
         origin = _resolve_cors_origin(request.headers.get("Origin"))
         return _json_response({"status": "ok"}, origin=origin)
 

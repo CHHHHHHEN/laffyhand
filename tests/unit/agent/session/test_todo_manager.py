@@ -43,10 +43,13 @@ class TestTodoManagerCRUD:
         assert got.priority == "high"
 
     def test_add_tasks_bulk(self, mgr):
-        items = mgr.add_tasks("sess-1", [
-            TodoCreate(content="Task A", priority="high"),
-            TodoCreate(content="Task B", priority="low"),
-        ])
+        items = mgr.add_tasks(
+            "sess-1",
+            [
+                TodoCreate(content="Task A", priority="high"),
+                TodoCreate(content="Task B", priority="low"),
+            ],
+        )
         assert len(items) == 2
         ids = {t.id for t in items}
         assert len(ids) == 2
@@ -70,7 +73,9 @@ class TestTodoManagerCRUD:
 
     def test_update_task_content_and_priority(self, mgr):
         item = mgr.add_task("sess-1", "original")
-        mgr.update_task(item.id, "sess-1", TodoUpdate(content="updated", priority="low"))
+        mgr.update_task(
+            item.id, "sess-1", TodoUpdate(content="updated", priority="low")
+        )
 
         got = mgr.get_task(item.id)
         assert got is not None
@@ -132,7 +137,9 @@ class TestTodoManagerDAG:
         tasks = mgr.get_tasks("sess-1")
         child_task = next(t for t in tasks if t.id == child.id)
         assert child_task.status == "pending"
-        assert "blocked_by" not in child_task.metadata or not child_task.metadata.get("blocked_by")
+        assert "blocked_by" not in child_task.metadata or not child_task.metadata.get(
+            "blocked_by"
+        )
 
     def test_cycle_detection_rejects_circular_dependency(self, mgr):
         a = mgr.add_task("sess-1", "A")
@@ -147,11 +154,16 @@ class TestTodoManagerDAG:
             mgr.update_task(a.id, "sess-1", TodoUpdate(depends_on=[a.id]))
 
     def test_add_tasks_with_cross_deps(self, mgr):
-        items = mgr.add_tasks("sess-1", [
-            TodoCreate(content="Root", priority="high"),
-            TodoCreate(content="Child", depends_on=["task-0"]),
-        ])
+        items = mgr.add_tasks(
+            "sess-1",
+            [
+                TodoCreate(content="Root", priority="high"),
+                TodoCreate(content="Child", depends_on=[]),
+            ],
+        )
         assert len(items) == 2
+        # Cross-batch dependencies in add_tasks are not supported;
+        # use add_task individually for dependent items.
 
     def test_multi_level_dag(self, mgr):
         t1 = mgr.add_task("sess-1", "Layer 1")

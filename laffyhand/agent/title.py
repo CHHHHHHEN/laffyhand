@@ -1,14 +1,20 @@
 from loguru import logger
 
 from laffyhand.agent.schemas import (
-    Message, StreamError, StreamFinish, StreamText, SystemMessage, UserMessage,
+    Message,
+    StreamError,
+    StreamFinish,
+    StreamText,
+    SystemMessage,
+    UserMessage,
 )
 from laffyhand.agent.session.models import TitleConfig
 from laffyhand.agent.llm.facade import LLM
+from laffyhand.agent.session.manager import SessionManager
 
 
 async def generate_title(
-    session_manager,
+    session_manager: SessionManager,
     session_id: str,
     llm: LLM,
     config: TitleConfig = TitleConfig(),

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import signal
 import sys
 
 from loguru import logger
@@ -68,37 +69,52 @@ async def _run_gateway_serve(args: argparse.Namespace, config: LaffyConfig) -> N
     runtime = await create_runtime(config)
     listen = args.listen
 
-    if listen.startswith("ws://"):
-        host = args.host
-        port = args.port
-        from laffyhand.gateway.http_transport import WSTransport
+    loop = asyncio.get_running_loop()
+    stop_event = asyncio.Event()
 
-        ws_mgr = WSTransport(runtime=runtime, host=host, port=port)
-        await ws_mgr.start()
-        logger.info(f"WebSocket gateway running on ws://{host}:{port}/ws")
+    def _handle_signal() -> None:
+        logger.info("Received shutdown signal, stopping...")
+        stop_event.set()
+
+    for sig in (signal.SIGTERM, signal.SIGINT):
         try:
-            await asyncio.Event().wait()
-        except asyncio.CancelledError:
+            loop.add_signal_handler(sig, _handle_signal)
+        except NotImplementedError:
             pass
-    elif listen.startswith("http://"):
-        host = args.host
-        port = args.port
-        from laffyhand.gateway.http_transport import HTTPTransport
 
-        http_mgr = HTTPTransport(runtime=runtime, host=host, port=port)
-        await http_mgr.start()
-        logger.info(f"HTTP gateway running on http://{host}:{port}/rpc")
-        try:
-            await asyncio.Event().wait()
-        except asyncio.CancelledError:
-            pass
-    else:
-        transport = StdioTransport()
-        gateway = GatewayServer(runtime, transport)
-        await gateway.serve()
+    try:
+        if listen.startswith("ws://"):
+            host = args.host
+            port = args.port
+            from laffyhand.gateway.http_transport import WSTransport
+
+            ws_mgr = WSTransport(runtime=runtime, host=host, port=port)
+            await ws_mgr.start()
+            logger.info(f"WebSocket gateway running on ws://{host}:{port}/ws")
+            await stop_event.wait()
+        elif listen.startswith("http://"):
+            host = args.host
+            port = args.port
+            from laffyhand.gateway.http_transport import HTTPTransport
+
+            http_mgr = HTTPTransport(runtime=runtime, host=host, port=port)
+            await http_mgr.start()
+            logger.info(f"HTTP gateway running on http://{host}:{port}/rpc")
+            await stop_event.wait()
+        else:
+            transport = StdioTransport()
+            gateway = GatewayServer(runtime, transport)
+            await gateway.serve()
+    finally:
+        await runtime.shutdown()
+        for sig in (signal.SIGTERM, signal.SIGINT):
+            try:
+                loop.remove_signal_handler(sig)
+            except (NotImplementedError, ValueError):
+                pass
 
 
-async def main():
+async def main() -> None:
     args = parse_args()
     config = load_config(args.config)
     setup_logging(

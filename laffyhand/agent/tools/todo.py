@@ -9,7 +9,7 @@ if TYPE_CHECKING:
     from laffyhand.agent.session.todo import TodoManager
 
 
-class TodowriteTool(BaseTool):
+class TodoTool(BaseTool):
     name = "todowrite"
     description = "Manage a session-level task list with DAG dependency tracking."
 
@@ -17,7 +17,7 @@ class TodowriteTool(BaseTool):
         super().__init__()
         self._todo_manager = todo_manager
 
-    def _input_schema(self) -> dict:
+    def _input_schema(self) -> dict[str, Any]:
         return {
             "type": "object",
             "properties": {
@@ -99,7 +99,7 @@ class TodowriteTool(BaseTool):
             return "\n".join(lines)
 
         if op == "plan":
-            raw_tasks: list[dict] = params.get("tasks", [])
+            raw_tasks: list[dict[str, Any]] = params.get("tasks", [])
             if not raw_tasks:
                 return "Error: tasks list is required for plan"
             creates = [
@@ -112,7 +112,9 @@ class TodowriteTool(BaseTool):
                 for t in raw_tasks
             ]
             results = self._todo_manager.add_tasks(session_id, creates)
-            summary = ", ".join(f"#{t.id[:8]} [{t.status}] {t.content}" for t in results)
+            summary = ", ".join(
+                f"#{t.id[:8]} [{t.status}] {t.content}" for t in results
+            )
             return f"Planned {len(results)} task(s): {summary}"
 
         if op == "add":
@@ -137,8 +139,8 @@ class TodowriteTool(BaseTool):
             depends_on = params.get("depends_on")
             updates = TodoUpdate(
                 content=content,
-                status=status,  # type: ignore[arg-type]
-                priority=priority,  # type: ignore[arg-type]
+                status=status,
+                priority=priority,
                 depends_on=depends_on,
             )
             updated = self._todo_manager.update_task(task_id, session_id, updates)

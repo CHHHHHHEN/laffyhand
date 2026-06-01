@@ -5,7 +5,10 @@ from pathlib import Path
 from unittest import TestCase
 
 from laffyhand.agent.agent import (
-    AgentInfo, AgentRegistry, BUILTIN_AGENTS, _load_agent_file,
+    AgentInfo,
+    AgentRegistry,
+    BUILTIN_AGENTS,
+    _load_agent_file,
 )
 
 
@@ -32,8 +35,12 @@ class TestAgentInfo(TestCase):
 
     def test_optional_fields(self):
         info = AgentInfo(
-            name="test", model="gpt-4", prompt="You are a test agent",
-            temperature=0.5, top_p=0.9, hidden=True,
+            name="test",
+            model="gpt-4",
+            prompt="You are a test agent",
+            temperature=0.5,
+            top_p=0.9,
+            hidden=True,
         )
         self.assertEqual(info.model, "gpt-4")
         self.assertEqual(info.prompt, "You are a test agent")
@@ -175,7 +182,9 @@ class TestLoadAgentFile(TestCase):
 
     def test_loads_basic_agent(self):
         with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
-            f.write("---\nname: my-agent\ndescription: My custom agent\n---\nYou are my agent.")
+            f.write(
+                "---\nname: my-agent\ndescription: My custom agent\n---\nYou are my agent."
+            )
             path = Path(f.name)
         try:
             info = _load_agent_file(path)
@@ -187,7 +196,9 @@ class TestLoadAgentFile(TestCase):
             path.unlink()
 
     def test_loads_agent_md_without_front_matter_prompt(self):
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".agent.md", delete=False) as f:
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".agent.md", delete=False
+        ) as f:
             f.write("---\nname: code\n---\nYou are a code agent.")
             path = Path(f.name)
         try:
@@ -200,7 +211,9 @@ class TestLoadAgentFile(TestCase):
 
     def test_loads_agent_with_permission(self):
         with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
-            f.write("---\nname: reader\npermission:\n  deny: [write, edit]\n---\nRead only.")
+            f.write(
+                "---\nname: reader\npermission:\n  deny: [write, edit]\n---\nRead only."
+            )
             path = Path(f.name)
         try:
             info = _load_agent_file(path)
@@ -243,7 +256,9 @@ class TestLoadAgentFile(TestCase):
             path.unlink()
 
     def test_uses_filename_stem_when_no_name_in_meta(self):
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".agent.md", delete=False) as f:
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".agent.md", delete=False
+        ) as f:
             f.write("---\ndescription: no name here\n---\nbody")
             stem = Path(f.name).stem
         path = Path(f.name)

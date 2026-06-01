@@ -25,9 +25,13 @@ class TestRemoteMCPConfig(unittest.TestCase):
         self.assertEqual(cfg.timeout, 300)
 
     def test_explicit_transport(self):
-        cfg = RemoteMCPConfig(url="http://localhost:8080/mcp", transport="streamable-http")
+        cfg = RemoteMCPConfig(
+            url="http://localhost:8080/mcp", transport="streamable-http"
+        )
         self.assertEqual(cfg.transport, "streamable-http")
 
     def test_with_headers(self):
-        cfg = RemoteMCPConfig(url="http://localhost", headers={"Authorization": "Bearer token"})
+        cfg = RemoteMCPConfig(
+            url="http://localhost", headers={"Authorization": "Bearer token"}
+        )
         self.assertEqual(cfg.headers["Authorization"], "Bearer token")

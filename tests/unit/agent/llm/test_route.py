@@ -4,8 +4,14 @@ from collections.abc import AsyncIterator
 from laffyhand.agent.llm._route import Route
 from laffyhand.agent.llm.specs import Protocol, Endpoint, Auth, Framing
 from laffyhand.agent.schemas import (
-    LLMRequest, SystemMessage, UserMessage, StreamError, StreamEvent,
-    StreamText, StreamFinish, Usage,
+    LLMRequest,
+    SystemMessage,
+    UserMessage,
+    StreamError,
+    StreamEvent,
+    StreamText,
+    StreamFinish,
+    Usage,
 )
 
 
@@ -49,11 +55,13 @@ class TestRouteErrorHandling(unittest.TestCase):
         )
 
         events = []
+
         async def _collect():
             async for event in route.execute(request):
                 events.append(event)
 
         import asyncio
+
         asyncio.run(_collect())
 
         self.assertEqual(len(events), 1, "Expected exactly one StreamError event")
@@ -83,11 +91,13 @@ class TestRouteUnexpectedError(unittest.TestCase):
         )
 
         events = []
+
         async def _collect():
             async for event in route.execute(request):
                 events.append(event)
 
         import asyncio
+
         asyncio.run(_collect())
 
         self.assertEqual(len(events), 1, "Expected exactly one StreamError event")
@@ -119,10 +129,15 @@ class TestRouteHappyPath(unittest.TestCase):
 
     def test_yields_events_from_protocol(self):
         route = Route(
-            protocol=_MockProtocolHappy(events=[
-                StreamText(delta="hello"),
-                StreamFinish(finish_reason="stop", usage=Usage(input_tokens=10, output_tokens=5)),
-            ]),
+            protocol=_MockProtocolHappy(
+                events=[
+                    StreamText(delta="hello"),
+                    StreamFinish(
+                        finish_reason="stop",
+                        usage=Usage(input_tokens=10, output_tokens=5),
+                    ),
+                ]
+            ),
             endpoint=_MockEndpoint(),
             auth=_MockAuth(),
             framing=_MockFramingHappy(frames=[{"dummy": True}]),
@@ -133,11 +148,13 @@ class TestRouteHappyPath(unittest.TestCase):
         )
 
         events = []
+
         async def _collect():
             async for event in route.execute(request):
                 events.append(event)
 
         import asyncio
+
         asyncio.run(_collect())
 
         self.assertEqual(len(events), 2)
@@ -149,15 +166,22 @@ class TestRouteHappyPath(unittest.TestCase):
     def test_breaks_after_stream_finish(self):
         """When StreamFinish is yielded, remaining frames from framing are skipped."""
         route = Route(
-            protocol=_MockProtocolHappy(events=[
-                StreamFinish(finish_reason="stop", usage=Usage(input_tokens=5, output_tokens=3)),
-            ]),
+            protocol=_MockProtocolHappy(
+                events=[
+                    StreamFinish(
+                        finish_reason="stop",
+                        usage=Usage(input_tokens=5, output_tokens=3),
+                    ),
+                ]
+            ),
             endpoint=_MockEndpoint(),
             auth=_MockAuth(),
-            framing=_MockFramingHappy(frames=[
-                {"frame": "first"},
-                {"frame": "second"},
-            ]),
+            framing=_MockFramingHappy(
+                frames=[
+                    {"frame": "first"},
+                    {"frame": "second"},
+                ]
+            ),
         )
         request = LLMRequest(
             model="test-model",
@@ -165,11 +189,13 @@ class TestRouteHappyPath(unittest.TestCase):
         )
 
         events = []
+
         async def _collect():
             async for event in route.execute(request):
                 events.append(event)
 
         import asyncio
+
         asyncio.run(_collect())
 
         self.assertEqual(len(events), 1)
@@ -178,9 +204,11 @@ class TestRouteHappyPath(unittest.TestCase):
     def test_error_when_stream_ends_without_finish(self):
         """When the stream ends without a StreamFinish, a StreamError is emitted."""
         route = Route(
-            protocol=_MockProtocolHappy(events=[
-                StreamText(delta="partial response"),
-            ]),
+            protocol=_MockProtocolHappy(
+                events=[
+                    StreamText(delta="partial response"),
+                ]
+            ),
             endpoint=_MockEndpoint(),
             auth=_MockAuth(),
             framing=_MockFramingHappy(frames=[{"dummy": True}]),
@@ -191,11 +219,13 @@ class TestRouteHappyPath(unittest.TestCase):
         )
 
         events = []
+
         async def _collect():
             async for event in route.execute(request):
                 events.append(event)
 
         import asyncio
+
         asyncio.run(_collect())
 
         self.assertEqual(len(events), 2)

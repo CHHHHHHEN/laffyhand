@@ -8,10 +8,17 @@ import pytest
 import yaml
 
 from laffyhand.config import (
-    LaffyConfig, LLMConfig,
-    DBConfig, LogConfig, AgentConfig,
-    PathsConfig, MCPConfig, load_config, find_config,
-    resolve_provider, resolve_model,
+    LaffyConfig,
+    LLMConfig,
+    DBConfig,
+    LogConfig,
+    AgentConfig,
+    PathsConfig,
+    MCPConfig,
+    load_config,
+    find_config,
+    resolve_provider,
+    resolve_model,
 )
 
 
@@ -37,12 +44,6 @@ class TestConfigModels:
         assert "test" in cfg.providers
         assert cfg.providers["test"].type == "openai"
         assert cfg.providers["test"].models[0].name == "gpt-4"
-
-    def test_llm_config_old_format_raises(self):
-        with pytest.raises(ValueError, match="format has changed"):
-            LLMConfig.model_validate({
-                "base_url": "http://test", "api_key": "key", "model_name": "m",
-            })
 
     def test_resolve_provider(self):
         llm_cfg = LLMConfig(**SAMPLE_LLM)
@@ -96,7 +97,6 @@ class TestConfigModels:
         cfg = PathsConfig()
         assert cfg.skills == []
         assert cfg.agents == []
-        assert cfg.todos == ".todos.json"
 
     def test_mcp_config_defaults(self):
         cfg = MCPConfig()
@@ -166,13 +166,16 @@ class TestLoadConfig:
             "paths": {
                 "skills": ["skills/", "custom/"],
                 "agents": ["agents/"],
-                "todos": "/tmp/todos.json",
             },
             "mcp": {
                 "servers": {
                     "local-1": {
                         "type": "local",
-                        "command": ["npx", "-y", "@modelcontextprotocol/server-everything"],
+                        "command": [
+                            "npx",
+                            "-y",
+                            "@modelcontextprotocol/server-everything",
+                        ],
                     },
                 },
             },
@@ -197,7 +200,6 @@ class TestLoadConfig:
             assert cfg.agent.max_concurrent_subagents == 5
             assert cfg.paths.skills == ["skills/", "custom/"]
             assert cfg.paths.agents == ["agents/"]
-            assert cfg.paths.todos == "/tmp/todos.json"
             assert "local-1" in cfg.mcp.servers
         finally:
             os.unlink(fname)
@@ -229,7 +231,19 @@ class TestLoadConfig:
             os.unlink(fname)
 
     def test_load_config_invalid_schema_bad_provider_type(self):
-        data = {"llm": {"default_provider": "x", "providers": {"x": {"type": "unknown", "base_url": "", "api_key": "", "models": [{"name": "m"}]}}}}
+        data = {
+            "llm": {
+                "default_provider": "x",
+                "providers": {
+                    "x": {
+                        "type": "unknown",
+                        "base_url": "",
+                        "api_key": "",
+                        "models": [{"name": "m"}],
+                    }
+                },
+            }
+        }
         with tempfile.NamedTemporaryFile(suffix=".yml", mode="w", delete=False) as f:
             yaml.dump(data, f)
             fname = f.name
