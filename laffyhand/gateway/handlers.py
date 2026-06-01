@@ -276,6 +276,7 @@ async def handle_chat(
             usage_info = event.usage
 
     logger.debug(f"Chat finished (id={request_id}, conn={conn_id}, finish={finish_reason})")
+    runtime._schedule_title_generation(session_id, "auto")
     return {
         "content": last_content,
         "finish_reason": finish_reason,
@@ -343,6 +344,11 @@ async def handle_chat_stream(
                 await transport.send(err_notif.json())
             except Exception:
                 logger.warning("Failed to send error event to client in chat stream")
+
+        # Non-blocking title generation
+        state = runtime.get_state(session_id)
+        actual_sid = state.session_id if (state and state.session_id) else session_id
+        runtime._schedule_title_generation(actual_sid, "auto")
 
         # Check for leftover steer that wasn't consumed by tool batch
         leftover_steer: str | None = None
@@ -461,6 +467,7 @@ async def _ensure_session(
         session_id=session.id,
         usage=SessionUsage(context_size=runtime.context_size),
     )
+    runtime._schedule_title_generation(session.id, "on_create")
     return session.id
 
 

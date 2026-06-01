@@ -105,13 +105,18 @@ class PermissionRequest(BaseModel):
     permission: str
     pattern: str
 
+class TodoUpdate(BaseModel):
+    type: str = "todo-update"
+    action: str  # "added" | "updated" | "deleted"
+    task: dict
+
 
 StreamEvent = Union[
     StepStart, TextStart, TextDelta, TextEnd,
     ReasoningStart, ReasoningDelta, ReasoningEnd,
     ToolCall, ToolResult, ToolError,
     StepFinish, Finish, ProviderError, Compacting,
-    PermissionRequest,
+    PermissionRequest, TodoUpdate,
 ]
 
 
@@ -122,6 +127,7 @@ async def _compact_on_overflow(
     llm: LLM,
     compaction_config: CompactionConfig,
     session_manager: SessionManager | None = None,
+    on_compacted: Callable[[str], None] | None = None,
 ) -> bool:
     tokens = estimate_messages_tokens(agent_state.messages)
     if not is_overflow(tokens, agent_state.usage.context_size):
@@ -144,6 +150,8 @@ async def _compact_on_overflow(
         agent_state.session_id = child.id
         agent_state.messages = original_system + [summary_msg] + tail
         agent_state.step = 0
+        if on_compacted is not None:
+            on_compacted(child.id)
         return True
 
     if await compact(agent_state, llm, compaction_config):
@@ -165,6 +173,7 @@ async def agent_loop(
     session_manager: SessionManager | None = None,
     subagent_manager: SubagentManager | None = None,
     preference_checker: Callable[[], str] | None = None,
+    on_compacted: Callable[[str], None] | None = None,
 ) -> AsyncIterator[StreamEvent]:
     context_size = agent_state.usage.context_size
     _compacted_this_step = False
@@ -192,6 +201,7 @@ async def agent_loop(
         if agent_state.step > 1 and context_size and not _compacted_this_step:
             if await _compact_on_overflow(
                 agent_state, llm, compaction_config, session_manager,
+                on_compacted=on_compacted,
             ):
                 _compacted_this_step = True
                 yield Compacting(data="Compacting conversation history...")
@@ -345,6 +355,7 @@ async def agent_loop(
                 session_manager.append_messages(agent_state.session_id, agent_state.messages)
             if context_size and not _compacted_this_step and await _compact_on_overflow(
                 agent_state, llm, compaction_config, session_manager,
+                on_compacted=on_compacted,
             ):
                 _compacted_this_step = True
                 yield Compacting(data="Compacting conversation history...")

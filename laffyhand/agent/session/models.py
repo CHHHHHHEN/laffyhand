@@ -62,7 +62,7 @@ class MessageRecord(BaseModel):
 
 
 class TitleConfig(BaseModel):
-    mode: Literal["off", "on_create", "on_compact", "auto"] = "on_compact"
+    mode: Literal["off", "on_create", "on_compact", "auto"] = "auto"
     model: Optional[str] = None
     prompt: str = (
         "Generate a concise title (max 8 words) for this coding conversation. "

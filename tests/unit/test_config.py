@@ -87,7 +87,7 @@ class TestConfigModels:
 
     def test_agent_config_defaults(self):
         cfg = AgentConfig()
-        assert cfg.title_mode == "on_compact"
+        assert cfg.title_mode == "auto"
         assert cfg.compaction_tail_turns == 2
         assert cfg.max_steps == 50
         assert cfg.max_concurrent_subagents == 2

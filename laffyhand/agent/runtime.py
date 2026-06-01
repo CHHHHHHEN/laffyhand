@@ -23,7 +23,8 @@ from laffyhand.agent.subagent.manager import SubagentManager, build_subagent_sta
 from laffyhand.agent.tools.registry import ToolRegistry
 from laffyhand.agent.tools.file import ReadTool, WriteTool, EditTool, GlobTool, GrepTool
 from laffyhand.agent.tools.bash import BashTool
-from laffyhand.agent.tools.todo import TodoTool
+from laffyhand.agent.tools.todo import TodowriteTool
+from laffyhand.agent.session.todo import TodoManager
 from laffyhand.agent.tools.skill_tool import SkillTool
 from laffyhand.agent.tools.task import TaskTool
 from laffyhand.agent.tools.mcp_manage import (
@@ -80,6 +81,8 @@ class AgentRuntime:
         self.agent_registry = AgentRegistry()
         self.skill_registry = SkillRegistry()
 
+        self.todo_manager = TodoManager(self.session_manager.connection)
+
         self._states: dict[str, AgentState] = {}
         self._pending_permissions: dict[str, tuple[asyncio.Event, str, str, bool | None]] = {}
         self._session_id: str | None = None
@@ -96,7 +99,7 @@ class AgentRuntime:
         logger.info(f"Built LLM: provider={provider_key}, model={model}")
         return LLM(model=model, route=route)
 
-    async def init_tools(self, todo_path: str = ".todos.json") -> None:
+    async def init_tools(self) -> None:
         for mcp_tool in await self.mcp_service.get_wrapped_tools():
             self.tool_registry.register_tool(mcp_tool)
         self.tool_registry.register_tool(ReadTool())
@@ -107,11 +110,7 @@ class AgentRuntime:
         self.tool_registry.register_tool(GlobTool())
         self.tool_registry.register_tool(GrepTool())
         self.tool_registry.register_tool(BashTool())
-        self.tool_registry.register_tool(
-            TodoTool(
-                todo_path=todo_path,
-            )
-        )
+        self.tool_registry.register_tool(TodowriteTool(self.todo_manager))
 
         skill_tool = SkillTool(self.skill_registry, self.tool_registry.permission)
         self.tool_registry.register_tool(skill_tool)
@@ -363,6 +362,7 @@ class AgentRuntime:
                 session_manager=self.session_manager,
                 subagent_manager=self.subagent_manager,
                 preference_checker=self.poll_new_preferences,
+                on_compacted=lambda child_sid: self._schedule_title_generation(child_sid, "on_compact"),
             ):
                 yield event
         finally:
@@ -374,6 +374,7 @@ class AgentRuntime:
         prompt: str,
         description: str = "",
         background: bool = False,
+        todo_id: str | None = None,
     ) -> str:
         parent_session_id = self._active_session_id or self._session_id
         assert parent_session_id is not None
@@ -385,9 +386,27 @@ class AgentRuntime:
                 "Cannot spawn further sub-agents."
             )
 
+        if todo_id:
+            from laffyhand.agent.session.models import TodoUpdate
+            self.todo_manager.update_task(
+                todo_id, parent_session_id,
+                TodoUpdate(status="in_progress"),
+            )
+
         if background:
             assert self.subagent_manager is not None
             bg_llm = self._llm_for_session(parent_session_id)
+
+            def _on_complete(_task_id: str, success: bool) -> None:
+                if todo_id:
+                    from laffyhand.agent.session.models import TodoUpdate
+                    self.todo_manager.update_task(
+                        todo_id, parent_session_id,
+                        TodoUpdate(
+                            status="completed" if success else "pending",
+                        ),
+                    )
+
             task_id: str = await self.subagent_manager.spawn(
                 parent_session_id=parent_session_id,
                 agent_info=agent_info,
@@ -397,14 +416,24 @@ class AgentRuntime:
                 parent_permission=self.tool_registry.permission,
                 session_manager=self.session_manager,
                 compaction_config=self.compaction_config,
+                on_complete=_on_complete,
             )
             return f"Sub-agent [{agent_info.name}] started (id: {task_id[:8]}). I'll notify you when it completes."
 
-        return await self._run_subagent_foreground(
+        result = await self._run_subagent_foreground(
             parent_session_id,
             agent_info,
             prompt,
         )
+
+        if todo_id:
+            from laffyhand.agent.session.models import TodoUpdate
+            self.todo_manager.update_task(
+                todo_id, parent_session_id,
+                TodoUpdate(status="completed"),
+            )
+
+        return result
 
     async def _run_subagent_foreground(
         self,
@@ -465,6 +494,29 @@ class AgentRuntime:
             llm,
             self.title_config,
         )
+
+    def _schedule_title_generation(self, session_id: str, trigger: str) -> None:
+        if self.title_config.mode == "off":
+            return
+        if self.title_config.mode != trigger:
+            return
+        session = self.session_manager.get(session_id)
+        if session is None or session.title:
+            return
+        asyncio.create_task(self._do_generate_title(session_id))
+
+    async def _do_generate_title(self, session_id: str) -> None:
+        try:
+            from laffyhand.agent.title import generate_title
+
+            llm = self._llm_for_session(session_id)
+            title = await generate_title(
+                self.session_manager, session_id, llm, self.title_config,
+            )
+            if title:
+                logger.info(f"Auto-generated title for session {session_id}: {title}")
+        except Exception:
+            logger.exception(f"Title generation failed for session {session_id}")
 
     def interrupt_session(self, session_id: str) -> bool:
         state = self._states.get(session_id)

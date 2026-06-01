@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import MagicMock, AsyncMock, patch
 
 import pytest
@@ -465,6 +466,67 @@ class TestGenerateTitleForCurrent:
             mock_gen.return_value = "My Title"
             result = await runtime.generate_title_for_current()
             assert result == "My Title"
+
+
+class TestScheduleTitleGeneration:
+    @pytest.mark.anyio
+    async def test_mode_off_skips(self, runtime):
+        runtime.title_config.mode = "off"
+        runtime._do_generate_title = AsyncMock()
+        runtime._schedule_title_generation("sid", "auto")
+        runtime._do_generate_title.assert_not_called()
+
+    @pytest.mark.anyio
+    async def test_trigger_mismatch_skips(self, runtime):
+        runtime.title_config.mode = "auto"
+        runtime._do_generate_title = AsyncMock()
+        session = runtime.session_manager.create()
+        runtime._schedule_title_generation(session.id, "on_create")
+        runtime._do_generate_title.assert_not_called()
+
+    @pytest.mark.anyio
+    async def test_existing_title_skips(self, runtime):
+        runtime.title_config.mode = "auto"
+        runtime._do_generate_title = AsyncMock()
+        session = runtime.session_manager.create(title="Existing")
+        runtime._schedule_title_generation(session.id, "auto")
+        runtime._do_generate_title.assert_not_called()
+
+    @pytest.mark.anyio
+    async def test_fires_background_task(self, runtime):
+        runtime.title_config.mode = "auto"
+        runtime._do_generate_title = AsyncMock()
+        session = runtime.session_manager.create()
+        runtime._schedule_title_generation(session.id, "auto")
+        await asyncio.sleep(0)
+        runtime._do_generate_title.assert_awaited_once_with(session.id)
+
+
+class TestDoGenerateTitle:
+    @pytest.mark.anyio
+    async def test_generates_title(self, runtime, session_manager):
+        from laffyhand.agent.schemas import StreamText, StreamFinish
+
+        async def mock_stream(messages, **kwargs):
+            yield StreamText(delta="My Title")
+            yield StreamFinish(finish_reason="stop")
+
+        runtime.llm.stream = mock_stream
+        runtime._llm_for_session = MagicMock(return_value=runtime.llm)
+        msgs = [UserMessage(content="Hello world")]
+        session = session_manager.create(messages=msgs)
+        await runtime._do_generate_title(session.id)
+        fetched = session_manager.get(session.id)
+        assert fetched is not None
+        assert fetched.title == "My Title"
+
+    @pytest.mark.anyio
+    async def test_exception_logged(self, runtime, session_manager):
+        runtime._llm_for_session = MagicMock(side_effect=Exception("mock error"))
+        session = session_manager.create()
+        with patch("laffyhand.agent.runtime.logger.exception") as mock_log:
+            await runtime._do_generate_title(session.id)
+            mock_log.assert_called_once()
 
 
 class TestShutdown:
