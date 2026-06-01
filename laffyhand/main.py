@@ -7,29 +7,25 @@ import sys
 from loguru import logger
 from laffyhand import setup_logging
 from laffyhand.config import LaffyConfig, load_config
-from laffyhand.agent.schemas import (
-    CompactionConfig,
-    SessionUsage,
-)
-from laffyhand.agent.llm.builders import deepseek_route
-from laffyhand.agent.llm.facade import LLM
-from laffyhand.agent.session import SessionManager, TitleConfig
+from laffyhand.agent.schemas import SessionUsage
 from laffyhand.agent.runtime import AgentRuntime
-from laffyhand.agent.mcp import MCPService
 from laffyhand.gateway.client import GatewayClient
 from laffyhand.gateway.server import GatewayServer
 from laffyhand.gateway.transport import InProcessTransport
 
-SYSTEM_PROMPT = """
----
-# Soul
+SYSTEM_PROMPT = """You are Laffybot, an AI coding assistant with access to tools.
 
-You are a helpful assistant, your name is Laffybot. 
-You can optionally use tools if needed. 
-If no tools present, skip tool use.
+## Behavior
+- Use tools when needed; if no tool is relevant, respond directly.
+- Always show your reasoning before providing your final answer.
+- For file operations: read first, analyze, then propose changes.
+- If a tool fails, try an alternative approach before reporting failure.
+- Use multiple tools in sequence to accomplish a task.
 
----
-"""
+## Output Format
+- Be concise. Use code blocks with language tags for code.
+- Use bullet points for lists.
+- When suggesting code changes, show a diff summary of what changed."""
 
 
 def parse_args() -> argparse.Namespace:
@@ -80,6 +76,18 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Path to configuration file (default: ./laffyhand.yml)",
     )
+    parser.add_argument(
+        "--provider",
+        type=str,
+        default=None,
+        help="LLM provider key (must match a provider in llm.providers config)",
+    )
+    parser.add_argument(
+        "--model",
+        type=str,
+        default=None,
+        help="Model name for the selected provider (default: first model in config)",
+    )
 
     ui_parser = sub.add_parser("ui", help="Start the web UI")
     ui_parser.add_argument("--host", type=str, default="127.0.0.1", help="Host to bind")
@@ -104,36 +112,14 @@ def print_sessions(sessions: list[dict]) -> None:
 
 
 async def create_runtime(config: LaffyConfig) -> AgentRuntime:
-    route = deepseek_route(base_url=config.llm.base_url, api_key=config.llm.api_key)
-    llm = LLM(model=config.llm.model_name, route=route)
-    logger.info(f"Agent started, model={config.llm.model_name}")
+    runtime = AgentRuntime(config=config)
 
-    mcp_service = MCPService()
     if config.mcp.servers:
-        await mcp_service.connect_all(config.mcp.servers)
-
-    session_manager = SessionManager(config.db.path)
-    compaction_config = CompactionConfig(
-        tail_turns=config.agent.compaction_tail_turns,
-    )
-
-    runtime = AgentRuntime(
-        llm=llm,
-        session_manager=session_manager,
-        mcp_service=mcp_service,
-        compaction_config=compaction_config,
-        title_config=TitleConfig(mode=config.agent.title_mode),  # type: ignore[arg-type]
-        max_steps=config.agent.max_steps,
-        max_subagents=config.agent.max_concurrent_subagents,
-        db_path=config.db.path,
-        context_size=config.llm.context_size,
-    )
+        await runtime.mcp_service.connect_all(config.mcp.servers)
 
     skill_dirs = config.paths.skills if config.paths.skills else ["skills/"]
     runtime.load_skills(skill_dirs)
-
     runtime.load_agents(config.paths.agents)
-
     await runtime.init_tools(todo_path=config.paths.todos)
     return runtime
 
@@ -246,6 +232,8 @@ async def main():
         return
 
     # Resolve or create session
+    provider = args.provider or config.llm.default_provider
+    model = args.model or ""
     is_resumed = False
     current_session_id: str | None = None
     if args.session:
@@ -271,10 +259,14 @@ async def main():
             )
             is_resumed = info.get("turn_count", 0) > 0
         else:
-            current_session_id = await client.create_session(system_prompt=SYSTEM_PROMPT)
+            current_session_id = await client.create_session(
+                system_prompt=SYSTEM_PROMPT, provider=provider, model=model,
+            )
             logger.info(f"No active session to resume, starting new: {current_session_id}")
     else:
-        current_session_id = await client.create_session(system_prompt=SYSTEM_PROMPT)
+        current_session_id = await client.create_session(
+            system_prompt=SYSTEM_PROMPT, provider=provider, model=model,
+        )
         logger.info(f"New session created: {current_session_id}")
 
     print(f"\nSession: {current_session_id}")

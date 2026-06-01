@@ -175,8 +175,8 @@ class TestRouteHappyPath(unittest.TestCase):
         self.assertEqual(len(events), 1)
         self.assertIsInstance(events[0], StreamFinish)
 
-    def test_synthesizes_finish_when_stream_ends_without_finish(self):
-        """When the stream ends without a StreamFinish, a stop finish is synthesized."""
+    def test_error_when_stream_ends_without_finish(self):
+        """When the stream ends without a StreamFinish, a StreamError is emitted."""
         route = Route(
             protocol=_MockProtocolHappy(events=[
                 StreamText(delta="partial response"),
@@ -200,5 +200,5 @@ class TestRouteHappyPath(unittest.TestCase):
 
         self.assertEqual(len(events), 2)
         self.assertIsInstance(events[0], StreamText)
-        self.assertIsInstance(events[1], StreamFinish)
-        self.assertEqual(events[1].finish_reason, "stop")
+        self.assertIsInstance(events[1], StreamError)
+        self.assertIn("without a finish", events[1].error)

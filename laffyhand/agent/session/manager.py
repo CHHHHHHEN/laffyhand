@@ -131,6 +131,7 @@ class SessionManager:
         self,
         title: str = "",
         cwd: str = "",
+        provider: str = "",
         model: str = "",
         agent_version: str = "",
         parent_id: Optional[str] = None,
@@ -140,6 +141,7 @@ class SessionManager:
         session = Session(
             title=title,
             cwd=cwd,
+            provider=provider,
             model=model,
             agent_version=agent_version,
             parent_id=parent_id,
@@ -422,6 +424,7 @@ class SessionManager:
         child = self.create(
             title=parent.title if parent else "",
             cwd=parent.cwd if parent else "",
+            provider=parent.provider if parent else "",
             model=parent.model if parent else "",
             agent_version=parent.agent_version if parent else "",
             parent_id=parent_id,
@@ -446,6 +449,7 @@ class SessionManager:
         child = self.create(
             title=fork_title,
             cwd=parent.cwd,
+            provider=parent.provider,
             model=parent.model,
             agent_version=parent.agent_version,
             fork_id=session_id,
@@ -466,6 +470,7 @@ class SessionManager:
         child = self.create(
             title="",
             cwd=parent.cwd if parent else "",
+            provider=parent.provider if parent else "",
             model=model or (parent.model if parent else ""),
             agent_version=parent.agent_version if parent else "",
             parent_id=parent_id,
@@ -520,17 +525,17 @@ class SessionManager:
     def _insert(self, session: Session) -> None:
         self._conn.execute(
             """INSERT INTO session (
-                id, status, title, cwd, model, agent_version,
+                id, status, title, cwd, provider, model, agent_version,
                 turn_count, step_count,
                 input_tokens, output_tokens, reasoning_tokens,
                 cache_read_tokens,
                 parent_id, fork_id,
                 message_count, summary, metadata,
                 created_at, updated_at, ended_at
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 session.id, session.status, session.title, session.cwd,
-                session.model, session.agent_version,
+                session.provider, session.model, session.agent_version,
                 session.turn_count, session.step_count,
                 session.input_tokens, session.output_tokens,
                 session.reasoning_tokens, session.cache_read_tokens,
@@ -582,6 +587,7 @@ class SessionManager:
             status=row["status"],
             title=row["title"],
             cwd=row["cwd"],
+            provider=row["provider"] if "provider" in row.keys() else "",
             model=row["model"],
             agent_version=row["agent_version"],
             turn_count=row["turn_count"],

@@ -24,6 +24,7 @@ class Session(BaseModel):
     status: SessionStatus = "active"
     title: str = ""
     cwd: str = ""
+    provider: str = ""
     model: str = ""
     agent_version: str = ""
     turn_count: int = 0

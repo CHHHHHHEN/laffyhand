@@ -13,7 +13,6 @@ from laffyhand.agent.loop import (
     StepFinish, Finish, ProviderError, Compacting,
     StreamEvent,
 )
-from laffyhand.agent.schemas import Usage
 from laffyhand.gateway.protocol import (
     Request, Response, ErrorResponse, Notification, from_json,
 )
@@ -127,12 +126,14 @@ class GatewayClient:
         system_prompt: str = "",
         title: str = "",
         cwd: str = "",
+        provider: str = "",
         model: str = "",
     ) -> str:
         result = await self._request("session/create", {
             "system_prompt": system_prompt,
             "title": title,
             "cwd": cwd,
+            "provider": provider,
             "model": model,
         })
         return result["session_id"]  # type: ignore[return-value]

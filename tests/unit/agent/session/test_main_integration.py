@@ -390,82 +390,66 @@ class TestCompactOnOverflow:
 # ── create_runtime ─────────────────────────────────────────────
 
 
+SAMPLE_PROVIDERS = {
+    "test": {
+        "type": "openai",
+        "base_url": "http://test",
+        "api_key": "test-key",
+        "models": [{"name": "test-model", "context_size": 128000}],
+    },
+}
+
+
 class TestCreateRuntime:
     @pytest.mark.anyio
     async def test_creates_runtime(self):
         from laffyhand.main import create_runtime
-        from laffyhand.config import LaffyConfig, LLMConfig
+        from laffyhand.config import LaffyConfig
 
         config = LaffyConfig.model_construct(
-            llm=LLMConfig(
-                base_url="http://test",
-                api_key="test-key",
-                model_name="test-model",
-                context_size=128000,
-            ),
+            llm={"default_provider": "test", "providers": SAMPLE_PROVIDERS},
         )
 
-        with (
-            patch("laffyhand.main.deepseek_route") as mock_route,
-            patch("laffyhand.main.LLM") as mock_llm,
-            patch("laffyhand.main.MCPService") as mock_mcp,
-            patch("laffyhand.main.SessionManager") as mock_sm,
-        ):
-            mock_route.return_value = "route"
-            mock_llm.return_value = MagicMock()
-            mock_mcp_instance = MagicMock()
+        with patch("laffyhand.main.AgentRuntime") as mock_rt_cls:
+            mock_rt = MagicMock()
+            mock_rt_cls.return_value = mock_rt
 
             async def mock_get_wrapped():
                 return []
 
-            mock_mcp_instance = MagicMock()
-            mock_mcp_instance.get_wrapped_tools = mock_get_wrapped
-            mock_mcp.return_value = mock_mcp_instance
-            mock_sm_instance = MagicMock()
-            mock_sm.return_value = mock_sm_instance
+            mock_rt.mcp_service.get_wrapped_tools = mock_get_wrapped
+            mock_rt.init_tools = AsyncMock()
 
             runtime = await create_runtime(config)
 
         assert runtime is not None
-        assert runtime.llm is not None
-        assert runtime.session_manager is not None
-        assert runtime.mcp_service is not None
+        mock_rt_cls.assert_called_once_with(config=config)
+        mock_rt.load_skills.assert_called_once()
+        mock_rt.load_agents.assert_called_once()
+        mock_rt.init_tools.assert_called_once()
 
     @pytest.mark.anyio
     async def test_runtime_has_registries(self):
         from laffyhand.main import create_runtime
-        from laffyhand.config import LaffyConfig, LLMConfig
+        from laffyhand.config import LaffyConfig
 
         config = LaffyConfig.model_construct(
-            llm=LLMConfig(
-                base_url="http://test",
-                api_key="test-key",
-                model_name="test-model",
-                context_size=128000,
-            ),
+            llm={"default_provider": "test", "providers": SAMPLE_PROVIDERS},
         )
 
-        with (
-            patch("laffyhand.main.deepseek_route") as mock_route,
-            patch("laffyhand.main.LLM") as mock_llm,
-            patch("laffyhand.main.MCPService") as mock_mcp,
-            patch("laffyhand.main.SessionManager") as mock_sm,
-        ):
-            mock_route.return_value = "route"
-            mock_llm.return_value = MagicMock()
+        with patch("laffyhand.main.AgentRuntime") as mock_rt_cls:
+            mock_rt = MagicMock()
+            mock_rt_cls.return_value = mock_rt
+            mock_rt.mcp_service = MagicMock()
 
             async def mock_get_wrapped():
                 return []
 
-            mock_mcp_instance = MagicMock()
-            mock_mcp_instance.get_wrapped_tools = mock_get_wrapped
-            mock_mcp.return_value = mock_mcp_instance
-            mock_sm_instance = MagicMock()
-            mock_sm.return_value = mock_sm_instance
+            mock_rt.mcp_service.get_wrapped_tools = mock_get_wrapped
+            mock_rt.init_tools = AsyncMock()
 
             runtime = await create_runtime(config)
 
-        assert runtime.agent_registry is not None
-        assert runtime.tool_registry is not None
-        assert runtime.skill_registry is not None
-        assert runtime.subagent_manager is not None
+        assert runtime is not None
+        assert mock_rt.load_skills.called
+        assert mock_rt.load_agents.called

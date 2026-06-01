@@ -71,7 +71,7 @@ class TestSkillLifecycle(unittest.TestCase):
         summary = registry.build_skills_summary()
         self.assertIn("s1", summary)
         self.assertIn("s2", summary)
-        self.assertIn("Available skills", summary)
+        self.assertIn("<skills>", summary)
 
     def test_require_throws_with_available_list(self):
         self._write_skill("existing", "I exist")

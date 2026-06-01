@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-import json
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from typing import TYPE_CHECKING, Union
 
 from loguru import logger
@@ -158,6 +157,7 @@ async def agent_loop(
     reminder: str | None = None,
     session_manager: SessionManager | None = None,
     subagent_manager: SubagentManager | None = None,
+    preference_checker: Callable[[], str] | None = None,
 ) -> AsyncIterator[StreamEvent]:
     context_size = agent_state.usage.context_size
     _compacted_this_step = False
@@ -203,6 +203,14 @@ async def agent_loop(
                 )
                 agent_state.messages.append(injected)
                 logger.info(f"Injected subagent result: {bg.task_id[:8]}")
+
+        # ── Preference injection: detect new/changed AGENTS.md ──
+        if preference_checker is not None:
+            new_prefs = preference_checker()
+            if new_prefs:
+                wrapped = f"<system-reminder>\n{new_prefs}\n</system-reminder>"
+                agent_state.messages.append(SystemMessage(content=wrapped))
+                logger.info("Injected new preferences via <system-reminder>")
 
         reasoning_buf: list[str] = []
         content_buf: list[str] = []

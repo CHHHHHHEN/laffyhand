@@ -60,7 +60,7 @@ class TestSkillRegistry(unittest.TestCase):
         summary = self.registry.build_skills_summary()
         self.assertIn("skill-a", summary)
         self.assertIn("skill-b", summary)
-        self.assertIn("Available skills", summary)
+        self.assertIn("<skills>", summary)
 
     def test_build_skills_summary_empty(self):
         self.assertEqual(self.registry.build_skills_summary(), "")

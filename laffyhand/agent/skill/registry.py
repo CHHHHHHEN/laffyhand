@@ -33,8 +33,9 @@ class SkillRegistry:
     def build_skills_summary(self) -> str:
         if not self._skills:
             return ""
-        lines = ["## Available skills"]
+        lines = ["<skills>"]
         for info in sorted(self._skills.values(), key=lambda s: s.name):
             desc = info.description or "(no description)"
             lines.append(f"- **{info.name}**: {desc}")
+        lines.append("</skills>")
         return "\n".join(lines)

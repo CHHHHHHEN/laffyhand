@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import os
+import sys
 from collections.abc import Sequence
+from threading import Lock
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -30,9 +32,13 @@ from laffyhand.agent.tools.mcp_manage import (
 )
 from laffyhand.agent.mcp import MCPService
 from laffyhand.agent.loop import agent_loop, StepFinish
+from laffyhand.agent.llm.factory import build_route
+from laffyhand.agent.llm.facade import LLM
 
 if TYPE_CHECKING:
     from laffyhand.agent.agent import AgentInfo
+
+from laffyhand.config import LaffyConfig
 
 
 MAX_SUBAGENT_DEPTH = 3
@@ -41,33 +47,52 @@ MAX_SUBAGENT_DEPTH = 3
 class AgentRuntime:
     def __init__(
         self,
-        llm: Any,
-        session_manager: SessionManager,
-        mcp_service: MCPService,
-        compaction_config: CompactionConfig,
-        title_config: TitleConfig,
-        max_steps: int,
-        max_subagents: int,
-        db_path: str,
-        context_size: int = 0,
+        config: LaffyConfig,
+        llm: Any = None,
+        *,
+        session_manager: SessionManager | None = None,
+        mcp_service: MCPService | None = None,
     ) -> None:
+        self._config = config
         self.llm = llm
-        self.session_manager = session_manager
-        self.mcp_service = mcp_service
-        self.compaction_config = compaction_config
-        self.title_config = title_config
-        self.max_steps = max_steps
-        self._context_size = context_size
+
+        self.session_manager = session_manager or SessionManager(config.db.path)
+        self.mcp_service = mcp_service or MCPService()
+        self.compaction_config = CompactionConfig(
+            tail_turns=config.agent.compaction_tail_turns,
+        )
+        self.title_config = TitleConfig(mode=config.agent.title_mode)  # type: ignore[arg-type]
+        self.max_steps = config.agent.max_steps
+        self.subagent_manager = SubagentManager(
+            max_concurrent=config.agent.max_concurrent_subagents,
+        )
+        try:
+            from laffyhand.config import resolve_provider, resolve_model
+            _, provider_cfg = resolve_provider(config.llm)
+            model_cfg = resolve_model(provider_cfg)
+            self._context_size = model_cfg.context_size
+        except (ValueError, KeyError) as e:
+            logger.warning(f"Could not resolve provider/model for context_size: {e}")
+            self._context_size = 128_000
 
         self.tool_registry = ToolRegistry()
         self.agent_registry = AgentRegistry()
         self.skill_registry = SkillRegistry()
-        self.subagent_manager = SubagentManager(max_concurrent=max_subagents)
 
         self._states: dict[str, AgentState] = {}
         self._session_id: str | None = None
         self._active_session_id: str | None = None
         self._task_tool: TaskTool | None = None
+        self._preferences: str | None = None
+        self._preference_files: dict[str, str] = {}
+        self._pref_lock = Lock()
+
+    def _build_llm(self, provider: str, model: str) -> LLM:
+        from laffyhand.config import resolve_provider
+        provider_key, provider_cfg = resolve_provider(self._config.llm, provider)
+        route = build_route(provider_cfg.type, provider_cfg.base_url, provider_cfg.api_key)
+        logger.info(f"Built LLM: provider={provider_key}, model={model}")
+        return LLM(model=model, route=route)
 
     async def init_tools(self, todo_path: str = ".todos.json") -> None:
         for mcp_tool in await self.mcp_service.get_wrapped_tools():
@@ -104,7 +129,7 @@ class AgentRuntime:
         def _update_skill_description():
             summary = self.skill_registry.build_skills_summary()
             if summary:
-                skill_tool.description = f"Load and inject a skill into context.\n\nAvailable skills:\n{summary}"
+                skill_tool.description = f"Load and inject a skill into context.\n\n{summary}"
             else:
                 skill_tool.description = "Load and inject a skill into context."
 
@@ -140,14 +165,87 @@ class AgentRuntime:
     def load_skills(self, skill_dirs: Sequence[str | Path]) -> None:
         self.skill_registry.discover(list(skill_dirs))
 
-    def build_system_prompt(self, base_prompt: str) -> str:
-        content = base_prompt + self.tool_registry.build_tool_prompt()
-        if self.skill_registry.all():
-            content += "\n\n" + self.skill_registry.build_skills_summary()
-        return content
+    @staticmethod
+    def _preference_roots() -> list[Path]:
+        return [Path(os.getcwd()), Path(os.path.expanduser("~"))]
 
-    def create_initial_state(self, system_message: SystemMessage) -> AgentState:
-        session = self.session_manager.create(cwd=os.getcwd(), model="")
+    def _read_preference_files(self) -> dict[str, str]:
+        result: dict[str, str] = {}
+        for root in self._preference_roots():
+            path = root / "AGENTS.md"
+            if path.is_file():
+                result[str(path)] = path.read_text(encoding="utf-8").strip()
+        return result
+
+    def _load_preferences(self) -> str:
+        with self._pref_lock:
+            if self._preferences is not None:
+                return self._preferences
+            self._preference_files = self._read_preference_files()
+            sections = [
+                f"<preference>\n{text}\n</preference>"
+                for text in self._preference_files.values()
+            ]
+            self._preferences = "\n".join(sections) if sections else ""
+            return self._preferences
+
+    def poll_new_preferences(self) -> str:
+        current = self._read_preference_files()
+        changed = False
+        sections: list[str] = []
+
+        with self._pref_lock:
+            # Detect new/changed files
+            for path, text in current.items():
+                prev = self._preference_files.get(path)
+                if prev == text:
+                    continue
+                self._preference_files[path] = text
+                sections.append(f"<preference>\n{text}\n</preference>")
+                changed = True
+                logger.info(f"New/changed preferences: {path}")
+
+            # Detect deleted files
+            for path in list(self._preference_files):
+                if path not in current:
+                    del self._preference_files[path]
+                    changed = True
+                    logger.info(f"Removed preferences from deleted file: {path}")
+
+            if changed:
+                self._preferences = None  # invalidate cache so next _load_preferences re-reads
+        return "\n".join(sections) if sections else ""
+
+    def build_system_prompt(self, base_prompt: str) -> str:
+        parts: list[str] = []
+        parts.append(f"<soul>\n{base_prompt.strip()}\n</soul>")
+
+        env_parts = [
+            f"Working directory: {os.getcwd()}",
+            f"Platform: {sys.platform}",
+        ]
+        parts.append("<env>\n" + "\n".join(env_parts) + "\n</env>")
+
+        parts.append(self.tool_registry.build_tool_prompt())
+
+        if self.skill_registry.all():
+            parts.append(self.skill_registry.build_skills_summary())
+
+        preferences = self._load_preferences()
+        if preferences:
+            parts.append(preferences)
+
+        return "\n".join(parts)
+
+    def create_initial_state(
+        self,
+        system_message: SystemMessage,
+        provider: str = "",
+        model: str = "",
+    ) -> AgentState:
+        session = self.session_manager.create(
+            cwd=os.getcwd(), provider=provider, model=model,
+        )
         state = AgentState(
             messages=[system_message],
             session_id=session.id,
@@ -188,9 +286,16 @@ class AgentRuntime:
         self._session_id = session_id
         return True
 
-    def new_session(self, system_message: SystemMessage) -> AgentState:
+    def new_session(
+        self,
+        system_message: SystemMessage,
+        provider: str = "",
+        model: str = "",
+    ) -> AgentState:
         self.complete_current_session()
-        session = self.session_manager.create(cwd=os.getcwd(), model="")
+        session = self.session_manager.create(
+            cwd=os.getcwd(), provider=provider, model=model,
+        )
         state = AgentState(
             messages=[system_message] if system_message else [],
             session_id=session.id,
@@ -217,21 +322,45 @@ class AgentRuntime:
         self._session_id = child.id
         return child.id
 
+    def _llm_for_session(self, session_id: str) -> LLM:
+        from laffyhand.config import resolve_provider, resolve_model
+
+        session = self.session_manager.get(session_id)
+        provider = session.provider if session and session.provider else None
+        model = session.model if session and session.model else None
+        if not provider or not model:
+            try:
+                provider_key, provider_cfg = resolve_provider(self._config.llm)
+                provider = provider_key
+                model = model or resolve_model(provider_cfg).name
+            except ValueError:
+                logger.warning(
+                    f"Session {session_id}: could not resolve provider/model, "
+                    f"falling back to default LLM"
+                )
+        if provider and model:
+            return self._build_llm(provider, model)
+        if self.llm is not None:
+            return self.llm  # type: ignore[return-value]
+        raise RuntimeError("No LLM available for session")
+
     async def run_agent_turn(self, session_id: str | None = None):
         sid = session_id or self._session_id
         assert sid is not None
         state = self._states.get(sid)
         assert state is not None, f"state not found for session {sid}"
         self._active_session_id = sid
+        llm = self._llm_for_session(sid)
         try:
             async for event in agent_loop(
                 state,
-                self.llm,
+                llm,
                 self.tool_registry,
                 compaction_config=self.compaction_config,
                 max_steps=self.max_steps,
                 session_manager=self.session_manager,
                 subagent_manager=self.subagent_manager,
+                preference_checker=self.poll_new_preferences,
             ):
                 yield event
         finally:
@@ -256,11 +385,12 @@ class AgentRuntime:
 
         if background:
             assert self.subagent_manager is not None
+            bg_llm = self._llm_for_session(parent_session_id)
             task_id: str = await self.subagent_manager.spawn(
                 parent_session_id=parent_session_id,
                 agent_info=agent_info,
                 prompt=prompt,
-                llm=self.llm,
+                llm=bg_llm,
                 tool_registry=self.tool_registry,
                 parent_permission=self.tool_registry.permission,
                 session_manager=self.session_manager,
@@ -289,10 +419,12 @@ class AgentRuntime:
             self.tool_registry,
         )
 
+        llm = self._llm_for_session(parent_session_id)
+
         result_parts: list[str] = []
         async for event in agent_loop(
             child_state,
-            self.llm,
+            llm,
             child_registry,
             compaction_config=CompactionConfig(
                 tail_turns=self.compaction_config.tail_turns,
@@ -324,10 +456,11 @@ class AgentRuntime:
         sid = state.session_id if state and state.session_id else self._session_id
         from laffyhand.agent.title import generate_title
 
+        llm = self._llm_for_session(sid)
         return await generate_title(
             self.session_manager,
             sid,
-            self.llm,
+            llm,
             self.title_config,
         )
 

@@ -16,6 +16,9 @@ export interface ChatState {
   model: string
   sessionUsage: SessionUsage | null
 
+  // Queue for busy_mode="queue"
+  pendingQueue: string[]
+
   addUserMessage: (content: string) => void
   startStreaming: () => void
   appendContent: (text: string) => void
@@ -27,6 +30,9 @@ export interface ChatState {
   clearMessages: () => void
   loadMessages: (messages: Message[]) => void
   setSessionInfo: (model: string, usage: SessionUsage | null) => void
+  enqueueMessage: (content: string) => void
+  dequeueMessage: () => string | undefined
+  hasPendingMessages: () => boolean
 }
 
 let messageCounter = 0
@@ -38,7 +44,7 @@ function nextMessageId(): string {
   return `msg-${Date.now()}-${messageCounter}`
 }
 
-export const useChatStore = create<ChatState>((set) => ({
+export const useChatStore = create<ChatState>((set, get) => ({
   messages: [],
   isStreaming: false,
   streamContent: "",
@@ -49,6 +55,7 @@ export const useChatStore = create<ChatState>((set) => ({
   error: null,
   model: "",
   sessionUsage: null,
+  pendingQueue: [],
 
   addUserMessage: (content) =>
     set((state) => ({
@@ -158,4 +165,19 @@ export const useChatStore = create<ChatState>((set) => ({
 
   setSessionInfo: (model, usage) =>
     set({ model, sessionUsage: usage }),
+
+  enqueueMessage: (content) =>
+    set((state) => ({
+      pendingQueue: [...state.pendingQueue, content],
+    })),
+
+  dequeueMessage: () => {
+    const { pendingQueue } = get()
+    if (pendingQueue.length === 0) return undefined
+    const [first, ...rest] = pendingQueue
+    set({ pendingQueue: rest })
+    return first
+  },
+
+  hasPendingMessages: () => get().pendingQueue.length > 0,
 }))

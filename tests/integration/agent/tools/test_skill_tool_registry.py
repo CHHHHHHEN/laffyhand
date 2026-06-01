@@ -38,4 +38,4 @@ class TestSkillToolInRegistry(unittest.TestCase):
         self.tool_registry.on_build_defs(_update)
         asyncio.run(self.tool_registry.build_tool_definitions())
         self.assertTrue(callback_called)
-        self.assertIn("Available skills", self.skill_tool.description)
+        self.assertIn("<skills>", self.skill_tool.description)

@@ -13,7 +13,7 @@ from laffyhand.agent.schemas import (
 from laffyhand.agent.compaction import (
     compact, compact_with_chain, estimate_message_tokens,
     estimate_messages_tokens, is_overflow, select_tail,
-    build_summary_text,
+    build_summary_text, _select_compaction_targets, _is_summary_content,
 )
 from laffyhand.agent.prune import prune, PRUNE_PROTECT
 
@@ -103,6 +103,26 @@ class TestSelectTail(unittest.TestCase):
         tail_users = sum(1 for m in tail if isinstance(m, UserMessage))
         self.assertLessEqual(tail_users, 2, "tail should preserve at most 2 user turns")
 
+    def test_tool_truncation_affects_tail_boundary(self):
+        """Tool outputs exceeding summary_tool_truncate should be counted
+        at their truncated size during tail boundary selection."""
+        # 10000 chars = 2500 tokens without truncation → exceeds budget
+        # With truncation to 50 chars = 13 tokens → fits in budget
+        msgs = [
+            SystemMessage(content="sys"),
+            ToolMessage(tool_call_id="c1", content="x" * 10_000),  # very long
+            UserMessage(content="recent user"),
+            AssistantMessage(content="recent asst"),
+        ]
+        config = CompactionConfig(
+            tail_turns=1,
+            preserve_recent_tokens=50,
+            summary_tool_truncate=50,
+        )
+        head, tail = select_tail(msgs, config, context_size=100_000)
+        tool_in_tail = any(isinstance(m, ToolMessage) for m in tail)
+        self.assertTrue(tool_in_tail, "long tool output should fit in tail when truncated")
+
 
 class TestBuildSummaryText(unittest.TestCase):
     def test_includes_all_types(self):
@@ -142,7 +162,7 @@ class TestPrune(unittest.TestCase):
         content = "x" * (PRUNE_PROTECT * 4 + 5)
         msgs = [ToolMessage(tool_call_id="c1", content=content)]
         result = prune(msgs)
-        self.assertTrue(result[0].content.startswith("[Tool output pruned:"))
+        self.assertTrue(result[0].content.startswith("[Old tool result content cleared:"))
         self.assertEqual(msgs[0].content, content, "should not mutate original")
 
     def test_prune_multiple_messages_oldest_first(self):
@@ -151,7 +171,7 @@ class TestPrune(unittest.TestCase):
         msgs = [small, large]
         result = prune(msgs)
         self.assertEqual(result[0].content, "small", "should not prune tiny messages")
-        self.assertTrue(result[1].content.startswith("[Tool output pruned:"))
+        self.assertTrue(result[1].content.startswith("[Old tool result content cleared:"))
         self.assertEqual(msgs[1].content, large.content, "should not mutate original")
 
     def test_prune_no_tool_messages(self):
@@ -165,7 +185,7 @@ class TestPrune(unittest.TestCase):
         msgs = [tiny, large]
         result = prune(msgs)
         self.assertEqual(result[0].content, "tiny", "tiny messages should not be pruned")
-        self.assertTrue(result[1].content.startswith("[Tool output pruned:"))
+        self.assertTrue(result[1].content.startswith("[Old tool result content cleared:"))
 
     def test_prune_partial_some_kept(self):
         content1 = "x" * (PRUNE_PROTECT * 4 + 5)
@@ -175,7 +195,7 @@ class TestPrune(unittest.TestCase):
             ToolMessage(tool_call_id="c2", content=content2),
         ]
         result = prune(msgs)
-        pruned_count = sum(1 for m in result if m.content.startswith("[Tool output pruned:"))
+        pruned_count = sum(1 for m in result if m.content.startswith("[Old tool result content cleared:"))
         self.assertGreater(pruned_count, 0)
         self.assertLess(pruned_count, 3)
 
@@ -214,6 +234,9 @@ class TestCompact(unittest.TestCase):
         result = await compact(state, llm, config)
         self.assertTrue(result)
         self.assertLess(len(state.messages), len(msgs))
+        # Summary should be wrapped in <summary> tags
+        summary_msgs = [m for m in state.messages if isinstance(m, SystemMessage) and _is_summary_content(m.content)]
+        self.assertEqual(len(summary_msgs), 1, "should have exactly one summary message")
 
     @pytest.mark.anyio
     async def test_compact_stream_error_returns_false(self):
@@ -273,6 +296,7 @@ class TestCompactWithChain(unittest.TestCase):
         summary, system_msgs, tail = result
         self.assertIsInstance(summary, str)
         self.assertGreater(len(summary), 0)
+        self.assertTrue(_is_summary_content(summary), "summary should be wrapped in <summary> tags")
         self.assertIsInstance(system_msgs, list)
         self.assertIsInstance(tail, list)
         self.assertGreater(len(tail), 0)
@@ -297,3 +321,113 @@ class TestCompactWithChain(unittest.TestCase):
 
         result = await compact_with_chain(state, llm, config)
         self.assertIsNone(result)
+
+
+class TestSummaryChain(unittest.TestCase):
+    def test_is_summary_content_detects_tag(self):
+        self.assertTrue(_is_summary_content("<summary>\nGoal: test\n</summary>"))
+        self.assertFalse(_is_summary_content("Goal: test"))
+        self.assertFalse(_is_summary_content(""))
+
+    def test_build_summary_text_handles_previous_summary(self):
+        msgs = [
+            SystemMessage(content="<summary>\nGoal: fix bug\nProgress: done\n</summary>"),
+            UserMessage(content="New message"),
+        ]
+        text = build_summary_text(msgs)
+        self.assertIn("[Previous Summary]", text)
+        self.assertIn("Goal: fix bug", text)
+        self.assertIn("[User]: New message", text)
+
+    def test_build_summary_text_handles_previous_summary_as_usermessage(self):
+        msgs = [
+            UserMessage(content="<summary>\nGoal: refactor\n</summary>"),
+            AssistantMessage(content="OK"),
+        ]
+        text = build_summary_text(msgs)
+        self.assertIn("[Previous Summary]", text)
+        self.assertIn("Goal: refactor", text)
+        self.assertNotIn("<summary>", text.split("[Previous Summary]")[1])
+
+    def test_build_summary_text_regular_system_not_summary(self):
+        msgs = [SystemMessage(content="You are a helpful assistant.")]
+        text = build_summary_text(msgs)
+        self.assertNotIn("[Previous Summary]", text)
+
+    def test_select_compaction_targets_moves_summary_to_head(self):
+        msgs = [
+            SystemMessage(content="You are a bot."),  # original system
+            SystemMessage(content="<summary>\nGoal: fix\n</summary>"),  # previous summary
+            UserMessage(content="user1"),
+            AssistantMessage(content="asst1"),
+            UserMessage(content="user2"),  # last user turn, part of tail
+            AssistantMessage(content="asst2"),
+        ]
+        config = CompactionConfig(tail_turns=1, preserve_recent_tokens=2)
+        result = _select_compaction_targets(msgs, config, context_size=100_000)
+        self.assertIsNotNone(result)
+        head_to_summarize, original_system, tail = result
+        # Previous summary should be in head_to_summarize, not in original_system
+        summary_in_head = any(
+            _is_summary_content(m.content) for m in head_to_summarize
+        )
+        self.assertTrue(summary_in_head, "previous summary should be in head_to_summarize")
+        summary_in_system = any(
+            _is_summary_content(m.content) for m in original_system
+        )
+        self.assertFalse(summary_in_system, "previous summary should NOT be in original_system")
+
+    @pytest.mark.anyio
+    async def test_second_compaction_passes_previous_summary(self):
+        """Compact twice; verify that the second compaction's input includes
+        the first summary as [Previous Summary]."""
+        msgs = [SystemMessage(content="sys")]
+        for i in range(10):
+            msgs.append(UserMessage(content=f"user {i}"))
+            msgs.append(AssistantMessage(content=f"asst {i}"))
+        state = AgentState(
+            messages=msgs,
+            usage=SessionUsage(context_size=100_000),
+        )
+        config = CompactionConfig(tail_turns=1, preserve_recent_tokens=4)
+
+        first_summary = "Goal: first pass\nProgress: initial work"
+        call_count = 0
+        captured_inputs: list[str] = []
+
+        async def mock_stream(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if args:
+                for a in args:
+                    if isinstance(a, list):
+                        for msg in a:
+                            if isinstance(msg, UserMessage):
+                                captured_inputs.append(msg.content)
+            if call_count == 1:
+                yield StreamText(delta=first_summary)
+            else:
+                yield StreamText(delta="Goal: second pass\nProgress: more work")
+            yield StreamFinish(finish_reason="stop")
+
+        llm = MagicMock()
+        llm.stream = mock_stream
+
+        # First compaction
+        result1 = await compact(state, llm, config)
+        self.assertTrue(result1)
+
+        # Add more messages to trigger second compaction
+        for i in range(10, 15):
+            state.messages.append(UserMessage(content=f"user {i}"))
+            state.messages.append(AssistantMessage(content=f"asst {i}"))
+
+        # Second compaction
+        result2 = await compact(state, llm, config)
+        self.assertTrue(result2)
+
+        # Verify that the first summary was passed to the second compaction
+        self.assertGreaterEqual(call_count, 2, "should have called LLM at least twice")
+        second_call_input = captured_inputs[1] if len(captured_inputs) > 1 else ""
+        self.assertIn("first pass", second_call_input,
+                      "second compaction should include previous summary content")

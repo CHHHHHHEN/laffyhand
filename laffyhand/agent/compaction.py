@@ -71,9 +71,14 @@ def select_tail(
     user_turns = 0
     split_at = len(content_msgs)
 
+    tool_truncate = config.summary_tool_truncate
+
     for i in range(len(content_msgs) - 1, -1, -1):
         msg = content_msgs[i]
-        tokens = estimate_message_tokens(msg)
+        if isinstance(msg, ToolMessage) and tool_truncate and len(msg.content) > tool_truncate:
+            tokens = estimate_tokens(msg.content[:tool_truncate])
+        else:
+            tokens = estimate_message_tokens(msg)
 
         if isinstance(msg, UserMessage):
             user_turns += 1
@@ -123,10 +128,39 @@ Provide a concise structured summary covering:
 - Next Steps: What remains to be done."""
 
 
+def _is_summary_content(content: str) -> bool:
+    s = content.strip()
+    return s.startswith("<summary>") and s.endswith("</summary>")
+
+
+_MAX_SUMMARY_DEPTH = 3
+
+
+def _summary_depth(messages: list[Message]) -> int:
+    depth = 0
+    for m in messages:
+        content = ""
+        if isinstance(m, SystemMessage):
+            content = m.content or ""
+        elif isinstance(m, UserMessage):
+            content = m.content or ""
+        if _is_summary_content(content):
+            depth += 1
+    return depth
+
+
 def build_summary_text(messages: Sequence[Message], tool_truncate: int = 500) -> str:
     lines = []
     for msg in messages:
-        if isinstance(msg, UserMessage):
+        if isinstance(msg, SystemMessage) and _is_summary_content(msg.content):
+            inner = msg.content.strip().removeprefix("<summary>").removesuffix("</summary>").strip()
+            lines.append(f"[Previous Summary]:\n{inner}")
+        elif isinstance(msg, UserMessage) and _is_summary_content(msg.content):
+            inner = msg.content.strip().removeprefix("<summary>").removesuffix("</summary>").strip()
+            lines.append(f"[Previous Summary]:\n{inner}")
+        elif isinstance(msg, SystemMessage):
+            lines.append(f"[System]: {msg.content}")
+        elif isinstance(msg, UserMessage):
             lines.append(f"[User]: {msg.content}")
         elif isinstance(msg, AssistantMessage):
             if msg.content:
@@ -201,8 +235,17 @@ def _select_compaction_targets(
         logger.info("No messages to compact")
         return None
 
-    original_system: list[SystemMessage] = [m for m in head if isinstance(m, SystemMessage)]
-    head_to_summarize: list[Message] = [m for m in head if not isinstance(m, SystemMessage)]
+    if _summary_depth(head) >= _MAX_SUMMARY_DEPTH:
+        logger.info(f"Summary depth {_summary_depth(head)} >= max {_MAX_SUMMARY_DEPTH}, skipping")
+        return None
+
+    original_system: list[SystemMessage] = []
+    head_to_summarize: list[Message] = []
+    for m in head:
+        if isinstance(m, SystemMessage) and not _is_summary_content(m.content):
+            original_system.append(m)
+        else:
+            head_to_summarize.append(m)
 
     if not head_to_summarize:
         logger.info("Only system messages in head, nothing to compact")
@@ -226,7 +269,7 @@ async def compact(agent_state: AgentState, llm: LLM, config: CompactionConfig) -
         logger.warning("Compaction failed: no summary generated")
         return False
 
-    summary_msg = SystemMessage(content=summary.strip())
+    summary_msg = SystemMessage(content=f"<summary>\n{summary.strip()}\n</summary>")
     agent_state.messages = original_system + [summary_msg] + tail
     logger.info(f"Compaction complete: {len(head_to_summarize)} messages -> 1 summary message")
     return True
@@ -255,4 +298,4 @@ async def compact_with_chain(
         return None
 
     logger.info(f"Chain compaction summary generated ({len(summary)} chars)")
-    return summary, original_system, tail
+    return f"<summary>\n{summary.strip()}\n</summary>", original_system, tail

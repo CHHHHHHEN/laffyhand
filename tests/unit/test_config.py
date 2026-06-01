@@ -8,18 +8,71 @@ import pytest
 import yaml
 
 from laffyhand.config import (
-    LaffyConfig, LLMConfig, DBConfig, LogConfig, AgentConfig,
+    LaffyConfig, LLMConfig,
+    DBConfig, LogConfig, AgentConfig,
     PathsConfig, MCPConfig, load_config, find_config,
+    resolve_provider, resolve_model,
 )
+
+
+SAMPLE_PROVIDERS = {
+    "test": {
+        "type": "openai",
+        "base_url": "http://test",
+        "api_key": "key",
+        "models": [{"name": "gpt-4", "context_size": 128000}],
+    },
+}
+
+SAMPLE_LLM = {
+    "default_provider": "test",
+    "providers": SAMPLE_PROVIDERS,
+}
 
 
 class TestConfigModels:
     def test_llm_config_defaults(self):
-        cfg = LLMConfig(base_url="http://test", api_key="key", model_name="m")
-        assert cfg.base_url == "http://test"
-        assert cfg.api_key == "key"
-        assert cfg.model_name == "m"
-        assert cfg.context_size == 1_000_000
+        cfg = LLMConfig(**SAMPLE_LLM)
+        assert cfg.default_provider == "test"
+        assert "test" in cfg.providers
+        assert cfg.providers["test"].type == "openai"
+        assert cfg.providers["test"].models[0].name == "gpt-4"
+
+    def test_llm_config_old_format_raises(self):
+        with pytest.raises(ValueError, match="format has changed"):
+            LLMConfig.model_validate({
+                "base_url": "http://test", "api_key": "key", "model_name": "m",
+            })
+
+    def test_resolve_provider(self):
+        llm_cfg = LLMConfig(**SAMPLE_LLM)
+        key, pc = resolve_provider(llm_cfg)
+        assert key == "test"
+        assert pc.type == "openai"
+
+    def test_resolve_provider_missing(self):
+        llm_cfg = LLMConfig(**SAMPLE_LLM)
+        with pytest.raises(ValueError, match="not found"):
+            resolve_provider(llm_cfg, "nonexistent")
+
+    def test_resolve_model(self):
+        llm_cfg = LLMConfig(**SAMPLE_LLM)
+        _, pc = resolve_provider(llm_cfg)
+        mc = resolve_model(pc)
+        assert mc.name == "gpt-4"
+        assert mc.context_size == 128000
+
+    def test_resolve_model_by_name(self):
+        llm_cfg = LLMConfig(**SAMPLE_LLM)
+        _, pc = resolve_provider(llm_cfg)
+        mc = resolve_model(pc, "gpt-4")
+        assert mc.name == "gpt-4"
+
+    def test_resolve_model_missing(self):
+        llm_cfg = LLMConfig(**SAMPLE_LLM)
+        _, pc = resolve_provider(llm_cfg)
+        with pytest.raises(ValueError, match="not found"):
+            resolve_model(pc, "nonexistent")
 
     def test_db_config_defaults(self):
         cfg = DBConfig()
@@ -50,18 +103,15 @@ class TestConfigModels:
         assert cfg.servers == {}
 
     def test_laffy_config_defaults(self):
-        cfg = LaffyConfig(
-            llm=LLMConfig(base_url="http://test", api_key="key", model_name="m"),
-        )
+        cfg = LaffyConfig(llm=LLMConfig(**SAMPLE_LLM))
         assert cfg.db.path == "./laffyhand.db"
         assert cfg.logging.level == "INFO"
         assert cfg.agent.max_steps == 50
 
     def test_laffy_config_minimal(self):
-        cfg = LaffyConfig.model_validate({
-            "llm": {"base_url": "http://test", "api_key": "key", "model_name": "m"},
-        })
-        assert cfg.llm.base_url == "http://test"
+        cfg = LaffyConfig.model_validate({"llm": SAMPLE_LLM})
+        assert cfg.llm.default_provider == "test"
+        assert cfg.llm.providers["test"].base_url == "http://test"
 
 
 class TestLoadConfig:
@@ -76,20 +126,22 @@ class TestLoadConfig:
                 os.chdir(orig)
 
     def test_find_config_explicit_path(self):
-        with tempfile.NamedTemporaryFile(suffix=".yml", delete=False) as f:
-            f.write(b"llm:\n  base_url: http://test\n  api_key: key\n  model_name: m\n")
-            found = find_config(f.name)
-            assert found == f.name
-            os.unlink(f.name)
+        with tempfile.NamedTemporaryFile(suffix=".yml", mode="w", delete=False) as f:
+            yaml.dump({"llm": SAMPLE_LLM}, f)
+            fname = f.name
+        try:
+            found = find_config(fname)
+            assert found == fname
+        finally:
+            os.unlink(fname)
 
     def test_find_config_default_files(self):
         with tempfile.TemporaryDirectory() as tmp:
             orig = Path.cwd()
             os.chdir(tmp)
             try:
-                Path("laffyhand.yml").write_text(
-                    "llm:\n  base_url: http://test\n  api_key: key\n  model_name: m\n"
-                )
+                with open("laffyhand.yml", "w") as f:
+                    yaml.dump({"llm": SAMPLE_LLM}, f)
                 result = find_config(None)
                 assert result == "laffyhand.yml"
             finally:
@@ -97,12 +149,7 @@ class TestLoadConfig:
 
     def test_load_config_full(self):
         data = {
-            "llm": {
-                "base_url": "http://test",
-                "api_key": "sk-test",
-                "model_name": "gpt-4",
-                "context_size": 128000,
-            },
+            "llm": SAMPLE_LLM,
             "db": {"path": "/tmp/test.db"},
             "logging": {
                 "dir": "/tmp/logs",
@@ -135,10 +182,11 @@ class TestLoadConfig:
             fname = f.name
         try:
             cfg = load_config(fname)
-            assert cfg.llm.base_url == "http://test"
-            assert cfg.llm.api_key == "sk-test"
-            assert cfg.llm.model_name == "gpt-4"
-            assert cfg.llm.context_size == 128000
+            assert cfg.llm.default_provider == "test"
+            assert cfg.llm.providers["test"].base_url == "http://test"
+            assert cfg.llm.providers["test"].api_key == "key"
+            assert cfg.llm.providers["test"].models[0].name == "gpt-4"
+            assert cfg.llm.providers["test"].models[0].context_size == 128000
             assert cfg.db.path == "/tmp/test.db"
             assert cfg.logging.level == "DEBUG"
             assert cfg.logging.retention_days == 7
@@ -155,19 +203,13 @@ class TestLoadConfig:
             os.unlink(fname)
 
     def test_load_config_minimal(self):
-        data = {
-            "llm": {
-                "base_url": "http://test",
-                "api_key": "sk-test",
-                "model_name": "gpt-4",
-            },
-        }
+        data = {"llm": SAMPLE_LLM}
         with tempfile.NamedTemporaryFile(suffix=".yml", mode="w", delete=False) as f:
             yaml.dump(data, f)
             fname = f.name
         try:
             cfg = load_config(fname)
-            assert cfg.llm.base_url == "http://test"
+            assert cfg.llm.providers["test"].base_url == "http://test"
             assert cfg.db.path == "./laffyhand.db"
         finally:
             os.unlink(fname)
@@ -186,8 +228,8 @@ class TestLoadConfig:
         finally:
             os.unlink(fname)
 
-    def test_load_config_invalid_schema(self):
-        data = {"llm": {"base_url": "http://test"}}  # missing api_key and model_name
+    def test_load_config_invalid_schema_bad_provider_type(self):
+        data = {"llm": {"default_provider": "x", "providers": {"x": {"type": "unknown", "base_url": "", "api_key": "", "models": [{"name": "m"}]}}}}
         with tempfile.NamedTemporaryFile(suffix=".yml", mode="w", delete=False) as f:
             yaml.dump(data, f)
             fname = f.name

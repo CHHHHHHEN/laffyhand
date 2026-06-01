@@ -10,11 +10,35 @@ from pydantic import BaseModel, Field, model_validator
 from laffyhand.agent.mcp.config import LocalMCPConfig, RemoteMCPConfig
 
 
-class LLMConfig(BaseModel):
+class ModelConfig(BaseModel):
+    name: str
+    context_size: int = 128_000
+
+
+ProviderType = Literal["openai", "deepseek"]
+
+
+class ProviderConfig(BaseModel):
+    type: ProviderType
     base_url: str
     api_key: str
-    model_name: str
-    context_size: int = 1_000_000
+    models: list[ModelConfig] = Field(min_length=1)
+
+
+class LLMConfig(BaseModel):
+    default_provider: str = ""
+    providers: dict[str, ProviderConfig] = Field(default_factory=dict)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _detect_old_format(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            if "base_url" in data or "model_name" in data:
+                raise ValueError(
+                    "The llm config format has changed. "
+                    "See laffyhand.example.yml for the new multi-provider format."
+                )
+        return data
 
 
 class DBConfig(BaseModel):
@@ -63,6 +87,34 @@ class LaffyConfig(BaseModel):
     agent: AgentConfig = AgentConfig()
     paths: PathsConfig = PathsConfig()
     mcp: MCPConfig = MCPConfig()
+
+
+def resolve_provider(llm_cfg: LLMConfig, provider: str | None = None) -> tuple[str, ProviderConfig]:
+    key = provider or llm_cfg.default_provider
+    if not key:
+        raise ValueError(
+            "No provider selected. Set llm.default_provider in config "
+            "or pass --provider on the command line."
+        )
+    cfg = llm_cfg.providers.get(key)
+    if cfg is None:
+        raise ValueError(
+            f"Provider {key!r} not found in llm.providers. "
+            f"Available: {list(llm_cfg.providers)}"
+        )
+    return key, cfg
+
+
+def resolve_model(provider_cfg: ProviderConfig, model: str | None = None) -> ModelConfig:
+    if model:
+        for m in provider_cfg.models:
+            if m.name == model:
+                return m
+        names = [m.name for m in provider_cfg.models]
+        raise ValueError(
+            f"Model {model!r} not found in provider. Available: {names}"
+        )
+    return provider_cfg.models[0]
 
 
 def find_config(config_path: str | None) -> str | None:

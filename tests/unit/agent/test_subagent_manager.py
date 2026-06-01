@@ -75,7 +75,7 @@ class TestSubagentResult:
 class TestBuildSubagentState:
     def test_creates_child_session(self, session_manager, tool_registry, parent_permission, agent_info):
         parent = session_manager.create()
-        _, child_state, child_registry = build_subagent_state(
+        child_state, child_registry = build_subagent_state(
             session_manager, parent.id, agent_info, "Do the thing",
             parent_permission, tool_registry,
         )
@@ -84,7 +84,7 @@ class TestBuildSubagentState:
 
     def test_state_contains_system_and_user_messages(self, session_manager, tool_registry, parent_permission, agent_info):
         parent = session_manager.create()
-        _, child_state, _ = build_subagent_state(
+        child_state, _ = build_subagent_state(
             session_manager, parent.id, agent_info, "Do the thing",
             parent_permission, tool_registry,
         )
@@ -97,7 +97,7 @@ class TestBuildSubagentState:
     def test_default_prompt_when_none(self, session_manager, tool_registry, parent_permission):
         info = AgentInfo(name="minimal")
         parent = session_manager.create()
-        _, child_state, _ = build_subagent_state(
+        child_state, _ = build_subagent_state(
             session_manager, parent.id, info, "task",
             parent_permission, tool_registry,
         )
@@ -105,7 +105,7 @@ class TestBuildSubagentState:
 
     def test_permission_filters_registry(self, session_manager, tool_registry, parent_permission, agent_info):
         parent = session_manager.create()
-        _, _, child_registry = build_subagent_state(
+        _, child_registry = build_subagent_state(
             session_manager, parent.id, agent_info, "task",
             parent_permission, tool_registry,
         )
@@ -119,7 +119,7 @@ class TestBuildSubagentState:
         task_tool.name = "task"
         tool_registry.register_tool(task_tool)
         parent = session_manager.create()
-        _, _, child_registry = build_subagent_state(
+        _, child_registry = build_subagent_state(
             session_manager, parent.id, agent_info, "task",
             parent_permission, tool_registry,
         )
@@ -127,7 +127,7 @@ class TestBuildSubagentState:
 
     def test_session_usage_zero_context(self, session_manager, tool_registry, parent_permission, agent_info):
         parent = session_manager.create()
-        _, child_state, _ = build_subagent_state(
+        child_state, _ = build_subagent_state(
             session_manager, parent.id, agent_info, "task",
             parent_permission, tool_registry,
         )
@@ -154,7 +154,6 @@ class TestSubagentManager:
 
         with patch("laffyhand.agent.subagent.manager.build_subagent_state") as mock_build:
             mock_build.return_value = (
-                session_manager,
                 AgentState(
                     messages=[],
                     session_id="child-session",
@@ -181,7 +180,6 @@ class TestSubagentManager:
 
         with patch("laffyhand.agent.subagent.manager.build_subagent_state") as mock_build:
             mock_build.return_value = (
-                session_manager,
                 AgentState(
                     messages=[],
                     session_id="child-session",
@@ -218,7 +216,6 @@ class TestSubagentManager:
 
         with patch("laffyhand.agent.subagent.manager.build_subagent_state") as mock_build:
             mock_build.return_value = (
-                session_manager,
                 AgentState(
                     messages=[],
                     session_id="child-session",

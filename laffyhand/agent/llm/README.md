@@ -85,7 +85,7 @@ llm/
 │   └── deepseek.py        # DeepseekProtocol
 │
 ├── facade.py              # 【公开】LLM 门面类
-├── builders.py            # 【公开】便捷 Route 构建器
+├── factory.py             # 【公开】Route 工厂函数
 │
 ├── _route.py              # 【内部】Route + HTTPClient
 ├── _bearer_auth.py        # 【内部】BearerAuth
@@ -106,4 +106,4 @@ llm/
 
 1. 在 `protocols/` 中实现 `Protocol` 子类
 2. 可选实现 `Endpoint` 子类
-3. 在 `builders.py` 中添加便捷构建函数
+3. 在 `factory.py` 中添加 Provider 类型到 `PROTOCOL_MAP`

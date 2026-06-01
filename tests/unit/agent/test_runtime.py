@@ -7,24 +7,18 @@ import pytest
 from laffyhand.agent.agent import AgentInfo
 from laffyhand.agent.runtime import AgentRuntime, MAX_SUBAGENT_DEPTH
 from laffyhand.agent.schemas import (
-    AgentState, CompactionConfig, SessionUsage, SystemMessage, UserMessage,
+    AgentState, SessionUsage, SystemMessage, UserMessage,
 )
-from laffyhand.agent.session import TitleConfig
 from laffyhand.agent.tools.registry import ToolRegistry
 
 
 @pytest.fixture
-def runtime(session_manager):
+def runtime(session_manager, runtime_config):
     rt = AgentRuntime(
+        config=runtime_config,
         llm=MagicMock(),
         session_manager=session_manager,
         mcp_service=MagicMock(),
-        compaction_config=CompactionConfig(),
-        title_config=TitleConfig(mode="off"),
-        max_steps=50,
-        max_subagents=2,
-        db_path=":memory:",
-        context_size=128000,
     )
     return rt
 
@@ -83,17 +77,103 @@ class TestLoadSkills:
 class TestBuildSystemPrompt:
     def test_returns_base_prompt_plus_tools(self, runtime):
         runtime.tool_registry.register_tool(MagicMock(name="read"))
-        prompt = runtime.build_system_prompt("Base prompt.\n")
-        assert prompt.startswith("Base prompt.\n")
-        assert "Available tools" in prompt
+        with patch.object(runtime, "_load_preferences", return_value=""):
+            prompt = runtime.build_system_prompt("Base prompt.\n")
+        assert prompt.startswith("<soul>\nBase prompt.")
+        assert "<tools>" in prompt
+        assert "<env>" in prompt
 
     def test_includes_skills_when_available(self, runtime):
         with patch.object(runtime.skill_registry, "all") as mock_all, \
-             patch.object(runtime.skill_registry, "build_skills_summary") as mock_summary:
+             patch.object(runtime.skill_registry, "build_skills_summary") as mock_summary, \
+             patch.object(runtime, "_load_preferences", return_value=""):
             mock_all.return_value = {"skill1": MagicMock()}
-            mock_summary.return_value = "Skills summary"
+            mock_summary.return_value = "<skills>\n- **skill1**: desc\n</skills>"
             prompt = runtime.build_system_prompt("Base.\n")
-            assert "Skills summary" in prompt
+            assert "<skills>" in prompt
+
+
+class TestPreferences:
+    def test_load_initial_preferences_from_cwd(self, runtime, tmp_path):
+        agents_md = tmp_path / "AGENTS.md"
+        agents_md.write_text("Rule 1\nRule 2")
+        runtime._preferences = None  # force fresh load
+        with patch("os.getcwd", return_value=str(tmp_path)), \
+             patch("os.path.expanduser", return_value="/nonexistent"):
+            result = runtime._load_preferences()
+        assert "<preference>" in result
+        assert "Rule 1" in result
+        assert "Rule 2" in result
+        assert runtime._preferences is not None
+        # cached on second call
+        cached = runtime._load_preferences()
+        assert cached is result
+
+    def test_load_initial_no_agents_md(self, runtime):
+        runtime._preferences = None
+        with patch("os.getcwd", return_value="/nonexistent"), \
+             patch("os.path.expanduser", return_value="/nonexistent"):
+            result = runtime._load_preferences()
+        assert result == ""
+
+    def test_poll_new_preferences_detects_new_file(self, runtime, tmp_path):
+        runtime._preferences = ""
+        with patch("os.getcwd", return_value=str(tmp_path)), \
+             patch("os.path.expanduser", return_value="/nonexistent"):
+            result = runtime.poll_new_preferences()
+        assert result == ""
+        agents_md = tmp_path / "AGENTS.md"
+        agents_md.write_text("New rule")
+        with patch("os.getcwd", return_value=str(tmp_path)), \
+             patch("os.path.expanduser", return_value="/nonexistent"):
+            result = runtime.poll_new_preferences()
+        assert "<preference>" in result
+        assert "New rule" in result
+
+    def test_poll_new_preferences_detects_changed_file(self, runtime, tmp_path):
+        agents_md = tmp_path / "AGENTS.md"
+        agents_md.write_text("Original rule")
+        runtime._preferences = None
+        with patch("os.getcwd", return_value=str(tmp_path)), \
+             patch("os.path.expanduser", return_value="/nonexistent"):
+            runtime._load_preferences()
+        agents_md.write_text("Changed rule")
+        with patch("os.getcwd", return_value=str(tmp_path)), \
+             patch("os.path.expanduser", return_value="/nonexistent"):
+            result = runtime.poll_new_preferences()
+        assert "Changed rule" in result
+
+    def test_poll_new_preferences_returns_empty_when_unchanged(self, runtime, tmp_path):
+        agents_md = tmp_path / "AGENTS.md"
+        agents_md.write_text("Stable rule")
+        runtime._preferences = None
+        with patch("os.getcwd", return_value=str(tmp_path)), \
+             patch("os.path.expanduser", return_value="/nonexistent"):
+            runtime._load_preferences()
+        with patch("os.getcwd", return_value=str(tmp_path)), \
+             patch("os.path.expanduser", return_value="/nonexistent"):
+            result = runtime.poll_new_preferences()
+        assert result == ""
+
+    def test_poll_new_preferences_cleared_cache_rescans(self, runtime, tmp_path):
+        agents_md = tmp_path / "AGENTS.md"
+        agents_md.write_text("Persistent rule")
+        runtime._preferences = ""
+        runtime._preference_files = {}
+        with patch("os.getcwd", return_value=str(tmp_path)), \
+             patch("os.path.expanduser", return_value="/nonexistent"):
+            result = runtime.poll_new_preferences()
+        assert "Persistent rule" in result
+
+    def test_preference_includes_in_system_prompt(self, runtime, tmp_path):
+        agents_md = tmp_path / "AGENTS.md"
+        agents_md.write_text("Be concise.")
+        runtime._preferences = None
+        with patch("os.getcwd", return_value=str(tmp_path)), \
+             patch("os.path.expanduser", return_value="/nonexistent"):
+            prompt = runtime.build_system_prompt("Base.")
+        assert "<preference>" in prompt
+        assert "Be concise." in prompt
 
 
 class TestCreateInitialState:
@@ -304,7 +384,7 @@ class TestCreateSubagent:
             mock_loop.side_effect = mock_agent_loop
 
             result = await runtime.create_subagent(agent_info, "Do it")
-        assert "[No output]" in result
+        assert "<task>" in result
 
     @pytest.mark.anyio
     async def test_background_spawns_subagent(self, runtime, session_manager):

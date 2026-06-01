@@ -42,10 +42,23 @@ class ToolRegistry:
                 logger.debug(f"Built {len(self._defs)} tool definition(s): {[d.name for d in self._defs]}")
         return self._defs
 
+    def _format_params(self, schema: dict) -> str:
+        props = schema.get("properties", {})
+        required = set(schema.get("required", []))
+        if not props:
+            return ""
+        parts = []
+        for name, prop in props.items():
+            opt = "" if name in required else "?"
+            parts.append(f"{name}{opt}")
+        return f"({', '.join(parts)})" if parts else ""
+
     def build_tool_prompt(self) -> str:
-        lines = ["## Available tools"]
+        lines = ["<tools>"]
         for tool in self._tools.values():
-            lines.append(f"- **{tool.name}**: {tool.description}")
+            params = self._format_params(tool.to_definition().input_schema)
+            lines.append(f"- **{tool.name}**{params}: {tool.description}")
+        lines.append("</tools>")
         return "\n".join(lines)
 
     async def run_tool(self, name: str, params: dict[str, Any]) -> str:

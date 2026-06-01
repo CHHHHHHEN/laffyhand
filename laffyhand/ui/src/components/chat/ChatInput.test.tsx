@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest"
 import { render, screen, fireEvent } from "@testing-library/react"
 import { ChatInput } from "./ChatInput"
+import { useUiStore } from "@/stores/ui-store"
 
 describe("ChatInput", () => {
   it("calls onSend with trimmed content on submit", () => {
@@ -25,21 +26,61 @@ describe("ChatInput", () => {
     expect(onSend).not.toHaveBeenCalled()
   })
 
-  it("shows steer state", () => {
+  it("shows busy mode selector and steer button when streaming", () => {
     const onSend = vi.fn()
-    const onSteer = vi.fn()
     const onCancel = vi.fn()
-    render(<ChatInput onSend={onSend} onSteer={onSteer} onCancel={onCancel} isStreaming={true} />)
+    render(<ChatInput onSend={onSend} onSteer={vi.fn()} onCancel={onCancel} isStreaming={true} />)
 
-    const textarea = screen.getByPlaceholderText("Type to steer the AI...")
+    const textarea = screen.getByPlaceholderText("Type a message...")
     expect(textarea).toBeEnabled()
 
-    const steerButton = screen.getByRole("button", { name: /steer/i })
-    // Button is disabled when textarea is empty (controlled input)
-    expect(steerButton).toBeDisabled()
+    // Busy mode selector should be visible
+    expect(screen.getByText("When busy:")).toBeInTheDocument()
 
+    // Default mode is "interrupt", so the submit button reads "Interrupt"
+    const submitButtons = screen.getAllByText("Interrupt")
+    const submitButton = submitButtons.find((btn) => btn.tagName === "BUTTON" && btn.getAttribute("type") === "button")
+    expect(submitButton).toBeDefined()
+    expect(submitButton).toBeDisabled()
+
+    fireEvent.input(textarea, { target: { value: "a message" } })
+    expect(submitButton).toBeEnabled()
+  })
+
+  it("calls onInterrupt when submitting in interrupt mode during streaming", () => {
+    const onInterrupt = vi.fn()
+    useUiStore.getState().setBusyMode("interrupt")
+    render(<ChatInput onSend={vi.fn()} onInterrupt={onInterrupt} isStreaming={true} />)
+
+    const textarea = screen.getByPlaceholderText("Type a message...")
+    fireEvent.input(textarea, { target: { value: "interrupt message" } })
+    fireEvent.keyDown(textarea, { key: "Enter" })
+
+    expect(onInterrupt).toHaveBeenCalledWith("interrupt message")
+  })
+
+  it("calls onSteer when submitting in steer mode during streaming", () => {
+    const onSteer = vi.fn()
+    useUiStore.getState().setBusyMode("steer")
+    render(<ChatInput onSend={vi.fn()} onSteer={onSteer} isStreaming={true} />)
+
+    const textarea = screen.getByPlaceholderText("Type a message...")
     fireEvent.input(textarea, { target: { value: "steer message" } })
-    expect(steerButton).toBeEnabled()
+    fireEvent.keyDown(textarea, { key: "Enter" })
+
+    expect(onSteer).toHaveBeenCalledWith("steer message")
+  })
+
+  it("calls onQueue when submitting in queue mode during streaming", () => {
+    const onQueue = vi.fn()
+    useUiStore.getState().setBusyMode("queue")
+    render(<ChatInput onSend={vi.fn()} onQueue={onQueue} isStreaming={true} />)
+
+    const textarea = screen.getByPlaceholderText("Type a message...")
+    fireEvent.input(textarea, { target: { value: "queue message" } })
+    fireEvent.keyDown(textarea, { key: "Enter" })
+
+    expect(onQueue).toHaveBeenCalledWith("queue message")
   })
 
   it("submits on button click", () => {
@@ -64,17 +105,6 @@ describe("ChatInput", () => {
     fireEvent.keyDown(textarea, { key: "Enter", shiftKey: true })
 
     expect(onSend).not.toHaveBeenCalled()
-  })
-
-  it("calls onSteer when submitting during streaming", () => {
-    const onSteer = vi.fn()
-    render(<ChatInput onSend={vi.fn()} onSteer={onSteer} isStreaming={true} />)
-
-    const textarea = screen.getByPlaceholderText("Type to steer the AI...")
-    fireEvent.input(textarea, { target: { value: "steer message" } })
-    fireEvent.keyDown(textarea, { key: "Enter" })
-
-    expect(onSteer).toHaveBeenCalledWith("steer message")
   })
 
   it("renders and triggers cancel button during streaming", () => {

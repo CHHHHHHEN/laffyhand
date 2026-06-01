@@ -32,7 +32,7 @@ def prune(messages: list[Message]) -> list[Message]:
             continue
         if total_tokens - pruned <= target:
             break
-        new_content = f"[Tool output pruned: {old_t} tokens]"
+        new_content = f"[Old tool result content cleared: {old_t} tokens]"
         result[idx] = ToolMessage(
             tool_call_id=msg.tool_call_id,
             content=new_content,

@@ -2,14 +2,21 @@
 # Copy this file to laffyhand.yml and fill in your settings.
 
 llm:
-  # Required: LLM API endpoint
-  base_url: "https://opencode.ai/zen/go"
-  # Required: API key for authentication
-  api_key: "sk-..."
-  # Required: Model name to use
-  model_name: "deepseek-v4-flash"
-  # Maximum context size in tokens
-  context_size: 1000000
+  # Provider key to use by default (must match a key under `providers`)
+  default_provider: "opencode"
+  # Multiple LLM provider configurations
+  providers:
+    opencode:
+      # Provider type: "openai" or "deepseek"
+      type: "deepseek"
+      # API endpoint
+      base_url: "https://opencode.ai/zen/go"
+      # API key for authentication
+      api_key: "sk-..."
+      # Available models for this provider
+      models:
+        - name: "deepseek-v4-flash"
+          context_size: 1000000
 
 db:
   # Path to the SQLite database file

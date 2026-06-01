@@ -144,6 +144,7 @@ async def handle_session_list(
                 "status": s.status,
                 "title": s.title,
                 "model": s.model,
+                "provider": s.provider,
                 "message_count": s.message_count,
                 "turn_count": s.turn_count,
                 "input_tokens": s.input_tokens,
@@ -425,6 +426,7 @@ async def _ensure_session(
     session = runtime.session_manager.create(
         title=params.get("title", ""),
         cwd=params.get("cwd", os.getcwd()),
+        provider=params.get("provider", ""),
         model=params.get("model", ""),
     )
     runtime.state = AgentState(

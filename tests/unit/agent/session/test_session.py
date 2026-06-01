@@ -469,5 +469,5 @@ class TestSchema:
         from laffyhand.agent.session.schema import create_tables
         create_tables(conn)
         row = conn.execute("SELECT MAX(version) FROM _schema_version").fetchone()
-        assert row[0] == 2
+        assert row[0] == 3
         conn.close()

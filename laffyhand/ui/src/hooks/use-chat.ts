@@ -5,14 +5,35 @@ import { useChatStore } from "@/stores/chat-store"
 
 export function useChat() {
   const abortRef = useRef<AbortController | null>(null)
+  const leftoverSteerRef = useRef<string | null>(null)
   const { sessionId: urlSessionId } = useParams()
 
+  const _cancelAndFinalize = useCallback(async () => {
+    if (abortRef.current) {
+      abortRef.current.abort()
+      abortRef.current = null
+    }
+    try {
+      await rpcClient.cancelStream()
+    } catch {
+      // best effort
+    }
+    const state = useChatStore.getState()
+    if (!state.isStreaming) return false
+    if (state.streamContent || state.streamToolCalls.length > 0) {
+      state.finalizeMessage()
+    } else {
+      state.setError("Stream cancelled")
+    }
+    return true
+  }, [])
+
   const sendMessage = useCallback(
-    async (content: string) => {
+    async (content: string, bypassBusyCheck = false) => {
       const chatStore = useChatStore.getState()
 
       if (!content.trim()) return
-      if (chatStore.isStreaming) return
+      if (!bypassBusyCheck && chatStore.isStreaming) return
 
       chatStore.addUserMessage(content)
       chatStore.startStreaming()
@@ -28,7 +49,6 @@ export function useChat() {
               const store = useChatStore.getState()
               switch (event.type) {
                 case "step-start":
-                  // Subsequent steps (after tool execution) need a fresh streaming segment.
                   if (!store.isStreaming) {
                     store.startStreaming()
                   }
@@ -92,6 +112,10 @@ export function useChat() {
                       }
                     : undefined
                   store.finalizeMessage(usage, event.session_usage ?? null)
+
+                  if (event.leftover_steer) {
+                    leftoverSteerRef.current = event.leftover_steer
+                  }
                   break
                 }
                 case "provider-error":
@@ -117,8 +141,37 @@ export function useChat() {
           err instanceof Error ? err.message : "Unknown error",
         )
       }
+
+      if (leftoverSteerRef.current) {
+        const steer = leftoverSteerRef.current
+        leftoverSteerRef.current = null
+        await sendMessage(steer, true)
+        return
+      }
+
+      if (useChatStore.getState().hasPendingMessages()) {
+        const next = useChatStore.getState().dequeueMessage()
+        if (next) {
+          await sendMessage(next, true)
+        }
+      }
     },
     [urlSessionId],
+  )
+
+  const interruptMessage = useCallback(
+    async (content: string) => {
+      if (!content.trim()) return
+      const store = useChatStore.getState()
+      if (!store.isStreaming) {
+        await sendMessage(content)
+        return
+      }
+
+      await _cancelAndFinalize()
+      await sendMessage(content, true)
+    },
+    [sendMessage, _cancelAndFinalize],
   )
 
   const steerMessage = useCallback(
@@ -127,7 +180,6 @@ export function useChat() {
       if (!content.trim()) return
       if (!store.isStreaming) return
 
-      store.addUserMessage(content)
       try {
         await rpcClient.steerMessage(content, urlSessionId)
       } catch {
@@ -137,24 +189,17 @@ export function useChat() {
     [urlSessionId],
   )
 
-  const cancelStream = useCallback(async () => {
-    if (abortRef.current) {
-      abortRef.current.abort()
-      abortRef.current = null
-    }
-    try {
-      await rpcClient.cancelStream()
-    } catch {
-      // best effort
-    }
-    const state = useChatStore.getState()
-    if (!state.isStreaming) return
-    if (state.streamContent || state.streamToolCalls.length > 0) {
-      state.finalizeMessage()
-    } else {
-      state.setError("Stream cancelled")
-    }
-  }, [])
+  const queueMessage = useCallback(
+    async (content: string) => {
+      if (!content.trim()) return
+      useChatStore.getState().enqueueMessage(content)
+    },
+    [],
+  )
 
-  return { sendMessage, steerMessage, cancelStream }
+  const cancelStream = useCallback(async () => {
+    await _cancelAndFinalize()
+  }, [_cancelAndFinalize])
+
+  return { sendMessage, interruptMessage, steerMessage, queueMessage, cancelStream }
 }

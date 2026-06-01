@@ -4,7 +4,7 @@ import sqlite3
 
 from loguru import logger
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 CORE_DDL = """
 CREATE TABLE IF NOT EXISTS _schema_version (
@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS session (
         CHECK(status IN ('active','completed','archived')),
     title           TEXT NOT NULL DEFAULT '',
     cwd             TEXT NOT NULL DEFAULT '',
+    provider        TEXT NOT NULL DEFAULT '',
     model           TEXT NOT NULL DEFAULT '',
     agent_version   TEXT NOT NULL DEFAULT '',
     turn_count      INTEGER NOT NULL DEFAULT 0,
@@ -110,6 +111,9 @@ _MIGRATIONS: dict[int, str] = {
             timestamp = datetime(timestamp, 'unixepoch')
         WHERE timestamp GLOB '[0-9]*';
     """,
+    3: """
+        ALTER TABLE session ADD COLUMN provider TEXT NOT NULL DEFAULT '';
+    """,
 }
 
 
@@ -122,7 +126,10 @@ def migrate(conn: sqlite3.Connection) -> None:
     for version in range(current + 1, SCHEMA_VERSION + 1):
         if version in _MIGRATIONS:
             logger.info(f"Running migration to version {version}")
-            conn.executescript(_MIGRATIONS[version])
+            try:
+                conn.executescript(_MIGRATIONS[version])
+            except sqlite3.OperationalError as e:
+                logger.warning(f"Migration v{version} skipped (may already be applied): {e}")
         conn.execute(
             "INSERT OR IGNORE INTO _schema_version (version) VALUES (?)",
             (version,),
