@@ -4,4 +4,7 @@
 使用 uv run ruff 运行风格检查
 使用 uv run vulture --min-confidence 70 运行死代码检查
 未经允许禁止添加新依赖
-Git提交遵守规范：type(scope): messages
+
+Git提交规范：
+- 格式要求：type(scope): messages
+- messages 需要体现出具体更改的内容，而不是笼统描述（如 resolve audit problems）
