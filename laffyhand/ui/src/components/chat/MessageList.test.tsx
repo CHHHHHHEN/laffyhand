@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest"
-import { render, screen, fireEvent } from "@testing-library/react"
+import { render, screen } from "@testing-library/react"
 import { MessageList } from "./MessageList"
 import { useChatStore, resetMessageCounter } from "@/stores/chat-store"
 
@@ -80,30 +80,19 @@ describe("MessageList", () => {
     expect(screen.getByText("partial response")).toBeInTheDocument()
   })
 
-  it("shows stream reasoning in collapsible panel when streaming", () => {
+  it("shows stream reasoning inline when streaming without content", () => {
     useChatStore.setState({
       isStreaming: true,
       streamReasoning: "thinking step by step",
     })
     render(<MessageList />)
-    // 初始状态折叠：面板标题可见，内容隐藏
-    expect(screen.getAllByText("Thinking").length).toBeGreaterThanOrEqual(1)
-    expect(screen.getByText("Show")).toBeInTheDocument()
-    expect(screen.queryByText("thinking step by step")).not.toBeInTheDocument()
-
-    // 点击展开
-    fireEvent.click(screen.getByText("Show"))
     expect(screen.getByText("thinking step by step")).toBeInTheDocument()
   })
 
-  it("shows reasoning panel header when streaming with reasoning", () => {
-    useChatStore.setState({
-      isStreaming: true,
-      streamReasoning: "step by step",
-    })
+  it("shows thinking spinner when streaming without reasoning or content", () => {
+    useChatStore.setState({ isStreaming: true })
     render(<MessageList />)
-    const thinkingElements = screen.getAllByText("Thinking")
-    expect(thinkingElements.length).toBeGreaterThanOrEqual(1)
+    expect(screen.getByText("Thinking")).toBeInTheDocument()
   })
 
   it("shows tool calls during streaming", () => {

@@ -1,4 +1,5 @@
 import { useChatStore } from "@/stores/chat-store"
+import { ConfigPanel } from "./ConfigPanel"
 
 function formatTokens(n: number): string {
   if (n < 1000) return `${n}`
@@ -10,6 +11,7 @@ export function StatusBar() {
   const isStreaming = useChatStore((s) => s.isStreaming)
   const model = useChatStore((s) => s.model)
   const sessionUsage = useChatStore((s) => s.sessionUsage)
+  const turnUsage = useChatStore((s) => s.turnUsage)
 
   if (!model && !sessionUsage) return null
 
@@ -28,27 +30,26 @@ export function StatusBar() {
         </span>
       )}
 
-      {/* Token Usage */}
-      {sessionUsage && (
+      {/* Token Usage — per-turn delta */}
+      {turnUsage && (
         <>
           <span className="text-gray-300 dark:text-gray-600 select-none">|</span>
 
-          {/* Total / Context */}
-          <span className="flex items-center gap-1.5" title="Total tokens used / Context size">
+          <span className="flex items-center gap-1.5" title="This turn / Cumulative / Context size">
             <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
             </svg>
-            <span className="font-medium">{formatTokens(totalTokens)}</span>
-            <span className="text-gray-400 dark:text-gray-500">/ {formatTokens(ctxSize)}</span>
+            <span className="font-medium">{formatTokens(turnUsage.input + turnUsage.output)}</span>
+            <span className="text-gray-400 dark:text-gray-500">/ {formatTokens(totalTokens)}</span>
+            <span className="text-gray-300 dark:text-gray-500">/ {formatTokens(ctxSize)}</span>
           </span>
 
-          {/* Input / Output */}
-          <span className="flex items-center gap-1.5" title="Input → Output breakdown">
+          <span className="flex items-center gap-1.5" title="Input → Output">
             <span className="flex items-center gap-0.5">
               <svg className="w-3 h-3 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 11l5-5m0 0l5 5m-5-5v12" />
               </svg>
-              <span>{formatTokens(sessionUsage.total_input)}</span>
+              <span>{formatTokens(turnUsage.input)}</span>
             </span>
             <svg className="w-2.5 h-2.5 text-gray-300 dark:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 13l-5 5m0 0l-5-5m5 5V6" />
@@ -57,20 +58,33 @@ export function StatusBar() {
               <svg className="w-3 h-3 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 13l-5 5m0 0l-5-5m5 5V6" />
               </svg>
-              <span>{formatTokens(sessionUsage.total_output)}</span>
+              <span>{formatTokens(turnUsage.output)}</span>
             </span>
           </span>
 
-          {/* Reasoning */}
-          {sessionUsage.total_reasoning > 0 && (
+          {turnUsage.reasoning > 0 && (
             <span className="flex items-center gap-1" title="Reasoning tokens">
               <span className="text-gray-300 dark:text-gray-600 select-none">·</span>
               <span className="flex items-center gap-0.5">
                 <span className="text-[11px]">🧠</span>
-                <span>{formatTokens(sessionUsage.total_reasoning)}</span>
+                <span>{formatTokens(turnUsage.reasoning)}</span>
               </span>
             </span>
           )}
+        </>
+      )}
+
+      {/* Fallback: show sessionUsage only when no turnUsage yet */}
+      {!turnUsage && sessionUsage && (
+        <>
+          <span className="text-gray-300 dark:text-gray-600 select-none">|</span>
+          <span className="flex items-center gap-1.5" title="Cumulative tokens / Context size">
+            <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
+            </svg>
+            <span className="font-medium">{formatTokens(totalTokens)}</span>
+            <span className="text-gray-400 dark:text-gray-500">/ {formatTokens(ctxSize)}</span>
+          </span>
         </>
       )}
 
@@ -87,6 +101,9 @@ export function StatusBar() {
           </span>
         </>
       )}
+
+      <span className="ml-auto" />
+      <ConfigPanel />
     </div>
   )
 }

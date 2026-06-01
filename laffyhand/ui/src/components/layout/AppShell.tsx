@@ -8,7 +8,7 @@ export function AppShell() {
   const toggleSidebar = useUiStore((s) => s.toggleSidebar)
 
   return (
-    <div className="flex h-full">
+    <div className="flex h-full overflow-hidden">
       {/* 侧边栏 */}
       <div
         className={`${
@@ -19,7 +19,7 @@ export function AppShell() {
       </div>
 
       {/* 主内容区 */}
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* 顶部栏 */}
         <div className="flex items-center gap-2 px-3 h-10 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shrink-0">
           <button

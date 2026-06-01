@@ -185,6 +185,19 @@ export async function chatStream(
   }
 }
 
+export interface ConfigProvidersResult {
+  default_provider: string
+  providers: Record<string, {
+    type: string
+    base_url: string
+    models: { name: string; context_size: number }[]
+  }>
+}
+
+export interface MCPStatusResult {
+  servers: { name: string; status: string }[]
+}
+
 export const rpcClient = {
   initialize(): Promise<ServerInfo> {
     return call<ServerInfo>("initialize")
@@ -218,6 +231,18 @@ export const rpcClient = {
 
   toolsList(): Promise<ToolsListResult> {
     return call<ToolsListResult>("tools/list")
+  },
+
+  configProviders(): Promise<ConfigProvidersResult> {
+    return call<ConfigProvidersResult>("config/providers")
+  },
+
+  mcpStatus(): Promise<MCPStatusResult> {
+    return call<MCPStatusResult>("mcp/status")
+  },
+
+  sessionSetConfig(params: { provider: string; model: string }): Promise<{ session_id: string }> {
+    return call<{ session_id: string }>("session/set_config", params)
   },
 
   cancelStream(): Promise<CancelResult> {

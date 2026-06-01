@@ -32,6 +32,9 @@ SESSION_GENERATE_TITLE = "session/generate_title"
 SESSION_ARCHIVE = "session/archive"
 SUBAGENT_LIST_ACTIVE = "subagent/list_active"
 USAGE_GET = "usage/get"
+CONFIG_PROVIDERS = "config/providers"
+MCP_STATUS = "mcp/status"
+SESSION_SET_CONFIG = "session/set_config"
 
 
 @dataclass

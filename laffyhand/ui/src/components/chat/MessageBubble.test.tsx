@@ -221,4 +221,71 @@ describe("MessageBubble", () => {
     const container = document.querySelector(".flex.items-start.gap-3")
     expect(container!.className).toContain("animate-[message-in")
   })
+
+  // ── 系统消息 ──
+
+  it("renders system message with collapsed toggle", () => {
+    render(
+      <MessageBubble
+        message={makeMessage({ role: "system", content: "You are a helpful assistant." })}
+      />,
+    )
+    expect(screen.getByText("System prompt")).toBeInTheDocument()
+    expect(screen.queryByText("You are a helpful assistant.")).not.toBeInTheDocument()
+    // 切换箭头可见
+    const chevron = document.querySelector(".rotate-90")
+    expect(chevron).toBeNull() // 默认折叠，箭头不旋转
+  })
+
+  it("expands system message content on click", () => {
+    render(
+      <MessageBubble
+        message={makeMessage({ role: "system", content: "System instruction here" })}
+      />,
+    )
+    fireEvent.click(screen.getByText("System prompt"))
+    expect(screen.getByText("System instruction here")).toBeInTheDocument()
+  })
+
+  it("collapses system message on second click", () => {
+    render(
+      <MessageBubble
+        message={makeMessage({ role: "system", content: "Toggle me" })}
+      />,
+    )
+    fireEvent.click(screen.getByText("System prompt")) // expand
+    expect(screen.getByText("Toggle me")).toBeInTheDocument()
+    fireEvent.click(screen.getByText("System prompt")) // collapse
+    expect(screen.queryByText("Toggle me")).not.toBeInTheDocument()
+  })
+
+  it("renders system message with dashed border", () => {
+    render(
+      <MessageBubble
+        message={makeMessage({ role: "system", content: "border test" })}
+      />,
+    )
+    const container = document.querySelector(".border-dashed")
+    expect(container).toBeTruthy()
+  })
+
+  // ── 系统消息与普通消息不混淆 ──
+
+  it("does not render system toggle for assistant messages", () => {
+    render(
+      <MessageBubble
+        message={makeMessage({ role: "assistant", content: "reply" })}
+      />,
+    )
+    expect(screen.queryByText("System prompt")).not.toBeInTheDocument()
+  })
+
+  it("does not render system toggle for user messages", () => {
+    render(
+      <MessageBubble
+        message={makeMessage({ role: "user", content: "question" })}
+      />,
+    )
+    expect(screen.queryByText("System prompt")).not.toBeInTheDocument()
+  })
 })

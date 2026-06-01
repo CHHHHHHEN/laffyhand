@@ -15,6 +15,9 @@ from laffyhand.gateway.handlers import (
     handle_chat,
     handle_chat_stream,
     handle_chat_cancel,
+    handle_config_providers,
+    handle_mcp_status,
+    handle_session_set_config,
     handle_tools_list,
     _serialize_messages,
     _next_msg_id,
@@ -587,6 +590,108 @@ class TestHandleUsageGet:
         assert result["total_input"] == 0
         assert result["total_output"] == 0
         assert result["context_size"] == 0
+
+
+class TestHandleConfigProviders:
+    @pytest.mark.anyio
+    async def test_returns_providers(self, runtime, transport):
+        runtime._config = MagicMock()
+        runtime._config.llm.default_provider = "opencode"
+        model_mock = MagicMock()
+        model_mock.name = "deepseek-v4-flash"
+        model_mock.context_size = 128000
+        runtime._config.llm.providers = {
+            "opencode": MagicMock(
+                type="deepseek",
+                base_url="https://opencode.ai/zen/go",
+                models=[model_mock],
+            ),
+        }
+        result = await handle_config_providers(runtime, {}, transport, 1, "c1")
+        assert result["default_provider"] == "opencode"
+        assert "opencode" in result["providers"]
+        assert result["providers"]["opencode"]["type"] == "deepseek"
+        assert result["providers"]["opencode"]["models"][0]["name"] == "deepseek-v4-flash"
+
+    @pytest.mark.anyio
+    async def test_returns_empty_when_no_providers(self, runtime, transport):
+        runtime._config = MagicMock()
+        runtime._config.llm.default_provider = ""
+        runtime._config.llm.providers = {}
+        result = await handle_config_providers(runtime, {}, transport, 1, "c1")
+        assert result["providers"] == {}
+
+
+class TestHandleMCPStatus:
+    @pytest.mark.anyio
+    async def test_returns_server_status(self, runtime, transport):
+        runtime.mcp_service = MagicMock()
+        runtime.mcp_service.get_status = MagicMock(return_value={
+            "server-a": "connected",
+            "server-b": "connected",
+        })
+        result = await handle_mcp_status(runtime, {}, transport, 1, "c1")
+        assert len(result["servers"]) == 2
+        names = {s["name"] for s in result["servers"]}
+        assert names == {"server-a", "server-b"}
+
+    @pytest.mark.anyio
+    async def test_returns_empty_when_no_mcp(self, runtime, transport):
+        runtime.mcp_service = MagicMock()
+        runtime.mcp_service.get_status = MagicMock(return_value={})
+        result = await handle_mcp_status(runtime, {}, transport, 1, "c1")
+        assert result["servers"] == []
+
+    @pytest.mark.anyio
+    async def test_includes_status_string(self, runtime, transport):
+        runtime.mcp_service = MagicMock()
+        runtime.mcp_service.get_status = MagicMock(return_value={
+            "ok-server": "connected",
+            "failed-server": "failed: Connection refused",
+        })
+        result = await handle_mcp_status(runtime, {}, transport, 1, "c1")
+        statuses = {s["name"]: s["status"] for s in result["servers"]}
+        assert statuses["ok-server"] == "connected"
+        assert "failed" in statuses["failed-server"]
+
+
+class TestHandleSessionSetConfig:
+    @pytest.mark.anyio
+    async def test_creates_new_session_with_provider_model(self, runtime, transport):
+        new_session = MagicMock()
+        new_session.id = "sess-new"
+        runtime.session_manager.create = MagicMock(return_value=new_session)
+        runtime.state = MagicMock()
+        runtime.state.session_id = "sess-old"
+
+        result = await handle_session_set_config(
+            runtime, {"provider": "opencode", "model": "deepseek-v4"}, transport, 1, "c1",
+        )
+        assert result["session_id"] == "sess-new"
+        runtime.session_manager.create.assert_called_once_with(
+            provider="opencode", model="deepseek-v4",
+        )
+
+    @pytest.mark.anyio
+    async def test_raises_when_no_active_session(self, runtime, transport):
+        runtime.state = None
+        with pytest.raises(ValueError, match="No active session"):
+            await handle_session_set_config(
+                runtime, {"provider": "opencode", "model": "deepseek-v4"}, transport, 1, "c1",
+            )
+
+    @pytest.mark.anyio
+    async def test_accepts_empty_params(self, runtime, transport):
+        new_session = MagicMock()
+        new_session.id = "sess-new"
+        runtime.session_manager.create = MagicMock(return_value=new_session)
+        runtime.state = MagicMock()
+
+        result = await handle_session_set_config(
+            runtime, {}, transport, 1, "c1",
+        )
+        assert result["session_id"] == "sess-new"
+        runtime.session_manager.create.assert_called_once_with(provider="", model="")
 
 
 def _async_gen(items):

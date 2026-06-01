@@ -17,7 +17,8 @@ from laffyhand.gateway.protocol import (
     INITIALIZE, SHUTDOWN, SESSION_CREATE, SESSION_LIST, SESSION_LOAD,
     SESSION_DELETE, SESSION_FORK, SESSION_SEARCH, SESSION_SET_TITLE,
     SESSION_GENERATE_TITLE, SESSION_ARCHIVE, SUBAGENT_LIST_ACTIVE,
-    USAGE_GET, CHAT, CHAT_STREAM, CHAT_CANCEL, CHAT_STEER, TOOLS_LIST, Notification,
+    USAGE_GET, CHAT, CHAT_STREAM, CHAT_CANCEL, CHAT_STEER, TOOLS_LIST,
+    CONFIG_PROVIDERS, MCP_STATUS, SESSION_SET_CONFIG, Notification,
 )
 
 if TYPE_CHECKING:
@@ -523,6 +524,59 @@ async def handle_subagent_list_active(
     return {"subagents": runtime.subagent_manager.list_active(session_id)}
 
 
+async def handle_config_providers(
+    runtime: AgentRuntime,
+    params: dict[str, Any],
+    transport: Transport,
+    _request_id: str | int | None,
+    conn_id: str,
+) -> dict[str, Any]:
+    providers = {}
+    for key, pc in runtime._config.llm.providers.items():
+        providers[key] = {
+            "type": pc.type,
+            "base_url": pc.base_url,
+            "models": [{"name": m.name, "context_size": m.context_size} for m in pc.models],
+        }
+    return {
+        "default_provider": runtime._config.llm.default_provider,
+        "providers": providers,
+    }
+
+
+async def handle_mcp_status(
+    runtime: AgentRuntime,
+    params: dict[str, Any],
+    transport: Transport,
+    _request_id: str | int | None,
+    conn_id: str,
+) -> dict[str, Any]:
+    status = runtime.mcp_service.get_status()
+    return {
+        "servers": [
+            {"name": name, "status": st} for name, st in status.items()
+        ],
+    }
+
+
+async def handle_session_set_config(
+    runtime: AgentRuntime,
+    params: dict[str, Any],
+    transport: Transport,
+    _request_id: str | int | None,
+    conn_id: str,
+) -> dict[str, Any]:
+    provider = params.get("provider", "")
+    model = params.get("model", "")
+    if not runtime.state:
+        raise ValueError("No active session")
+    runtime.state.session_id = runtime.session_manager.create(
+        provider=provider,
+        model=model,
+    ).id
+    return {"session_id": runtime.state.session_id}
+
+
 async def handle_usage_get(
     runtime: AgentRuntime,
     params: dict[str, Any],
@@ -552,6 +606,9 @@ def register_all_handlers(dispatcher: Dispatcher) -> None:
     dispatcher.register(SESSION_ARCHIVE, handle_session_archive)
     dispatcher.register(SUBAGENT_LIST_ACTIVE, handle_subagent_list_active)
     dispatcher.register(USAGE_GET, handle_usage_get)
+    dispatcher.register(CONFIG_PROVIDERS, handle_config_providers)
+    dispatcher.register(MCP_STATUS, handle_mcp_status)
+    dispatcher.register(SESSION_SET_CONFIG, handle_session_set_config)
     dispatcher.register(CHAT, handle_chat)
     dispatcher.register(CHAT_STREAM, handle_chat_stream, streaming=True)
     dispatcher.register(CHAT_CANCEL, handle_chat_cancel)

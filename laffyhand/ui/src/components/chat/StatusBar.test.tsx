@@ -35,7 +35,7 @@ describe("StatusBar", () => {
 
   // ── Token 用量 ──
 
-  it("displays total token usage", () => {
+  it("displays cumulative total when no turn usage yet", () => {
     useChatStore.setState({
       sessionUsage: {
         total_input: 5000,
@@ -49,7 +49,7 @@ describe("StatusBar", () => {
     expect(screen.getByText((c) => c.includes("128k"))).toBeInTheDocument()
   })
 
-  it("displays input and output token breakdown", () => {
+  it("displays per-turn input/output when turnUsage available", () => {
     useChatStore.setState({
       model: "test-model",
       sessionUsage: {
@@ -58,13 +58,18 @@ describe("StatusBar", () => {
         total_reasoning: 0,
         context_size: 32000,
       },
+      turnUsage: {
+        input: 2500,
+        output: 750,
+        reasoning: 0,
+      },
     })
     render(<StatusBar />)
-    expect(screen.getByText("2.5k")).toBeInTheDocument() // input
-    expect(screen.getByText("750")).toBeInTheDocument() // output < 1000
+    expect(screen.getByText("2.5k")).toBeInTheDocument() // turn input
+    expect(screen.getByText("750")).toBeInTheDocument() // turn output < 1000
   })
 
-  it("formats tokens with k suffix for large numbers", () => {
+  it("shows turn total and cumulative/context when turnUsage available", () => {
     useChatStore.setState({
       sessionUsage: {
         total_input: 1500000,
@@ -72,14 +77,18 @@ describe("StatusBar", () => {
         total_reasoning: 0,
         context_size: 1000000,
       },
+      turnUsage: {
+        input: 1500000,
+        output: 2000000,
+        reasoning: 0,
+      },
     })
     render(<StatusBar />)
-    // total = 3.5M → 3500k → formatted
-    const formatMatch = screen.getByText("1500k")
-    expect(formatMatch).toBeInTheDocument()
+    expect(screen.getByText("3500k")).toBeInTheDocument() // turn total
+    expect(screen.getByText((c) => c.includes("1000k"))).toBeInTheDocument()
   })
 
-  it("formats tokens as plain number when under 1000", () => {
+  it("formats turn tokens as plain number when under 1000", () => {
     useChatStore.setState({
       sessionUsage: {
         total_input: 500,
@@ -87,10 +96,15 @@ describe("StatusBar", () => {
         total_reasoning: 0,
         context_size: 4096,
       },
+      turnUsage: {
+        input: 500,
+        output: 300,
+        reasoning: 0,
+      },
     })
     render(<StatusBar />)
-    expect(screen.getByText("500")).toBeInTheDocument()
-    expect(screen.getByText("300")).toBeInTheDocument()
+    expect(screen.getByText("500")).toBeInTheDocument() // turn input
+    expect(screen.getByText("300")).toBeInTheDocument() // turn output
   })
 
   // ── 推理 Token ──
@@ -103,10 +117,14 @@ describe("StatusBar", () => {
         total_reasoning: 30,
         context_size: 4096,
       },
+      turnUsage: {
+        input: 100,
+        output: 50,
+        reasoning: 30,
+      },
     })
     render(<StatusBar />)
     expect(screen.getByText("30")).toBeInTheDocument()
-    // 推理图标
     expect(screen.getByText("🧠")).toBeInTheDocument()
   })
 
@@ -117,6 +135,11 @@ describe("StatusBar", () => {
         total_output: 50,
         total_reasoning: 0,
         context_size: 4096,
+      },
+      turnUsage: {
+        input: 100,
+        output: 50,
+        reasoning: 0,
       },
     })
     render(<StatusBar />)
@@ -146,7 +169,7 @@ describe("StatusBar", () => {
 
   // ── 综合 ──
 
-  it("renders all sections together", () => {
+  it("renders all sections together with turnUsage", () => {
     useChatStore.setState({
       model: "deepseek-v4",
       sessionUsage: {
@@ -155,15 +178,20 @@ describe("StatusBar", () => {
         total_reasoning: 500,
         context_size: 64000,
       },
+      turnUsage: {
+        input: 10000,
+        output: 2000,
+        reasoning: 500,
+      },
       isStreaming: true,
     })
     render(<StatusBar />)
 
     expect(screen.getByText("deepseek-v4")).toBeInTheDocument()
-    expect(screen.getByText("12k")).toBeInTheDocument() // total
+    expect(screen.getByText("12k")).toBeInTheDocument() // turn total
     expect(screen.getByText((c) => c.includes("64k"))).toBeInTheDocument() // context
-    expect(screen.getByText("10k")).toBeInTheDocument() // input
-    expect(screen.getByText("2k")).toBeInTheDocument() // output
+    expect(screen.getByText("10k")).toBeInTheDocument() // turn input
+    expect(screen.getByText("2k")).toBeInTheDocument() // turn output
     expect(screen.getByText("500")).toBeInTheDocument() // reasoning
     expect(screen.getByText("Streaming")).toBeInTheDocument()
   })

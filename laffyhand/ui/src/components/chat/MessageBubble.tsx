@@ -1,4 +1,4 @@
-import { useMemo } from "react"
+import { useState, useMemo } from "react"
 import { marked } from "marked"
 import DOMPurify from "dompurify"
 import type { Message } from "@/types/session"
@@ -27,8 +27,45 @@ function MarkdownContent({ content }: { content: string }) {
   )
 }
 
+/** 系统消息：居中、低显眼度、默认折叠 */
+function SystemMessageBlock({ content }: { content: string }) {
+  const [expanded, setExpanded] = useState(false)
+
+  return (
+    <div className="flex justify-center mb-5 animate-[fade-in_0.2s_ease-out]">
+      <div className="max-w-[85%] min-w-0">
+        <div className="bg-gray-50/60 dark:bg-gray-800/30 border border-dashed border-gray-200 dark:border-gray-700/50 rounded-xl px-4 py-2 text-center">
+          <button
+            onClick={() => setExpanded(!expanded)}
+            className="flex items-center justify-center gap-1.5 w-full text-[11px] text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-400 transition-colors cursor-pointer"
+          >
+            <svg
+              className={`w-3 h-3 transition-transform duration-150 ${expanded ? "rotate-90" : ""}`}
+              fill="none" stroke="currentColor" viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+            <span>System prompt</span>
+          </button>
+          {expanded && (
+            <div className="mt-2 pt-2 border-t border-gray-200/50 dark:border-gray-700/30 text-left">
+              <pre className="text-[11px] text-gray-500 dark:text-gray-400 whitespace-pre-wrap font-sans leading-relaxed">
+                {content}
+              </pre>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function MessageBubble({ message }: MessageBubbleProps) {
   const isUser = message.role === "user"
+
+  if (message.role === "system") {
+    return <SystemMessageBlock content={message.content} />
+  }
 
   return (
     <div
