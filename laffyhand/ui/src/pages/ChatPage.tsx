@@ -1,6 +1,7 @@
 import { useParams } from "react-router-dom"
 import { ChatInput } from "@/components/chat/ChatInput"
 import { MessageList } from "@/components/chat/MessageList"
+import { StatusBar } from "@/components/chat/StatusBar"
 import { useChat } from "@/hooks/use-chat"
 import { useCurrentSession } from "@/hooks/use-sessions"
 import { useChatStore } from "@/stores/chat-store"
@@ -39,6 +40,7 @@ export function ChatPage() {
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
+      <StatusBar />
       <MessageList />
       <ChatInput
         onSend={sendMessage}

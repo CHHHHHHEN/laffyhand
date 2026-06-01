@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* 启用 class-based dark mode（而非系统偏好） */
+@custom-variant dark (&:where(.dark, .dark *));
+
 @layer base {
   :root {
     --color-accent: #3b82f6;
