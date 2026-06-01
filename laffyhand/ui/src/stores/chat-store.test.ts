@@ -9,7 +9,6 @@ beforeEach(() => {
     streamContent: "",
     streamReasoning: "",
     streamToolCalls: [],
-    streamToolResults: [],
     currentAssistantMessageId: null,
     error: null,
   })
@@ -68,18 +67,14 @@ describe("chat-store", () => {
       arguments: { path: "/test" },
     })
 
-    store.addToolResult({
-      id: "call-1",
-      name: "read_file",
-      result: "file content",
-    })
+    store.updateToolCallStatus("call-1", "completed", "file content")
 
     store.finalizeMessage()
 
     const message = useChatStore.getState().messages[0]!
     expect(message.toolCalls).toHaveLength(1)
     expect(message.toolCalls![0]!.name).toBe("read_file")
-    expect(message.toolResults).toHaveLength(1)
+    expect(message.toolCalls![0]!.result).toBe("file content")
   })
 
   it("sets error and stops streaming", () => {

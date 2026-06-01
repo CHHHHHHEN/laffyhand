@@ -1,4 +1,4 @@
-import { useEffect } from "react"
+import { useEffect, useCallback } from "react"
 import { useParams } from "react-router-dom"
 import { ChatInput } from "@/components/chat/ChatInput"
 import { MessageList } from "@/components/chat/MessageList"
@@ -13,6 +13,13 @@ export function ChatPage() {
   const { isLoading, session } = useCurrentSession(sessionId)
   const isStreaming = useChatStore((s) => s.isStreaming)
   const messages = useChatStore((s) => s.messages)
+
+  const retryLastMessage = useCallback(() => {
+    const lastUserMsg = [...useChatStore.getState().messages].reverse().find((m) => m.role === "user")
+    if (lastUserMsg) {
+      sendMessage(lastUserMsg.content)
+    }
+  }, [sendMessage])
 
   // Update page title with session name
   useEffect(() => {
@@ -48,7 +55,7 @@ export function ChatPage() {
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
-      <MessageList />
+      <MessageList onRetry={retryLastMessage} />
       <ChatInput
         onSend={sendMessage}
         onInterrupt={interruptMessage}

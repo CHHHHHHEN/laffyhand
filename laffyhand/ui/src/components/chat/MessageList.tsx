@@ -6,7 +6,11 @@ import { MessageBubble } from "./MessageBubble"
 import { AiAvatar, ToolCallCard, ReasoningBlock } from "./ChatComponents"
 import { SubagentCard } from "./SubagentCard"
 
-export function MessageList() {
+interface MessageListProps {
+  onRetry?: () => void
+}
+
+export function MessageList({ onRetry }: MessageListProps) {
   const messages = useChatStore((s) => s.messages)
   const isStreaming = useChatStore((s) => s.isStreaming)
   const streamContent = useChatStore((s) => s.streamContent)
@@ -133,11 +137,24 @@ export function MessageList() {
       {/* 错误提示 */}
       {error && (
         <div className="flex justify-center mb-5 animate-[fade-in_0.2s_ease-out]">
-          <div className="flex items-center gap-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/40 text-red-600 dark:text-red-400 rounded-xl px-4 py-2.5 text-sm shadow-sm">
-            <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <span>{error}</span>
+          <div className="flex flex-col items-center gap-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/40 rounded-xl px-4 py-2.5 text-sm shadow-sm">
+            <div className="flex items-center gap-2">
+              <svg className="w-4 h-4 shrink-0 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span className="text-red-600 dark:text-red-400">{error}</span>
+            </div>
+            {onRetry && (
+              <button
+                onClick={onRetry}
+                className="flex items-center gap-1.5 px-3 py-1 text-xs font-medium rounded-lg bg-red-100 dark:bg-red-800/30 text-red-700 dark:text-red-300 hover:bg-red-200 dark:hover:bg-red-800/50 transition-colors cursor-pointer"
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                Retry
+              </button>
+            )}
           </div>
         </div>
       )}

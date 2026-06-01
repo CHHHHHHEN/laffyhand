@@ -12,7 +12,6 @@ beforeEach(() => {
     streamContent: "",
     streamReasoning: "",
     streamToolCalls: [],
-    streamToolResults: [],
     currentAssistantMessageId: null,
     error: null,
   })
