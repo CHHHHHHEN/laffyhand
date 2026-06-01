@@ -8,3 +8,4 @@
 Git提交规范：
 - 格式要求：type(scope): messages
 - messages 需要体现出具体更改的内容，而不是笼统描述（如 resolve audit problems）
+- 每个 commit 仅提交相关内容
