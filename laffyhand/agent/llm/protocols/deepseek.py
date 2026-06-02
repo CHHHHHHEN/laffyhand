@@ -1,34 +1,35 @@
-from typing import Any
-
+from typing import ClassVar, Literal
+from pydantic import BaseModel
 from loguru import logger
-from laffyhand.agent.schemas import LLMRequest, StreamReasoning, StreamEvent
-from laffyhand.agent.llm.protocols.openai import OpenAIProtocol, OpenAIChatChunk
+from laffyhand.agent.llm.specs.models import LLMRequest, Frame, ProviderID
+from laffyhand.agent.llm.specs.models import StreamReasoning, LLMEvent
+from laffyhand.agent.llm.protocols.openai import OpenAIProtocol, OpenAIChatChunk, OpenAICompletionRequest
+
+
+class DeepSeekThinking(BaseModel):
+    type: Literal["enabled", "disabled"] = "enabled"
+    reasoning_effort: Literal["high", "max"] = "high"
+
+
+class DeepSeekCompletionRequest(OpenAICompletionRequest):
+    thinking: DeepSeekThinking | None = None
 
 
 class DeepseekProtocol(OpenAIProtocol):
-    def build_request(self, request: LLMRequest) -> dict[str, Any]:
-        body = super().build_request(request)
-        body["thinking"] = {"type": "enabled"}
-        body["reasoning_effort"] = "high"
-        logger.debug("DeepSeek extras: thinking=enabled, reasoning_effort=high")
-        return body
+    provider_id: ClassVar[ProviderID] = ProviderID("deepseek")
 
-    def parse_frame(self, frame: dict[str, Any]) -> list[StreamEvent]:
-        """Override to handle DeepSeek's reasoning_content quirk.
+    def build_request(self, request: LLMRequest) -> DeepSeekCompletionRequest:
+        base = super().build_request(request)
+        return DeepSeekCompletionRequest(**base.model_dump(), thinking=DeepSeekThinking())
 
-        DeepSeek emits thinking tokens as ``reasoning_content`` with an
-        empty ``content`` field.  Emit ``StreamReasoning`` events for
-        thinking tokens, so the UI can display them separately.
-        Falls through to the standard OpenAI parser for frames that have
-        actual content (e.g. the response phase or non-thinking models).
-        """
-        chunk = OpenAIChatChunk.model_validate(frame)
+    def parse_frame(self, frame: Frame) -> list[LLMEvent]:
+        chunk = OpenAIChatChunk.model_validate(frame.data)
         if chunk.choices:
             delta = chunk.choices[0].delta
             logger.trace(
                 f"DeepSeek reasoning_content={delta.reasoning_content[:100] if delta.reasoning_content else None}"
             )
-            events: list[StreamEvent] = []
+            events: list[LLMEvent] = []
             if delta.reasoning_content:
                 events.append(StreamReasoning(delta=delta.reasoning_content))
             parent_events = super().parse_frame(frame)

@@ -1,17 +1,19 @@
 import unittest
+from laffyhand.agent.llm.specs.models import AssistantMessage, SystemMessage, ToolMessage, UserMessage
+from laffyhand.agent.llm.specs.models import (
+    ToolCallContent,
+    ToolDefinition,
+    Usage,
+)
 from laffyhand.agent.schemas import (
-    SystemMessage,
-    UserMessage,
-    AssistantMessage,
-    ToolMessage,
     ToolCallContent,
     ToolDefinition,
     Usage,
     SessionUsage,
-    estimate_tokens,
     AgentState,
     CompactionConfig,
 )
+from laffyhand.agent.token_utils import estimate_tokens
 
 
 class TestEstimateTokens(unittest.TestCase):
@@ -88,11 +90,11 @@ class TestCompactionConfig(unittest.TestCase):
 
 class TestAgentState(unittest.TestCase):
     def test_defaults(self):
-        state = AgentState(messages=[])
+        state = AgentState(messages=[], session_id=SessionID("test"))
         self.assertEqual(state.turn_count, 0)
         self.assertEqual(state.step, 0)
 
     def test_increment_step(self):
-        state = AgentState(messages=[])
+        state = AgentState(messages=[], session_id=SessionID("test"))
         state.step += 1
         self.assertEqual(state.step, 1)

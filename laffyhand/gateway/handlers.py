@@ -9,15 +9,12 @@ from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
-from laffyhand.agent.loop import StepFinish, Finish, PermissionRequest
+from laffyhand.agent.llm.specs.models import AssistantMessage, Message, SystemMessage, ToolMessage, UserMessage
+from laffyhand.agent.schemas import TextDelta, StepFinish, Finish, PermissionRequest
 from laffyhand.agent.tools.permission import request_callback as _pm_callback
 from laffyhand.agent.schemas import (
-    Message,
-    SystemMessage,
-    UserMessage,
-    AssistantMessage,
-    ToolMessage,
     AgentState,
+    SessionID,
     SessionUsage,
 )
 from laffyhand.gateway.protocol import (
@@ -294,20 +291,20 @@ async def handle_chat(
 ) -> dict[str, Any]:
     session_id = await _prepare_chat(runtime, params)
 
-    last_content = ""
+    content_parts: list[str] = []
     finish_reason = ""
     usage_info = None
     logger.debug(f"Chat started (id={request_id}, conn={conn_id})")
 
     async with runtime.get_session_lock(session_id):
         async for event in runtime.run_agent_turn(session_id=session_id):
-            if event.type == "content" and event.data:
-                last_content += event.data
-            if event.finish_reason:
-                finish_reason = event.finish_reason
-            if event.usage:
+            if isinstance(event, TextDelta):
+                content_parts.append(event.text)
+            elif isinstance(event, StepFinish):
+                finish_reason = event.reason
                 usage_info = event.usage
 
+    last_content = "".join(content_parts)
     logger.debug(
         f"Chat finished (id={request_id}, conn={conn_id}, finish={finish_reason})"
     )
@@ -550,7 +547,7 @@ async def _ensure_session(
     )
     runtime.state = AgentState(
         messages=[system_message],
-        session_id=session.id,
+        session_id=SessionID(session.id),
         usage=SessionUsage(context_size=runtime.context_size),
     )
     runtime._schedule_title_generation(session.id, "on_create")
@@ -693,10 +690,10 @@ async def handle_session_set_config(
     if not runtime.state:
         raise ValueError("No active session")
     runtime.complete_current_session()
-    runtime.state.session_id = runtime.session_manager.create(
+    runtime.state.session_id = SessionID(runtime.session_manager.create(
         provider=provider,
         model=model,
-    ).id
+    ).id)
     return {"session_id": runtime.state.session_id}
 
 

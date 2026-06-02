@@ -5,11 +5,11 @@ from unittest.mock import MagicMock, AsyncMock, patch
 import pytest
 
 from laffyhand.agent.agent import AgentInfo
+from laffyhand.agent.llm.specs.models import SystemMessage, UserMessage
 from laffyhand.agent.schemas import (
     AgentState,
+    SessionID,
     SessionUsage,
-    SystemMessage,
-    UserMessage,
 )
 from laffyhand.agent.subagent.manager import (
     SubagentManager,
@@ -214,7 +214,7 @@ class TestSubagentManager:
             mock_build.return_value = (
                 AgentState(
                     messages=[],
-                    session_id="child-session",
+                    session_id=SessionID("child-session"),
                     usage=SessionUsage(context_size=0),
                 ),
                 tool_registry,
@@ -249,7 +249,7 @@ class TestSubagentManager:
             mock_build.return_value = (
                 AgentState(
                     messages=[],
-                    session_id="child-session",
+                    session_id=SessionID("child-session"),
                     usage=SessionUsage(context_size=0),
                 ),
                 tool_registry,
@@ -294,7 +294,7 @@ class TestSubagentManager:
             mock_build.return_value = (
                 AgentState(
                     messages=[],
-                    session_id="child-session",
+                    session_id=SessionID("child-session"),
                     usage=SessionUsage(context_size=0),
                 ),
                 tool_registry,

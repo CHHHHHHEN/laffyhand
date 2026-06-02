@@ -8,6 +8,7 @@ from typing import Any, Optional, cast
 
 from loguru import logger
 
+from laffyhand.agent.llm.specs.models import AssistantMessage, Message, SystemMessage, ToolMessage, UserMessage
 from laffyhand.agent.session.models import (
     MessageRecord,
     Session,
@@ -16,15 +17,11 @@ from laffyhand.agent.session.models import (
     _from_ts,
 )
 from laffyhand.agent.session.schema import create_tables, has_fts5
+from laffyhand.agent.llm.specs.models import ToolCallContent
 from laffyhand.agent.schemas import (
     AgentState,
-    AssistantMessage,
-    Message,
+    SessionID,
     SessionUsage,
-    SystemMessage,
-    ToolCallContent,
-    ToolMessage,
-    UserMessage,
 )
 
 
@@ -403,7 +400,7 @@ class SessionManager:
             messages=messages,
             turn_count=session.turn_count,
             step=session.step_count,
-            session_id=session.id,
+            session_id=SessionID(session.id),
             usage=SessionUsage(
                 total_input=session.input_tokens,
                 total_output=session.output_tokens,

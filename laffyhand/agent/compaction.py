@@ -1,46 +1,31 @@
 from collections.abc import Sequence
+from typing import TYPE_CHECKING, Callable
 
 from loguru import logger
 
-from laffyhand.agent.schemas import (
-    AgentState,
+from laffyhand.agent.llm.specs.models import SystemMessage, ToolMessage, UserMessage
+from laffyhand.agent.llm.specs.models import (
     AssistantMessage,
-    CompactionConfig,
     Message,
     StreamError,
     StreamFinish,
     StreamText,
-    SystemMessage,
-    ToolMessage,
-    UserMessage,
-    estimate_tokens,
 )
+from laffyhand.agent.schemas import (
+    AgentState,
+    CompactionConfig,
+    SessionID,
+)
+from laffyhand.agent.token_utils import estimate_tokens, estimate_message_tokens, estimate_messages_tokens
 from laffyhand.agent.llm.facade import LLM
 from laffyhand.agent.truncation import truncate_output
+from laffyhand.agent.agent import BUILTIN_AGENTS
+
+if TYPE_CHECKING:
+    from laffyhand.agent.session import SessionManager
 
 
-def estimate_message_tokens(msg: Message) -> int:
-    total = 0
-    if isinstance(msg, (SystemMessage, UserMessage)):
-        total += estimate_tokens(msg.content)
-    elif isinstance(msg, AssistantMessage):
-        if msg.content:
-            total += estimate_tokens(msg.content)
-        if msg.reasoning:
-            total += estimate_tokens(msg.reasoning)
-        if msg.tool_calls:
-            for tc in msg.tool_calls:
-                total += estimate_tokens(tc.tool_name + tc.args)
-    elif isinstance(msg, ToolMessage):
-        total += estimate_tokens(msg.content)
-    return total
-
-
-def estimate_messages_tokens(messages: list[Message]) -> int:
-    return sum(estimate_message_tokens(m) for m in messages)
-
-
-def is_overflow(tokens: int, context_size: int, reserved: int = 20_000) -> bool:
+def is_overflow(tokens: int, context_size: int, reserved: int) -> bool:
     if context_size <= 0:
         return False
     usable = max(context_size - reserved, context_size // 10)
@@ -58,7 +43,7 @@ def select_tail(
     context_size: int = 128_000,
 ) -> tuple[list[Message], list[Message]]:
     preserve_recent = config.preserve_recent_tokens
-    if preserve_recent is None:
+    if not preserve_recent:
         reserved = config.reserved or min(20_000, context_size // 4)
         usable = context_size - reserved
         preserve_recent = max(2_000, min(8_000, int(usable * 0.25)))
@@ -85,12 +70,8 @@ def select_tail(
 
     for i in range(len(content_msgs) - 1, -1, -1):
         msg = content_msgs[i]
-        if (
-            isinstance(msg, ToolMessage)
-            and tool_truncate
-            and len(msg.content) > tool_truncate
-        ):
-            tokens = estimate_tokens(msg.content[:tool_truncate])
+        if isinstance(msg, ToolMessage) and tool_truncate:
+            tokens = min(estimate_tokens(msg.content), tool_truncate)
         else:
             tokens = estimate_message_tokens(msg)
 
@@ -114,18 +95,6 @@ def select_tail(
     tail = tail_content
     logger.trace(f"select_tail: head={len(head)} messages, tail={len(tail)} messages")
     return head, tail
-
-
-SUMMARY_SYSTEM_PROMPT = """You are a summarization assistant. Your task is to summarize conversation history concisely while preserving critical information.
-
-Focus on:
-- Goal: What is the user trying to achieve?
-- Progress: What has been done so far?
-- Key Decisions: Important choices made.
-- Relevant Files: Files created, read, or modified.
-- Next Steps: What remains to be done.
-
-Keep the summary concise but thorough enough that the conversation can continue naturally."""
 
 
 SUMMARY_PROMPT_TEMPLATE = """Please summarize the following conversation history:
@@ -205,48 +174,15 @@ def build_summary_text(messages: Sequence[Message], tool_truncate: int = 500) ->
     return "\n".join(lines)
 
 
-def wrap_last_user(messages: list[Message]) -> list[Message]:
-    result = list(messages)
-    for i in range(len(result) - 1, -1, -1):
-        msg = result[i]
-        if isinstance(msg, UserMessage):
-            content = msg.content
-            if content.startswith("<system-reminder>") and content.rstrip().endswith(
-                "</system-reminder>"
-            ):
-                logger.debug("User message already wrapped, skipping")
-                return result
-            result[i] = UserMessage(
-                content=f"<system-reminder>\n{content}\n</system-reminder>"
-            )
-            logger.debug("Last user message wrapped with system-reminder tags")
-            return result
-    logger.warning("No UserMessage found to wrap")
-    return result
-
-
-def attach_reminder(messages: list[Message], reminder: str) -> list[Message]:
-    for i, msg in enumerate(messages):
-        if isinstance(msg, SystemMessage):
-            if reminder not in msg.content:
-                result = list(messages)
-                result[i] = SystemMessage(content=msg.content + f"\n\n{reminder}")
-                logger.debug("Reminder attached to system message")
-                return result
-            logger.debug("Reminder already present, not re-attaching")
-            return list(messages)
-    logger.warning("No SystemMessage found, cannot attach reminder")
-    return list(messages)
-
-
 async def _summarize(
     llm: LLM, head: Sequence[Message], tool_truncate: int = 500
 ) -> str | None:
     head_text = build_summary_text(head, tool_truncate=tool_truncate)
     summary_prompt = SUMMARY_PROMPT_TEMPLATE.format(head_text=head_text)
 
+    system_prompt = BUILTIN_AGENTS["compaction"].system_prompt
     summary_messages: list[Message] = [
-        SystemMessage(content=SUMMARY_SYSTEM_PROMPT),
+        SystemMessage(content=system_prompt),
         UserMessage(content=summary_prompt),
     ]
 
@@ -295,30 +231,15 @@ def _select_compaction_targets(
 
 
 async def compact(agent_state: AgentState, llm: LLM, config: CompactionConfig) -> bool:
-    targets = _select_compaction_targets(
-        agent_state.messages,
-        config,
-        agent_state.usage.context_size,
-    )
-    if targets is None:
+    result = await compact_with_chain(agent_state, llm, config)
+    if result is None:
         return False
 
-    head_to_summarize, original_system, tail = targets
-    logger.info(
-        f"Compacting {len(head_to_summarize)} messages into summary, keeping {len(tail)} messages verbatim"
-    )
-
-    summary = await _summarize(
-        llm, head_to_summarize, tool_truncate=config.summary_tool_truncate
-    )
-    if not summary:
-        logger.warning("Compaction failed: no summary generated")
-        return False
-
-    summary_msg = SystemMessage(content=f"{_SUMMARY_TAG_OPEN}\n{summary.strip()}\n{_SUMMARY_TAG_CLOSE}")
+    summary, original_system, tail = result
+    summary_msg = SystemMessage(content=summary)
     agent_state.messages = original_system + [summary_msg] + tail
     logger.info(
-        f"Compaction complete: {len(head_to_summarize)} messages -> 1 summary message"
+        f"Compaction complete: summary + {len(tail)} tail messages"
     )
     return True
 
@@ -351,3 +272,44 @@ async def compact_with_chain(
 
     logger.info(f"Chain compaction summary generated ({len(summary)} chars)")
     return f"{_SUMMARY_TAG_OPEN}\n{summary.strip()}\n{_SUMMARY_TAG_CLOSE}", original_system, tail
+
+
+async def compact_on_overflow(
+    agent_state: AgentState,
+    llm: LLM,
+    compaction_config: CompactionConfig,
+    session_manager: SessionManager | None = None,
+    on_compacted: Callable[[str], None] | None = None,
+) -> bool:
+    tokens = estimate_messages_tokens(agent_state.messages)
+    context_size = agent_state.usage.context_size
+    reserved = compaction_config.reserved or min(20_000, context_size // 4)
+    if not is_overflow(tokens, context_size, reserved):
+        logger.debug(f"No compaction needed: {tokens} tokens within context limit")
+        return False
+    logger.info(f"Compaction triggered: {tokens} tokens")
+
+    if session_manager is not None and agent_state.session_id:
+        result = await compact_with_chain(agent_state, llm, compaction_config)
+        if result is None:
+            return False
+        summary, original_system, tail = result
+        child = session_manager.create_compacted_child(
+            parent_id=agent_state.session_id,
+            system_messages=original_system,
+            summary_content=summary,
+            tail_messages=tail,
+        )
+        summary_msg = SystemMessage(content=summary.strip())
+        agent_state.session_id = SessionID(child.id)
+        agent_state.messages = original_system + [summary_msg] + tail
+        agent_state.step = 0
+        if on_compacted is not None:
+            on_compacted(child.id)
+        return True
+
+    if await compact(agent_state, llm, compaction_config):
+        logger.info("Compaction succeeded")
+        return True
+    logger.warning("Compaction failed: could not compact conversation")
+    return False

@@ -2,6 +2,7 @@ import json
 from urllib.parse import urlparse
 from collections.abc import AsyncIterator
 from typing import Optional
+from pydantic import BaseModel
 from loguru import logger
 import httpx
 
@@ -16,14 +17,14 @@ def _redact_url(url: str) -> str:
     return redacted.geturl()
 
 
-from laffyhand.agent.schemas import LLMRequest, StreamEvent, StreamFinish, StreamError
+from laffyhand.agent.llm.specs.models import LLMRequest, Header
+from laffyhand.agent.llm.specs.models import LLMEvent, StreamFinish, StreamError
 from laffyhand.agent.llm.specs import Protocol, Endpoint, Auth, Framing
 
 
 class HTTPClient:
-    def __init__(self, timeout: int = 30, max_retries: int = 0) -> None:
+    def __init__(self, timeout: int = 30) -> None:
         self.timeout = timeout
-        self.max_retries = max_retries
 
     async def stream(
         self, method: str, url: str, headers: dict[str, str], body: bytes
@@ -59,16 +60,21 @@ class Route:
         self.framing = framing
         self.http_client = http_client or HTTPClient()
 
-    async def execute(self, request: LLMRequest) -> AsyncIterator[StreamEvent]:
-        url = self.endpoint.build(request.model)
+    async def execute(self, request: LLMRequest) -> AsyncIterator[LLMEvent]:
+        url = self.endpoint.build()
         body_dict = self.protocol.build_request(request)
-        body = json.dumps(body_dict).encode("utf-8")
-        headers: dict[str, str] = {"Content-Type": "application/json"}
+        if isinstance(body_dict, BaseModel):
+            body = json.dumps(body_dict.model_dump()).encode("utf-8")
+        else:
+            body = json.dumps(body_dict).encode("utf-8")
+        headers: list[Header] = [Header(key="Content-Type", value="application/json")]
         self.auth.apply(headers)
 
         logger.debug(f"Route POST {_redact_url(url)}")
 
-        response = self.http_client.stream("POST", url, headers, body)
+        response = self.http_client.stream(
+            "POST", url, {h.key: h.value for h in headers}, body
+        )
         finished = False
         try:
             async for frame in self.framing.frames(response):

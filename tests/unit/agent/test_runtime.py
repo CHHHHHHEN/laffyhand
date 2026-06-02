@@ -6,12 +6,12 @@ from unittest.mock import MagicMock, AsyncMock, patch
 import pytest
 
 from laffyhand.agent.agent import AgentInfo
+from laffyhand.agent.llm.specs.models import SystemMessage, UserMessage
 from laffyhand.agent.runtime import AgentRuntime, MAX_SUBAGENT_DEPTH
 from laffyhand.agent.schemas import (
     AgentState,
+    SessionID,
     SessionUsage,
-    SystemMessage,
-    UserMessage,
 )
 from laffyhand.agent.tools.registry import ToolRegistry
 
@@ -48,7 +48,7 @@ class TestStateProperty:
     def test_setter_and_getter(self, runtime):
         state = AgentState(
             messages=[SystemMessage(content="test")],
-            session_id="s1",
+            session_id=SessionID("s1"),
             usage=SessionUsage(context_size=1000),
         )
         runtime.state = state
@@ -58,7 +58,7 @@ class TestStateProperty:
     def test_current_session_id_none_when_state_has_no_id(self, runtime):
         state = AgentState(
             messages=[],
-            session_id="",
+            session_id=SessionID(""),
             usage=SessionUsage(context_size=0),
         )
         runtime._states[""] = state
@@ -256,7 +256,7 @@ class TestSaveCurrentState:
     def test_noop_when_session_not_in_manager(self, runtime, session_manager):
         state = AgentState(
             messages=[],
-            session_id="nonexistent",
+            session_id=SessionID("nonexistent"),
             usage=SessionUsage(context_size=0),
         )
         runtime._states["nonexistent"] = state
@@ -292,7 +292,7 @@ class TestSwitchSession:
         session = session_manager.create(messages=[UserMessage(content="hi")])
         old_state = AgentState(
             messages=[],
-            session_id="old",
+            session_id=SessionID("old"),
             usage=SessionUsage(context_size=0),
         )
         runtime._states["old"] = old_state
@@ -305,7 +305,7 @@ class TestSwitchSession:
     def test_returns_false_for_nonexistent(self, runtime):
         state = AgentState(
             messages=[],
-            session_id="old",
+            session_id=SessionID("old"),
             usage=SessionUsage(context_size=0),
         )
         runtime._states["old"] = state
@@ -372,7 +372,7 @@ class TestForkSession:
     def test_returns_none_without_session_id(self, runtime):
         state = AgentState(
             messages=[],
-            session_id="",
+            session_id=SessionID(""),
             usage=SessionUsage(context_size=0),
         )
         runtime._states[""] = state
@@ -416,7 +416,7 @@ class TestCreateSubagent:
             async def mock_agent_loop(*args, **kwargs):
                 child_state = args[0]
                 child_state.messages.append(UserMessage(content="final answer"))
-                from laffyhand.agent.loop import StepFinish
+                from laffyhand.agent.schemas import StepFinish
 
                 yield StepFinish(index=1, reason="stop")
 
@@ -444,7 +444,7 @@ class TestCreateSubagent:
         with patch("laffyhand.agent.runtime.agent_loop") as mock_loop:
 
             async def mock_agent_loop(*args, **kwargs):
-                from laffyhand.agent.loop import StepFinish
+                from laffyhand.agent.schemas import StepFinish
 
                 yield StepFinish(index=1, reason="stop")
 
@@ -521,7 +521,7 @@ class TestGenerateTitleForCurrent:
         runtime.title_config.mode = "auto"
         state = AgentState(
             messages=[],
-            session_id="",
+            session_id=SessionID(""),
             usage=SessionUsage(context_size=0),
         )
         runtime._states[""] = state
@@ -587,7 +587,7 @@ class TestScheduleTitleGeneration:
 class TestDoGenerateTitle:
     @pytest.mark.anyio
     async def test_generates_title(self, runtime, session_manager):
-        from laffyhand.agent.schemas import StreamText, StreamFinish
+        from laffyhand.agent.llm.specs.models import StreamText, StreamFinish
 
         async def mock_stream(messages, **kwargs):
             yield StreamText(delta="My Title")

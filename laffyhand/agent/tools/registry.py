@@ -3,7 +3,7 @@ from collections.abc import Callable
 from typing import Any
 
 from loguru import logger
-from laffyhand.agent.schemas import ToolDefinition
+from laffyhand.agent.llm.specs.models import ToolDefinition
 from laffyhand.agent.tools.base import BaseTool
 from laffyhand.agent.tools.permission import PermissionManager
 from laffyhand.agent.truncation import truncate_output

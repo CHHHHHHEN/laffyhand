@@ -13,10 +13,10 @@ AgentMode = Literal["primary", "subagent", "all"]
 
 class AgentInfo(BaseModel):
     name: str
+    system_prompt: str
     description: str = ""
     mode: AgentMode = "subagent"
     model: str | None = None
-    prompt: str | None = None
     permission: dict[str, Any] = {}
     max_steps: int = 50
     temperature: float | None = None
@@ -30,6 +30,7 @@ BUILTIN_AGENTS: dict[str, AgentInfo] = {
         name="build",
         description="Main coding agent with full tool access",
         mode="primary",
+        system_prompt="",
         permission={},
     ),
     "plan": AgentInfo(
@@ -37,7 +38,7 @@ BUILTIN_AGENTS: dict[str, AgentInfo] = {
         description="Plan mode agent — reads code, proposes changes, does not edit",
         mode="primary",
         permission={"deny": ["write", "edit", "bash", "task"]},
-        prompt="You are in plan mode. Analyze the request, explore the codebase, "
+        system_prompt="You are in plan mode. Analyze the request, explore the codebase, "
         "and propose a detailed plan. Do NOT write or edit any files.",
         hidden=True,
     ),
@@ -45,14 +46,14 @@ BUILTIN_AGENTS: dict[str, AgentInfo] = {
         name="general",
         description="General-purpose subagent for multi-step tasks",
         mode="subagent",
-        prompt="You are 'general', a capable sub-agent that can use tools to "
+        system_prompt="You are 'general', a capable sub-agent that can use tools to "
         "complete tasks. Report your findings clearly.",
     ),
     "explore": AgentInfo(
         name="explore",
         description="Fast codebase exploration and file search",
         mode="subagent",
-        prompt="You are 'explore', a file search specialist. Use grep, glob, and "
+        system_prompt="You are 'explore', a file search specialist. Use grep, glob, and "
         "read tools to explore the codebase. Answer concisely. Do NOT edit files.",
         permission={"deny": ["write", "edit", "bash", "task", "todowrite", "skill"]},
     ),
@@ -61,12 +62,21 @@ BUILTIN_AGENTS: dict[str, AgentInfo] = {
         description="Summarize conversation context (internal use)",
         mode="subagent",
         hidden=True,
+        system_prompt="You are a summarization assistant. Your task is to summarize conversation history concisely while preserving critical information.\n\n"
+        "Focus on:\n"
+        "- Goal: What is the user trying to achieve?\n"
+        "- Progress: What has been done so far?\n"
+        "- Key Decisions: Important choices made.\n"
+        "- Relevant Files: Files created, read, or modified.\n"
+        "- Next Steps: What remains to be done.\n\n"
+        "Keep the summary concise but thorough enough that the conversation can continue naturally.",
     ),
     "title": AgentInfo(
         name="title",
         description="Generate session title (internal use)",
         mode="subagent",
         hidden=True,
+        system_prompt="",
     ),
 }
 
@@ -138,10 +148,10 @@ def _load_agent_file(path: Path) -> AgentInfo | None:
     name = meta.get("name") or path.stem
     return AgentInfo(
         name=name,
+        system_prompt=body or meta.get("system_prompt", ""),
         description=meta.get("description", ""),
         mode=meta.get("mode", "subagent"),
         model=meta.get("model"),
-        prompt=body or meta.get("prompt"),
         permission=meta.get("permission", {}),
         max_steps=meta.get("max_steps", 50),
         temperature=meta.get("temperature"),

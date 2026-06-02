@@ -8,14 +8,20 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from loguru import logger
 
+from laffyhand.agent.llm.specs.models import SystemMessage, UserMessage
 from laffyhand.agent.schemas import (
     AgentState,
     CompactionConfig,
+    SessionID,
     SessionUsage,
-    SystemMessage,
-    UserMessage,
 )
-from laffyhand.agent.loop import (
+from laffyhand.agent.schemas import (
+    StepStart,
+    TextStart,
+    TextEnd,
+    ReasoningStart,
+    ReasoningEnd,
+    Compacting,
     SubAgentStart,
     SubAgentDelta,
     SubAgentEnd,
@@ -77,7 +83,7 @@ def build_subagent_state(
         model=agent_info.model or "",
     )
     system_content = (
-        agent_info.prompt or "You are a helpful sub-agent. Complete the assigned task."
+        agent_info.system_prompt or "You are a helpful sub-agent. Complete the assigned task."
     )
     system_msg = SystemMessage(content=system_content)
     user_msg = UserMessage(content=prompt)
@@ -93,7 +99,7 @@ def build_subagent_state(
 
     child_state = AgentState(
         messages=[system_msg, user_msg],
-        session_id=child_session.id,
+        session_id=SessionID(child_session.id),
         usage=SessionUsage(context_size=0),
     )
     return child_state, child_registry
@@ -220,6 +226,8 @@ class SubagentManager:
                                     content=event.message,
                                 )
                             )
+                        elif isinstance(event, (StepStart, TextStart, TextEnd, ReasoningStart, ReasoningEnd, Compacting)):
+                            await _relay_event(event)
 
                     assert child_state.session_id is not None
                     session_manager.save_state(child_state.session_id, child_state)

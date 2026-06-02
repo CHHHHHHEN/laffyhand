@@ -1,12 +1,10 @@
 from loguru import logger
 
-from laffyhand.agent.schemas import (
-    Message,
+from laffyhand.agent.llm.specs.models import Message, SystemMessage, UserMessage
+from laffyhand.agent.llm.specs.models import (
     StreamError,
     StreamFinish,
     StreamText,
-    SystemMessage,
-    UserMessage,
 )
 from laffyhand.agent.session.models import TitleConfig
 from laffyhand.agent.llm.facade import LLM

@@ -4,17 +4,18 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from laffyhand.agent.llm.specs.models import AssistantMessage, SystemMessage, UserMessage
 from laffyhand.agent.session import SessionManager, TitleConfig
-from laffyhand.agent.schemas import (
-    AgentState,
-    AssistantMessage,
-    CompactionConfig,
+from laffyhand.agent.llm.specs.models import (
     StreamText,
     StreamFinish,
     StreamError,
-    SystemMessage,
+)
+from laffyhand.agent.schemas import (
+    AgentState,
+    CompactionConfig,
+    SessionID,
     SessionUsage,
-    UserMessage,
 )
 
 
@@ -108,6 +109,7 @@ class TestCompactOnOverflow:
 
         state = AgentState(
             messages=[UserMessage(content="hi")],
+            session_id=SessionID("test"),
             usage=SessionUsage(context_size=128000),
         )
         config = CompactionConfig()
@@ -171,7 +173,7 @@ class TestCompactOnOverflow:
         state = AgentState(
             messages=msgs,
             turn_count=2,
-            session_id="test-session",
+            session_id=SessionID("test-session"),
             usage=SessionUsage(context_size=2000),
         )
         config = CompactionConfig(tail_turns=1)

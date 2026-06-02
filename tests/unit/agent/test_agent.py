@@ -14,36 +14,36 @@ from laffyhand.agent.agent import (
 
 class TestAgentInfo(TestCase):
     def test_default_mode_is_subagent(self):
-        info = AgentInfo(name="test")
+        info = AgentInfo(name="test", system_prompt="")
         self.assertEqual(info.mode, "subagent")
 
     def test_default_max_steps(self):
-        info = AgentInfo(name="test")
+        info = AgentInfo(name="test", system_prompt="")
         self.assertEqual(info.max_steps, 50)
 
     def test_default_hidden(self):
-        info = AgentInfo(name="test")
+        info = AgentInfo(name="test", system_prompt="")
         self.assertFalse(info.hidden)
 
     def test_default_description(self):
-        info = AgentInfo(name="test")
+        info = AgentInfo(name="test", system_prompt="")
         self.assertEqual(info.description, "")
 
     def test_default_permission(self):
-        info = AgentInfo(name="test")
+        info = AgentInfo(name="test", system_prompt="")
         self.assertEqual(info.permission, {})
 
     def test_optional_fields(self):
         info = AgentInfo(
             name="test",
+            system_prompt="You are a test agent",
             model="gpt-4",
-            prompt="You are a test agent",
             temperature=0.5,
             top_p=0.9,
             hidden=True,
         )
         self.assertEqual(info.model, "gpt-4")
-        self.assertEqual(info.prompt, "You are a test agent")
+        self.assertEqual(info.system_prompt, "You are a test agent")
         self.assertEqual(info.temperature, 0.5)
         self.assertEqual(info.top_p, 0.9)
         self.assertTrue(info.hidden)
@@ -191,7 +191,7 @@ class TestLoadAgentFile(TestCase):
             self.assertIsNotNone(info)
             self.assertEqual(info.name, "my-agent")
             self.assertEqual(info.description, "My custom agent")
-            self.assertEqual(info.prompt, "You are my agent.")
+            self.assertEqual(info.system_prompt, "You are my agent.")
         finally:
             path.unlink()
 
@@ -205,7 +205,7 @@ class TestLoadAgentFile(TestCase):
             info = _load_agent_file(path)
             self.assertIsNotNone(info)
             self.assertEqual(info.name, "code")
-            self.assertEqual(info.prompt, "You are a code agent.")
+            self.assertEqual(info.system_prompt, "You are a code agent.")
         finally:
             path.unlink()
 

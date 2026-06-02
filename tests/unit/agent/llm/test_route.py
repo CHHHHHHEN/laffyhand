@@ -3,12 +3,10 @@ from collections.abc import AsyncIterator
 
 from laffyhand.agent.llm._route import Route
 from laffyhand.agent.llm.specs import Protocol, Endpoint, Auth, Framing
-from laffyhand.agent.schemas import (
-    LLMRequest,
-    SystemMessage,
-    UserMessage,
+from laffyhand.agent.llm.specs.models import LLMRequest, SystemMessage, UserMessage, Header
+from laffyhand.agent.llm.specs.models import (
     StreamError,
-    StreamEvent,
+    LLMEvent,
     StreamText,
     StreamFinish,
     Usage,
@@ -16,25 +14,25 @@ from laffyhand.agent.schemas import (
 
 
 class _MockProtocol(Protocol):
-    def build_request(self, request: LLMRequest) -> dict:
+    def build_request(self, request: LLMRequest) -> dict:  # type: ignore[override]
         return {"model": request.model, "messages": []}
 
-    def parse_frame(self, frame: dict) -> list[StreamEvent]:
+    def parse_frame(self, frame: dict) -> list[LLMEvent]:  # type: ignore[override]
         return []
 
 
 class _MockEndpoint(Endpoint):
-    def build(self, model: str) -> str:
+    def build(self) -> str:
         return "http://mock/api/v1/chat/completions"
 
 
 class _MockAuth(Auth):
-    def apply(self, headers: dict) -> None:
-        headers["Authorization"] = "Bearer test"
+    def apply(self, headers: list) -> None:
+        headers.append(Header(key="Authorization", value="Bearer test"))
 
 
 class _MockFraming(Framing):
-    async def frames(self, response) -> AsyncIterator[dict]:
+    async def frames(self, response) -> AsyncIterator[dict]:  # type: ignore[override]
         raise RuntimeError("HTTP 400: test error")
         yield  # pragma: no cover
 
@@ -50,7 +48,7 @@ class TestRouteErrorHandling(unittest.TestCase):
             framing=_MockFraming(),
         )
         request = LLMRequest(
-            model="test-model",
+            model="test-model", provider="openai",
             messages=[SystemMessage(content="test"), UserMessage(content="hello")],
         )
 
@@ -70,7 +68,7 @@ class TestRouteErrorHandling(unittest.TestCase):
 
 
 class _FramingUnexpectedError(Framing):
-    async def frames(self, response) -> AsyncIterator[dict]:
+    async def frames(self, response) -> AsyncIterator[dict]:  # type: ignore[override]
         raise ValueError("unexpected internal error")
         yield  # pragma: no cover
 
@@ -86,7 +84,7 @@ class TestRouteUnexpectedError(unittest.TestCase):
             framing=_FramingUnexpectedError(),
         )
         request = LLMRequest(
-            model="test-model",
+            model="test-model", provider="openai",
             messages=[SystemMessage(content="test")],
         )
 
@@ -105,13 +103,13 @@ class TestRouteUnexpectedError(unittest.TestCase):
 
 
 class _MockProtocolHappy(Protocol):
-    def __init__(self, events: list[StreamEvent]):
+    def __init__(self, events: list[LLMEvent]):
         self._events = events
 
-    def build_request(self, request: LLMRequest) -> dict:
+    def build_request(self, request: LLMRequest) -> dict:  # type: ignore[override]
         return {"model": request.model, "messages": []}
 
-    def parse_frame(self, frame: dict) -> list[StreamEvent]:
+    def parse_frame(self, frame: dict) -> list[LLMEvent]:  # type: ignore[override]
         return self._events
 
 
@@ -119,7 +117,7 @@ class _MockFramingHappy(Framing):
     def __init__(self, frames: list[dict]):
         self._frames = frames
 
-    async def frames(self, response) -> AsyncIterator[dict]:
+    async def frames(self, response) -> AsyncIterator[dict]:  # type: ignore[override]
         for frame in self._frames:
             yield frame
 
@@ -143,7 +141,7 @@ class TestRouteHappyPath(unittest.TestCase):
             framing=_MockFramingHappy(frames=[{"dummy": True}]),
         )
         request = LLMRequest(
-            model="test-model",
+            model="test-model", provider="openai",
             messages=[SystemMessage(content="test")],
         )
 
@@ -184,7 +182,7 @@ class TestRouteHappyPath(unittest.TestCase):
             ),
         )
         request = LLMRequest(
-            model="test-model",
+            model="test-model", provider="openai",
             messages=[UserMessage(content="hi")],
         )
 
@@ -214,7 +212,7 @@ class TestRouteHappyPath(unittest.TestCase):
             framing=_MockFramingHappy(frames=[{"dummy": True}]),
         )
         request = LLMRequest(
-            model="test-model",
+            model="test-model", provider="openai",
             messages=[UserMessage(content="hi")],
         )
 

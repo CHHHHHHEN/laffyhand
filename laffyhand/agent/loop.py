@@ -1,172 +1,24 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator, Awaitable, Callable
-from typing import TYPE_CHECKING, Any, Literal, Union
+from typing import TYPE_CHECKING
 
 from loguru import logger
-from pydantic import BaseModel
 
-from laffyhand.agent.schemas import (
-    AgentState,
-    AssistantMessage,
-    CompactionConfig,
+from laffyhand.agent.llm.specs.models import AssistantMessage, SystemMessage, ToolMessage, UserMessage
+from laffyhand.agent.llm.specs.models import (
     StreamText,
     StreamReasoning,
     StreamToolCall,
     StreamFinish,
     StreamError,
     FinishReason,
-    SystemMessage,
     ToolCallContent,
-    ToolMessage,
     Usage,
-    UserMessage,
-    estimate_tokens,
 )
-from laffyhand.agent.compaction import (
-    compact,
-    compact_with_chain,
-    wrap_last_user,
-    attach_reminder,
-    estimate_messages_tokens,
-    is_overflow,
-)
-from laffyhand.agent.prune import prune
-from laffyhand.agent.tool_executor import ToolExecutor
-from laffyhand.agent.llm.facade import LLM
-from laffyhand.agent.tools import ToolRegistry
-
-if TYPE_CHECKING:
-    from laffyhand.agent.session import SessionManager
-    from laffyhand.agent.subagent.manager import SubagentManager
-
-
-# ── Streaming event types ──────────────────────────────────────
-
-
-class StepStart(BaseModel):
-    type: str = "step-start"
-    index: int
-
-
-class TextStart(BaseModel):
-    type: str = "text-start"
-    id: str
-
-
-class TextDelta(BaseModel):
-    type: str = "text-delta"
-    id: str
-    text: str
-
-
-class TextEnd(BaseModel):
-    type: str = "text-end"
-    id: str
-
-
-class ReasoningStart(BaseModel):
-    type: str = "reasoning-start"
-    id: str
-
-
-class ReasoningDelta(BaseModel):
-    type: str = "reasoning-delta"
-    id: str
-    text: str
-
-
-class ReasoningEnd(BaseModel):
-    type: str = "reasoning-end"
-    id: str
-
-
-class ToolCall(BaseModel):
-    type: str = "tool-call"
-    id: str
-    name: str
-    input: str
-
-
-class ToolResult(BaseModel):
-    type: str = "tool-result"
-    id: str
-    name: str
-    result: str
-
-
-class ToolError(BaseModel):
-    type: str = "tool-error"
-    id: str
-    name: str
-    message: str
-    error: bool = True
-
-
-class StepFinish(BaseModel):
-    type: str = "step-finish"
-    index: int
-    reason: str
-    usage: Usage | None = None
-
-
-class Finish(BaseModel):
-    type: str = "finish"
-    reason: str
-    usage: Usage | None = None
-    session_id: str | None = None
-    session_usage: dict[str, Any] | None = None
-    leftover_steer: str | None = None
-
-
-class ProviderError(BaseModel):
-    type: str = "provider-error"
-    message: str
-    retryable: bool = False
-
-
-class Compacting(BaseModel):
-    type: str = "compacting"
-    data: str
-
-
-class PermissionRequest(BaseModel):
-    type: str = "permission-request"
-    request_id: str
-    permission: str
-    pattern: str
-
-
-class SubAgentStart(BaseModel):
-    type: str = "subagent-start"
-    id: str
-    parent_id: str | None = None
-    agent_type: str
-    description: str
-    mode: Literal["foreground", "background"]
-    depth: int = 0
-
-
-class SubAgentDelta(BaseModel):
-    type: str = "subagent-delta"
-    id: str
-    kind: Literal["text", "reasoning", "tool", "tool_result", "error"]
-    content: str | None = None
-    tool_name: str | None = None
-    tool_input: str | None = None
-
-
-class SubAgentEnd(BaseModel):
-    type: str = "subagent-end"
-    id: str
-    status: Literal["completed", "error", "cancelled"]
-    summary: str | None = None
-    tool_count: int = 0
-    input_tokens: int = 0
-    output_tokens: int = 0
-
-
-StreamEvent = Union[
+from laffyhand.agent.schemas import (
+    AgentState,
+    CompactionConfig,
     StepStart,
     TextStart,
     TextDelta,
@@ -178,56 +30,19 @@ StreamEvent = Union[
     ToolResult,
     ToolError,
     StepFinish,
-    Finish,
-    ProviderError,
     Compacting,
-    PermissionRequest,
-    SubAgentStart,
-    SubAgentDelta,
-    SubAgentEnd,
-]
+    AgentEvent,
+)
+from laffyhand.agent.token_utils import estimate_tokens, estimate_messages_tokens
+from laffyhand.agent.compaction import compact_on_overflow
+from laffyhand.agent.prune import prune
+from laffyhand.agent.tool_executor import ToolExecutor
+from laffyhand.agent.llm.facade import LLM
+from laffyhand.agent.tools import ToolRegistry
 
-
-# ── Helpers ────────────────────────────────────────────────────
-
-
-async def _compact_on_overflow(
-    agent_state: AgentState,
-    llm: LLM,
-    compaction_config: CompactionConfig,
-    session_manager: SessionManager | None = None,
-    on_compacted: Callable[[str], None] | None = None,
-) -> bool:
-    tokens = estimate_messages_tokens(agent_state.messages)
-    if not is_overflow(tokens, agent_state.usage.context_size):
-        logger.debug(f"No compaction needed: {tokens} tokens within context limit")
-        return False
-    logger.info(f"Compaction triggered: {tokens} tokens")
-
-    if session_manager is not None and agent_state.session_id:
-        result = await compact_with_chain(agent_state, llm, compaction_config)
-        if result is None:
-            return False
-        summary, original_system, tail = result
-        child = session_manager.create_compacted_child(
-            parent_id=agent_state.session_id,
-            system_messages=original_system,
-            summary_content=summary,
-            tail_messages=tail,
-        )
-        summary_msg = SystemMessage(content=summary.strip())
-        agent_state.session_id = child.id
-        agent_state.messages = original_system + [summary_msg] + tail
-        agent_state.step = 0
-        if on_compacted is not None:
-            on_compacted(child.id)
-        return True
-
-    if await compact(agent_state, llm, compaction_config):
-        logger.info("Compaction succeeded")
-        return True
-    logger.warning("Compaction failed: could not compact conversation")
-    return False
+if TYPE_CHECKING:
+    from laffyhand.agent.session import SessionManager
+    from laffyhand.agent.subagent.manager import SubagentManager
 
 
 # ── Main agent loop ────────────────────────────────────────────
@@ -239,12 +54,11 @@ async def agent_loop(
     tool_registry: ToolRegistry,
     compaction_config: CompactionConfig = CompactionConfig(),
     max_steps: int = 50,
-    reminder: str | None = None,
     session_manager: SessionManager | None = None,
     subagent_manager: SubagentManager | None = None,
     preference_checker: Callable[[], Awaitable[str]] | None = None,
     on_compacted: Callable[[str], None] | None = None,
-) -> AsyncIterator[Any]:
+) -> AsyncIterator[AgentEvent]:
     context_size = agent_state.usage.context_size
     _compacted_this_step = False
 
@@ -262,14 +76,8 @@ async def agent_loop(
             logger.info(f"Reached max steps ({max_steps}), stopping")
             break
 
-        if reminder and agent_state.step == 1:
-            agent_state.messages = attach_reminder(agent_state.messages, reminder)
-
-        if agent_state.step > 1:
-            agent_state.messages = wrap_last_user(agent_state.messages)
-
         if agent_state.step > 1 and context_size and not _compacted_this_step:
-            if await _compact_on_overflow(
+            if await compact_on_overflow(
                 agent_state,
                 llm,
                 compaction_config,
@@ -457,7 +265,7 @@ async def agent_loop(
             if (
                 context_size
                 and not _compacted_this_step
-                and await _compact_on_overflow(
+                and await compact_on_overflow(
                     agent_state,
                     llm,
                     compaction_config,

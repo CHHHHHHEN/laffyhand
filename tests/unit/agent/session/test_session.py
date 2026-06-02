@@ -2,14 +2,11 @@ from __future__ import annotations
 
 import pytest
 
+from laffyhand.agent.llm.specs.models import AssistantMessage, SystemMessage, ToolMessage, UserMessage
 from laffyhand.agent.session import SessionManager
+from laffyhand.agent.llm.specs.models import ToolCallContent
 from laffyhand.agent.schemas import (
     AgentState,
-    AssistantMessage,
-    SystemMessage,
-    ToolCallContent,
-    ToolMessage,
-    UserMessage,
     SessionUsage,
 )
 
@@ -402,7 +399,7 @@ class TestHelpers:
 
     def test_message_to_record_assistant_with_tokens(self) -> None:
         from laffyhand.agent.session.manager import _message_to_record
-        from laffyhand.agent.schemas import Usage
+        from laffyhand.agent.llm.specs.models import Usage
 
         msg = AssistantMessage(
             content="Hello", tokens=Usage(input_tokens=10, output_tokens=5)

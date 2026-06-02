@@ -1,13 +1,18 @@
-from typing import Any, Optional, Literal, cast, get_args
+from typing import Any, ClassVar, Union, Optional, Literal, cast, get_args
 from pydantic import BaseModel, Field as F
 from loguru import logger
 
-from laffyhand.agent.schemas import (
-    LLMRequest,
+from laffyhand.agent.llm.specs.models import (
+    AssistantMessage, 
+    LLMRequest, 
+    Frame,
+    ProviderRequest, 
     Message,
-    AssistantMessage,
+    ToolCallAccumulator,
+)
+from laffyhand.agent.llm.specs.models import (
     ToolDefinition,
-    StreamEvent,
+    LLMEvent,
     StreamText,
     StreamReasoning,
     StreamToolCall,
@@ -16,9 +21,85 @@ from laffyhand.agent.schemas import (
     FinishReason,
 )
 from laffyhand.agent.llm.specs import Protocol, Endpoint
+from laffyhand.agent.llm.specs.models import ProviderID
 
 
-# ─── OpenAI raw wire models ─────────────────────────────────────
+# ─── Request wire models ─────────────────────────────────────────
+
+
+class OpenAIRequestToolCallFunction(BaseModel):
+    name: str
+    arguments: str
+
+
+class OpenAIRequestToolCall(BaseModel):
+    id: str
+    type: Literal["function"] = "function"
+    function: OpenAIRequestToolCallFunction
+
+
+class OpenAISystemMessage(BaseModel):
+    role: Literal["system"] = "system"
+    content: str
+
+
+class OpenAIUserMessage(BaseModel):
+    role: Literal["user"] = "user"
+    content: str
+
+
+class OpenAIAssistantMessage(BaseModel):
+    role: Literal["assistant"] = "assistant"
+    content: Optional[str] = None
+    reasoning_content: Optional[str] = None
+    tool_calls: Optional[list[OpenAIRequestToolCall]] = None
+
+
+class OpenAIToolMessage(BaseModel):
+    role: Literal["tool"] = "tool"
+    tool_call_id: str
+    content: str
+
+
+class OpenAIToolFunction(BaseModel):
+    name: str
+    description: str = ""
+    parameters: dict[str, Any] = F(default_factory=dict)
+
+
+class OpenAIToolDefinition(BaseModel):
+    type: Literal["function"] = "function"
+    function: OpenAIToolFunction
+
+
+OpenAIRequestMessage = Union[OpenAISystemMessage, OpenAIUserMessage, OpenAIAssistantMessage, OpenAIToolMessage]
+
+
+class OpenAICompletionRequest(ProviderRequest):
+    model: str
+    messages: list[OpenAIRequestMessage]
+    stream: Optional[bool] = None
+    stream_options: Optional[dict[str, Any]] = None
+    temperature: Optional[float] = None
+    top_p: Optional[float] = None
+    n: Optional[int] = None
+    max_completion_tokens: Optional[int] = None
+    stop: Optional[str | list[str]] = None
+    presence_penalty: Optional[float] = None
+    frequency_penalty: Optional[float] = None
+    logit_bias: Optional[dict[str, float]] = None
+    user: Optional[str] = None
+    seed: Optional[int] = None
+    tools: Optional[list[OpenAIToolDefinition]] = None
+    tool_choice: Optional[str | dict[str, Any]] = None
+    response_format: Optional[dict[str, Any]] = None
+    metadata: Optional[dict[str, Any]] = None
+    store: Optional[bool] = None
+    reasoning_effort: Optional[Literal["low", "medium", "high"]] = None
+
+
+# ─── Response wire models ────────────────────────────────────────
+# Streaming
 
 
 class OpenAIToolCallDeltaFunction(BaseModel):
@@ -45,6 +126,17 @@ class OpenAIChoice(BaseModel):
     index: int = 0
 
 
+class OpenAIChatChunk(BaseModel):
+    id: Optional[str] = None
+    object: Optional[str] = None
+    created: Optional[int] = None
+    model: Optional[str] = None
+    system_fingerprint: Optional[str] = None
+    choices: list[OpenAIChoice] = F(default_factory=list)
+    usage: Optional["OpenAIChatUsage"] = None
+
+
+
 class OpenAIChatUsageDetails(BaseModel):
     cached_tokens: Optional[int] = None
     cache_write_tokens: Optional[int] = None
@@ -60,93 +152,76 @@ class OpenAIChatUsage(BaseModel):
     prompt_tokens_details: Optional[OpenAIChatUsageDetails] = None
     completion_tokens_details: Optional[OpenAIChatCompletionDetails] = None
 
-
-class OpenAIChatChunk(BaseModel):
-    id: Optional[str] = None
-    object: Optional[str] = None
-    created: Optional[int] = None
-    model: Optional[str] = None
-    system_fingerprint: Optional[str] = None
-    choices: list[OpenAIChoice] = F(default_factory=list)
-    usage: Optional[OpenAIChatUsage] = None
-
-
-# ─── Internal → OpenAI conversion ────────────────────────────────
-
-
-def _message_to_openai(msg: Message) -> dict[str, Any]:
-    if msg.role == "system":
-        return {"role": "system", "content": msg.content}
-    if msg.role == "user":
-        return {"role": "user", "content": msg.content}
-    if msg.role == "assistant":
-        assert isinstance(msg, AssistantMessage)
-        d: dict[str, Any] = {"role": "assistant"}
-        if msg.content is not None:
-            d["content"] = msg.content
-        elif not msg.tool_calls:
-            # API requires at least content or tool_calls; provide a fallback.
-            d["content"] = "[Empty response]"
-        if msg.reasoning is not None:
-            d["reasoning_content"] = msg.reasoning
-        if msg.tool_calls:
-            d["tool_calls"] = [
-                {
-                    "id": tc.tool_call_id,
-                    "type": "function",
-                    "function": {"name": tc.tool_name, "arguments": tc.args},
-                }
-                for tc in msg.tool_calls
-            ]
-        return d
-    if msg.role == "tool":
-        return {
-            "role": "tool",
-            "tool_call_id": msg.tool_call_id,
-            "content": msg.content,
-        }
-    logger.warning(f"Unknown message role: {msg.role}")
-    return {}
-
-
-def _tool_definitions_to_openai(
-    definitions: list[ToolDefinition],
-) -> list[dict[str, Any]]:
-    return [
-        {
-            "type": "function",
-            "function": {
-                "name": d.name,
-                "description": d.description.strip(),
-                "parameters": d.input_schema,
-            },
-        }
-        for d in definitions
-    ]
-
-
 # ─── OpenAI Protocol ─────────────────────────────────────────────
 
 
 class OpenAIProtocol(Protocol):
-    def __init__(self) -> None:
-        self._tool_call_acc: dict[int, dict[str, Any]] = {}
+    provider_id: ClassVar[ProviderID] = ProviderID("openai")
 
-    def build_request(self, request: LLMRequest) -> dict[str, Any]:
+    def __init__(self) -> None:
+        self._tool_call_acc: dict[int, ToolCallAccumulator] = {}
+
+    @staticmethod
+    def _tool_definitions_to_openai(
+        definitions: list[ToolDefinition],
+    ) -> list[OpenAIToolDefinition]:
+        return [
+            OpenAIToolDefinition(
+                function=OpenAIToolFunction(
+                    name=d.name,
+                    description=d.description.strip(),
+                    parameters=d.input_schema,
+                ),
+            )
+            for d in definitions
+        ]
+
+    @staticmethod
+    def _message_to_openai(msg: Message) -> OpenAIRequestMessage:
+        if msg.role == "system":
+            return OpenAISystemMessage(content=msg.content)
+        if msg.role == "user":
+            return OpenAIUserMessage(content=msg.content)
+        if msg.role == "assistant":
+            assert isinstance(msg, AssistantMessage)
+            content: str | None = msg.content
+            if content is None and not msg.tool_calls:
+                content = "[Empty response]"
+            tool_calls: list[OpenAIRequestToolCall] | None = None
+            if msg.tool_calls:
+                tool_calls = [
+                    OpenAIRequestToolCall(
+                        id=tc.tool_call_id,
+                        function=OpenAIRequestToolCallFunction(name=tc.tool_name, arguments=tc.args),
+                    )
+                    for tc in msg.tool_calls
+                ]
+            return OpenAIAssistantMessage(
+                content=content,
+                reasoning_content=msg.reasoning,
+                tool_calls=tool_calls,
+            )
+        if msg.role == "tool":
+            return OpenAIToolMessage(
+                tool_call_id=msg.tool_call_id,
+                content=msg.content,
+            )
+        logger.warning(f"Unknown message role: {msg.role}")
+        return OpenAIUserMessage(content="")
+
+    def build_request(self, request: LLMRequest) -> OpenAICompletionRequest:
         self._tool_call_acc.clear()
-        messages = [_message_to_openai(m) for m in request.messages]
-        body: dict[str, Any] = {
-            "model": request.model,
-            "messages": messages,
-            "stream": True,
-            "stream_options": {"include_usage": True},
-        }
-        if request.tools:
-            body["tools"] = _tool_definitions_to_openai(request.tools)
+        messages = [self._message_to_openai(m) for m in request.messages]
         logger.debug(
             f"OpenAI request: model={request.model}, {len(messages)} messages, tools={bool(request.tools)}"
         )
-        return body
+        return OpenAICompletionRequest(
+            model=request.model,
+            messages=messages,
+            stream=True,
+            stream_options={"include_usage": True},
+            tools=self._tool_definitions_to_openai(request.tools) if request.tools else None,
+        )
 
     @staticmethod
     def _openai_usage_to_internal(u: OpenAIChatUsage) -> Usage:
@@ -160,9 +235,9 @@ class OpenAIProtocol(Protocol):
             cache_write_tokens=ptd.cache_write_tokens if ptd else None,
         )
 
-    def parse_frame(self, frame: dict[str, Any]) -> list[StreamEvent]:
-        chunk = OpenAIChatChunk.model_validate(frame)
-        events: list[StreamEvent] = []
+    def parse_frame(self, frame: Frame) -> list[LLMEvent]:
+        chunk = OpenAIChatChunk.model_validate(frame.data)
+        events: list[LLMEvent] = []
 
         if not chunk.choices:
             return events
@@ -183,13 +258,13 @@ class OpenAIProtocol(Protocol):
                     logger.trace(
                         f"Tool call start: idx={idx}, id={tc.id}, name={tc.function.name if tc.function else '?'}"
                     )
-                    self._tool_call_acc[idx] = {
-                        "tool_call_id": tc.id,
-                        "tool_name": tc.function.name if tc.function else "",
-                        "args": tc.function.arguments if tc.function else "",
-                    }
+                    self._tool_call_acc[idx] = ToolCallAccumulator(
+                        tool_call_id=tc.id,
+                        tool_name=(tc.function.name if tc.function else "") or "",
+                        args=(tc.function.arguments if tc.function else "") or "",
+                    )
                 elif idx in self._tool_call_acc and tc.function:
-                    self._tool_call_acc[idx]["args"] += tc.function.arguments or ""
+                    self._tool_call_acc[idx].args += tc.function.arguments or ""
 
         if finish_reason:
             if finish_reason == "tool_calls" and self._tool_call_acc:
@@ -197,9 +272,9 @@ class OpenAIProtocol(Protocol):
                     acc = self._tool_call_acc.pop(idx)
                     events.append(
                         StreamToolCall(
-                            tool_call_id=acc["tool_call_id"],
-                            tool_name=acc["tool_name"],
-                            args=acc["args"],
+                            tool_call_id=acc.tool_call_id,
+                            tool_name=acc.tool_name,
+                            args=acc.args,
                         )
                     )
             usage = self._openai_usage_to_internal(chunk.usage) if chunk.usage else None
@@ -225,5 +300,5 @@ class OpenAIEndpoint(Endpoint):
     def __init__(self, base_url: str) -> None:
         self.base_url = base_url.rstrip("/")
 
-    def build(self, model: str) -> str:
+    def build(self) -> str:
         return f"{self.base_url}/v1/chat/completions"
