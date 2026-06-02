@@ -179,7 +179,7 @@ class SubAgentEnd(BaseModel):
     output_tokens: int = 0
 
 
-StreamEvent = Union[
+AgentEvent = Union[
     StepStart,
     TextStart,
     TextDelta,

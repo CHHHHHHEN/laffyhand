@@ -21,7 +21,7 @@ from laffyhand.agent.schemas import (
     Finish,
     ProviderError,
     Compacting,
-    StreamEvent,
+    AgentEvent,
 )
 from laffyhand.gateway.protocol import (
     Request,
@@ -45,7 +45,7 @@ class RPCError(Exception):
 # ── Event reconstruction ───────────────────────────────────────
 # Map type strings to the corresponding Pydantic model.
 
-_EVENT_TYPE_MAP: dict[str, type[StreamEvent]] = {
+_EVENT_TYPE_MAP: dict[str, type[AgentEvent]] = {
     "step-start": StepStart,
     "text-start": TextStart,
     "text-delta": TextDelta,
@@ -63,7 +63,7 @@ _EVENT_TYPE_MAP: dict[str, type[StreamEvent]] = {
 }
 
 
-def event_from_params(params: dict[str, Any]) -> StreamEvent:
+def event_from_params(params: dict[str, Any]) -> AgentEvent:
     type_ = params.get("type", "")
     cls = _EVENT_TYPE_MAP.get(type_)
     if cls is None:
@@ -212,7 +212,7 @@ class GatewayClient:
             params["session_id"] = session_id
         await self._request("session/archive", params)
 
-    async def chat_stream(self, message: str) -> AsyncIterator[StreamEvent]:
+    async def chat_stream(self, message: str) -> AsyncIterator[AgentEvent]:
         async for params in self._request_stream("chat/stream", {"message": message}):
             if params.get("type") == "finish":
                 yield event_from_params(params)

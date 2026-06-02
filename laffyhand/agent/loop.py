@@ -33,7 +33,7 @@ from laffyhand.agent.schemas import (
     ToolError,
     StepFinish,
     Compacting,
-    StreamEvent,
+    AgentEvent,
 )
 from laffyhand.agent.compaction import (
     compact,
@@ -109,7 +109,7 @@ async def agent_loop(
     subagent_manager: SubagentManager | None = None,
     preference_checker: Callable[[], Awaitable[str]] | None = None,
     on_compacted: Callable[[str], None] | None = None,
-) -> AsyncIterator[StreamEvent]:
+) -> AsyncIterator[AgentEvent]:
     context_size = agent_state.usage.context_size
     _compacted_this_step = False
 
