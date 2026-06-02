@@ -6,6 +6,7 @@ from laffyhand.agent.llm.specs.models import Usage
 from laffyhand.agent.schemas import (
     AgentState,
     CompactionConfig,
+    SessionID,
     SessionUsage,
 )
 from laffyhand.agent.loop import agent_loop
@@ -51,6 +52,7 @@ class TestAgentLoopAssistantMessage(unittest.TestCase):
                 SystemMessage(content="You are a test assistant."),
                 UserMessage(content=user_text),
             ],
+            session_id=SessionID("test"),
             usage=SessionUsage(context_size=100_000),
         )
 

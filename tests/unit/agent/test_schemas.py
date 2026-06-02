@@ -6,6 +6,7 @@ from laffyhand.agent.llm.specs.models import (
     Usage,
 )
 from laffyhand.agent.schemas import (
+    SessionID,
     SessionUsage,
     estimate_tokens,
     AgentState,
@@ -87,11 +88,11 @@ class TestCompactionConfig(unittest.TestCase):
 
 class TestAgentState(unittest.TestCase):
     def test_defaults(self):
-        state = AgentState(messages=[])
+        state = AgentState(messages=[], session_id=SessionID("test"))
         self.assertEqual(state.turn_count, 0)
         self.assertEqual(state.step, 0)
 
     def test_increment_step(self):
-        state = AgentState(messages=[])
+        state = AgentState(messages=[], session_id=SessionID("test"))
         state.step += 1
         self.assertEqual(state.step, 1)

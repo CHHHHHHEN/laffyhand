@@ -15,6 +15,7 @@ from laffyhand.agent.llm.specs.models import SystemMessage, ModelID, ProviderID
 from laffyhand.agent.schemas import (
     AgentState,
     CompactionConfig,
+    SessionID,
     SessionUsage,
 )
 from laffyhand.agent.agent import AgentRegistry
@@ -293,7 +294,7 @@ class AgentRuntime:
         )
         state = AgentState(
             messages=[system_message],
-            session_id=session.id,
+            session_id=SessionID(session.id),
             usage=SessionUsage(context_size=self._context_size),
         )
         self._states[session.id] = state
@@ -328,7 +329,7 @@ class AgentRuntime:
         if loaded is None:
             return False
         loaded.usage.context_size = self._context_size
-        loaded.session_id = session_id  # keep key consistent with _states dict
+        loaded.session_id = SessionID(session_id)  # keep key consistent with _states dict
         self._states[session_id] = loaded
         self._session_id = session_id
         return True
@@ -347,7 +348,7 @@ class AgentRuntime:
         )
         state = AgentState(
             messages=[system_message] if system_message else [],
-            session_id=session.id,
+            session_id=SessionID(session.id),
             turn_count=0,
             step=0,
             usage=SessionUsage(context_size=self._context_size),
@@ -365,7 +366,7 @@ class AgentRuntime:
         self.save_current_state()
         child = self.session_manager.fork(state.session_id)
         forked = copy.deepcopy(state)
-        forked.session_id = child.id
+        forked.session_id = SessionID(child.id)
         self._states[child.id] = forked
         self._session_id = child.id
         return child.id

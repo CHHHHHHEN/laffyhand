@@ -14,6 +14,7 @@ from laffyhand.agent.schemas import StepFinish, Finish, PermissionRequest
 from laffyhand.agent.tools.permission import request_callback as _pm_callback
 from laffyhand.agent.schemas import (
     AgentState,
+    SessionID,
     SessionUsage,
 )
 from laffyhand.gateway.protocol import (
@@ -546,7 +547,7 @@ async def _ensure_session(
     )
     runtime.state = AgentState(
         messages=[system_message],
-        session_id=session.id,
+        session_id=SessionID(session.id),
         usage=SessionUsage(context_size=runtime.context_size),
     )
     runtime._schedule_title_generation(session.id, "on_create")
@@ -689,10 +690,10 @@ async def handle_session_set_config(
     if not runtime.state:
         raise ValueError("No active session")
     runtime.complete_current_session()
-    runtime.state.session_id = runtime.session_manager.create(
+    runtime.state.session_id = SessionID(runtime.session_manager.create(
         provider=provider,
         model=model,
-    ).id
+    ).id)
     return {"session_id": runtime.state.session_id}
 
 

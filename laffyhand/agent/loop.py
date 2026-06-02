@@ -19,6 +19,7 @@ from laffyhand.agent.llm.specs.models import (
 from laffyhand.agent.schemas import (
     AgentState,
     CompactionConfig,
+    SessionID,
     estimate_tokens,
     StepStart,
     TextStart,
@@ -80,7 +81,7 @@ async def _compact_on_overflow(
             tail_messages=tail,
         )
         summary_msg = SystemMessage(content=summary.strip())
-        agent_state.session_id = child.id
+        agent_state.session_id = SessionID(child.id)
         agent_state.messages = original_system + [summary_msg] + tail
         agent_state.step = 0
         if on_compacted is not None:

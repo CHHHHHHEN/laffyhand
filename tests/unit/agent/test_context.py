@@ -15,6 +15,7 @@ from laffyhand.agent.llm.specs.models import (
 from laffyhand.agent.schemas import (
     AgentState,
     CompactionConfig,
+    SessionID,
     SessionUsage,
 )
 from laffyhand.agent.compaction import (
@@ -238,6 +239,7 @@ class TestCompact(unittest.TestCase):
     async def test_compact_no_head_returns_false(self):
         state = AgentState(
             messages=[SystemMessage(content="sys"), UserMessage(content="hi")],
+            session_id=SessionID("test"),
             usage=SessionUsage(context_size=0),
         )
         config = CompactionConfig(tail_turns=5)
@@ -253,6 +255,7 @@ class TestCompact(unittest.TestCase):
             msgs.append(AssistantMessage(content=f"asst {i}"))
         state = AgentState(
             messages=msgs,
+            session_id=SessionID("test"),
             usage=SessionUsage(context_size=100_000),
         )
         config = CompactionConfig(tail_turns=2, preserve_recent_tokens=6)
@@ -285,6 +288,7 @@ class TestCompact(unittest.TestCase):
             msgs.append(AssistantMessage(content=f"asst {i}"))
         state = AgentState(
             messages=msgs,
+            session_id=SessionID("test"),
             usage=SessionUsage(context_size=100_000),
         )
         config = CompactionConfig(tail_turns=2, preserve_recent_tokens=6)
@@ -304,6 +308,7 @@ class TestCompactWithChain(unittest.TestCase):
     async def test_compact_with_chain_no_head_returns_none(self):
         state = AgentState(
             messages=[SystemMessage(content="sys"), UserMessage(content="hi")],
+            session_id=SessionID("test"),
             usage=SessionUsage(context_size=0),
         )
         config = CompactionConfig(tail_turns=5)
@@ -319,6 +324,7 @@ class TestCompactWithChain(unittest.TestCase):
             msgs.append(AssistantMessage(content=f"asst {i}"))
         state = AgentState(
             messages=msgs,
+            session_id=SessionID("test"),
             usage=SessionUsage(context_size=100_000),
         )
         config = CompactionConfig(tail_turns=2, preserve_recent_tokens=6)
@@ -350,6 +356,7 @@ class TestCompactWithChain(unittest.TestCase):
             msgs.append(AssistantMessage(content=f"asst {i}"))
         state = AgentState(
             messages=msgs,
+            session_id=SessionID("test"),
             usage=SessionUsage(context_size=100_000),
         )
         config = CompactionConfig(tail_turns=2, preserve_recent_tokens=6)
@@ -432,6 +439,7 @@ class TestSummaryChain(unittest.TestCase):
             msgs.append(AssistantMessage(content=f"asst {i}"))
         state = AgentState(
             messages=msgs,
+            session_id=SessionID("test"),
             usage=SessionUsage(context_size=100_000),
         )
         config = CompactionConfig(tail_turns=1, preserve_recent_tokens=4)

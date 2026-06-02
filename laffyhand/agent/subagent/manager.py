@@ -12,6 +12,7 @@ from laffyhand.agent.llm.specs.models import SystemMessage, UserMessage
 from laffyhand.agent.schemas import (
     AgentState,
     CompactionConfig,
+    SessionID,
     SessionUsage,
 )
 from laffyhand.agent.schemas import (
@@ -20,6 +21,9 @@ from laffyhand.agent.schemas import (
     SubAgentEnd,
     TextDelta,
     ReasoningDelta,
+    ToolCall as StreamToolCall,
+    ToolResult as StreamToolResult,
+    ToolError as StreamToolError,
 )
 from laffyhand.agent.tools.permission import SubagentPermissions
 
@@ -89,7 +93,7 @@ def build_subagent_state(
 
     child_state = AgentState(
         messages=[system_msg, user_msg],
-        session_id=child_session.id,
+        session_id=SessionID(child_session.id),
         usage=SessionUsage(context_size=0),
     )
     return child_state, child_registry

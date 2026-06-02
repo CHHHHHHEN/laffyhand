@@ -14,6 +14,7 @@ from laffyhand.agent.llm.specs.models import (
 from laffyhand.agent.schemas import (
     AgentState,
     CompactionConfig,
+    SessionID,
     SessionUsage,
 )
 
@@ -108,6 +109,7 @@ class TestCompactOnOverflow:
 
         state = AgentState(
             messages=[UserMessage(content="hi")],
+            session_id=SessionID("test"),
             usage=SessionUsage(context_size=128000),
         )
         config = CompactionConfig()
@@ -171,7 +173,7 @@ class TestCompactOnOverflow:
         state = AgentState(
             messages=msgs,
             turn_count=2,
-            session_id="test-session",
+            session_id=SessionID("test-session"),
             usage=SessionUsage(context_size=2000),
         )
         config = CompactionConfig(tail_turns=1)

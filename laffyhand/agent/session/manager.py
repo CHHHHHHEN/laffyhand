@@ -20,6 +20,7 @@ from laffyhand.agent.session.schema import create_tables, has_fts5
 from laffyhand.agent.llm.specs.models import ToolCallContent
 from laffyhand.agent.schemas import (
     AgentState,
+    SessionID,
     SessionUsage,
 )
 
@@ -399,7 +400,7 @@ class SessionManager:
             messages=messages,
             turn_count=session.turn_count,
             step=session.step_count,
-            session_id=session.id,
+            session_id=SessionID(session.id),
             usage=SessionUsage(
                 total_input=session.input_tokens,
                 total_output=session.output_tokens,

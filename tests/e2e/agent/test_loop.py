@@ -11,6 +11,7 @@ from laffyhand.agent.llm.specs.models import (
 from laffyhand.agent.schemas import (
     AgentState,
     CompactionConfig,
+    SessionID,
     SessionUsage,
 )
 
@@ -59,6 +60,7 @@ class TestAgentLoopE2E(unittest.TestCase):
     def _make_state(self, context_size=100_000) -> AgentState:
         return AgentState(
             messages=[SystemMessage(content="You are a helpful assistant.")],
+            session_id=SessionID("test"),
             usage=SessionUsage(context_size=context_size),
         )
 
