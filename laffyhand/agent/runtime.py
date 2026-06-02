@@ -70,7 +70,7 @@ class AgentRuntime:
         self._config = config
         self.llm = llm
 
-        self.event_sink: Callable[[Any], Awaitable[None]] | None = None
+        self._event_sinks: dict[str, Callable[[Any], Awaitable[None]]] = {}
         self._current_subagent_id: str | None = None
         self._current_subagent_depth: int = 0
 
@@ -402,7 +402,8 @@ class AgentRuntime:
         state = self._states.get(sid)
         assert state is not None, f"state not found for session {sid}"
         self._active_session_id = sid
-        self.event_sink = event_sink
+        if event_sink is not None:
+            self._event_sinks[sid] = event_sink
         llm = self._llm_for_session(sid)
         try:
             async for event in agent_loop(
@@ -421,7 +422,7 @@ class AgentRuntime:
                 yield event
         finally:
             self._active_session_id = None
-            self.event_sink = None
+            self._event_sinks.pop(sid, None)
 
     async def create_subagent(
         self,
@@ -480,7 +481,7 @@ class AgentRuntime:
                 session_manager=self.session_manager,
                 compaction_config=self.compaction_config,
                 on_complete=_on_complete,
-                event_sink=self.event_sink,
+                event_sink=self._event_sinks.get(parent_session_id),
                 task_id=task_id,
                 parent_subagent_id=parent_subagent_id,
                 subagent_depth=subagent_depth,
@@ -499,7 +500,7 @@ class AgentRuntime:
                 parent_session_id,
                 agent_info,
                 prompt,
-                event_sink=self.event_sink,
+                event_sink=self._event_sinks.get(parent_session_id),
                 task_id=task_id,
                 parent_subagent_id=parent_subagent_id,
                 subagent_depth=subagent_depth,

@@ -350,6 +350,7 @@ async def handle_chat_stream(
 
     try:
         async with runtime.get_session_lock(session_id):
+            cancelled = False
             try:
                 async for event in runtime.run_agent_turn(
                     session_id=session_id,
@@ -369,25 +370,12 @@ async def handle_chat_stream(
                     if isinstance(event, StepFinish):
                         finish_reason = event.reason
                         usage_info = event.usage
-
-                # Final drain after loop ends
-                if runtime.subagent_manager:
-                    bg_events = await runtime.subagent_manager.drain_events(session_id)
-                    for bg_event in bg_events:
-                        await _event_sink(bg_event)
             except asyncio.CancelledError:
+                cancelled = True
                 finish_reason = "cancelled"
                 logger.info(
                     f"Chat stream cancelled for session {session_id} (conn={conn_id})"
                 )
-                err_notif = Notification(
-                    method="event",
-                    params={
-                        "type": "error",
-                        "data": "Stream cancelled",
-                    },
-                )
-                await transport.send(err_notif.json())
             except Exception:
                 logger.exception(
                     f"Chat stream error for session {session_id} (conn={conn_id})"
@@ -403,6 +391,25 @@ async def handle_chat_stream(
                     await transport.send(err_notif.json())
                 except Exception:
                     logger.warning("Failed to send error event to client in chat stream")
+            finally:
+                # Drain background subagent events (also on cancel/error)
+                if runtime.subagent_manager:
+                    bg_events = await runtime.subagent_manager.drain_events(session_id)
+                    for bg_event in bg_events:
+                        try:
+                            await _event_sink(bg_event)
+                        except Exception:
+                            logger.warning("Failed to relay background event")
+
+                if cancelled:
+                    cancel_notif = Notification(
+                        method="event",
+                        params={
+                            "type": "cancelled",
+                            "data": "Stream cancelled",
+                        },
+                    )
+                    await transport.send(cancel_notif.json())
 
         # Generate title synchronously before finish event
         state = runtime.get_state(session_id)

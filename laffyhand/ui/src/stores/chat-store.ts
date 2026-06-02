@@ -162,8 +162,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
             ? { ...tc, status, ...(result !== undefined ? { result } : {}), ...(isError !== undefined ? { isError } : {}) }
             : tc,
         )
-        const changed = updated.some((tc, i) => tc !== msg.toolCalls![i])
-        return changed ? { ...msg, toolCalls: updated } : msg
+        return { ...msg, toolCalls: updated }
       })
       return { messages }
     }),
@@ -173,12 +172,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
       const content = state.streamContent || ""
       const reasoning = state.streamReasoning || undefined
 
-      // Finalize tool calls — set any still-running to "completed"
       const finalizedToolCalls = state.streamToolCalls.length > 0
-        ? state.streamToolCalls.map((tc) => ({
-            ...tc,
-            status: tc.status === "running" ? "completed" as const : tc.status,
-          }))
+        ? state.streamToolCalls
         : undefined
 
       const assistantMessage: Message = {
@@ -210,6 +205,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
         streamToolCalls: [],
         currentAssistantMessageId: null,
         foregroundSubagents: [],
+        backgroundSubagents: state.backgroundSubagents.filter(
+          (sa) => sa.status !== "completed" && sa.status !== "error",
+        ),
         sessionUsage: sessionUsage ?? state.sessionUsage,
         turnUsage,
         _turnStartUsage: null,
@@ -304,7 +302,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
               tools: [...sa.tools, { name: event.tool_name ?? "", input: event.tool_input ?? "" }],
               toolCount: sa.toolCount + 1,
             }
+          case "error":
+            return { ...sa, status: "error", text: sa.text + (event.content ?? "") }
           default:
+            console.warn("updateSubagent: unhandled event kind:", event.kind)
             return sa
         }
       }

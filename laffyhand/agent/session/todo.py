@@ -4,7 +4,6 @@ import json
 import sqlite3
 from typing import Any, Optional, cast
 
-from loguru import logger
 from typing import TYPE_CHECKING
 from laffyhand.agent.session.models import (
     TodoCreate,
@@ -142,16 +141,14 @@ class TodoManager:
                 depends_on=t.depends_on,
             )
             if t.depends_on:
-                resolved = [d for d in t.depends_on if d in ids or d in existing_ids]
-                unresolved = [
-                    d for d in t.depends_on if d not in ids and d not in existing_ids
-                ]
-                if unresolved:
-                    logger.warning(
-                        f"add_tasks: dependencies {unresolved} not resolvable in batch for task {t.content[:50]}"
-                    )
-                self._validate_depends(resolved, existing, task_id=item.id)
-                item.depends_on = resolved
+                for dep_id in t.depends_on:
+                    if dep_id not in ids and dep_id not in existing_ids:
+                        raise ValueError(
+                            f"Dependency '{dep_id}' for task '{t.content[:50]}' "
+                            f"does not exist in this batch or existing tasks"
+                        )
+                self._validate_depends(t.depends_on, existing, task_id=item.id)
+                item.depends_on = t.depends_on
             else:
                 item.depends_on = []
             now = _utcnow()

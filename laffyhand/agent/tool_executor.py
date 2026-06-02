@@ -23,10 +23,9 @@ class ToolExecutionResult:
 def _try_parse_json(raw: str) -> dict[str, Any] | None:
     """Best-effort JSON parsing with recovery for common LLM-induced issues.
 
-    LLMs sometimes generate tool-call arguments with doubled characters
-    (e.g. ``{{""commandcommand"": : ""ppwdwd""}}`` instead of
-    ``{"command": "pwd"}``).  This function tries multiple strategies
-    before giving up.
+    LLMs sometimes generate tool-call arguments with doubled structural
+    characters or word duplication (e.g. ``commandcommand``).  This
+    function tries multiple strategies before giving up.
     """
     cleaned = raw.strip()
     if not cleaned:
@@ -56,11 +55,9 @@ def _try_parse_json(raw: str) -> dict[str, Any] | None:
     except json.JSONDecodeError:
         pass
 
-    # ── Word/chunk deduplication ──────────────────────────────────
-    # Some LLMs double every word/token in keys and string values,
-    # either as whole-word duplication ("commandcommand") or
-    # per-chunk duplication ("ppwdwd" from "p"+"wd" chunks).
-    # Strategy 1: exact word duplication (e.g. "commandcommand")
+    # ── Word deduplication ────────────────────────────────────────
+    # Some LLMs double entire words in keys and string values
+    # (e.g. "commandcommand" instead of "command").
     def _dedup_exact(m: re.Match[str]) -> str:
         word = m.group(0)
         half = len(word) // 2
@@ -71,65 +68,6 @@ def _try_parse_json(raw: str) -> dict[str, Any] | None:
     cleaned = re.sub(
         r'(?<=["\'])\w{4,}(?=["\'])|(?<=[\s,{])\w{4,}(?=[:])', _dedup_exact, cleaned
     )
-
-    try:
-        return cast(dict[str, Any], json.loads(cleaned))
-    except json.JSONDecodeError:
-        pass
-
-    # Strategy 2: chunk-level doubling — try to find consecutive
-    # repeated substrings of varying lengths.  Handles cases like:
-    #   "ppwdwd"  ← "p"+"wd" chunks each doubled
-    #   "获取获取当前当前工作工作目录目录"  ← each CJK chunk doubled
-    #   "获取获取" → "获取"
-    #
-    # The approach: for each JSON key or string value, try a greedy
-    # scan that removes one copy when the string looks like it's
-    # composed of doubled chunks.
-    import re as _re
-
-    def _dedup_chunks(s: str) -> str:
-        """Try to remove consecutive doubled chunks from a string."""
-        if len(s) < 2:
-            return s
-        # If the whole string is exactly doubled, short-circuit
-        half = len(s) // 2
-        if half >= 1 and s[:half] == s[half:]:
-            return s[:half]
-        # Greedy scan: for increasing chunk sizes, see if the string
-        # consists of pairs of identical chunks.
-        out: list[str] = []
-        i = 0
-        n = len(s)
-        while i < n:
-            best = 1  # minimum chunk size
-            found = False
-            # Try chunk sizes from longest to shortest for better matching
-            for clen in range((n - i) // 2, 0, -1):
-                if i + 2 * clen <= n and s[i : i + clen] == s[i + clen : i + 2 * clen]:
-                    out.append(s[i : i + clen])
-                    i += 2 * clen
-                    found = True
-                    break
-            if not found:
-                out.append(s[i])
-                i += 1
-        return "".join(out)
-
-    # Apply to all JSON string values and keys
-    def _apply_chunk_dedup(m: _re.Match[str]) -> str:
-        return _dedup_chunks(m.group(1))
-
-    cleaned = _re.sub(
-        r'"((?:[^"\\]|\\.)*)"',  # match JSON string contents
-        lambda m: '"' + _dedup_chunks(m.group(1)) + '"',
-        cleaned,
-    )
-
-    try:
-        return cast(dict[str, Any], json.loads(cleaned))
-    except json.JSONDecodeError:
-        pass
 
     try:
         return cast(dict[str, Any], json.loads(cleaned))

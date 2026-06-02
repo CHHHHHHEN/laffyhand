@@ -48,8 +48,8 @@ export function useChat() {
     }
     try {
       await rpcClient.cancelStream()
-    } catch {
-      // best effort
+    } catch (err) {
+      console.warn("cancelStream failed", err)
     }
     const state = useChatStore.getState()
     if (!state.isStreaming) return false
@@ -221,8 +221,9 @@ export function useChat() {
 
       try {
         await rpcClient.steerMessage(content, urlSessionId)
-      } catch {
-        // best effort
+      } catch (err) {
+        const store = useChatStore.getState()
+        store.setError(err instanceof Error ? err.message : "Steer failed")
       }
     },
     [urlSessionId],
