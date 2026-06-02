@@ -6,16 +6,33 @@ from datetime import datetime
 from pathlib import Path
 from collections.abc import Sequence
 from typing import Any, Optional, cast
+from pydantic import BaseModel
 
 from loguru import logger
 
 from laffyhand.agent.llm.specs.models import AssistantMessage, Message, SystemMessage, ToolMessage, UserMessage
+from laffyhand.agent.llm.specs.models import ModelID, ProviderID, ToolCallContent
 from laffyhand.agent.session.models import (
+    AgentSwitchedData, ModelSwitchedData, CompactionData,
+    MessageSnapshot, Model,
+    AssistantContent,
+    AssistantData,
+    AssistantTextPart,
+    AssistantReasoningPart,
+    AssistantToolPart,
+    MessageTime,
     Session,
+    SessionMessage,
+    ShellData,
+    SyntheticData,
+    TokenDetail,
+    TokenCache,
+    ToolStateCompleted,
+    ToolStatePending,
+    UserData,
     _utcnow,
 )
 from laffyhand.agent.session.schema import create_tables, has_fts5
-from laffyhand.agent.llm.specs.models import ModelID, ProviderID, ToolCallContent
 from laffyhand.agent.schemas import (
     AgentState,
     SessionID,
@@ -29,6 +46,33 @@ def _ts(dt: datetime | None) -> str | None:
 
 def _from_ts(ts: str | None) -> datetime | None:
     return datetime.fromisoformat(ts) if ts is not None else None
+
+
+def _generate_id() -> str:
+    from uuid import uuid4
+    return _utcnow().strftime("%Y%m%d_%H%M%S") + "_" + uuid4().hex[:8]
+
+
+def _decode_session_message(row: sqlite3.Row) -> SessionMessage:
+    import json
+    raw = json.loads(row["data"])
+    type_map: dict[str, type] = {
+        "user": UserData, "assistant": AssistantData,
+        "synthetic": SyntheticData, "shell": ShellData,
+        "agent-switched": AgentSwitchedData,
+        "model-switched": ModelSwitchedData,
+        "compaction": CompactionData,
+    }
+    model_cls = type_map.get(row["type"])
+    if model_cls is None:
+        raise ValueError(f"Unknown message type: {row['type']}")
+    data_cls = cast(type[BaseModel], model_cls)
+    data = cast("UserData | AssistantData | SyntheticData | ShellData | AgentSwitchedData | ModelSwitchedData | CompactionData", data_cls.model_validate(raw))
+    return SessionMessage(
+        id=row["id"], session_id=row["session_id"], type=row["type"],
+        time_created=row["time_created"], time_updated=row["time_updated"],
+        data=data,
+    )
 
 
 def _serialize_metadata(meta: dict[str, Any]) -> str:
@@ -45,47 +89,104 @@ def _deserialize_metadata(raw: str) -> dict[str, Any]:
         return {}
 
 
-def _message_to_row(session_id: str, msg: Message, turn_index: int) -> dict[str, Any]:
+def _message_to_session_message(msg: Message, session_id: str) -> SessionMessage:
+    now = int(_utcnow().timestamp())
     if isinstance(msg, SystemMessage):
-        return dict(session_id=session_id, role="system", content=msg.content, turn_index=turn_index)
+        return SessionMessage(
+            id=_generate_id(), session_id=session_id, type="synthetic",
+            time_created=now, time_updated=now,
+            data=SyntheticData(sessionID=session_id, text=msg.content),
+        )
     if isinstance(msg, UserMessage):
-        return dict(session_id=session_id, role="user", content=msg.content, turn_index=turn_index)
+        return SessionMessage(
+            id=_generate_id(), session_id=session_id, type="user",
+            time_created=now, time_updated=now,
+            data=UserData(text=msg.content),
+        )
     if isinstance(msg, AssistantMessage):
-        tool_args = json.dumps([t.model_dump() for t in msg.tool_calls], default=str) if msg.tool_calls else None
-        token_count = (msg.tokens.input_tokens or 0) + (msg.tokens.output_tokens or 0) if msg.tokens else None
-        return dict(
-            session_id=session_id, role="assistant", content=msg.content,
-            reasoning=msg.reasoning, tool_args=tool_args,
-            token_count=token_count, turn_index=turn_index,
+        content: list[AssistantContent] = []
+        if msg.reasoning:
+            content.append(AssistantReasoningPart(id=f"reasoning-{now}", text=msg.reasoning))
+        if msg.content:
+            content.append(AssistantTextPart(text=msg.content))
+        if msg.tool_calls:
+            for tc in msg.tool_calls:
+                content.append(AssistantToolPart(
+                    id=tc.tool_call_id, name=tc.tool_name,
+                    state=ToolStatePending(input=tc.args),
+                    time=MessageTime(created=now),
+                ))
+        tokens = TokenDetail(
+            input=msg.tokens.input_tokens or 0,
+            output=msg.tokens.output_tokens or 0,
+            reasoning=msg.tokens.reasoning_tokens or 0,
+            cache=TokenCache(
+                read=msg.tokens.cache_read_tokens or 0,
+                write=msg.tokens.cache_write_tokens or 0,
+            ),
+        ) if msg.tokens else None
+        return SessionMessage(
+            id=_generate_id(), session_id=session_id, type="assistant",
+            time_created=now, time_updated=now,
+            data=AssistantData(
+                agent="", model=Model(id=ModelID(""), provider=ProviderID("")), snapshot=MessageSnapshot(),
+                finish="stop", cost=0, tokens=tokens,
+                content=content,
+            ),
         )
     if isinstance(msg, ToolMessage):
-        return dict(
-            session_id=session_id, role="tool", content=msg.content,
-            tool_call_id=msg.tool_call_id, turn_index=turn_index,
+        return SessionMessage(
+            id=_generate_id(), session_id=session_id, type="shell",
+            time_created=now, time_updated=now,
+            data=ShellData(
+                callID=msg.tool_call_id, command="", output=msg.content,
+                time=MessageTime(created=now),
+            ),
         )
     raise TypeError(f"Unknown message type: {type(msg).__name__}")
 
 
-def _row_to_message(row: sqlite3.Row) -> Message:
-    role = row["role"]
-    if role == "system":
-        return SystemMessage(content=row["content"] or "")
-    if role == "user":
-        return UserMessage(content=row["content"] or "")
-    if role == "assistant":
-        tool_calls = None
-        raw = row["tool_args"]
-        if raw:
-            try:
-                lst = json.loads(raw)
-            except (json.JSONDecodeError, TypeError):
-                logger.warning(f"Failed to parse tool_args JSON for message {row['id']}")
-                lst = []
-            tool_calls = [ToolCallContent(**t) for t in lst]
-        return AssistantMessage(content=row["content"], reasoning=row["reasoning"], tool_calls=tool_calls)
-    if role == "tool":
-        return ToolMessage(tool_call_id=row["tool_call_id"] or "", content=row["content"] or "")
-    raise ValueError(f"Unknown role: {role}")
+def _session_message_to_message(sm: SessionMessage) -> Message:
+    if sm.type == "synthetic":
+        d = sm.data
+        assert isinstance(d, SyntheticData)
+        return SystemMessage(content=d.text)
+    if sm.type == "user":
+        d = sm.data
+        assert isinstance(d, UserData)
+        return UserMessage(content=d.text)
+    if sm.type == "assistant":
+        d = sm.data
+        assert isinstance(d, AssistantData)
+        content_parts: list[str] = []
+        reasoning: str | None = None
+        tool_calls: list[ToolCallContent] | None = None
+        for part in d.content:
+            if isinstance(part, AssistantTextPart):
+                content_parts.append(part.text)
+            elif isinstance(part, AssistantReasoningPart):
+                if reasoning is None:
+                    reasoning = ""
+                reasoning += part.text
+            elif isinstance(part, AssistantToolPart):
+                if tool_calls is None:
+                    tool_calls = []
+                if isinstance(part.state, ToolStateCompleted):
+                    tool_calls.append(ToolCallContent(
+                        tool_call_id=part.id, tool_name=part.name,
+                        args=part.state.input.get("input", "") if isinstance(part.state.input, dict) else str(part.state.input),
+                    ))
+                elif isinstance(part.state, ToolStatePending):
+                    tool_calls.append(ToolCallContent(
+                        tool_call_id=part.id, tool_name=part.name, args=part.state.input,
+                    ))
+        combined = "".join(content_parts) if content_parts else None
+        return AssistantMessage(content=combined, reasoning=reasoning, tool_calls=tool_calls)
+    if sm.type == "shell":
+        d = sm.data
+        assert isinstance(d, ShellData)
+        return ToolMessage(tool_call_id=d.callID, content=d.output)
+    raise ValueError(f"Unknown session message type: {sm.type}")
 
 
 class SessionManager:
@@ -238,9 +339,8 @@ class SessionManager:
         if self._fts5_available:
             rows = self._conn.execute(
                 """SELECT DISTINCT s.* FROM session s
-                   JOIN message m ON m.session_id = s.id
-                   JOIN message_fts fts ON fts.rowid = m.id
-                   WHERE message_fts MATCH ?
+                   JOIN session_message m ON m.session_id = s.id
+                   WHERE m.data LIKE ?
                    ORDER BY s.updated_at DESC LIMIT ?""",
                 (query, limit),
             ).fetchall()
@@ -248,8 +348,8 @@ class SessionManager:
             like = f"%{query}%"
             rows = self._conn.execute(
                 """SELECT DISTINCT s.* FROM session s
-                   JOIN message m ON m.session_id = s.id
-                   WHERE m.content LIKE ? OR m.reasoning LIKE ?
+                   JOIN session_message m ON m.session_id = s.id
+                   WHERE m.data LIKE ?
                    ORDER BY s.updated_at DESC LIMIT ?""",
                 (like, like, limit),
             ).fetchall()
@@ -277,10 +377,9 @@ class SessionManager:
             new_messages = messages[existing:]
             if not new_messages:
                 return existing
-            turn_index = session.turn_count
             for msg in new_messages:
-                row = _message_to_row(session_id, msg, turn_index)
-                self._insert_row(row)
+                sm = _message_to_session_message(msg, session_id)
+                self._insert_session_message(sm)
             count = session.message_count + len(new_messages)
             self._conn.execute(
                 "UPDATE session SET message_count=?, updated_at=? WHERE id=?",
@@ -302,13 +401,10 @@ class SessionManager:
             session = self.get(session_id)
             if session is None:
                 raise ValueError(f"Session not found: {session_id}")
-            self._conn.execute("DELETE FROM message WHERE session_id=?", (session_id,))
-            turn_index = 0
+            self._conn.execute("DELETE FROM session_message WHERE session_id=?", (session_id,))
             for msg in messages:
-                row = _message_to_row(session_id, msg, turn_index)
-                self._insert_row(row)
-                if isinstance(msg, UserMessage):
-                    turn_index += 1
+                sm = _message_to_session_message(msg, session_id)
+                self._insert_session_message(sm)
             self._conn.execute(
                 "UPDATE session SET message_count=?, updated_at=? WHERE id=?",
                 (len(messages), _ts(_utcnow()), session_id),
@@ -327,15 +423,15 @@ class SessionManager:
     ) -> list[Message]:
         if limit is not None:
             rows = self._conn.execute(
-                "SELECT * FROM message WHERE session_id=? ORDER BY id LIMIT ? OFFSET ?",
+                "SELECT * FROM session_message WHERE session_id=? ORDER BY time_created LIMIT ? OFFSET ?",
                 (session_id, limit, offset),
             ).fetchall()
         else:
             rows = self._conn.execute(
-                "SELECT * FROM message WHERE session_id=? ORDER BY id",
+                "SELECT * FROM session_message WHERE session_id=? ORDER BY time_created",
                 (session_id,),
             ).fetchall()
-        return [_row_to_message(r) for r in rows]
+        return [_session_message_to_message(_decode_session_message(r)) for r in rows]
 
     # ── State persistence ─────────────────────────────────────
 
@@ -586,12 +682,9 @@ class SessionManager:
         session_id: str,
         messages: list[Message],
     ) -> None:
-        turn_index = 0
         for msg in messages:
-            row = _message_to_row(session_id, msg, turn_index)
-            self._insert_row(row)
-            if isinstance(msg, UserMessage):
-                turn_index += 1
+            sm = _message_to_session_message(msg, session_id)
+            self._insert_session_message(sm)
 
     def _update_counters(self, session_id: str, message_count: int) -> None:
         self._conn.execute(
@@ -627,14 +720,10 @@ class SessionManager:
             ended_at=_from_ts(row["ended_at"]) if row["ended_at"] else None,
         )
 
-    def _insert_row(self, row: dict[str, Any]) -> None:
+    def _insert_session_message(self, sm: SessionMessage) -> None:
         self._conn.execute(
-            """INSERT INTO message
-               (session_id, role, content, tool_call_id, tool_name, tool_args, reasoning, token_count, turn_index)
-               VALUES (?,?,?,?,?,?,?,?,?)""",
-            (
-                row.get("session_id"), row.get("role"), row.get("content"),
-                row.get("tool_call_id"), row.get("tool_name"), row.get("tool_args"),
-                row.get("reasoning"), row.get("token_count"), row.get("turn_index"),
-            ),
+            "INSERT INTO session_message (id, session_id, type, time_created, time_updated, data) VALUES (?,?,?,?,?,?)",
+            (sm.id, sm.session_id, sm.type, sm.time_created, sm.time_updated, sm.data.model_dump_json()),
         )
+
+
