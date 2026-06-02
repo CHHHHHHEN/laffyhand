@@ -14,15 +14,12 @@ from laffyhand.agent.schemas import (
     CompactionConfig,
     SessionUsage,
 )
-from laffyhand.agent.loop import (
+from laffyhand.agent.schemas import (
     SubAgentStart,
     SubAgentDelta,
     SubAgentEnd,
     TextDelta,
     ReasoningDelta,
-    ToolCall as StreamToolCall,
-    ToolResult as StreamToolResult,
-    ToolError as StreamToolError,
 )
 from laffyhand.agent.tools.permission import SubagentPermissions
 

@@ -6,7 +6,7 @@ from typing import Any, cast
 
 from loguru import logger
 
-from laffyhand.agent.loop import (
+from laffyhand.agent.schemas import (
     StepStart,
     TextStart,
     TextDelta,

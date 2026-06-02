@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator, Awaitable, Callable
-from typing import TYPE_CHECKING, Any, Literal, Union
+from typing import TYPE_CHECKING
 
 from loguru import logger
-from pydantic import BaseModel
 
 from laffyhand.agent.llm.specs.models import AssistantMessage, SystemMessage, ToolMessage, UserMessage
 from laffyhand.agent.llm.specs.models import (
@@ -21,6 +20,19 @@ from laffyhand.agent.schemas import (
     AgentState,
     CompactionConfig,
     estimate_tokens,
+    StepStart,
+    TextStart,
+    TextDelta,
+    TextEnd,
+    ReasoningStart,
+    ReasoningDelta,
+    ReasoningEnd,
+    ToolCall,
+    ToolResult,
+    ToolError,
+    StepFinish,
+    Compacting,
+    StreamEvent,
 )
 from laffyhand.agent.compaction import (
     compact,
@@ -38,153 +50,6 @@ from laffyhand.agent.tools import ToolRegistry
 if TYPE_CHECKING:
     from laffyhand.agent.session import SessionManager
     from laffyhand.agent.subagent.manager import SubagentManager
-
-
-# ── Streaming event types ──────────────────────────────────────
-
-
-class StepStart(BaseModel):
-    type: str = "step-start"
-    index: int
-
-
-class TextStart(BaseModel):
-    type: str = "text-start"
-    id: str
-
-
-class TextDelta(BaseModel):
-    type: str = "text-delta"
-    id: str
-    text: str
-
-
-class TextEnd(BaseModel):
-    type: str = "text-end"
-    id: str
-
-
-class ReasoningStart(BaseModel):
-    type: str = "reasoning-start"
-    id: str
-
-
-class ReasoningDelta(BaseModel):
-    type: str = "reasoning-delta"
-    id: str
-    text: str
-
-
-class ReasoningEnd(BaseModel):
-    type: str = "reasoning-end"
-    id: str
-
-
-class ToolCall(BaseModel):
-    type: str = "tool-call"
-    id: str
-    name: str
-    input: str
-
-
-class ToolResult(BaseModel):
-    type: str = "tool-result"
-    id: str
-    name: str
-    result: str
-
-
-class ToolError(BaseModel):
-    type: str = "tool-error"
-    id: str
-    name: str
-    message: str
-    error: bool = True
-
-
-class StepFinish(BaseModel):
-    type: str = "step-finish"
-    index: int
-    reason: str
-    usage: Usage | None = None
-
-
-class Finish(BaseModel):
-    type: str = "finish"
-    reason: str
-    usage: Usage | None = None
-    session_id: str | None = None
-    session_usage: dict[str, Any] | None = None
-    leftover_steer: str | None = None
-
-
-class ProviderError(BaseModel):
-    type: str = "provider-error"
-    message: str
-    retryable: bool = False
-
-
-class Compacting(BaseModel):
-    type: str = "compacting"
-    data: str
-
-
-class PermissionRequest(BaseModel):
-    type: str = "permission-request"
-    request_id: str
-    permission: str
-    pattern: str
-
-
-class SubAgentStart(BaseModel):
-    type: str = "subagent-start"
-    id: str
-    parent_id: str | None = None
-    agent_type: str
-    description: str
-    mode: Literal["foreground", "background"]
-    depth: int = 0
-
-
-class SubAgentDelta(BaseModel):
-    type: str = "subagent-delta"
-    id: str
-    kind: Literal["text", "reasoning", "tool", "tool_result", "error"]
-    content: str | None = None
-    tool_name: str | None = None
-    tool_input: str | None = None
-
-
-class SubAgentEnd(BaseModel):
-    type: str = "subagent-end"
-    id: str
-    status: Literal["completed", "error", "cancelled"]
-    summary: str | None = None
-    tool_count: int = 0
-    input_tokens: int = 0
-    output_tokens: int = 0
-
-
-StreamEvent = Union[
-    StepStart,
-    TextStart,
-    TextDelta,
-    TextEnd,
-    ReasoningStart,
-    ReasoningDelta,
-    ReasoningEnd,
-    ToolCall,
-    ToolResult,
-    ToolError,
-    StepFinish,
-    Finish,
-    ProviderError,
-    Compacting,
-    PermissionRequest,
-    SubAgentStart,
-    SubAgentDelta,
-    SubAgentEnd,
-]
 
 
 # ── Helpers ────────────────────────────────────────────────────
@@ -243,7 +108,7 @@ async def agent_loop(
     subagent_manager: SubagentManager | None = None,
     preference_checker: Callable[[], Awaitable[str]] | None = None,
     on_compacted: Callable[[str], None] | None = None,
-) -> AsyncIterator[Any]:
+) -> AsyncIterator[StreamEvent]:
     context_size = agent_state.usage.context_size
     _compacted_this_step = False
 

@@ -49,7 +49,7 @@ async def _shutdown_gateway(client_t: InProcessTransport) -> None:
 
 
 async def _mock_run_agent_turn(**kwargs):
-    from laffyhand.agent.loop import TextDelta, StepFinish
+    from laffyhand.agent.schemas import TextDelta, StepFinish
     from laffyhand.agent.llm.specs.models import Usage
 
     yield TextDelta(id="text-1", text="Hello from LLM")

@@ -34,8 +34,8 @@ from laffyhand.agent.tools.mcp_manage import (
     MCPDisconnectTool,
 )
 from laffyhand.agent.mcp import MCPService
-from laffyhand.agent.loop import (
-    agent_loop,
+from laffyhand.agent.loop import agent_loop
+from laffyhand.agent.schemas import (
     StepFinish,
     TextDelta,
     ReasoningDelta,

@@ -415,7 +415,7 @@ class TestCreateSubagent:
             async def mock_agent_loop(*args, **kwargs):
                 child_state = args[0]
                 child_state.messages.append(UserMessage(content="final answer"))
-                from laffyhand.agent.loop import StepFinish
+                from laffyhand.agent.schemas import StepFinish
 
                 yield StepFinish(index=1, reason="stop")
 
@@ -443,7 +443,7 @@ class TestCreateSubagent:
         with patch("laffyhand.agent.runtime.agent_loop") as mock_loop:
 
             async def mock_agent_loop(*args, **kwargs):
-                from laffyhand.agent.loop import StepFinish
+                from laffyhand.agent.schemas import StepFinish
 
                 yield StepFinish(index=1, reason="stop")
 
