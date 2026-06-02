@@ -29,7 +29,7 @@ from laffyhand.agent.session.models import (
     UserData,
     _utcnow,
 )
-from laffyhand.agent.db.repository import MessageRepo, SessionRepo
+from laffyhand.agent.db.repository import SessionRepo, MessageRepo
 from laffyhand.agent.db.schema import create_tables
 from laffyhand.agent.schemas import AgentState, SessionID, SessionUsage
 
