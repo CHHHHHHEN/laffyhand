@@ -40,31 +40,51 @@ export interface Message {
   content: string
   reasoning?: string
   toolCalls?: ToolCall[]
-  toolResults?: ToolResult[]
   finishReason?: string
   usage?: { inputTokens: number; outputTokens: number }
   permissionInfo?: PermissionInfo
   createdAt: number
 }
 
+export type ToolCallStatus = "pending" | "running" | "completed" | "error"
+
 export interface ToolCall {
   id: string
   name: string
   arguments: Record<string, unknown>
-}
-
-export interface ToolResult {
-  id: string
-  name: string
-  result: string
+  status?: ToolCallStatus
+  result?: string
   isError?: boolean
 }
 
+export interface SubagentEvent {
+  kind: "text" | "reasoning" | "tool" | "tool_result" | "error"
+  content?: string
+  toolName?: string
+  toolInput?: string
+}
+
+export interface ActiveSubagent {
+  id: string
+  parentId: string | null
+  agentType: string
+  description: string
+  mode: "foreground" | "background"
+  depth: number
+  status: "running" | "completed" | "error" | "cancelled"
+  text: string
+  reasoning: string
+  tools: { name: string; input: string }[]
+  toolCount: number
+  summary?: string
+  inputTokens: number
+  outputTokens: number
+}
+
 export interface StreamChunk {
-  type: "reasoning" | "content" | "tool_calls" | "tool_result" | "finish" | "error"
+  type: "reasoning" | "content" | "tool_calls" | "finish" | "error"
   text: string
   finishReason?: string
   usage?: { inputTokens: number; outputTokens: number }
   toolCalls?: ToolCall[]
-  toolResults?: ToolResult[]
 }

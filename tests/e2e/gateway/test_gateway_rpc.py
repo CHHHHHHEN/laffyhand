@@ -24,6 +24,8 @@ def runtime():
     r.session_manager = MagicMock()
     r.session_manager.create = MagicMock(return_value=MagicMock(id="sess-1"))
     r.session_manager.list_sessions = MagicMock(return_value=[])
+    r._generate_title = AsyncMock()
+    r.get_session_lock = MagicMock(return_value=MagicMock())
     return r
 
 
@@ -201,6 +203,9 @@ async def test_chat_stream_via_gateway(transport_pair):
     runtime.session_manager = MagicMock()
     runtime.session_manager.create = MagicMock(return_value=MagicMock(id="sess-stream"))
     runtime.run_agent_turn = _mock_run_agent_turn
+    runtime._generate_title = AsyncMock()
+    runtime.get_session_lock = MagicMock(return_value=MagicMock())
+    runtime.subagent_manager = None
 
     import asyncio
 

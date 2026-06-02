@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react"
+import { useState, useMemo, useRef, useEffect } from "react"
 import { marked } from "marked"
 import DOMPurify from "dompurify"
 import type { Message } from "@/types/session"
@@ -21,8 +21,60 @@ function MarkdownContent({ content }: { content: string }) {
     }
   }, [content])
 
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!containerRef.current) return
+    // Add copy buttons and collapse to code blocks
+    containerRef.current.querySelectorAll('pre').forEach((pre) => {
+      if (pre.parentElement?.classList.contains('code-block-wrapper')) return
+      const wrapper = document.createElement('div')
+      wrapper.className = 'code-block-wrapper relative group'
+      pre.parentNode?.insertBefore(wrapper, pre)
+      wrapper.appendChild(pre)
+
+      // Copy button
+      const copyBtn = document.createElement('button')
+      copyBtn.className = 'copy-code-btn absolute top-2 right-2 px-2 py-1 text-[10px] rounded-md bg-gray-200/70 dark:bg-gray-700/70 text-gray-500 dark:text-gray-400 opacity-0 group-hover:opacity-100 hover:bg-gray-300 dark:hover:bg-gray-600 transition-all duration-150 cursor-pointer font-sans z-10'
+      copyBtn.textContent = 'Copy'
+      copyBtn.onclick = async () => {
+        const code = pre.querySelector('code') || pre
+        try {
+          await navigator.clipboard.writeText(code.textContent || '')
+          copyBtn.textContent = 'Copied!'
+          setTimeout(() => { copyBtn.textContent = 'Copy' }, 2000)
+        } catch {
+          copyBtn.textContent = 'Failed'
+        }
+      }
+      wrapper.appendChild(copyBtn)
+
+      // Collapse long code blocks (>15 lines or >300px)
+      const lineCount = (pre.textContent || '').split('\n').length
+      if (lineCount > 15) {
+        pre.style.maxHeight = '200px'
+        pre.style.overflow = 'hidden'
+        pre.style.transition = 'max-height 0.2s ease'
+
+        const expandBtn = document.createElement('button')
+        expandBtn.className = 'code-expand-btn w-full text-[10px] py-1 text-gray-400 dark:text-gray-500 bg-gray-50 dark:bg-gray-800/50 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors cursor-pointer font-sans border-t border-gray-200 dark:border-gray-700'
+        expandBtn.textContent = `Show more (${lineCount} lines)`
+
+        let expanded = false
+        expandBtn.onclick = () => {
+          expanded = !expanded
+          pre.style.maxHeight = expanded ? `${pre.scrollHeight}px` : '200px'
+          expandBtn.textContent = expanded ? 'Show less' : `Show more (${lineCount} lines)`
+        }
+
+        wrapper.appendChild(expandBtn)
+      }
+    })
+  }, [html])
+
   return (
     <div
+      ref={containerRef}
       className="prose prose-sm dark:prose-invert max-w-none break-words"
       dangerouslySetInnerHTML={{ __html: html }}
     />
@@ -131,8 +183,13 @@ export function MessageBubble({ message, onResolvePermission }: MessageBubblePro
       {/* 消息内容 */}
       <div className={`max-w-[75%] min-w-0 ${isUser ? "items-end" : "items-start"}`}>
         {isUser ? (
-          <div className="bg-blue-600 text-white rounded-2xl rounded-tr-md px-4 py-2.5 shadow-sm">
+          <div className="bg-blue-500 text-white rounded-2xl rounded-tr-md px-4 py-2.5 shadow-sm">
             <p className="whitespace-pre-wrap text-sm leading-relaxed">{message.content}</p>
+            {message.createdAt && (
+              <div className="mt-1 text-[10px] text-blue-200 text-right">
+                {new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </div>
+            )}
           </div>
         ) : (
           <div className="bg-gray-100 dark:bg-gray-700/80 text-gray-900 dark:text-gray-100 rounded-2xl rounded-tl-md px-4 py-2.5 shadow-sm">
@@ -154,6 +211,12 @@ export function MessageBubble({ message, onResolvePermission }: MessageBubblePro
             )}
 
             {message.usage && <UsageBadge usage={message.usage} />}
+
+            {message.createdAt && (
+              <div className="mt-1 text-[10px] text-gray-400 dark:text-gray-500 text-right">
+                {new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </div>
+            )}
           </div>
         )}
       </div>

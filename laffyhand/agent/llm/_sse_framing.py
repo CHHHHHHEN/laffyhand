@@ -18,7 +18,9 @@ class SSEFraming(Framing):
 
     _DONE = object()
 
-    async def frames(self, response: AsyncIterable[bytes]) -> AsyncIterator[dict[str, Any]]:
+    async def frames(
+        self, response: AsyncIterable[bytes]
+    ) -> AsyncIterator[dict[str, Any]]:
         buffer = ""
         async for chunk in response:
             buffer += chunk.decode("utf-8", errors="replace")

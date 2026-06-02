@@ -205,6 +205,7 @@ class TestErrorCodes:
         assert METHOD_NOT_FOUND == -32601
         assert INTERNAL_ERROR == -32603
 
+
 class TestErrorJson:
     def test_error_json(self):
         e = Error(code=-32601, message="not found", data={"detail": "x"})

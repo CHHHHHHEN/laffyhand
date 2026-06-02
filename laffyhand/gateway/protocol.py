@@ -159,5 +159,3 @@ def from_json(data: str) -> JSONRPCMessage:
 PARSE_ERROR = -32700
 METHOD_NOT_FOUND = -32601
 INTERNAL_ERROR = -32603
-
-

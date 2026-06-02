@@ -53,6 +53,7 @@ class ToolMessage(BaseModel):
     role: Literal["tool"] = "tool"
     tool_call_id: str
     content: str
+    is_error: bool = False
 
 
 class CompactionConfig(BaseModel):

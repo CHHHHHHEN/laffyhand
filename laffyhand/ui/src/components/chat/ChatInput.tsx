@@ -90,7 +90,7 @@ export function ChatInput({ onSend, onInterrupt, onSteer, onQueue, onCancel, isS
   const submitLabel = isStreaming ? currentMode.label : "Send"
 
   return (
-    <div className="border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-4 py-3">
+    <div className="border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-4 py-3 transition-colors duration-200">
       {/* Busy mode 选择器 */}
       {isStreaming && (
         <div className="flex items-center gap-2 mb-2 animate-[fade-in_0.15s_ease-out]">
@@ -135,7 +135,7 @@ export function ChatInput({ onSend, onInterrupt, onSteer, onQueue, onCancel, isS
                 : "Type a message..."
             }
             rows={1}
-            className="w-full resize-none rounded-xl border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 pl-4 pr-10 py-2.5 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500/15 transition-all placeholder-gray-400 dark:placeholder-gray-500"
+            className="w-full resize-none rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 pl-4 pr-10 py-2.5 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500/15 transition-all placeholder-gray-400 dark:placeholder-gray-500"
           />
           {/* 快捷键提示 */}
           <div className="absolute right-3 bottom-2.5 flex items-center gap-1 pointer-events-none">

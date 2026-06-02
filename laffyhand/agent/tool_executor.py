@@ -23,10 +23,9 @@ class ToolExecutionResult:
 def _try_parse_json(raw: str) -> dict[str, Any] | None:
     """Best-effort JSON parsing with recovery for common LLM-induced issues.
 
-    LLMs sometimes generate tool-call arguments with doubled characters
-    (e.g. ``{{""commandcommand"": : ""ppwdwd""}}`` instead of
-    ``{"command": "pwd"}``).  This function tries multiple strategies
-    before giving up.
+    LLMs sometimes generate tool-call arguments with doubled structural
+    characters or word duplication (e.g. ``commandcommand``).  This
+    function tries multiple strategies before giving up.
     """
     cleaned = raw.strip()
     if not cleaned:
@@ -57,20 +56,17 @@ def _try_parse_json(raw: str) -> dict[str, Any] | None:
         pass
 
     # ── Word deduplication ────────────────────────────────────────
-    # Some LLMs double every word in keys and string values.
-    # Remove the second occurrence of any consecutive identical token.
-    # This handles: "commandcommand" -> "command",
-    # "获取获取" -> "获取", etc.
-    def _dedup(m: re.Match[str]) -> str:
+    # Some LLMs double entire words in keys and string values
+    # (e.g. "commandcommand" instead of "command").
+    def _dedup_exact(m: re.Match[str]) -> str:
         word = m.group(0)
         half = len(word) // 2
-        if len(word) >= 4 and word[:half] == word[half:]:
+        if half >= 2 and word[:half] == word[half:]:
             return word[:half]
         return word
 
-    # Match JSON string contents (between quotes), key names, and bare words
     cleaned = re.sub(
-        r'(?<=["\'])\w{4,}(?=["\'])|(?<=[\s,{])\w{4,}(?=[:])', _dedup, cleaned
+        r'(?<=["\'])\w{4,}(?=["\'])|(?<=[\s,{])\w{4,}(?=[:])', _dedup_exact, cleaned
     )
 
     try:
@@ -86,6 +82,7 @@ class ToolExecutor:
     async def execute(
         tool_registry: ToolRegistry,
         tool_call: ToolCallContent,
+        context: dict[str, Any] | None = None,
     ) -> ToolExecutionResult:
         params = _try_parse_json(tool_call.args)
         if params is None:
@@ -98,10 +95,19 @@ class ToolExecutor:
                     content=f"Error: failed to parse tool arguments for {tool_call.tool_name}. "
                     f'Args must be valid JSON object like {{"key": "value"}}. '
                     f"Received: {tool_call.args}",
+                    is_error=True,
                 ),
                 event_data=f"Error: invalid JSON args for {tool_call.tool_name}",
                 is_error=True,
             )
+
+        # Inject runtime context into params (e.g. session_id).
+        # Strip any LLM-provided values for keys the runtime controls,
+        # so runtime context always takes precedence.
+        if context:
+            for key in context:
+                params.pop(key, None)
+            params.update(context)
 
         try:
             result = await tool_registry.run_tool(tool_call.tool_name, params)
@@ -111,6 +117,7 @@ class ToolExecutor:
                 message=ToolMessage(
                     tool_call_id=tool_call.tool_call_id,
                     content=f"Error executing tool {tool_call.tool_name}: internal error",
+                    is_error=True,
                 ),
                 event_data=f"Error: {tool_call.tool_name} failed: internal error",
                 is_error=True,

@@ -62,6 +62,12 @@ def _next_msg_id() -> str:
 
 
 def _serialize_messages(messages: list[Message]) -> list[dict[str, Any]]:
+    # First pass: collect ToolMessage results keyed by tool_call_id
+    tool_results: dict[str, tuple[str, bool]] = {}
+    for msg in messages:
+        if isinstance(msg, ToolMessage):
+            tool_results[msg.tool_call_id] = (msg.content, msg.is_error)
+
     result: list[dict[str, Any]] = []
     for msg in messages:
         if isinstance(msg, SystemMessage):
@@ -92,10 +98,23 @@ def _serialize_messages(messages: list[Message]) -> list[dict[str, Any]]:
             if msg.reasoning:
                 entry["reasoning"] = msg.reasoning
             if msg.tool_calls:
-                entry["toolCalls"] = [
-                    {"id": tc.tool_call_id, "name": tc.tool_name, "arguments": tc.args}
-                    for tc in msg.tool_calls
-                ]
+                entry["toolCalls"] = []
+                for tc in msg.tool_calls:
+                    result_content, is_error = tool_results.get(
+                        tc.tool_call_id, (None, False)
+                    )
+                    tool_entry: dict[str, Any] = {
+                        "id": tc.tool_call_id,
+                        "name": tc.tool_name,
+                        "arguments": tc.args,
+                    }
+                    if result_content is not None:
+                        tool_entry["status"] = "error" if is_error else "completed"
+                        tool_entry["result"] = result_content
+                        tool_entry["isError"] = is_error
+                    else:
+                        tool_entry["status"] = "pending"
+                    entry["toolCalls"].append(tool_entry)
             if msg.tokens:
                 entry["usage"] = {
                     "inputTokens": msg.tokens.input_tokens,
@@ -103,15 +122,8 @@ def _serialize_messages(messages: list[Message]) -> list[dict[str, Any]]:
                 }
             result.append(entry)
         elif isinstance(msg, ToolMessage):
-            result.append(
-                {
-                    "id": _next_msg_id(),
-                    "role": "tool",
-                    "content": msg.content,
-                    "tool_call_id": msg.tool_call_id,
-                    "createdAt": int(time.time() * 1000),
-                }
-            )
+            # Skip — content is embedded in the corresponding AssistantMessage toolCalls
+            pass
     return result
 
 
@@ -299,7 +311,7 @@ async def handle_chat(
     logger.debug(
         f"Chat finished (id={request_id}, conn={conn_id}, finish={finish_reason})"
     )
-    runtime._schedule_title_generation(session_id, "auto")
+    await runtime._generate_title(session_id, "auto")
     return {
         "content": last_content,
         "finish_reason": finish_reason,
@@ -342,12 +354,28 @@ async def handle_chat_stream(
         finally:
             runtime.pending_permissions.pop(request_id, None)
 
+    async def _event_sink(event: Any) -> None:
+        notif = Notification(method="event", params=event.model_dump(exclude_none=True))
+        await transport.send(notif.json())
+
     token = _pm_callback.set(_permission_callback)
 
     try:
         async with runtime.get_session_lock(session_id):
+            cancelled = False
             try:
-                async for event in runtime.run_agent_turn(session_id=session_id):
+                async for event in runtime.run_agent_turn(
+                    session_id=session_id,
+                    event_sink=_event_sink,
+                ):
+                    # Drain background subagent events
+                    if runtime.subagent_manager:
+                        bg_events = await runtime.subagent_manager.drain_events(
+                            session_id
+                        )
+                        for bg_event in bg_events:
+                            await _event_sink(bg_event)
+
                     notif = Notification(
                         method="event",
                         params=event.model_dump(exclude_none=True),
@@ -357,6 +385,7 @@ async def handle_chat_stream(
                         finish_reason = event.reason
                         usage_info = event.usage
             except asyncio.CancelledError:
+                cancelled = True
                 finish_reason = "cancelled"
                 logger.info(
                     f"Chat stream cancelled for session {session_id} (conn={conn_id})"
@@ -365,7 +394,6 @@ async def handle_chat_stream(
                 logger.exception(
                     f"Chat stream error for session {session_id} (conn={conn_id})"
                 )
-            try:
                 err_notif = Notification(
                     method="event",
                     params={
@@ -373,14 +401,36 @@ async def handle_chat_stream(
                         "data": "Internal error during streaming",
                     },
                 )
-                await transport.send(err_notif.json())
-            except Exception:
-                logger.warning("Failed to send error event to client in chat stream")
+                try:
+                    await transport.send(err_notif.json())
+                except Exception:
+                    logger.warning(
+                        "Failed to send error event to client in chat stream"
+                    )
+            finally:
+                # Drain background subagent events (also on cancel/error)
+                if runtime.subagent_manager:
+                    bg_events = await runtime.subagent_manager.drain_events(session_id)
+                    for bg_event in bg_events:
+                        try:
+                            await _event_sink(bg_event)
+                        except Exception:
+                            logger.warning("Failed to relay background event")
 
-        # Non-blocking title generation
+                if cancelled:
+                    cancel_notif = Notification(
+                        method="event",
+                        params={
+                            "type": "cancelled",
+                            "data": "Stream cancelled",
+                        },
+                    )
+                    await transport.send(cancel_notif.json())
+
+        # Generate title synchronously before finish event
         state = runtime.get_state(session_id)
         actual_sid = state.session_id if (state and state.session_id) else session_id
-        runtime._schedule_title_generation(actual_sid, "auto")
+        await runtime._generate_title(actual_sid, "auto")
 
         # Check for leftover steer that wasn't consumed by tool batch
         leftover_steer: str | None = None

@@ -71,7 +71,7 @@ export interface MessageData {
   role: "user" | "assistant" | "system" | "tool"
   content: string
   reasoning?: string
-  toolCalls?: { id: string; name: string; arguments: unknown }[]
+  toolCalls?: { id: string; name: string; arguments: unknown; status?: string; result?: string; isError?: boolean }[]
   usage?: { inputTokens?: number; outputTokens?: number }
   createdAt: number
 }
@@ -139,6 +139,9 @@ export type StreamEvent =
   | { type: "provider-error"; message: string; retryable?: boolean }
   | { type: "compacting"; data: string }
   | { type: "permission-request"; request_id: string; permission: string; pattern: string }
+  | { type: "subagent-start"; id: string; parent_id?: string; agent_type: string; description: string; mode: "foreground" | "background"; depth: number }
+  | { type: "subagent-delta"; id: string; kind: "text" | "reasoning" | "tool" | "tool_result" | "error"; content?: string; tool_name?: string; tool_input?: string }
+  | { type: "subagent-end"; id: string; status: "completed" | "error" | "cancelled"; summary?: string; tool_count?: number; input_tokens?: number; output_tokens?: number }
 
 export interface ToolDefinition {
   name: string

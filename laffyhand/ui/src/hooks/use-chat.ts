@@ -1,12 +1,45 @@
-import { useCallback, useRef } from "react"
+import { useCallback, useEffect, useRef } from "react"
 import { useParams } from "react-router-dom"
+import { useQueryClient } from "@tanstack/react-query"
 import { rpcClient } from "@/lib/rpc"
 import { useChatStore } from "@/stores/chat-store"
+import { useTodoStore } from "@/stores/todo-store"
+import type { TodoItem } from "@/types/session"
 
 export function useChat() {
+  const queryClient = useQueryClient()
   const abortRef = useRef<AbortController | null>(null)
   const leftoverSteerRef = useRef<string | null>(null)
   const { sessionId: urlSessionId } = useParams()
+
+  // Refresh session list and TODO list when streaming ends
+  const isStreaming = useChatStore((s) => s.isStreaming)
+  const prevStreamingRef = useRef(isStreaming)
+  useEffect(() => {
+    const wasStreaming = prevStreamingRef.current
+    prevStreamingRef.current = isStreaming
+    if (wasStreaming && !isStreaming) {
+      queryClient.invalidateQueries({ queryKey: ["sessions"] })
+      if (urlSessionId) {
+        rpcClient.todoList(urlSessionId).then((result) => {
+          const tasks: TodoItem[] = result.tasks.map((t) => ({
+            id: t.id,
+            sessionId: t.sessionId,
+            content: t.content,
+            status: t.status as TodoItem["status"],
+            priority: t.priority as TodoItem["priority"],
+            dependsOn: t.dependsOn,
+            blockedBy: t.blockedBy,
+            createdAt: t.createdAt,
+            updatedAt: t.updatedAt,
+            completedAt: t.completedAt,
+            taskToolId: t.taskToolId,
+          }))
+          useTodoStore.getState().setTasks(tasks)
+        }).catch(() => {})
+      }
+    }
+  }, [isStreaming, queryClient, urlSessionId])
 
   const _cancelAndFinalize = useCallback(async () => {
     if (abortRef.current) {
@@ -15,8 +48,8 @@ export function useChat() {
     }
     try {
       await rpcClient.cancelStream()
-    } catch {
-      // best effort
+    } catch (err) {
+      console.warn("cancelStream failed", err)
     }
     const state = useChatStore.getState()
     if (!state.isStreaming) return false
@@ -78,20 +111,10 @@ export function useChat() {
                   break
                 }
                 case "tool-result":
-                  store.addToolResult({
-                    id: event.id,
-                    name: event.name,
-                    result: event.result,
-                    isError: event.error,
-                  })
+                  store.updateToolCallStatus(event.id, "completed", event.result)
                   break
                 case "tool-error":
-                  store.addToolResult({
-                    id: event.id,
-                    name: event.name,
-                    result: event.message,
-                    isError: true,
-                  })
+                  store.updateToolCallStatus(event.id, "error", event.message, true)
                   break
                 case "step-finish":
                   if (event.reason === "tool_calls") {
@@ -124,6 +147,15 @@ export function useChat() {
                     permission: event.permission,
                     pattern: event.pattern,
                   })
+                  break
+                case "subagent-start":
+                  store.startSubagent(event)
+                  break
+                case "subagent-delta":
+                  store.updateSubagent(event.id, event)
+                  break
+                case "subagent-end":
+                  store.endSubagent(event.id, event)
                   break
                 case "provider-error":
                   store.setError(event.message)
@@ -189,8 +221,9 @@ export function useChat() {
 
       try {
         await rpcClient.steerMessage(content, urlSessionId)
-      } catch {
-        // best effort
+      } catch (err) {
+        const store = useChatStore.getState()
+        store.setError(err instanceof Error ? err.message : "Steer failed")
       }
     },
     [urlSessionId],

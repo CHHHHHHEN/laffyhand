@@ -102,7 +102,7 @@ def _record_to_message(rec: MessageRecord) -> Message:
         if rec.tool_args:
             try:
                 raw = json.loads(rec.tool_args)
-            except (json.JSONDecodeError, TypeError):
+            except json.JSONDecodeError, TypeError:
                 logger.warning(f"Failed to parse tool_args JSON for message {rec.id}")
                 raw = []
             tool_calls = [ToolCallContent(**t) for t in raw]

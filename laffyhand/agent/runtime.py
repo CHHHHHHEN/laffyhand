@@ -4,9 +4,10 @@ import asyncio
 import copy
 import os
 import sys
-from collections.abc import Sequence
+import uuid
+from collections.abc import Awaitable, Callable, Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
@@ -33,7 +34,18 @@ from laffyhand.agent.tools.mcp_manage import (
     MCPDisconnectTool,
 )
 from laffyhand.agent.mcp import MCPService
-from laffyhand.agent.loop import agent_loop, StepFinish
+from laffyhand.agent.loop import (
+    agent_loop,
+    StepFinish,
+    TextDelta,
+    ReasoningDelta,
+    ToolCall as StreamToolCall,
+    ToolResult as StreamToolResult,
+    ToolError as StreamToolError,
+    SubAgentStart,
+    SubAgentDelta,
+    SubAgentEnd,
+)
 from laffyhand.agent.llm.factory import build_route
 from laffyhand.agent.llm.facade import LLM
 
@@ -57,6 +69,10 @@ class AgentRuntime:
     ) -> None:
         self._config = config
         self.llm = llm
+
+        self._event_sinks: dict[str, Callable[[Any], Awaitable[None]]] = {}
+        self._current_subagent_id: str | None = None
+        self._current_subagent_depth: int = 0
 
         self.session_manager = session_manager or SessionManager(config.db.path)
         self.mcp_service = mcp_service or MCPService()
@@ -376,12 +392,18 @@ class AgentRuntime:
             return self.llm
         raise RuntimeError("No LLM available for session")
 
-    async def run_agent_turn(self, session_id: str | None = None):  # type: ignore[no-untyped-def]
+    async def run_agent_turn(  # type: ignore[no-untyped-def]
+        self,
+        session_id: str | None = None,
+        event_sink: Callable[[Any], Awaitable[None]] | None = None,
+    ):
         sid = session_id or self._session_id
         assert sid is not None
         state = self._states.get(sid)
         assert state is not None, f"state not found for session {sid}"
         self._active_session_id = sid
+        if event_sink is not None:
+            self._event_sinks[sid] = event_sink
         llm = self._llm_for_session(sid)
         try:
             async for event in agent_loop(
@@ -400,6 +422,7 @@ class AgentRuntime:
                 yield event
         finally:
             self._active_session_id = None
+            self._event_sinks.pop(sid, None)
 
     async def create_subagent(
         self,
@@ -418,6 +441,10 @@ class AgentRuntime:
                 f"Error: maximum sub-agent depth ({MAX_SUBAGENT_DEPTH}) exceeded. "
                 "Cannot spawn further sub-agents."
             )
+
+        task_id = uuid.uuid4().hex[:12]
+        parent_subagent_id = self._current_subagent_id
+        subagent_depth = self._current_subagent_depth + 1
 
         if todo_id:
             from laffyhand.agent.session.models import TodoUpdate
@@ -444,7 +471,7 @@ class AgentRuntime:
                         ),
                     )
 
-            task_id: str = await self.subagent_manager.spawn(
+            await self.subagent_manager.spawn(
                 parent_session_id=parent_session_id,
                 agent_info=agent_info,
                 prompt=prompt,
@@ -454,14 +481,34 @@ class AgentRuntime:
                 session_manager=self.session_manager,
                 compaction_config=self.compaction_config,
                 on_complete=_on_complete,
+                event_sink=self._event_sinks.get(parent_session_id),
+                task_id=task_id,
+                parent_subagent_id=parent_subagent_id,
+                subagent_depth=subagent_depth,
+                description=description,
             )
             return f"Sub-agent [{agent_info.name}] started (id: {task_id[:8]}). I'll notify you when it completes."
 
-        result = await self._run_subagent_foreground(
-            parent_session_id,
-            agent_info,
-            prompt,
-        )
+        # Track nesting for foreground
+        prev_subagent_id = self._current_subagent_id
+        prev_subagent_depth = self._current_subagent_depth
+        self._current_subagent_id = task_id
+        self._current_subagent_depth = subagent_depth
+
+        try:
+            result = await self._run_subagent_foreground(
+                parent_session_id,
+                agent_info,
+                prompt,
+                event_sink=self._event_sinks.get(parent_session_id),
+                task_id=task_id,
+                parent_subagent_id=parent_subagent_id,
+                subagent_depth=subagent_depth,
+                description=description,
+            )
+        finally:
+            self._current_subagent_id = prev_subagent_id
+            self._current_subagent_depth = prev_subagent_depth
 
         if todo_id:
             from laffyhand.agent.session.models import TodoUpdate
@@ -479,6 +526,11 @@ class AgentRuntime:
         parent_session_id: str,
         agent_info: AgentInfo,
         prompt: str,
+        event_sink: Callable[[Any], Awaitable[None]] | None = None,
+        task_id: str = "",
+        parent_subagent_id: str | None = None,
+        subagent_depth: int = 0,
+        description: str = "",
     ) -> str:
         child_state, child_registry = build_subagent_state(
             self.session_manager,
@@ -491,7 +543,20 @@ class AgentRuntime:
 
         llm = self._llm_for_session(parent_session_id)
 
+        if event_sink:
+            await event_sink(
+                SubAgentStart(
+                    id=task_id,
+                    parent_id=parent_subagent_id,
+                    agent_type=agent_info.name,
+                    description=description or prompt[:80],
+                    mode="foreground",
+                    depth=subagent_depth,
+                )
+            )
+
         result_parts: list[str] = []
+        tool_call_count = 0
         async for event in agent_loop(
             child_state,
             llm,
@@ -502,6 +567,49 @@ class AgentRuntime:
             max_steps=agent_info.max_steps,
             session_manager=self.session_manager,
         ):
+            if event_sink:
+                if isinstance(event, TextDelta):
+                    await event_sink(
+                        SubAgentDelta(
+                            id=task_id,
+                            kind="text",
+                            content=event.text,
+                        )
+                    )
+                elif isinstance(event, ReasoningDelta):
+                    await event_sink(
+                        SubAgentDelta(
+                            id=task_id,
+                            kind="reasoning",
+                            content=event.text,
+                        )
+                    )
+                elif isinstance(event, StreamToolCall):
+                    tool_call_count += 1
+                    await event_sink(
+                        SubAgentDelta(
+                            id=task_id,
+                            kind="tool",
+                            tool_name=event.name,
+                            tool_input=event.input,
+                        )
+                    )
+                elif isinstance(event, StreamToolResult):
+                    await event_sink(
+                        SubAgentDelta(
+                            id=task_id,
+                            kind="tool_result",
+                            content=event.result[:500],
+                        )
+                    )
+                elif isinstance(event, StreamToolError):
+                    await event_sink(
+                        SubAgentDelta(
+                            id=task_id,
+                            kind="error",
+                            content=event.message,
+                        )
+                    )
             if isinstance(event, StepFinish):
                 last_msg = child_state.messages[-1]
                 if hasattr(last_msg, "content") and last_msg.content:
@@ -515,6 +623,20 @@ class AgentRuntime:
         result = "\n".join(part for part in result_parts if part).strip()
         if not result:
             result = "[No output]"
+
+        if event_sink:
+            step_usage = child_state.usage
+            await event_sink(
+                SubAgentEnd(
+                    id=task_id,
+                    status="completed",
+                    summary=result[:200],
+                    tool_count=tool_call_count,
+                    input_tokens=step_usage.total_input,
+                    output_tokens=step_usage.total_output,
+                )
+            )
+
         return f"<task>\n{result}\n</task>"
 
     async def generate_title_for_current(self) -> str | None:
@@ -534,17 +656,30 @@ class AgentRuntime:
             self.title_config,
         )
 
-    def _schedule_title_generation(self, session_id: str, trigger: str) -> None:
+    def _should_generate_title(self, session_id: str, trigger: str) -> bool:
+        """Check if title generation should proceed based on mode, trigger, and session state."""
         if self.title_config.mode == "off":
-            return
+            return False
         if self.title_config.mode != trigger:
-            return
+            return False
         session = self.session_manager.get(session_id)
-        if session is None or session.title:
+        return session is not None and not session.title
+
+    def _schedule_title_generation(self, session_id: str, trigger: str) -> None:
+        """Fire-and-forget title generation for background triggers (on_create, on_compact)."""
+        if not self._should_generate_title(session_id, trigger):
             return
         asyncio.create_task(self._do_generate_title(session_id))
 
-    async def _do_generate_title(self, session_id: str) -> None:
+    async def _generate_title(self, session_id: str, trigger: str) -> bool:
+        """Synchronously generate and save title. Returns True if title was generated."""
+        if not self._should_generate_title(session_id, trigger):
+            return False
+        title = await self._do_generate_title(session_id)
+        return bool(title)
+
+    async def _do_generate_title(self, session_id: str) -> str | None:
+        """Call LLM to generate a title and save to DB. Returns the title or None."""
         try:
             from laffyhand.agent.title import generate_title
 
@@ -557,8 +692,10 @@ class AgentRuntime:
             )
             if title:
                 logger.info(f"Auto-generated title for session {session_id}: {title}")
+            return title
         except Exception:
             logger.exception(f"Title generation failed for session {session_id}")
+            return None
 
     def interrupt_session(self, session_id: str) -> bool:
         state = self._states.get(session_id)

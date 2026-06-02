@@ -82,14 +82,15 @@ export function Sidebar() {
   }
 
   return (
-    <div className="h-full flex flex-col bg-gray-50 dark:bg-gray-900">
+    <div className="h-full flex flex-col bg-gray-50 dark:bg-gray-900 transition-colors duration-200">
       {/* 操作按钮区 */}
       <div className="p-3 border-b border-gray-200 dark:border-gray-700 space-y-2">
         <Button
           onClick={handleNewSession}
           disabled={isCreating}
           size="sm"
-          className="w-full"
+          variant="primary"
+          className="w-full font-medium shadow-sm"
         >
           {isCreating ? "Creating..." : "+ New Session"}
         </Button>
@@ -99,9 +100,14 @@ export function Sidebar() {
             disabled={isForking}
             variant="secondary"
             size="sm"
-            className="w-full"
+            className="w-full text-xs"
           >
-            {isForking ? "Forking..." : "Fork"}
+            <span className="flex items-center gap-1">
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5v14l9-7-9-7z" />
+              </svg>
+              {isForking ? "Forking..." : "Fork"}
+            </span>
           </Button>
         )}
         {/* 搜索框 */}
@@ -154,13 +160,13 @@ export function Sidebar() {
           return (
             <div
               key={s.id}
-              className="group relative animate-[fade-in_0.2s_ease-out]"
+              className="group relative animate-[fade-in_0.2s_ease-out] border-b border-gray-100 dark:border-gray-800 last:border-0"
             >
               <button
                 onClick={() => navigate(`/chat/${s.id}`)}
                 className={`w-full text-left px-3 py-2.5 rounded-lg text-sm transition-all duration-150 cursor-pointer ${
                   isActive
-                    ? "bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 shadow-sm"
+                    ? "bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 shadow-sm border-l-2 border-blue-500 dark:border-blue-400"
                     : "text-gray-700 dark:text-gray-300 hover:bg-gray-200/70 dark:hover:bg-gray-800/70 hover:translate-x-0.5"
                 }`}
               >
@@ -169,14 +175,14 @@ export function Sidebar() {
                     {s.title || "Untitled"}
                   </div>
                   {s.updatedAt && (
-                    <span className="shrink-0 text-xs text-gray-400 dark:text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <span className="shrink-0 text-[10px] text-gray-400 dark:text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity">
                       {formatRelativeTime(s.updatedAt)}
                     </span>
                   )}
                 </div>
                 <div className="flex items-center gap-2 mt-0.5">
-                  <span className="text-xs text-gray-500 dark:text-gray-400">
-                    {s.messageCount} msgs
+                  <span className="text-[11px] text-gray-400 dark:text-gray-500">
+                    {s.messageCount} {s.messageCount === 1 ? "msg" : "msgs"}
                   </span>
                 </div>
               </button>

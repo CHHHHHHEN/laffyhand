@@ -4,15 +4,43 @@ import { ErrorBoundary } from "@/components/ui/ErrorBoundary"
 import { useUiStore } from "@/stores/ui-store"
 import { TodoPanel } from "@/components/todo/TodoPanel"
 import { useTodoStore } from "@/stores/todo-store"
+import { useChatStore } from "@/stores/chat-store"
+import { ConfigPanel } from "@/components/chat/ConfigPanel"
+import { SubagentFooter } from "@/components/chat/SubagentFooter"
+import { useEffect } from "react"
+
+function formatTokens(n: number): string {
+  if (n < 1000) return `${n}`
+  const k = (n / 1000).toFixed(1).replace(/\.0$/, "")
+  return `${k}k`
+}
 
 export function AppShell() {
   const sidebarOpen = useUiStore((s) => s.sidebarOpen)
   const toggleSidebar = useUiStore((s) => s.toggleSidebar)
   const toggleTodoPanel = useUiStore((s) => s.toggleTodoPanel)
   const taskCount = useTodoStore((s) => s.tasks.length)
+  const darkMode = useUiStore((s) => s.darkMode)
+  const toggleDarkMode = useUiStore((s) => s.toggleDarkMode)
+
+  const isStreaming = useChatStore((s) => s.isStreaming)
+  const model = useChatStore((s) => s.model)
+  const sessionUsage = useChatStore((s) => s.sessionUsage)
+  const turnUsage = useChatStore((s) => s.turnUsage)
+
+  // Sync dark mode class to <html>
+  useEffect(() => {
+    document.documentElement.classList.toggle("dark", darkMode)
+  }, [darkMode])
+
+  const totalTokens = sessionUsage
+    ? sessionUsage.total_input + sessionUsage.total_output
+    : 0
+  const ctxSize = sessionUsage?.context_size ?? 0
+  const contextTokens = sessionUsage?.total_input ?? 0
 
   return (
-    <div className="flex h-full overflow-hidden">
+    <div className="flex h-full overflow-hidden transition-colors duration-200">
       {/* 左侧边栏 */}
       <div
         className={`${
@@ -24,7 +52,7 @@ export function AppShell() {
 
       {/* 主内容区 */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        {/* 顶部栏 */}
+        {/* 合并后的顶部栏 — 导航 + 工具栏 */}
         <div className="flex items-center gap-2 px-3 h-10 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shrink-0">
           <button
             onClick={toggleSidebar}
@@ -39,10 +67,159 @@ export function AppShell() {
               )}
             </svg>
           </button>
-          <span className="text-xs font-medium text-gray-400 dark:text-gray-500 select-none">
+          <span className="text-xs font-medium text-gray-400 dark:text-gray-500 select-none shrink-0">
             Laffyhand
           </span>
-          <div className="flex-1" />
+
+          {/* Model + Token usage — 上下文信息 */}
+          {(model || sessionUsage) && (
+            <>
+              <span className="w-px h-4 bg-gray-200 dark:bg-gray-700" />
+              {model && (
+                <span className="font-mono flex items-center gap-1.5 text-[11px] text-gray-500 dark:text-gray-400 shrink-0" title="Model">
+                  <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                  {model}
+                </span>
+              )}
+
+              {turnUsage && (
+                <>
+                  <span className="text-gray-300 dark:text-gray-600 select-none text-xs">|</span>
+
+                  <span className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400 text-[11px]" title="This turn / Cumulative / Context size">
+                    <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
+                    </svg>
+                    <span className="font-medium">{formatTokens(turnUsage.input + turnUsage.output)}</span>
+                    <span className="text-gray-400 dark:text-gray-500">/ {formatTokens(totalTokens)}</span>
+                    <span className="text-gray-300 dark:text-gray-500">/ {formatTokens(ctxSize)}</span>
+                    {ctxSize > 0 && contextTokens > 0 && (
+                      <span className={`text-[10px] font-medium ${
+                        contextTokens / ctxSize > 0.8
+                          ? "text-amber-500 dark:text-amber-400"
+                          : "text-gray-400 dark:text-gray-500"
+                      }`}>
+                        ({Math.round((contextTokens / ctxSize) * 100)}%)
+                      </span>
+                    )}
+                    {ctxSize > 0 && contextTokens > 0 && (
+                      <span className="w-12 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden shrink-0">
+                        <span
+                          className={`block h-full rounded-full transition-all duration-300 ${
+                            contextTokens / ctxSize > 0.8
+                              ? "bg-amber-400"
+                              : contextTokens / ctxSize > 0.5
+                                ? "bg-blue-400"
+                                : "bg-green-400"
+                          }`}
+                          style={{ width: `${Math.min((contextTokens / ctxSize) * 100, 100)}%` }}
+                        />
+                      </span>
+                    )}
+                  </span>
+
+                  <span className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400 text-[11px]">
+                    <span className="flex items-center gap-0.5">
+                      <svg className="w-3 h-3 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 11l5-5m0 0l5 5m-5-5v12" />
+                      </svg>
+                      <span>{formatTokens(turnUsage.input)}</span>
+                    </span>
+                    <svg className="w-2.5 h-2.5 text-gray-300 dark:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 13l-5 5m0 0l-5-5m5 5V6" />
+                    </svg>
+                    <span className="flex items-center gap-0.5">
+                      <svg className="w-3 h-3 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 13l-5 5m0 0l-5-5m5 5V6" />
+                      </svg>
+                      <span>{formatTokens(turnUsage.output)}</span>
+                    </span>
+                  </span>
+
+                  {turnUsage.reasoning > 0 && (
+                    <span className="flex items-center gap-1 text-gray-500 dark:text-gray-400 text-[11px]" title="Reasoning tokens">
+                      <span className="text-gray-300 dark:text-gray-600 select-none">·</span>
+                      <span className="flex items-center gap-0.5">
+                        <span className="text-[11px]">🧠</span>
+                        <span>{formatTokens(turnUsage.reasoning)}</span>
+                      </span>
+                    </span>
+                  )}
+                </>
+              )}
+
+              {!turnUsage && sessionUsage && (
+                <>
+                  <span className="text-gray-300 dark:text-gray-600 select-none text-xs">|</span>
+                  <span className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400 text-[11px]" title="Cumulative tokens / Context size">
+                    <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
+                    </svg>
+                    <span className="font-medium">{formatTokens(totalTokens)}</span>
+                    <span className="text-gray-400 dark:text-gray-500">/ {formatTokens(ctxSize)}</span>
+                    {ctxSize > 0 && contextTokens > 0 && (
+                      <span className={`text-[10px] font-medium ${
+                        contextTokens / ctxSize > 0.8
+                          ? "text-amber-500 dark:text-amber-400"
+                          : "text-gray-400 dark:text-gray-500"
+                      }`}>
+                        ({Math.round((contextTokens / ctxSize) * 100)}%)
+                      </span>
+                    )}
+                    {ctxSize > 0 && contextTokens > 0 && (
+                      <span className="w-12 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden shrink-0">
+                        <span
+                          className={`block h-full rounded-full transition-all duration-300 ${
+                            contextTokens / ctxSize > 0.8
+                              ? "bg-amber-400"
+                              : contextTokens / ctxSize > 0.5
+                                ? "bg-blue-400"
+                                : "bg-green-400"
+                          }`}
+                          style={{ width: `${Math.min((contextTokens / ctxSize) * 100, 100)}%` }}
+                        />
+                      </span>
+                    )}
+                  </span>
+                </>
+              )}
+            </>
+          )}
+
+          {/* Streaming indicator — 仅有 streaming 时在顶部栏显示简洁提示 */}
+          {isStreaming && (
+            <>
+              <span className="w-px h-4 bg-gray-200 dark:bg-gray-700" />
+              <span className="flex items-center gap-1.5 text-green-600 dark:text-green-400 text-[11px] shrink-0">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
+                </span>
+                <span className="font-medium">Streaming</span>
+              </span>
+            </>
+          )}
+
+          <div className="flex-1 min-w-2" />
+
+          <button
+            onClick={toggleDarkMode}
+            className="p-1.5 rounded-md text-gray-500 hover:text-gray-700 hover:bg-gray-100 dark:hover:text-gray-300 dark:hover:bg-gray-800 transition-colors cursor-pointer"
+            title={darkMode ? "Switch to light mode" : "Switch to dark mode"}
+          >
+            {darkMode ? (
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+              </svg>
+            ) : (
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+              </svg>
+            )}
+          </button>
+
+          <ConfigPanel />
+
           <button
             onClick={toggleTodoPanel}
             className="p-1.5 rounded-md text-gray-500 hover:text-gray-700 hover:bg-gray-100 dark:hover:text-gray-300 dark:hover:bg-gray-800 transition-colors cursor-pointer relative"
@@ -59,9 +236,12 @@ export function AppShell() {
           </button>
         </div>
 
-        <ErrorBoundary>
-          <Outlet />
-        </ErrorBoundary>
+        <div className="flex-1 flex flex-col min-h-0">
+          <ErrorBoundary>
+            <Outlet />
+          </ErrorBoundary>
+        </div>
+        <SubagentFooter />
       </div>
 
       {/* 右侧 TODO 面板 */}

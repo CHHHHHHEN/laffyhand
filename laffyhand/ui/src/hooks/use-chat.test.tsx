@@ -1,13 +1,26 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { renderHook, act } from "@testing-library/react"
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { useChat } from "./use-chat"
 import { useChatStore, resetMessageCounter } from "@/stores/chat-store"
 import type { StreamEvent } from "@/types/rpc"
+import type { ReactNode } from "react"
 
 // Mock react-router-dom
 vi.mock("react-router-dom", () => ({
   useParams: () => ({ sessionId: "sess-test" }),
 }))
+
+function createWrapper() {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  })
+  return function Wrapper({ children }: { children: ReactNode }) {
+    return (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    )
+  }
+}
 
 // Mock rpcClient
 const mockChatStream = vi.fn()
@@ -16,6 +29,7 @@ vi.mock("@/lib/rpc", () => ({
   rpcClient: {
     chatStream: (...args: unknown[]) => mockChatStream(...args),
     cancelStream: () => mockCancelStream(),
+    todoList: () => Promise.resolve({ tasks: [] }),
   },
   RpcError: class extends Error {
     constructor(
@@ -63,7 +77,7 @@ describe("useChat", () => {
       },
     )
 
-    const { result } = renderHook(() => useChat())
+    const { result } = renderHook(() => useChat(), { wrapper: createWrapper() })
 
     await act(async () => {
       await result.current.sendMessage("hi")
@@ -77,7 +91,7 @@ describe("useChat", () => {
   })
 
   it("does not send empty messages", async () => {
-    const { result } = renderHook(() => useChat())
+    const { result } = renderHook(() => useChat(), { wrapper: createWrapper() })
 
     await act(async () => {
       await result.current.sendMessage("  ")
@@ -89,7 +103,7 @@ describe("useChat", () => {
   it("does not send when already streaming", async () => {
     useChatStore.setState({ isStreaming: true })
 
-    const { result } = renderHook(() => useChat())
+    const { result } = renderHook(() => useChat(), { wrapper: createWrapper() })
 
     await act(async () => {
       await result.current.sendMessage("hello")
@@ -101,7 +115,7 @@ describe("useChat", () => {
   it("sets error on stream failure", async () => {
     mockChatStream.mockRejectedValue(new Error("Network error"))
 
-    const { result } = renderHook(() => useChat())
+    const { result } = renderHook(() => useChat(), { wrapper: createWrapper() })
 
     await act(async () => {
       await result.current.sendMessage("hello")
@@ -113,6 +127,7 @@ describe("useChat", () => {
   })
 
   it("cancels stream and finalizes if content exists", async () => {
+    let resolvePromise: () => void = () => {}
     mockChatStream.mockImplementation(
       async (
         _message: string,
@@ -123,51 +138,48 @@ describe("useChat", () => {
         },
         signal?: AbortSignal,
       ) => {
-        // Simulate receiving some content
         callbacks.onEvent({ type: "text-delta", id: "t1", text: "partial" })
-        // Then cancel
-        signal?.addEventListener("abort", () => {
-          // stream aborted
+        await new Promise<void>((resolve) => {
+          resolvePromise = resolve
+          signal?.addEventListener("abort", () => resolve())
         })
-        // Never call onComplete or onError - keep hanging
-        await new Promise(() => {}) // never resolves
       },
     )
 
-    const { result } = renderHook(() => useChat())
+    const { result } = renderHook(() => useChat(), { wrapper: createWrapper() })
 
-    // Start sending
     await act(async () => {
       result.current.sendMessage("hello")
     })
 
-    // Cancel
     mockCancelStream.mockResolvedValue({ status: "cancelled" })
 
-    // Need to add content first so we have something to finalize
-    // The mock above adds content, then waits. Cancel should finalize.
     await act(async () => {
       await result.current.cancelStream()
     })
 
-    // After cancel, the stream content should be finalized
-    // The mock sends content before hanging, so finalize should have the content
     expect(mockCancelStream).toHaveBeenCalled()
   })
 
   it("shows error if cancel with no content", async () => {
+    let resolvePromise: () => void = () => {}
     mockChatStream.mockImplementation(
-      async () => {
-        await new Promise(() => {}) // never resolves
+      async (
+        _message: string,
+        _callbacks: unknown,
+        signal?: AbortSignal,
+      ) => {
+        await new Promise<void>((resolve) => {
+          resolvePromise = resolve
+          signal?.addEventListener("abort", () => resolve())
+        })
       },
     )
 
-    const { result } = renderHook(() => useChat())
+    const { result } = renderHook(() => useChat(), { wrapper: createWrapper() })
 
     await act(async () => {
-      // Don't await - it won't resolve
       result.current.sendMessage("hello")
-      // Small delay for state to update
       await new Promise((r) => setTimeout(r, 10))
     })
 
@@ -178,7 +190,6 @@ describe("useChat", () => {
     })
 
     const state = useChatStore.getState()
-    // No content and no tool calls → should set error
     expect(state.error).toBe("Stream cancelled")
   })
 })

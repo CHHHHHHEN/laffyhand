@@ -39,7 +39,7 @@ describe("TodoColumn", () => {
 
   it("shows empty indicator when no tasks", () => {
     render(<TodoColumn status="blocked" tasks={[]} />)
-    expect(screen.getByText("—")).toBeInTheDocument()
+    expect(screen.getByText("No tasks")).toBeInTheDocument()
     expect(screen.getByText(/Blocked/)).toBeInTheDocument()
     expect(screen.getByText(/\(0\)/)).toBeInTheDocument()
   })

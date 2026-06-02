@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* 启用 class-based dark mode（而非系统偏好） */
+@custom-variant dark (&:where(.dark, .dark *));
+
 @layer base {
   :root {
     --color-accent: #3b82f6;
@@ -10,6 +13,11 @@
     height: 100%;
     margin: 0;
     overflow: hidden;
+  }
+
+  /* 主题切换平滑过渡 */
+  body {
+    transition: background-color 0.2s ease, color 0.2s ease;
   }
 
   /* 自定义滚动条 */
@@ -32,6 +40,99 @@
   }
   .dark ::-webkit-scrollbar-thumb:hover {
     background: #6b7280;
+  }
+
+  /* Prose 代码块样式增强 */
+  .prose pre {
+    background: #f3f4f6 !important;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 12px 14px !important;
+    font-size: 12.5px;
+    line-height: 1.6;
+    overflow-x: auto;
+  }
+  .dark .prose pre {
+    background: #1f2937 !important;
+    border-color: #374151;
+  }
+  .prose code {
+    font-size: 12.5px;
+    background: #f3f4f6;
+    padding: 1px 4px;
+    border-radius: 3px;
+    font-weight: 450;
+  }
+  .dark .prose code {
+    background: #374151;
+  }
+  .prose pre code {
+    background: none !important;
+    padding: 0;
+    border-radius: 0;
+  }
+  .prose p > code::before,
+  .prose p > code::after {
+    content: none;
+  }
+
+  /* 表格样式增强 */
+  .prose table {
+    font-size: 12px;
+    border-collapse: separate;
+    border-spacing: 0;
+    width: 100%;
+    overflow: hidden;
+    border-radius: 8px;
+    border: 1px solid #e5e7eb;
+  }
+  .dark .prose table {
+    border-color: #374151;
+  }
+  .prose th {
+    background: #f3f4f6;
+    font-weight: 600;
+    text-align: left;
+    padding: 8px 12px;
+    white-space: nowrap;
+  }
+  .dark .prose th {
+    background: #1f2937;
+    color: #e5e7eb;
+  }
+  .prose td {
+    padding: 8px 12px;
+    border-top: 1px solid #f3f4f6;
+  }
+  .dark .prose td {
+    border-top-color: #1f2937;
+  }
+  .prose tbody tr:hover {
+    background: #f9fafb;
+  }
+  .dark .prose tbody tr:hover {
+    background: #111827;
+  }
+
+  /* 引用样式增强 */
+  .prose blockquote {
+    border-left: 3px solid #3b82f6;
+    padding: 4px 12px;
+    margin: 8px 0;
+    background: #f8fafc;
+    border-radius: 0 4px 4px 0;
+  }
+  .dark .prose blockquote {
+    border-left-color: #60a5fa;
+    background: #0f172a;
+  }
+
+  /* 列表间距 */
+  .prose ul, .prose ol {
+    padding-left: 1.25em;
+  }
+  .prose li {
+    margin: 2px 0;
   }
 
   /* 选中文字颜色 */
@@ -105,3 +206,12 @@
 .typing-dot:nth-child(1) { animation-delay: -0.32s; }
 .typing-dot:nth-child(2) { animation-delay: -0.16s; }
 .typing-dot:nth-child(3) { animation-delay: 0s; }
+
+/* 减少动效偏好 */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

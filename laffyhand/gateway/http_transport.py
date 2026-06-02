@@ -123,7 +123,9 @@ class WSTransport:
         self._runner = runner
         logger.info(f"WebSocket transport listening on ws://{self.host}:{self.port}/ws")
 
-    async def _handle_ws(self, request: aiohttp.web.Request) -> aiohttp.web.WebSocketResponse:
+    async def _handle_ws(
+        self, request: aiohttp.web.Request
+    ) -> aiohttp.web.WebSocketResponse:
         import aiohttp.web
 
         ws = aiohttp.web.WebSocketResponse(max_msg_size=16 * 1024 * 1024)
@@ -145,7 +147,9 @@ class WSTransport:
 
         return ws
 
-    async def _handle_health(self, request: aiohttp.web.Request) -> aiohttp.web.StreamResponse:
+    async def _handle_health(
+        self, request: aiohttp.web.Request
+    ) -> aiohttp.web.StreamResponse:
         origin = _resolve_cors_origin(request.headers.get("Origin"))
         return _json_response({"status": "ok"}, origin=origin)
 
@@ -159,7 +163,12 @@ class WSTransport:
 class _HTTPStreamTransport(Transport):
     """Transport wrapping an SSE StreamResponse — used per streaming request."""
 
-    def __init__(self, response: aiohttp.web.StreamResponse, conn_id: str, dispatcher: Dispatcher | None = None) -> None:
+    def __init__(
+        self,
+        response: aiohttp.web.StreamResponse,
+        conn_id: str,
+        dispatcher: Dispatcher | None = None,
+    ) -> None:
         self._response = response
         self.connection_id = conn_id
         self._closed = False
@@ -171,7 +180,7 @@ class _HTTPStreamTransport(Transport):
         try:
             payload = f"data: {data}\n\n"
             await self._response.write(payload.encode())
-        except (Exception, asyncio.CancelledError):
+        except Exception, asyncio.CancelledError:
             self._closed = True
 
     async def recv(self) -> str:
@@ -241,11 +250,15 @@ class HTTPTransport:
         self._runner = runner
         logger.info(f"HTTP transport listening on http://{self.host}:{self.port}/rpc")
 
-    async def _handle_cors_preflight(self, request: aiohttp.web.Request) -> aiohttp.web.StreamResponse:
+    async def _handle_cors_preflight(
+        self, request: aiohttp.web.Request
+    ) -> aiohttp.web.StreamResponse:
         origin = _resolve_cors_origin(request.headers.get("Origin"))
         return _json_response({}, status=204, origin=origin)
 
-    async def _handle_rpc(self, request: aiohttp.web.Request) -> aiohttp.web.StreamResponse:
+    async def _handle_rpc(
+        self, request: aiohttp.web.Request
+    ) -> aiohttp.web.StreamResponse:
         body_bytes = await request.read()
         if len(body_bytes) > MAX_MESSAGE_SIZE:
             origin = _resolve_cors_origin(request.headers.get("Origin"))
@@ -273,7 +286,9 @@ class HTTPTransport:
 
         return await self._handle_rpc_inner(request, body)
 
-    async def _handle_rpc_inner(self, request: aiohttp.web.Request, body: str) -> aiohttp.web.StreamResponse:
+    async def _handle_rpc_inner(
+        self, request: aiohttp.web.Request, body: str
+    ) -> aiohttp.web.StreamResponse:
         from laffyhand.gateway.protocol import from_json, Request
 
         origin = _resolve_cors_origin(request.headers.get("Origin"))
@@ -356,9 +371,7 @@ class HTTPTransport:
         runtime = self.runtime
         assert runtime is not None
         task: asyncio.Task[dict[str, Any] | None] = asyncio.create_task(
-            entry.func(
-                runtime, message.params or {}, transport, message.id, conn_id
-            ),
+            entry.func(runtime, message.params or {}, transport, message.id, conn_id),
         )
         self._sse_tasks[conn_id] = task
         task.add_done_callback(
@@ -405,7 +418,7 @@ class HTTPTransport:
         finally:
             try:
                 await response.write_eof()
-            except (ConnectionError, asyncio.CancelledError):
+            except ConnectionError, asyncio.CancelledError:
                 pass
         return response
 
@@ -456,7 +469,9 @@ class HTTPTransport:
                 origin=origin,
             )
 
-    async def _handle_health(self, request: aiohttp.web.Request) -> aiohttp.web.StreamResponse:
+    async def _handle_health(
+        self, request: aiohttp.web.Request
+    ) -> aiohttp.web.StreamResponse:
         origin = _resolve_cors_origin(request.headers.get("Origin"))
         return _json_response({"status": "ok"}, origin=origin)
 

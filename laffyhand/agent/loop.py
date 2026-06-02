@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator, Awaitable, Callable
-from typing import TYPE_CHECKING, Any, Union
+from typing import TYPE_CHECKING, Any, Literal, Union
 
 from loguru import logger
 from pydantic import BaseModel
@@ -137,6 +137,35 @@ class PermissionRequest(BaseModel):
     pattern: str
 
 
+class SubAgentStart(BaseModel):
+    type: str = "subagent-start"
+    id: str
+    parent_id: str | None = None
+    agent_type: str
+    description: str
+    mode: Literal["foreground", "background"]
+    depth: int = 0
+
+
+class SubAgentDelta(BaseModel):
+    type: str = "subagent-delta"
+    id: str
+    kind: Literal["text", "reasoning", "tool", "tool_result", "error"]
+    content: str | None = None
+    tool_name: str | None = None
+    tool_input: str | None = None
+
+
+class SubAgentEnd(BaseModel):
+    type: str = "subagent-end"
+    id: str
+    status: Literal["completed", "error", "cancelled"]
+    summary: str | None = None
+    tool_count: int = 0
+    input_tokens: int = 0
+    output_tokens: int = 0
+
+
 StreamEvent = Union[
     StepStart,
     TextStart,
@@ -153,6 +182,9 @@ StreamEvent = Union[
     ProviderError,
     Compacting,
     PermissionRequest,
+    SubAgentStart,
+    SubAgentDelta,
+    SubAgentEnd,
 ]
 
 
@@ -358,12 +390,15 @@ async def agent_loop(
         agent_state.messages.append(assistant_msg)
         agent_state.usage.add(usage)
 
-        yield StepFinish(index=step_index, reason=finish_reason or "stop", usage=usage)
-
         if finish_reason == "tool_calls" and tool_calls:
             logger.debug(f"Executing {len(tool_calls)} tool call(s)")
+            exec_context = {"session_id": agent_state.session_id}
             for tc in tool_calls:
-                exec_result = await ToolExecutor.execute(tool_registry, tc)
+                exec_result = await ToolExecutor.execute(
+                    tool_registry,
+                    tc,
+                    context=exec_context,
+                )
                 agent_state.messages.append(exec_result.message)
                 if exec_result.is_error:
                     yield ToolError(
@@ -395,8 +430,13 @@ async def agent_loop(
                 agent_state.messages[-1] = ToolMessage(
                     tool_call_id=last_tool.tool_call_id,
                     content=steer_content,
+                    is_error=last_tool.is_error,
                 )
                 logger.debug("Injected steer text into tool result")
+
+            yield StepFinish(
+                index=step_index, reason=finish_reason or "stop", usage=usage
+            )
 
             if compaction_config.prune:
                 logger.debug("Pruning after tool calls")
@@ -406,6 +446,8 @@ async def agent_loop(
                     agent_state.session_id, agent_state.messages
                 )
             continue
+
+        yield StepFinish(index=step_index, reason=finish_reason or "stop", usage=usage)
 
         if finish_reason is not None:
             if session_manager is not None and agent_state.session_id:

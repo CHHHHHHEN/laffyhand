@@ -109,7 +109,7 @@ class TestTodoTool:
         result = asyncio.run(
             tool.run({"operation": "update", "session_id": session_id})
         )
-        assert "id is required" in result
+        assert "id or ids is required" in result
 
     def test_update_nonexistent_returns_error(self, tool, session_id):
         result = asyncio.run(

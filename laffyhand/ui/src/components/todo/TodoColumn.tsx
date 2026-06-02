@@ -47,8 +47,8 @@ export function TodoColumn({ status, tasks }: TodoColumnProps) {
           <TodoCard key={task.id} task={task} />
         ))}
         {tasks.length === 0 && (
-          <div className="text-[10px] text-gray-400 dark:text-gray-500 text-center py-4">
-            —
+          <div className="text-[10px] text-gray-300 dark:text-gray-600 text-center py-3 italic">
+            No tasks
           </div>
         )}
       </div>

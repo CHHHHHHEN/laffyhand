@@ -13,7 +13,9 @@ from laffyhand.agent.mcp.config import MCPConfig, LocalMCPConfig, RemoteMCPConfi
 
 
 class MCPToolDef:
-    def __init__(self, name: str, description: str, input_schema: dict[str, Any]) -> None:
+    def __init__(
+        self, name: str, description: str, input_schema: dict[str, Any]
+    ) -> None:
         self.name = name
         self.description = description
         self.input_schema = input_schema

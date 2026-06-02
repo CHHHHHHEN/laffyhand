@@ -1,5 +1,5 @@
 import { create } from "zustand"
-import type { Message, ToolCall, ToolResult, PermissionInfo } from "@/types/session"
+import type { Message, ToolCall, ToolCallStatus, PermissionInfo, ActiveSubagent } from "@/types/session"
 import type { SessionUsage } from "@/types/rpc"
 
 export interface TurnUsage {
@@ -14,7 +14,6 @@ export interface ChatState {
   streamContent: string
   streamReasoning: string
   streamToolCalls: ToolCall[]
-  streamToolResults: ToolResult[]
   currentAssistantMessageId: string | null
   error: string | null
 
@@ -26,6 +25,10 @@ export interface ChatState {
   turnUsage: TurnUsage | null
   _turnStartUsage: SessionUsage | null
 
+  // Subagent activity tracking
+  foregroundSubagents: ActiveSubagent[]
+  backgroundSubagents: ActiveSubagent[]
+
   // Queue for busy_mode="queue"
   pendingQueue: string[]
 
@@ -34,7 +37,7 @@ export interface ChatState {
   appendContent: (text: string) => void
   setReasoning: (text: string) => void
   addToolCall: (toolCall: ToolCall) => void
-  addToolResult: (toolResult: ToolResult) => void
+  updateToolCallStatus: (id: string, status: ToolCallStatus, result?: string, isError?: boolean) => void
   finalizeMessage: (usage?: { inputTokens: number; outputTokens: number }, sessionUsage?: SessionUsage | null) => void
   setError: (error: string) => void
   clearMessages: () => void
@@ -45,6 +48,10 @@ export interface ChatState {
   hasPendingMessages: () => boolean
   addPermissionRequest: (req: PermissionInfo) => void
   resolvePermissionRequest: (messageId: string) => void
+  startSubagent: (event: { id: string; parent_id?: string; agent_type: string; description: string; mode: "foreground" | "background"; depth: number }) => void
+  updateSubagent: (id: string, event: { kind: string; content?: string; tool_name?: string; tool_input?: string }) => void
+  endSubagent: (id: string, event: { status: string; summary?: string; tool_count?: number; input_tokens?: number; output_tokens?: number }) => void
+  clearForegroundSubagents: () => void
 }
 
 let messageCounter = 0
@@ -62,13 +69,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
   streamContent: "",
   streamReasoning: "",
   streamToolCalls: [],
-  streamToolResults: [],
   currentAssistantMessageId: null,
   error: null,
   model: "",
   sessionUsage: null,
   turnUsage: null,
   _turnStartUsage: null,
+  foregroundSubagents: [],
+  backgroundSubagents: [],
   pendingQueue: [],
 
   addPermissionRequest: (req) =>
@@ -116,7 +124,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
       streamContent: "",
       streamReasoning: "",
       streamToolCalls: [],
-      streamToolResults: [],
       currentAssistantMessageId: id,
       error: null,
       _turnStartUsage: sessionUsage,
@@ -135,37 +142,39 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   addToolCall: (toolCall) =>
     set((state) => ({
-      streamToolCalls: [...state.streamToolCalls, toolCall],
+      streamToolCalls: [...state.streamToolCalls, { ...toolCall, status: "running" as const }],
     })),
 
-  addToolResult: (toolResult) =>
-    set((state) => ({
-      streamToolResults: [...state.streamToolResults, toolResult],
-    })),
+  updateToolCallStatus: (id, status, result, isError) =>
+    set((state) => {
+      if (state.isStreaming) {
+        return {
+          streamToolCalls: state.streamToolCalls.map((tc) =>
+            tc.id === id ? { ...tc, status, ...(result !== undefined ? { result } : {}), ...(isError !== undefined ? { isError } : {}) } : tc,
+          ),
+        }
+      }
+      // Not streaming: update the last assistant message's tool calls
+      const messages = state.messages.map((msg) => {
+        if (msg.role !== "assistant" || !msg.toolCalls) return msg
+        const updated = msg.toolCalls.map((tc) =>
+          tc.id === id
+            ? { ...tc, status, ...(result !== undefined ? { result } : {}), ...(isError !== undefined ? { isError } : {}) }
+            : tc,
+        )
+        return { ...msg, toolCalls: updated }
+      })
+      return { messages }
+    }),
 
   finalizeMessage: (usage, sessionUsage) =>
     set((state) => {
-      // If content empty but reasoning exists, promote reasoning to content
-      const content = state.streamContent || state.streamReasoning || ""
-      const reasoning = state.streamContent ? (state.streamReasoning || undefined) : undefined
+      const content = state.streamContent || ""
+      const reasoning = state.streamReasoning || undefined
 
-      const assistantMessage: Message = {
-        id: state.currentAssistantMessageId ?? nextMessageId(),
-        role: "assistant",
-        content,
-        reasoning,
-        toolCalls:
-          state.streamToolCalls.length > 0
-            ? state.streamToolCalls
-            : undefined,
-        toolResults:
-          state.streamToolResults.length > 0
-            ? state.streamToolResults
-            : undefined,
-        finishReason: "stop",
-        usage,
-        createdAt: Date.now(),
-      }
+      const finalizedToolCalls = state.streamToolCalls.length > 0
+        ? state.streamToolCalls
+        : undefined
 
       // Compute per-turn token delta
       let turnUsage: TurnUsage | null = null
@@ -177,14 +186,38 @@ export const useChatStore = create<ChatState>((set, get) => ({
         }
       }
 
+      // Skip empty finalization (e.g. finish event after step-finish already finalized)
+      if (!content && !reasoning && !finalizedToolCalls && !state.isStreaming) {
+        return {
+          isStreaming: false,
+          sessionUsage: sessionUsage ?? state.sessionUsage,
+          turnUsage,
+          _turnStartUsage: null,
+        }
+      }
+
+      const assistantMessage: Message = {
+        id: state.currentAssistantMessageId ?? nextMessageId(),
+        role: "assistant",
+        content,
+        reasoning,
+        toolCalls: finalizedToolCalls as Message["toolCalls"],
+        finishReason: "stop",
+        usage,
+        createdAt: Date.now(),
+      }
+
       return {
         messages: [...state.messages, assistantMessage],
         isStreaming: false,
         streamContent: "",
         streamReasoning: "",
         streamToolCalls: [],
-        streamToolResults: [],
         currentAssistantMessageId: null,
+        foregroundSubagents: [],
+        backgroundSubagents: state.backgroundSubagents.filter(
+          (sa) => sa.status !== "completed" && sa.status !== "error",
+        ),
         sessionUsage: sessionUsage ?? state.sessionUsage,
         turnUsage,
         _turnStartUsage: null,
@@ -201,8 +234,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
       streamContent: "",
       streamReasoning: "",
       streamToolCalls: [],
-      streamToolResults: [],
       currentAssistantMessageId: null,
+      foregroundSubagents: [],
+      backgroundSubagents: [],
       error: null,
       turnUsage: null,
       _turnStartUsage: null,
@@ -215,7 +249,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
       streamContent: "",
       streamReasoning: "",
       streamToolCalls: [],
-      streamToolResults: [],
       currentAssistantMessageId: null,
       error: null,
       turnUsage: null,
@@ -239,4 +272,77 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   hasPendingMessages: () => get().pendingQueue.length > 0,
+
+  startSubagent: (event) =>
+    set((state) => {
+      const sa: ActiveSubagent = {
+        id: event.id,
+        parentId: event.parent_id ?? null,
+        agentType: event.agent_type,
+        description: event.description,
+        mode: event.mode,
+        depth: event.depth,
+        status: "running",
+        text: "",
+        reasoning: "",
+        tools: [],
+        toolCount: 0,
+        inputTokens: 0,
+        outputTokens: 0,
+      }
+      if (event.mode === "foreground") {
+        return { foregroundSubagents: [...state.foregroundSubagents, sa] }
+      } else {
+        return { backgroundSubagents: [...state.backgroundSubagents, sa] }
+      }
+    }),
+
+  updateSubagent: (id, event) =>
+    set((state) => {
+      const update = (sa: ActiveSubagent): ActiveSubagent => {
+        if (sa.id !== id) return sa
+        switch (event.kind) {
+          case "text":
+            return { ...sa, text: sa.text + (event.content ?? "") }
+          case "reasoning":
+            return { ...sa, reasoning: sa.reasoning + (event.content ?? "") }
+          case "tool":
+            return {
+              ...sa,
+              tools: [...sa.tools, { name: event.tool_name ?? "", input: event.tool_input ?? "" }],
+              toolCount: sa.toolCount + 1,
+            }
+          case "error":
+            return { ...sa, status: "error", text: sa.text + (event.content ?? "") }
+          default:
+            console.warn("updateSubagent: unhandled event kind:", event.kind)
+            return sa
+        }
+      }
+      return {
+        foregroundSubagents: state.foregroundSubagents.map(update),
+        backgroundSubagents: state.backgroundSubagents.map(update),
+      }
+    }),
+
+  endSubagent: (id, event) =>
+    set((state) => {
+      const update = (sa: ActiveSubagent): ActiveSubagent => {
+        if (sa.id !== id) return sa
+        return {
+          ...sa,
+          status: event.status as ActiveSubagent["status"],
+          summary: event.summary ?? sa.summary,
+          inputTokens: event.input_tokens ?? sa.inputTokens,
+          outputTokens: event.output_tokens ?? sa.outputTokens,
+        }
+      }
+      return {
+        foregroundSubagents: state.foregroundSubagents.map(update),
+        backgroundSubagents: state.backgroundSubagents.map(update),
+      }
+    }),
+
+  clearForegroundSubagents: () =>
+    set({ foregroundSubagents: [] }),
 }))
