@@ -88,21 +88,21 @@ class TestOpenAIProtocolBuildRequest(unittest.TestCase):
             AssistantMessage(content=None, tool_calls=None),
         ]
         tools = [ToolDefinition(name="test", description="desc", input_schema={})]
-        request = LLMRequest(model="test-model", messages=messages, tools=tools)
+        request = LLMRequest(model="test-model", provider="openai", messages=messages, tools=tools)
         body = protocol.build_request(request).model_dump()
         self.assertEqual(len(body["messages"]), 3)
         self.assertEqual(body["messages"][2]["content"], "[Empty response]")
 
     def test_sets_stream_and_stream_options(self):
         protocol = OpenAIProtocol()
-        request = LLMRequest(model="m", messages=[UserMessage(content="hi")])
+        request = LLMRequest(model="m", provider="openai", messages=[UserMessage(content="hi")])
         body = protocol.build_request(request).model_dump()
         self.assertTrue(body["stream"])
         self.assertEqual(body["stream_options"], {"include_usage": True})
 
     def test_no_tools_omits_tools_key(self):
         protocol = OpenAIProtocol()
-        request = LLMRequest(model="m", messages=[UserMessage(content="hi")])
+        request = LLMRequest(model="m", provider="openai", messages=[UserMessage(content="hi")])
         body = protocol.build_request(request).model_dump()
         self.assertNotIn("tools", body)
 
@@ -301,10 +301,10 @@ class TestDeepseekProtocol(unittest.TestCase):
 
     def test_build_request_adds_deepseek_extras(self):
         request = LLMRequest(
-            model="deepseek-test", messages=[UserMessage(content="hi")]
+            model="deepseek-test", provider="deepseek", messages=[UserMessage(content="hi")]
         )
-        body = self.protocol.build_request(request)
-        self.assertEqual(body["thinking"], {"type": "enabled"})
+        body = self.protocol.build_request(request).model_dump()
+        self.assertEqual(body["thinking"], {"type": "enabled", "reasoning_effort": "high"})
         self.assertEqual(body["reasoning_effort"], "high")
 
     def test_parse_frame_reasoning_content(self):

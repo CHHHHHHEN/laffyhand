@@ -1,7 +1,7 @@
-from typing import Literal
+from typing import ClassVar, Literal
 from pydantic import BaseModel
 from loguru import logger
-from laffyhand.agent.llm.specs.models import LLMRequest, Frame
+from laffyhand.agent.llm.specs.models import LLMRequest, Frame, ProviderID
 from laffyhand.agent.schemas import StreamReasoning, LLMEvent
 from laffyhand.agent.llm.protocols.openai import OpenAIProtocol, OpenAIChatChunk, OpenAICompletionRequest
 
@@ -16,6 +16,8 @@ class DeepSeekCompletionRequest(OpenAICompletionRequest):
 
 
 class DeepseekProtocol(OpenAIProtocol):
+    provider_id: ClassVar[ProviderID] = ProviderID("deepseek")
+
     def build_request(self, request: LLMRequest) -> DeepSeekCompletionRequest:
         base = super().build_request(request)
         return DeepSeekCompletionRequest(**base.model_dump(), thinking=DeepSeekThinking())

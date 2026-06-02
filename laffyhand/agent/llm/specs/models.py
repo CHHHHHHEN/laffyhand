@@ -1,8 +1,10 @@
 from pydantic import BaseModel, Field
-from typing import Any, Dict, List, Literal, Union, Optional
+from typing import NewType, Any, Dict, List, Literal, Union, Optional
 
 from laffyhand.agent.schemas import ToolCallContent, ToolDefinition, Usage
 
+ModelID = NewType("ModelID", str)
+ProviderID = NewType("ProviderID", str)
 
 class Frame(BaseModel):
     data: Dict[str, Any]
@@ -42,12 +44,10 @@ class ToolMessage(BaseModel):
 Message = Union[SystemMessage, UserMessage, AssistantMessage, ToolMessage]
 
 class LLMRequest(BaseModel):
-    model: str
+    model: ModelID
+    provider: ProviderID
     messages: list[Message]
     tools: Optional[list[ToolDefinition]] = None
-
-class LLMResponse(BaseModel):
-    pass
 
 
 class ToolCallAccumulator(BaseModel):

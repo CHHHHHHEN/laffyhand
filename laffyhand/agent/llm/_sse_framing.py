@@ -1,10 +1,7 @@
-from __future__ import annotations
-
 import json
 from collections.abc import AsyncIterable, AsyncIterator
 from typing import Any, cast
 from loguru import logger
-
 
 from laffyhand.agent.llm.specs import Framing
 from laffyhand.agent.llm.specs.models import Frame

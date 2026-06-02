@@ -7,19 +7,20 @@ from laffyhand.agent.llm.protocols.openai import OpenAIProtocol, OpenAIEndpoint
 from laffyhand.agent.llm.protocols.deepseek import DeepseekProtocol
 from laffyhand.agent.llm.specs.protocol import Protocol
 
-PROTOCOL_MAP: dict[str, type[Protocol]] = {
-    "openai": OpenAIProtocol,
-    "deepseek": DeepseekProtocol,
-}
+_PROTOCOLS: list[type[Protocol]] = [OpenAIProtocol, DeepseekProtocol]
 
 
 def build_route(provider_type: str, base_url: str, api_key: str) -> Route:
-    if provider_type not in PROTOCOL_MAP:
+    for cls in _PROTOCOLS:
+        if cls.provider_id == provider_type:
+            protocol_cls = cls
+            break
+    else:
+        supported = sorted(p.provider_id for p in _PROTOCOLS)
         raise ValueError(
             f"Unsupported provider type {provider_type!r}. "
-            f"Supported: {sorted(PROTOCOL_MAP)}"
+            f"Supported: {supported}"
         )
-    protocol_cls = PROTOCOL_MAP[provider_type]
     logger.debug(f"Building route: type={provider_type}, base_url={base_url}")
     return Route(
         protocol=protocol_cls(),

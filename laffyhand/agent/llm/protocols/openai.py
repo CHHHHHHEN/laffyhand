@@ -1,11 +1,10 @@
-from typing import Any, Union, Optional, Literal, cast, get_args
+from typing import Any, ClassVar, Union, Optional, Literal, cast, get_args
 from pydantic import BaseModel, Field as F
 from loguru import logger
 
 from laffyhand.agent.llm.specs.models import (
     AssistantMessage, 
     LLMRequest, 
-    LLMResponse, 
     Frame,
     ProviderRequest, 
     Message,
@@ -22,6 +21,7 @@ from laffyhand.agent.schemas import (
     FinishReason,
 )
 from laffyhand.agent.llm.specs import Protocol, Endpoint
+from laffyhand.agent.llm.specs.models import ProviderID
 
 
 # ─── Request wire models ─────────────────────────────────────────
@@ -156,6 +156,8 @@ class OpenAIChatUsage(BaseModel):
 
 
 class OpenAIProtocol(Protocol):
+    provider_id: ClassVar[ProviderID] = ProviderID("openai")
+
     def __init__(self) -> None:
         self._tool_call_acc: dict[int, ToolCallAccumulator] = {}
 

@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
-from laffyhand.agent.llm.specs.models import SystemMessage
+from laffyhand.agent.llm.specs.models import SystemMessage, ModelID, ProviderID
 from laffyhand.agent.schemas import (
     AgentState,
     CompactionConfig,
@@ -120,7 +120,7 @@ class AgentRuntime:
             provider_cfg.type, provider_cfg.base_url, provider_cfg.api_key
         )
         logger.info(f"Built LLM: provider={provider_key}, model={model}")
-        return LLM(model=model, route=route)
+        return LLM(model=ModelID(model), provider=ProviderID(provider_cfg.type), route=route)
 
     async def init_tools(self) -> None:
         for mcp_tool in await self.mcp_service.get_wrapped_tools():

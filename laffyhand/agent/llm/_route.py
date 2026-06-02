@@ -23,9 +23,8 @@ from laffyhand.agent.llm.specs import Protocol, Endpoint, Auth, Framing
 
 
 class HTTPClient:
-    def __init__(self, timeout: int = 30, max_retries: int = 0) -> None:
+    def __init__(self, timeout: int = 30) -> None:
         self.timeout = timeout
-        self.max_retries = max_retries
 
     async def stream(
         self, method: str, url: str, headers: dict[str, str], body: bytes
