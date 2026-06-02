@@ -1,11 +1,7 @@
 import unittest
+from laffyhand.agent.llm.specs.models import AssistantMessage, LLMRequest, SystemMessage, ToolMessage, UserMessage
 from laffyhand.agent.schemas import (
-    AssistantMessage,
-    SystemMessage,
-    UserMessage,
-    ToolMessage,
     ToolCallContent,
-    LLMRequest,
     ToolDefinition,
     StreamText,
     StreamReasoning,
@@ -15,84 +11,77 @@ from laffyhand.agent.schemas import (
 from laffyhand.agent.llm.protocols.openai import (
     OpenAIProtocol,
     OpenAIEndpoint,
-    _message_to_openai,
     _tool_definitions_to_openai,
 )
 from laffyhand.agent.llm.protocols.deepseek import DeepseekProtocol
 
 
 class TestMessageToOpenAI(unittest.TestCase):
-    """_message_to_openai must produce valid API messages even for edge cases."""
+    """OpenAIProtocol._message_to_openai must produce valid API messages even for edge cases."""
 
     def test_assistant_empty_content_adds_fallback(self):
-        """An AssistantMessage with no content and no tool_calls gets a fallback."""
         msg = AssistantMessage(content=None, tool_calls=None)
-        result = _message_to_openai(msg)
+        result = OpenAIProtocol._message_to_openai(msg).model_dump()
         self.assertEqual(result["role"], "assistant")
         self.assertIn("content", result)
         self.assertEqual(result["content"], "[Empty response]")
 
     def test_assistant_empty_content_empty_tool_calls_adds_fallback(self):
-        """An AssistantMessage with no content and empty tool_calls list also gets a fallback."""
         msg = AssistantMessage(content=None, tool_calls=[])
-        result = _message_to_openai(msg)
+        result = OpenAIProtocol._message_to_openai(msg).model_dump()
         self.assertEqual(result["role"], "assistant")
         self.assertEqual(result["content"], "[Empty response]")
 
     def test_assistant_with_content_no_fallback(self):
-        """An AssistantMessage with content uses it directly."""
         msg = AssistantMessage(content="Hello")
-        result = _message_to_openai(msg)
+        result = OpenAIProtocol._message_to_openai(msg).model_dump()
         self.assertEqual(result["content"], "Hello")
 
     def test_assistant_with_tool_calls_no_fallback(self):
-        """An AssistantMessage with tool_calls does not need a fallback."""
         tc = ToolCallContent(tool_call_id="c1", tool_name="test", args="{}")
         msg = AssistantMessage(content=None, tool_calls=[tc])
-        result = _message_to_openai(msg)
+        result = OpenAIProtocol._message_to_openai(msg).model_dump()
         self.assertEqual(result["role"], "assistant")
-        self.assertNotIn("content", result)
+        self.assertIsNone(result.get("content"))
         self.assertIn("tool_calls", result)
 
     def test_assistant_with_reasoning(self):
-        """reasoning_content is included in the output."""
         msg = AssistantMessage(content="response", reasoning="thinking")
-        result = _message_to_openai(msg)
+        result = OpenAIProtocol._message_to_openai(msg).model_dump()
         self.assertEqual(result["content"], "response")
         self.assertEqual(result["reasoning_content"], "thinking")
 
     def test_system_message_passthrough(self):
         msg = SystemMessage(content="system prompt")
-        result = _message_to_openai(msg)
+        result = OpenAIProtocol._message_to_openai(msg).model_dump()
         self.assertEqual(result, {"role": "system", "content": "system prompt"})
 
     def test_user_message_passthrough(self):
         msg = UserMessage(content="user text")
-        result = _message_to_openai(msg)
+        result = OpenAIProtocol._message_to_openai(msg).model_dump()
         self.assertEqual(result, {"role": "user", "content": "user text"})
 
     def test_tool_message_passthrough(self):
         msg = ToolMessage(tool_call_id="call_1", content="result")
-        result = _message_to_openai(msg)
+        result = OpenAIProtocol._message_to_openai(msg).model_dump()
         self.assertEqual(
             result, {"role": "tool", "tool_call_id": "call_1", "content": "result"}
         )
 
-    def test_unknown_role_returns_empty_dict(self):
-        """A message with an unknown role returns an empty dict."""
+    def test_unknown_role_returns_fallback(self):
         from unittest.mock import MagicMock
 
         msg = MagicMock()
         msg.role = "custom_role"
-        result = _message_to_openai(msg)
-        self.assertEqual(result, {})
+        result = OpenAIProtocol._message_to_openai(msg).model_dump()
+        self.assertEqual(result, {"role": "user", "content": ""})
 
 
 class TestOpenAIProtocolBuildRequest(unittest.TestCase):
     """OpenAIProtocol.build_request must always produce valid request bodies."""
 
     def test_strips_empty_assistant_before_sending(self):
-        """build_request uses _message_to_openai which adds fallback content."""
+        """build_request uses OpenAIProtocol._message_to_openai which adds fallback content."""
         protocol = OpenAIProtocol()
         messages = [
             SystemMessage(content="system"),
@@ -101,21 +90,21 @@ class TestOpenAIProtocolBuildRequest(unittest.TestCase):
         ]
         tools = [ToolDefinition(name="test", description="desc", input_schema={})]
         request = LLMRequest(model="test-model", messages=messages, tools=tools)
-        body = protocol.build_request(request)
+        body = protocol.build_request(request).model_dump()
         self.assertEqual(len(body["messages"]), 3)
         self.assertEqual(body["messages"][2]["content"], "[Empty response]")
 
     def test_sets_stream_and_stream_options(self):
         protocol = OpenAIProtocol()
         request = LLMRequest(model="m", messages=[UserMessage(content="hi")])
-        body = protocol.build_request(request)
+        body = protocol.build_request(request).model_dump()
         self.assertTrue(body["stream"])
         self.assertEqual(body["stream_options"], {"include_usage": True})
 
     def test_no_tools_omits_tools_key(self):
         protocol = OpenAIProtocol()
         request = LLMRequest(model="m", messages=[UserMessage(content="hi")])
-        body = protocol.build_request(request)
+        body = protocol.build_request(request).model_dump()
         self.assertNotIn("tools", body)
 
 

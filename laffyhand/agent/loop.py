@@ -6,9 +6,9 @@ from typing import TYPE_CHECKING, Any, Literal, Union
 from loguru import logger
 from pydantic import BaseModel
 
+from laffyhand.agent.llm.specs.models import AssistantMessage, SystemMessage, ToolMessage, UserMessage
 from laffyhand.agent.schemas import (
     AgentState,
-    AssistantMessage,
     CompactionConfig,
     StreamText,
     StreamReasoning,
@@ -16,11 +16,8 @@ from laffyhand.agent.schemas import (
     StreamFinish,
     StreamError,
     FinishReason,
-    SystemMessage,
     ToolCallContent,
-    ToolMessage,
     Usage,
-    UserMessage,
     estimate_tokens,
 )
 from laffyhand.agent.compaction import (

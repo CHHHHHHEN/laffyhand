@@ -2,14 +2,11 @@ from __future__ import annotations
 
 import pytest
 
+from laffyhand.agent.llm.specs.models import AssistantMessage, SystemMessage, ToolMessage, UserMessage
 from laffyhand.agent.session import SessionManager
 from laffyhand.agent.schemas import (
     AgentState,
-    AssistantMessage,
-    SystemMessage,
     ToolCallContent,
-    ToolMessage,
-    UserMessage,
     SessionUsage,
 )
 

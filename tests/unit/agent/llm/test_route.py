@@ -3,12 +3,10 @@ from collections.abc import AsyncIterator
 
 from laffyhand.agent.llm._route import Route
 from laffyhand.agent.llm.specs import Protocol, Endpoint, Auth, Framing
+from laffyhand.agent.llm.specs.models import LLMRequest, SystemMessage, UserMessage
 from laffyhand.agent.schemas import (
-    LLMRequest,
-    SystemMessage,
-    UserMessage,
     StreamError,
-    StreamEvent,
+    LLMEvent,
     StreamText,
     StreamFinish,
     Usage,
@@ -19,7 +17,7 @@ class _MockProtocol(Protocol):
     def build_request(self, request: LLMRequest) -> dict:
         return {"model": request.model, "messages": []}
 
-    def parse_frame(self, frame: dict) -> list[StreamEvent]:
+    def parse_frame(self, frame: dict) -> list[LLMEvent]:
         return []
 
 
@@ -105,13 +103,13 @@ class TestRouteUnexpectedError(unittest.TestCase):
 
 
 class _MockProtocolHappy(Protocol):
-    def __init__(self, events: list[StreamEvent]):
+    def __init__(self, events: list[LLMEvent]):
         self._events = events
 
     def build_request(self, request: LLMRequest) -> dict:
         return {"model": request.model, "messages": []}
 
-    def parse_frame(self, frame: dict) -> list[StreamEvent]:
+    def parse_frame(self, frame: dict) -> list[LLMEvent]:
         return self._events
 
 

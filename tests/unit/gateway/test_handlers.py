@@ -5,6 +5,7 @@ import asyncio
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
+from laffyhand.agent.llm.specs.models import AssistantMessage, SystemMessage, ToolMessage, UserMessage
 from laffyhand.gateway import handlers
 from laffyhand.gateway.handlers import (
     handle_initialize,
@@ -26,10 +27,6 @@ from laffyhand.gateway.handlers import (
     _next_msg_id,
 )
 from laffyhand.agent.schemas import (
-    SystemMessage,
-    UserMessage,
-    AssistantMessage,
-    ToolMessage,
     ToolCallContent,
     Usage,
 )

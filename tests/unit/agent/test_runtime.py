@@ -6,12 +6,11 @@ from unittest.mock import MagicMock, AsyncMock, patch
 import pytest
 
 from laffyhand.agent.agent import AgentInfo
+from laffyhand.agent.llm.specs.models import SystemMessage, UserMessage
 from laffyhand.agent.runtime import AgentRuntime, MAX_SUBAGENT_DEPTH
 from laffyhand.agent.schemas import (
     AgentState,
     SessionUsage,
-    SystemMessage,
-    UserMessage,
 )
 from laffyhand.agent.tools.registry import ToolRegistry
 

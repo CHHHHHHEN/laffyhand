@@ -2,6 +2,7 @@ import json
 from urllib.parse import urlparse
 from collections.abc import AsyncIterator
 from typing import Optional
+from pydantic import BaseModel
 from loguru import logger
 import httpx
 
@@ -16,7 +17,8 @@ def _redact_url(url: str) -> str:
     return redacted.geturl()
 
 
-from laffyhand.agent.schemas import LLMRequest, StreamEvent, StreamFinish, StreamError
+from laffyhand.agent.llm.specs.models import LLMRequest
+from laffyhand.agent.schemas import LLMEvent, StreamFinish, StreamError
 from laffyhand.agent.llm.specs import Protocol, Endpoint, Auth, Framing
 
 
@@ -59,10 +61,13 @@ class Route:
         self.framing = framing
         self.http_client = http_client or HTTPClient()
 
-    async def execute(self, request: LLMRequest) -> AsyncIterator[StreamEvent]:
+    async def execute(self, request: LLMRequest) -> AsyncIterator[LLMEvent]:
         url = self.endpoint.build(request.model)
         body_dict = self.protocol.build_request(request)
-        body = json.dumps(body_dict).encode("utf-8")
+        if isinstance(body_dict, BaseModel):
+            body = json.dumps(body_dict.model_dump()).encode("utf-8")
+        else:
+            body = json.dumps(body_dict).encode("utf-8")
         headers: dict[str, str] = {"Content-Type": "application/json"}
         self.auth.apply(headers)
 

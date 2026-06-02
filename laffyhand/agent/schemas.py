@@ -4,6 +4,8 @@ from loguru import logger
 from pydantic import BaseModel
 from typing import Any, Optional, Literal, List, Union
 
+from laffyhand.agent.llm.specs.models import Message
+
 
 CHARS_PER_TOKEN = 4
 
@@ -31,31 +33,6 @@ class ToolCallContent(BaseModel):
 # ─── Prompt Messages ────────────────────────────────────────────────
 
 
-class SystemMessage(BaseModel):
-    role: Literal["system"] = "system"
-    content: str
-
-
-class UserMessage(BaseModel):
-    role: Literal["user"] = "user"
-    content: str
-
-
-class AssistantMessage(BaseModel):
-    role: Literal["assistant"] = "assistant"
-    content: Optional[str] = None
-    reasoning: Optional[str] = None
-    tool_calls: Optional[List[ToolCallContent]] = None
-    tokens: Optional["Usage"] = None
-
-
-class ToolMessage(BaseModel):
-    role: Literal["tool"] = "tool"
-    tool_call_id: str
-    content: str
-    is_error: bool = False
-
-
 class CompactionConfig(BaseModel):
     tail_turns: int = 2
     """Number of recent user turns to preserve verbatim during compaction."""
@@ -69,18 +46,6 @@ class CompactionConfig(BaseModel):
     """Whether to auto-continue conversation after compaction."""
     summary_tool_truncate: int = 500
     """Max characters of tool output to include in compaction summary text."""
-
-
-Message = Union[SystemMessage, UserMessage, AssistantMessage, ToolMessage]
-
-
-# ─── LLM Request ─────────────────────────────────────────────────────
-
-
-class LLMRequest(BaseModel):
-    model: str
-    messages: list[Message]
-    tools: Optional[list[ToolDefinition]] = None
 
 
 # ─── Usage ──────────────────────────────────────────────────────────
@@ -157,6 +122,6 @@ class AgentState(BaseModel):
     pending_steer: Optional[str] = None
 
 
-StreamEvent = Union[
+LLMEvent = Union[
     StreamText, StreamReasoning, StreamToolCall, StreamFinish, StreamError
 ]

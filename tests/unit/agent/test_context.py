@@ -5,18 +5,15 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from laffyhand.agent.llm.specs.models import AssistantMessage, SystemMessage, ToolMessage, UserMessage
 from laffyhand.agent.schemas import (
     AgentState,
-    AssistantMessage,
     CompactionConfig,
     SessionUsage,
     StreamError,
     StreamFinish,
     StreamText,
-    SystemMessage,
     ToolCallContent,
-    ToolMessage,
-    UserMessage,
 )
 from laffyhand.agent.compaction import (
     compact,

@@ -1,11 +1,10 @@
 import asyncio
 import unittest
 
+from laffyhand.agent.llm.specs.models import SystemMessage, ToolMessage
 from laffyhand.agent.schemas import (
     AgentState,
     CompactionConfig,
-    SystemMessage,
-    ToolMessage,
     Usage,
     SessionUsage,
     StreamText,

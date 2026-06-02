@@ -4,17 +4,15 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from laffyhand.agent.llm.specs.models import AssistantMessage, SystemMessage, UserMessage
 from laffyhand.agent.session import SessionManager, TitleConfig
 from laffyhand.agent.schemas import (
     AgentState,
-    AssistantMessage,
     CompactionConfig,
     StreamText,
     StreamFinish,
     StreamError,
-    SystemMessage,
     SessionUsage,
-    UserMessage,
 )
 
 

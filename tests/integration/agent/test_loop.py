@@ -1,6 +1,7 @@
 import unittest
 
-from laffyhand.agent.schemas import SystemMessage, UserMessage, ToolMessage
+from laffyhand.agent.llm.specs.models import SystemMessage, UserMessage
+from laffyhand.agent.llm.specs.models import ToolMessage
 from laffyhand.agent.compaction import wrap_last_user, attach_reminder
 
 

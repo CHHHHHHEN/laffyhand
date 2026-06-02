@@ -8,6 +8,7 @@ from typing import Any, Optional, cast
 
 from loguru import logger
 
+from laffyhand.agent.llm.specs.models import AssistantMessage, Message, SystemMessage, ToolMessage, UserMessage
 from laffyhand.agent.session.models import (
     MessageRecord,
     Session,
@@ -18,13 +19,8 @@ from laffyhand.agent.session.models import (
 from laffyhand.agent.session.schema import create_tables, has_fts5
 from laffyhand.agent.schemas import (
     AgentState,
-    AssistantMessage,
-    Message,
     SessionUsage,
-    SystemMessage,
     ToolCallContent,
-    ToolMessage,
-    UserMessage,
 )
 
 

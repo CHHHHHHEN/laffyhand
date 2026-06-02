@@ -9,14 +9,10 @@ from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
+from laffyhand.agent.llm.specs.models import AssistantMessage, Message, SystemMessage, ToolMessage, UserMessage
 from laffyhand.agent.loop import StepFinish, Finish, PermissionRequest
 from laffyhand.agent.tools.permission import request_callback as _pm_callback
 from laffyhand.agent.schemas import (
-    Message,
-    SystemMessage,
-    UserMessage,
-    AssistantMessage,
-    ToolMessage,
     AgentState,
     SessionUsage,
 )

@@ -8,12 +8,11 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from loguru import logger
 
+from laffyhand.agent.llm.specs.models import SystemMessage, UserMessage
 from laffyhand.agent.schemas import (
     AgentState,
     CompactionConfig,
     SessionUsage,
-    SystemMessage,
-    UserMessage,
 )
 from laffyhand.agent.loop import (
     SubAgentStart,

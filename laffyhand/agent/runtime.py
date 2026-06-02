@@ -11,11 +11,11 @@ from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
+from laffyhand.agent.llm.specs.models import SystemMessage
 from laffyhand.agent.schemas import (
     AgentState,
     CompactionConfig,
     SessionUsage,
-    SystemMessage,
 )
 from laffyhand.agent.agent import AgentRegistry
 from laffyhand.agent.skill import SkillRegistry

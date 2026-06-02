@@ -1,13 +1,11 @@
 import unittest
 from collections.abc import AsyncIterator
 
+from laffyhand.agent.llm.specs.models import AssistantMessage, SystemMessage, UserMessage
 from laffyhand.agent.schemas import (
     AgentState,
-    AssistantMessage,
     CompactionConfig,
     SessionUsage,
-    SystemMessage,
-    UserMessage,
     Usage,
 )
 from laffyhand.agent.loop import agent_loop

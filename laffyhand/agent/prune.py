@@ -1,6 +1,7 @@
 from loguru import logger
 
-from laffyhand.agent.schemas import Message, ToolMessage, estimate_tokens
+from laffyhand.agent.llm.specs.models import Message, ToolMessage
+from laffyhand.agent.schemas import estimate_tokens
 
 
 PRUNE_PROTECT = 40_000
