@@ -17,7 +17,7 @@ def _redact_url(url: str) -> str:
     return redacted.geturl()
 
 
-from laffyhand.agent.llm.specs.models import LLMRequest
+from laffyhand.agent.llm.specs.models import LLMRequest, Header
 from laffyhand.agent.schemas import LLMEvent, StreamFinish, StreamError
 from laffyhand.agent.llm.specs import Protocol, Endpoint, Auth, Framing
 
@@ -62,18 +62,20 @@ class Route:
         self.http_client = http_client or HTTPClient()
 
     async def execute(self, request: LLMRequest) -> AsyncIterator[LLMEvent]:
-        url = self.endpoint.build(request.model)
+        url = self.endpoint.build()
         body_dict = self.protocol.build_request(request)
         if isinstance(body_dict, BaseModel):
             body = json.dumps(body_dict.model_dump()).encode("utf-8")
         else:
             body = json.dumps(body_dict).encode("utf-8")
-        headers: dict[str, str] = {"Content-Type": "application/json"}
+        headers: list[Header] = [Header(key="Content-Type", value="application/json")]
         self.auth.apply(headers)
 
         logger.debug(f"Route POST {_redact_url(url)}")
 
-        response = self.http_client.stream("POST", url, headers, body)
+        response = self.http_client.stream(
+            "POST", url, {h.key: h.value for h in headers}, body
+        )
         finished = False
         try:
             async for frame in self.framing.frames(response):

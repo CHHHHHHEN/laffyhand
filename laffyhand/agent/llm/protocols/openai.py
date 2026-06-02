@@ -8,7 +8,8 @@ from laffyhand.agent.llm.specs.models import (
     LLMResponse, 
     Frame,
     ProviderRequest, 
-    Message
+    Message,
+    ToolCallAccumulator,
 )
 from laffyhand.agent.schemas import (
     ToolDefinition,
@@ -60,6 +61,17 @@ class OpenAIToolMessage(BaseModel):
     content: str
 
 
+class OpenAIToolFunction(BaseModel):
+    name: str
+    description: str = ""
+    parameters: dict[str, Any] = F(default_factory=dict)
+
+
+class OpenAIToolDefinition(BaseModel):
+    type: Literal["function"] = "function"
+    function: OpenAIToolFunction
+
+
 OpenAIRequestMessage = Union[OpenAISystemMessage, OpenAIUserMessage, OpenAIAssistantMessage, OpenAIToolMessage]
 
 
@@ -78,7 +90,7 @@ class OpenAICompletionRequest(ProviderRequest):
     logit_bias: Optional[dict[str, float]] = None
     user: Optional[str] = None
     seed: Optional[int] = None
-    tools: Optional[list[dict[str, Any]]] = None
+    tools: Optional[list[OpenAIToolDefinition]] = None
     tool_choice: Optional[str | dict[str, Any]] = None
     response_format: Optional[dict[str, Any]] = None
     metadata: Optional[dict[str, Any]] = None
@@ -140,31 +152,27 @@ class OpenAIChatUsage(BaseModel):
     prompt_tokens_details: Optional[OpenAIChatUsageDetails] = None
     completion_tokens_details: Optional[OpenAIChatCompletionDetails] = None
 
-# ─── Internal → OpenAI conversion ────────────────────────────────
-
-
-def _tool_definitions_to_openai(
-    definitions: list[ToolDefinition],
-) -> list[dict[str, Any]]:
-    return [
-        {
-            "type": "function",
-            "function": {
-                "name": d.name,
-                "description": d.description.strip(),
-                "parameters": d.input_schema,
-            },
-        }
-        for d in definitions
-    ]
-
-
 # ─── OpenAI Protocol ─────────────────────────────────────────────
 
 
 class OpenAIProtocol(Protocol):
     def __init__(self) -> None:
-        self._tool_call_acc: dict[int, dict[str, Any]] = {}
+        self._tool_call_acc: dict[int, ToolCallAccumulator] = {}
+
+    @staticmethod
+    def _tool_definitions_to_openai(
+        definitions: list[ToolDefinition],
+    ) -> list[OpenAIToolDefinition]:
+        return [
+            OpenAIToolDefinition(
+                function=OpenAIToolFunction(
+                    name=d.name,
+                    description=d.description.strip(),
+                    parameters=d.input_schema,
+                ),
+            )
+            for d in definitions
+        ]
 
     @staticmethod
     def _message_to_openai(msg: Message) -> OpenAIRequestMessage:
@@ -210,7 +218,7 @@ class OpenAIProtocol(Protocol):
             messages=messages,
             stream=True,
             stream_options={"include_usage": True},
-            tools=_tool_definitions_to_openai(request.tools) if request.tools else None,
+            tools=self._tool_definitions_to_openai(request.tools) if request.tools else None,
         )
 
     @staticmethod
@@ -248,13 +256,13 @@ class OpenAIProtocol(Protocol):
                     logger.trace(
                         f"Tool call start: idx={idx}, id={tc.id}, name={tc.function.name if tc.function else '?'}"
                     )
-                    self._tool_call_acc[idx] = {
-                        "tool_call_id": tc.id,
-                        "tool_name": tc.function.name if tc.function else "",
-                        "args": tc.function.arguments if tc.function else "",
-                    }
+                    self._tool_call_acc[idx] = ToolCallAccumulator(
+                        tool_call_id=tc.id,
+                        tool_name=(tc.function.name if tc.function else "") or "",
+                        args=(tc.function.arguments if tc.function else "") or "",
+                    )
                 elif idx in self._tool_call_acc and tc.function:
-                    self._tool_call_acc[idx]["args"] += tc.function.arguments or ""
+                    self._tool_call_acc[idx].args += tc.function.arguments or ""
 
         if finish_reason:
             if finish_reason == "tool_calls" and self._tool_call_acc:
@@ -262,9 +270,9 @@ class OpenAIProtocol(Protocol):
                     acc = self._tool_call_acc.pop(idx)
                     events.append(
                         StreamToolCall(
-                            tool_call_id=acc["tool_call_id"],
-                            tool_name=acc["tool_name"],
-                            args=acc["args"],
+                            tool_call_id=acc.tool_call_id,
+                            tool_name=acc.tool_name,
+                            args=acc.args,
                         )
                     )
             usage = self._openai_usage_to_internal(chunk.usage) if chunk.usage else None

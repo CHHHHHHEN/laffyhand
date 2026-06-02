@@ -3,7 +3,7 @@ from collections.abc import AsyncIterator
 
 from laffyhand.agent.llm._route import Route
 from laffyhand.agent.llm.specs import Protocol, Endpoint, Auth, Framing
-from laffyhand.agent.llm.specs.models import LLMRequest, SystemMessage, UserMessage
+from laffyhand.agent.llm.specs.models import LLMRequest, SystemMessage, UserMessage, Header
 from laffyhand.agent.schemas import (
     StreamError,
     LLMEvent,
@@ -27,8 +27,8 @@ class _MockEndpoint(Endpoint):
 
 
 class _MockAuth(Auth):
-    def apply(self, headers: dict) -> None:
-        headers["Authorization"] = "Bearer test"
+    def apply(self, headers: list) -> None:
+        headers.append(Header(key="Authorization", value="Bearer test"))
 
 
 class _MockFraming(Framing):

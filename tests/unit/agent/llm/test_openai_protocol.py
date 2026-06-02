@@ -11,7 +11,6 @@ from laffyhand.agent.schemas import (
 from laffyhand.agent.llm.protocols.openai import (
     OpenAIProtocol,
     OpenAIEndpoint,
-    _tool_definitions_to_openai,
 )
 from laffyhand.agent.llm.protocols.deepseek import DeepseekProtocol
 
@@ -432,7 +431,7 @@ class TestDeepseekProtocol(unittest.TestCase):
 
 
 class TestToolDefinitionsToOpenAI(unittest.TestCase):
-    """_tool_definitions_to_openai must produce valid OpenAI tool format."""
+    """OpenAIProtocol._tool_definitions_to_openai must produce valid OpenAI tool format."""
 
     def test_converts_single_tool(self):
         tools = [
@@ -442,19 +441,20 @@ class TestToolDefinitionsToOpenAI(unittest.TestCase):
                 input_schema={"type": "object"},
             )
         ]
-        result = _tool_definitions_to_openai(tools)
+        result = OpenAIProtocol._tool_definitions_to_openai(tools)
         self.assertEqual(len(result), 1)
-        self.assertEqual(result[0]["type"], "function")
-        self.assertEqual(result[0]["function"]["name"], "search")
-        self.assertEqual(result[0]["function"]["description"], "Search the web")
-        self.assertEqual(result[0]["function"]["parameters"], {"type": "object"})
+        d = result[0].model_dump()
+        self.assertEqual(d["type"], "function")
+        self.assertEqual(d["function"]["name"], "search")
+        self.assertEqual(d["function"]["description"], "Search the web")
+        self.assertEqual(d["function"]["parameters"], {"type": "object"})
 
     def test_converts_multiple_tools(self):
         tools = [
             ToolDefinition(name="a", description="desc a", input_schema={}),
             ToolDefinition(name="b", description="desc b", input_schema={}),
         ]
-        result = _tool_definitions_to_openai(tools)
+        result = OpenAIProtocol._tool_definitions_to_openai(tools)
         self.assertEqual(len(result), 2)
 
 

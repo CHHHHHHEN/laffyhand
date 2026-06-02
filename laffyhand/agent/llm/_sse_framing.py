@@ -7,6 +7,7 @@ from loguru import logger
 
 
 from laffyhand.agent.llm.specs import Framing
+from laffyhand.agent.llm.specs.models import Frame
 
 
 class SSEFraming(Framing):
@@ -20,7 +21,7 @@ class SSEFraming(Framing):
 
     async def frames(
         self, response: AsyncIterable[bytes]
-    ) -> AsyncIterator[dict[str, Any]]:
+    ) -> AsyncIterator[Frame]:
         buffer = ""
         async for chunk in response:
             buffer += chunk.decode("utf-8", errors="replace")
@@ -30,12 +31,12 @@ class SSEFraming(Framing):
                 if parsed is self._DONE:
                     return
                 if isinstance(parsed, dict):
-                    yield parsed
+                    yield Frame(data=parsed)
         # Process any remaining data in the buffer (no trailing \n\n)
         if buffer.strip():
             parsed = self._parse_event(buffer)
             if isinstance(parsed, dict):
-                yield parsed
+                yield Frame(data=parsed)
 
     def _parse_event(self, raw: str) -> dict[str, Any] | None | object:
         """Parse a single SSE event string.

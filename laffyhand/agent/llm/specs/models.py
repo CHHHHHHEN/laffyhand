@@ -48,3 +48,9 @@ class LLMRequest(BaseModel):
 
 class LLMResponse(BaseModel):
     pass
+
+
+class ToolCallAccumulator(BaseModel):
+    tool_call_id: str
+    tool_name: str
+    args: str
