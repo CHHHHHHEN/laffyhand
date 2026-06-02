@@ -1,0 +1,157 @@
+from __future__ import annotations
+
+import sqlite3
+from typing import Optional, cast
+
+from loguru import logger
+
+from laffyhand.agent.session.models import Session, _utcnow
+from laffyhand.agent.db.repository.common import (
+    _serialize_metadata,
+    _ts,
+    row_to_session,
+)
+
+
+class SessionRepo:
+    """Pure DB CRUD for the session table."""
+
+    def __init__(self, conn: sqlite3.Connection) -> None:
+        self._conn = conn
+
+    def insert(self, session: Session) -> None:
+        self._conn.execute(
+            """INSERT INTO session (
+                id, status, title, cwd, provider, model, agent_version,
+                turn_count, step_count,
+                input_tokens, output_tokens, reasoning_tokens,
+                cache_read_tokens, cache_write_tokens, cost,
+                parent_id, fork_id,
+                message_count, summary, metadata,
+                created_at, updated_at, ended_at
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (
+                session.id, session.status, session.title, session.cwd,
+                session.provider, session.model, session.agent_version,
+                session.turn_count, session.step_count,
+                session.input_tokens, session.output_tokens, session.reasoning_tokens,
+                session.cache_read_tokens, session.cache_write_tokens, session.cost,
+                session.parent_id, session.fork_id,
+                session.message_count, session.summary,
+                _serialize_metadata(session.metadata),
+                _ts(session.created_at), _ts(session.updated_at), _ts(session.ended_at),
+            ),
+        )
+        self._conn.commit()
+
+    def get(self, session_id: str) -> Optional[Session]:
+        row = self._conn.execute("SELECT * FROM session WHERE id=?", (session_id,)).fetchone()
+        return row_to_session(row) if row else None
+
+    def get_active(self) -> Optional[Session]:
+        row = self._conn.execute(
+            "SELECT * FROM session WHERE status='active' ORDER BY updated_at DESC LIMIT 1",
+        ).fetchone()
+        return row_to_session(row) if row else None
+
+    def list_sessions(self, status: Optional[str] = None, limit: int = 20, offset: int = 0) -> list[Session]:
+        if status:
+            rows = self._conn.execute(
+                "SELECT * FROM session WHERE status=? ORDER BY created_at DESC LIMIT ? OFFSET ?",
+                (status, limit, offset),
+            ).fetchall()
+        else:
+            rows = self._conn.execute(
+                "SELECT * FROM session ORDER BY created_at DESC LIMIT ? OFFSET ?",
+                (limit, offset),
+            ).fetchall()
+        return [row_to_session(r) for r in rows]
+
+    def update(self, session: Session) -> None:
+        session.updated_at = _utcnow()
+        self._conn.execute(
+            """UPDATE session SET status=?, title=?, cwd=?, model=?, agent_version=?,
+                turn_count=?, step_count=?,
+                input_tokens=?, output_tokens=?, reasoning_tokens=?,
+                cache_read_tokens=?, cache_write_tokens=?, cost=?,
+                message_count=?, summary=?, metadata=?,
+                updated_at=?, ended_at=?
+            WHERE id=?""",
+            (
+                session.status, session.title, session.cwd, session.model, session.agent_version,
+                session.turn_count, session.step_count,
+                session.input_tokens, session.output_tokens, session.reasoning_tokens,
+                session.cache_read_tokens, session.cache_write_tokens, session.cost,
+                session.message_count, session.summary,
+                _serialize_metadata(session.metadata),
+                _ts(session.updated_at), _ts(session.ended_at),
+                session.id,
+            ),
+        )
+        self._conn.commit()
+
+    def complete(self, session_id: str, summary: Optional[str] = None) -> None:
+        now = _utcnow()
+        self._conn.execute(
+            "UPDATE session SET status='completed', summary=?, ended_at=?, updated_at=? WHERE id=?",
+            (summary, _ts(now), _ts(now), session_id),
+        )
+        self._conn.commit()
+
+    def archive(self, session_id: str) -> None:
+        self._conn.execute(
+            "UPDATE session SET status='archived', updated_at=? WHERE id=?",
+            (_ts(_utcnow()), session_id),
+        )
+        self._conn.commit()
+
+    def delete(self, session_id: str) -> None:
+        self._conn.execute("DELETE FROM session WHERE id=?", (session_id,))
+        self._conn.commit()
+
+    def set_title(self, session_id: str, title: str) -> None:
+        self._conn.execute("UPDATE session SET title=? WHERE id=?", (title, session_id))
+        self._conn.commit()
+
+    def search(self, query: str, limit: int = 20) -> list[Session]:
+        like = f"%{query}%"
+        rows = self._conn.execute(
+            """SELECT DISTINCT s.* FROM session s
+               JOIN session_message m ON m.session_id = s.id
+               WHERE m.data LIKE ? ORDER BY s.updated_at DESC LIMIT ?""",
+            (like, limit),
+        ).fetchall()
+        return [row_to_session(r) for r in rows]
+
+    def get_parent(self, session_id: str) -> Optional[str]:
+        row = self._conn.execute("SELECT parent_id FROM session WHERE id=?", (session_id,)).fetchone()
+        return row["parent_id"] if row else None
+
+    def get_children(self, session_id: str) -> list[Session]:
+        rows = self._conn.execute(
+            "SELECT * FROM session WHERE parent_id=? ORDER BY created_at", (session_id,),
+        ).fetchall()
+        return [row_to_session(r) for r in rows]
+
+    def get_compression_tip(self, session_id: str) -> str:
+        current = session_id
+        max_depth = 1000
+        for _ in range(max_depth):
+            row = self._conn.execute(
+                "SELECT id FROM session WHERE parent_id=? AND status='active' LIMIT 1",
+                (current,),
+            ).fetchone()
+            if row is None:
+                return current
+            current = cast(str, row["id"])
+        logger.warning(f"Compression chain too deep (>{max_depth}) for {session_id}, stopping")
+        return current
+
+    def chain(self, session_id: str) -> list[str]:
+        ids: list[str] = []
+        current: Optional[str] = session_id
+        while current:
+            ids.append(current)
+            row = self._conn.execute("SELECT parent_id FROM session WHERE id=?", (current,)).fetchone()
+            current = row["parent_id"] if row else None
+        return ids

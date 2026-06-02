@@ -16,7 +16,7 @@ import sqlite3
 
 import pytest
 
-from laffyhand.agent.session.schema import create_tables
+from laffyhand.agent.db.schema import create_tables
 from laffyhand.agent.session.todo import TodoManager
 from laffyhand.agent.tools.todo import TodoTool
 
@@ -28,8 +28,8 @@ def db():
     conn.execute("PRAGMA foreign_keys=ON")
     create_tables(conn)
     conn.execute(
-        "INSERT INTO session (id, created_at, updated_at) VALUES (?, ?, ?)",
-        ("e2e-session", "2025-01-01T00:00:00", "2025-01-01T00:00:00"),
+        "INSERT INTO session (id, provider, model, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+        ("e2e-session", "", "", "2025-01-01T00:00:00", "2025-01-01T00:00:00"),
     )
     conn.commit()
     yield conn
@@ -308,8 +308,8 @@ class TestTodoE2E:
     def test_session_isolation(self, tool, mgr, db):
         """Tasks in different sessions should not interfere."""
         db.execute(
-            "INSERT INTO session (id, created_at, updated_at) VALUES (?, ?, ?)",
-            ("other-session", "2025-01-01T00:00:00", "2025-01-01T00:00:00"),
+            "INSERT INTO session (id, provider, model, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+            ("other-session", "", "", "2025-01-01T00:00:00", "2025-01-01T00:00:00"),
         )
         db.commit()
 

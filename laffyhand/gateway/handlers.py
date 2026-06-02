@@ -279,6 +279,7 @@ async def _prepare_chat(
     user_message = UserMessage(content=message)
     async with runtime.get_session_lock(session_id):
         state.messages.append(user_message)
+    runtime.session_manager.store_messages(session_id, [user_message])
     return session_id
 
 

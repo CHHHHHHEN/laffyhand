@@ -3,7 +3,7 @@ import sqlite3
 import pytest
 
 from laffyhand.agent.session.todo import TodoManager
-from laffyhand.agent.session.schema import create_tables
+from laffyhand.agent.db.schema import create_tables
 from laffyhand.agent.tools.todo import TodoTool
 
 
@@ -26,8 +26,8 @@ def session_id():
 @pytest.fixture
 def manager(db, session_id):
     db.execute(
-        "INSERT INTO session (id, created_at, updated_at) VALUES (?, ?, ?)",
-        (session_id, "2025-01-01T00:00:00", "2025-01-01T00:00:00"),
+        "INSERT INTO session (id, provider, model, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+        (session_id, "", "", "2025-01-01T00:00:00", "2025-01-01T00:00:00"),
     )
     db.commit()
     return TodoManager(db)
