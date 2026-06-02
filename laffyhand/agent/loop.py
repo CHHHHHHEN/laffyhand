@@ -250,8 +250,9 @@ async def agent_loop(
                 logger.debug("Pruning after tool calls")
                 agent_state.messages = prune(agent_state.messages)
             if session_manager is not None and agent_state.session_id:
-                session_manager.append_messages(
-                    agent_state.session_id, agent_state.messages
+                new_msgs = agent_state.messages[-1:]
+                session_manager.store_messages(
+                    agent_state.session_id, new_msgs
                 )
             continue
 
@@ -259,8 +260,9 @@ async def agent_loop(
 
         if finish_reason is not None:
             if session_manager is not None and agent_state.session_id:
-                session_manager.append_messages(
-                    agent_state.session_id, agent_state.messages
+                new_msgs = agent_state.messages[-1:]
+                session_manager.store_messages(
+                    agent_state.session_id, new_msgs
                 )
             if (
                 context_size

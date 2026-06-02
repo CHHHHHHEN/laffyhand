@@ -210,30 +210,22 @@ class SessionManager:
 
     # ── Messages ──────────────────────────────────────────────
 
-    def append_messages(self, session_id: str, messages: list[Message]) -> int:
+    def store_messages(self, session_id: str, messages: list[Message]) -> int:
+        """Store new Message objects as V2 session messages and update counters."""
+        session = self._sessions.get(session_id)
+        if session is None:
+            raise ValueError(f"Session not found: {session_id}")
         self._conn.execute("BEGIN IMMEDIATE")
         try:
-            session = self._sessions.get(session_id)
-            if session is None:
-                raise ValueError(f"Session not found: {session_id}")
-            existing = session.message_count
-            if existing > len(messages):
-                logger.warning(
-                    f"append_messages: session.message_count ({existing}) > len(messages) ({len(messages)})"
-                )
-                return existing
-            new_messages = messages[existing:]
-            if not new_messages:
-                return existing
-            for msg in new_messages:
+            for msg in messages:
                 self._messages.insert(_message_to_session_message(msg, session_id))
-            count = session.message_count + len(new_messages)
-            self._update_counters(session_id, count)
+            new_count = session.message_count + len(messages)
+            self._update_counters(session_id, new_count)
             self._conn.commit()
         except Exception:
             self._conn.rollback()
             raise
-        return count
+        return new_count
 
     def sync_messages(self, session_id: str, messages: list[Message]) -> int:
         self._conn.execute("BEGIN IMMEDIATE")
