@@ -18,7 +18,7 @@ def _redact_url(url: str) -> str:
 
 
 from laffyhand.agent.llm.specs.models import LLMRequest, Header
-from laffyhand.agent.schemas import LLMEvent, StreamFinish, StreamError
+from laffyhand.agent.llm.specs.models import LLMEvent, StreamFinish, StreamError
 from laffyhand.agent.llm.specs import Protocol, Endpoint, Auth, Framing
 
 

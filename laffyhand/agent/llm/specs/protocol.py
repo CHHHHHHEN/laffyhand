@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from typing import ClassVar, List
 
 from laffyhand.agent.llm.specs.models import Frame, LLMRequest, ProviderRequest, ProviderID
-from laffyhand.agent.schemas import LLMEvent
+from laffyhand.agent.llm.specs.models import LLMEvent
 
 
 class Protocol(ABC):

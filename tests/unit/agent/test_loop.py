@@ -2,11 +2,11 @@ import unittest
 from collections.abc import AsyncIterator
 
 from laffyhand.agent.llm.specs.models import AssistantMessage, SystemMessage, UserMessage
+from laffyhand.agent.llm.specs.models import Usage
 from laffyhand.agent.schemas import (
     AgentState,
     CompactionConfig,
     SessionUsage,
-    Usage,
 )
 from laffyhand.agent.loop import agent_loop
 from laffyhand.agent.llm.facade import LLM
@@ -82,7 +82,7 @@ class TestAgentLoopAssistantMessage(unittest.TestCase):
 
     def test_error_finish_sets_content(self):
         """When finish_reason is 'error' and no content generated, content should be set to error text."""
-        from laffyhand.agent.schemas import StreamError, StreamFinish
+        from laffyhand.agent.llm.specs.models import StreamError, StreamFinish
 
         msgs, events = self._run_loop(
             [
@@ -102,7 +102,7 @@ class TestAgentLoopAssistantMessage(unittest.TestCase):
 
     def test_empty_response_sets_content(self):
         """When LLM returns stop with no content, content should be set to empty placeholder."""
-        from laffyhand.agent.schemas import StreamFinish
+        from laffyhand.agent.llm.specs.models import StreamFinish
 
         msgs, events = self._run_loop(
             [
@@ -121,7 +121,7 @@ class TestAgentLoopAssistantMessage(unittest.TestCase):
 
     def test_content_with_tool_calls_unchanged(self):
         """When tool_calls are present, content should be None (no fallback needed)."""
-        from laffyhand.agent.schemas import StreamToolCall, StreamFinish
+        from laffyhand.agent.llm.specs.models import StreamToolCall, StreamFinish
 
         msgs, events = self._run_loop(
             [
@@ -142,7 +142,7 @@ class TestAgentLoopAssistantMessage(unittest.TestCase):
 
     def test_text_content_preserved(self):
         """Normal text response should remain unchanged."""
-        from laffyhand.agent.schemas import StreamText, StreamFinish
+        from laffyhand.agent.llm.specs.models import StreamText, StreamFinish
 
         msgs, events = self._run_loop(
             [

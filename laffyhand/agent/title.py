@@ -1,7 +1,7 @@
 from loguru import logger
 
 from laffyhand.agent.llm.specs.models import Message, SystemMessage, UserMessage
-from laffyhand.agent.schemas import (
+from laffyhand.agent.llm.specs.models import (
     StreamError,
     StreamFinish,
     StreamText,

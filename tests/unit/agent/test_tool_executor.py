@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, AsyncMock
 import pytest
 
 from laffyhand.agent.llm.specs.models import ToolMessage
-from laffyhand.agent.schemas import ToolCallContent
+from laffyhand.agent.llm.specs.models import ToolCallContent
 from laffyhand.agent.tool_executor import ToolExecutor, ToolExecutionResult
 
 

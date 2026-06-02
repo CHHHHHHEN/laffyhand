@@ -7,9 +7,7 @@ from loguru import logger
 from pydantic import BaseModel
 
 from laffyhand.agent.llm.specs.models import AssistantMessage, SystemMessage, ToolMessage, UserMessage
-from laffyhand.agent.schemas import (
-    AgentState,
-    CompactionConfig,
+from laffyhand.agent.llm.specs.models import (
     StreamText,
     StreamReasoning,
     StreamToolCall,
@@ -18,6 +16,10 @@ from laffyhand.agent.schemas import (
     FinishReason,
     ToolCallContent,
     Usage,
+)
+from laffyhand.agent.schemas import (
+    AgentState,
+    CompactionConfig,
     estimate_tokens,
 )
 from laffyhand.agent.compaction import (

@@ -3,12 +3,14 @@ from collections.abc import Sequence
 from loguru import logger
 
 from laffyhand.agent.llm.specs.models import AssistantMessage, Message, SystemMessage, ToolMessage, UserMessage
-from laffyhand.agent.schemas import (
-    AgentState,
-    CompactionConfig,
+from laffyhand.agent.llm.specs.models import (
     StreamError,
     StreamFinish,
     StreamText,
+)
+from laffyhand.agent.schemas import (
+    AgentState,
+    CompactionConfig,
     estimate_tokens,
 )
 from laffyhand.agent.llm.facade import LLM

@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any, cast
 from loguru import logger
 
 from laffyhand.agent.llm.specs.models import ToolMessage
-from laffyhand.agent.schemas import ToolCallContent
+from laffyhand.agent.llm.specs.models import ToolCallContent
 
 if TYPE_CHECKING:
     from laffyhand.agent.tools.registry import ToolRegistry

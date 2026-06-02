@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Any
 
-from laffyhand.agent.schemas import ToolDefinition
+from laffyhand.agent.llm.specs.models import ToolDefinition
 
 
 class BaseTool(ABC):

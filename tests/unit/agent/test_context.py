@@ -6,14 +6,16 @@ from unittest.mock import MagicMock
 import pytest
 
 from laffyhand.agent.llm.specs.models import AssistantMessage, SystemMessage, ToolMessage, UserMessage
-from laffyhand.agent.schemas import (
-    AgentState,
-    CompactionConfig,
-    SessionUsage,
+from laffyhand.agent.llm.specs.models import (
     StreamError,
     StreamFinish,
     StreamText,
     ToolCallContent,
+)
+from laffyhand.agent.schemas import (
+    AgentState,
+    CompactionConfig,
+    SessionUsage,
 )
 from laffyhand.agent.compaction import (
     compact,

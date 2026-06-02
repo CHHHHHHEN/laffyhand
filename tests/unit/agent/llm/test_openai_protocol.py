@@ -1,6 +1,6 @@
 import unittest
 from laffyhand.agent.llm.specs.models import AssistantMessage, LLMRequest, SystemMessage, ToolMessage, UserMessage
-from laffyhand.agent.schemas import (
+from laffyhand.agent.llm.specs.models import (
     ToolCallContent,
     ToolDefinition,
     StreamText,

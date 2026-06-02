@@ -6,12 +6,14 @@ import pytest
 
 from laffyhand.agent.llm.specs.models import AssistantMessage, SystemMessage, UserMessage
 from laffyhand.agent.session import SessionManager, TitleConfig
-from laffyhand.agent.schemas import (
-    AgentState,
-    CompactionConfig,
+from laffyhand.agent.llm.specs.models import (
     StreamText,
     StreamFinish,
     StreamError,
+)
+from laffyhand.agent.schemas import (
+    AgentState,
+    CompactionConfig,
     SessionUsage,
 )
 

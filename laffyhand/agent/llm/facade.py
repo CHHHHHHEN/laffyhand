@@ -3,7 +3,7 @@ from typing import Optional
 
 from loguru import logger
 from laffyhand.agent.llm.specs.models import LLMRequest, Message, ModelID, ProviderID
-from laffyhand.agent.schemas import LLMEvent, ToolDefinition
+from laffyhand.agent.llm.specs.models import LLMEvent, ToolDefinition
 from laffyhand.agent.llm._route import Route
 
 

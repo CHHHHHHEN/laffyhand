@@ -2,7 +2,7 @@ from typing import ClassVar, Literal
 from pydantic import BaseModel
 from loguru import logger
 from laffyhand.agent.llm.specs.models import LLMRequest, Frame, ProviderID
-from laffyhand.agent.schemas import StreamReasoning, LLMEvent
+from laffyhand.agent.llm.specs.models import StreamReasoning, LLMEvent
 from laffyhand.agent.llm.protocols.openai import OpenAIProtocol, OpenAIChatChunk, OpenAICompletionRequest
 
 

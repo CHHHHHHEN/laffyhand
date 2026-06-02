@@ -17,10 +17,10 @@ from laffyhand.agent.session.models import (
     _from_ts,
 )
 from laffyhand.agent.session.schema import create_tables, has_fts5
+from laffyhand.agent.llm.specs.models import ToolCallContent
 from laffyhand.agent.schemas import (
     AgentState,
     SessionUsage,
-    ToolCallContent,
 )
 
 

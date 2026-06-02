@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from loguru import logger
 from pydantic import BaseModel
-from typing import Any, Optional, Literal, List, Union
+from typing import Optional, List
 
-from laffyhand.agent.llm.specs.models import Message
+from laffyhand.agent.llm.specs.models import Message, Usage
 
 
 CHARS_PER_TOKEN = 4
@@ -14,49 +14,13 @@ def estimate_tokens(text: str) -> int:
     return max(0, round(len(text) / CHARS_PER_TOKEN))
 
 
-# ─── Tool Definition (provider-agnostic) ────────────────────────
-
-
-class ToolDefinition(BaseModel):
-    name: str
-    description: str
-    input_schema: dict[str, Any]
-
-
-class ToolCallContent(BaseModel):
-    type: Literal["tool-call"] = "tool-call"
-    tool_call_id: str
-    tool_name: str
-    args: str
-
-
-# ─── Prompt Messages ────────────────────────────────────────────────
-
-
 class CompactionConfig(BaseModel):
     tail_turns: int = 2
-    """Number of recent user turns to preserve verbatim during compaction."""
     preserve_recent_tokens: Optional[int] = None
-    """Maximum tokens to reserve for preserved turns. If None, computed dynamically (25% of usable)."""
     reserved: Optional[int] = None
-    """Token buffer for compaction LLM call. If None, uses min(20k, maxOutputTokens)."""
     prune: bool = True
-    """Whether to prune old tool outputs to free context."""
     auto_continue: bool = True
-    """Whether to auto-continue conversation after compaction."""
     summary_tool_truncate: int = 500
-    """Max characters of tool output to include in compaction summary text."""
-
-
-# ─── Usage ──────────────────────────────────────────────────────────
-
-
-class Usage(BaseModel):
-    input_tokens: Optional[int] = None
-    output_tokens: Optional[int] = None
-    reasoning_tokens: Optional[int] = None
-    cache_read_tokens: Optional[int] = None
-    cache_write_tokens: Optional[int] = None
 
 
 class SessionUsage(BaseModel):
@@ -76,42 +40,6 @@ class SessionUsage(BaseModel):
         )
 
 
-# ─── Stream Events ──────────────────────────────────────────────────
-
-
-class StreamText(BaseModel):
-    type: Literal["text"] = "text"
-    delta: str
-
-
-class StreamReasoning(BaseModel):
-    type: Literal["reasoning"] = "reasoning"
-    delta: str
-
-
-class StreamToolCall(BaseModel):
-    type: Literal["tool-call"] = "tool-call"
-    tool_call_id: str
-    tool_name: str
-    args: str
-
-
-FinishReason = Literal[
-    "stop", "length", "content_filter", "tool_calls", "error", "other"
-]
-
-
-class StreamFinish(BaseModel):
-    type: Literal["finish"] = "finish"
-    finish_reason: FinishReason
-    usage: Optional[Usage] = None
-
-
-class StreamError(BaseModel):
-    type: Literal["error"] = "error"
-    error: str
-
-
 class AgentState(BaseModel):
     messages: List[Message]
     turn_count: int = 0
@@ -120,8 +48,3 @@ class AgentState(BaseModel):
     session_id: Optional[str] = None
     interrupt_requested: bool = False
     pending_steer: Optional[str] = None
-
-
-LLMEvent = Union[
-    StreamText, StreamReasoning, StreamToolCall, StreamFinish, StreamError
-]

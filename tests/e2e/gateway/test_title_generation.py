@@ -6,11 +6,13 @@ import pytest
 
 from laffyhand.agent.llm.specs.models import UserMessage
 from laffyhand.agent.runtime import AgentRuntime
+from laffyhand.agent.llm.specs.models import (
+    StreamText,
+    StreamFinish,
+)
 from laffyhand.agent.schemas import (
     AgentState,
     SessionUsage,
-    StreamText,
-    StreamFinish,
 )
 
 

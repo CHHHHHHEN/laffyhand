@@ -10,7 +10,7 @@ from laffyhand.agent.llm.specs.models import (
     Message,
     ToolCallAccumulator,
 )
-from laffyhand.agent.schemas import (
+from laffyhand.agent.llm.specs.models import (
     ToolDefinition,
     LLMEvent,
     StreamText,

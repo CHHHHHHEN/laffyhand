@@ -26,7 +26,7 @@ from laffyhand.gateway.handlers import (
     _serialize_messages,
     _next_msg_id,
 )
-from laffyhand.agent.schemas import (
+from laffyhand.agent.llm.specs.models import (
     ToolCallContent,
     Usage,
 )

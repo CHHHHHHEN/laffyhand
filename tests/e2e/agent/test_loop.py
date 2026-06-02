@@ -2,14 +2,16 @@ import asyncio
 import unittest
 
 from laffyhand.agent.llm.specs.models import SystemMessage, ToolMessage
-from laffyhand.agent.schemas import (
-    AgentState,
-    CompactionConfig,
+from laffyhand.agent.llm.specs.models import (
     Usage,
-    SessionUsage,
     StreamText,
     StreamToolCall,
     StreamFinish,
+)
+from laffyhand.agent.schemas import (
+    AgentState,
+    CompactionConfig,
+    SessionUsage,
 )
 
 from laffyhand.agent.loop import agent_loop
