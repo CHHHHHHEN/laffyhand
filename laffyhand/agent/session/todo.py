@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from datetime import datetime
 from typing import Any, Optional, cast
 
 from typing import TYPE_CHECKING
@@ -12,9 +13,15 @@ from laffyhand.agent.session.models import (
     TodoPriority,
     TodoStatus,
     _utcnow,
-    _ts,
-    _from_ts,
 )
+
+
+def _ts(dt: datetime | None) -> str | None:
+    return dt.isoformat() if dt is not None else None
+
+
+def _from_ts(ts: str | None) -> datetime | None:
+    return datetime.fromisoformat(ts) if ts is not None else None
 
 if TYPE_CHECKING:
     from laffyhand.agent.session.manager import SessionManager

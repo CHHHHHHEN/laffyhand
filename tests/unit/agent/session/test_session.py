@@ -380,45 +380,45 @@ class TestHelpers:
         result = _deserialize_metadata("{invalid")
         assert result == {}
 
-    def test_message_to_record_unknown_type(self) -> None:
-        from laffyhand.agent.session.manager import _message_to_record
+    def test_message_to_row_unknown_type(self) -> None:
+        from laffyhand.agent.session.manager import _message_to_row
 
         class FakeMsg:
             pass
 
         with pytest.raises(TypeError, match="Unknown message type"):
-            _message_to_record("sid", FakeMsg(), 0)
+            _message_to_row("sid", FakeMsg(), 0)
 
-    def test_record_to_message_unknown_role(self) -> None:
-        from laffyhand.agent.session.manager import _record_to_message
-        from laffyhand.agent.session.models import MessageRecord
+    def test_row_to_message_unknown_role(self) -> None:
+        from laffyhand.agent.session.manager import _row_to_message
 
-        rec = MessageRecord(session_id="sid", role="unknown", content="x")
+        row = type("Row", (), {"__getitem__": lambda s, k: {"role": "unknown", "content": "x", "id": 0, "tool_args": None, "reasoning": None, "tool_call_id": None}.get(k), "__getattr__": lambda s, k: None})()
         with pytest.raises(ValueError, match="Unknown role"):
-            _record_to_message(rec)
+            _row_to_message(row)
 
-    def test_message_to_record_assistant_with_tokens(self) -> None:
-        from laffyhand.agent.session.manager import _message_to_record
+    def test_message_to_row_assistant_with_tokens(self) -> None:
+        from laffyhand.agent.session.manager import _message_to_row
         from laffyhand.agent.llm.specs.models import Usage
 
         msg = AssistantMessage(
             content="Hello", tokens=Usage(input_tokens=10, output_tokens=5)
         )
-        rec = _message_to_record("sid", msg, 1)
-        assert rec.role == "assistant"
-        assert rec.token_count == 15
+        row = _message_to_row("sid", msg, 1)
+        assert row["role"] == "assistant"
+        assert row["token_count"] == 15
 
-    def test_record_to_message_assistant_with_tool_calls(self) -> None:
-        from laffyhand.agent.session.manager import _record_to_message
-        from laffyhand.agent.session.models import MessageRecord
+    def test_row_to_message_assistant_with_tool_calls(self) -> None:
+        from laffyhand.agent.session.manager import _row_to_message
 
-        rec = MessageRecord(
-            session_id="sid",
-            role="assistant",
-            content="calling...",
-            tool_args='[{"tool_call_id": "c1", "tool_name": "t", "args": "{}", "type": "tool-call"}]',
-        )
-        msg = _record_to_message(rec)
+        row = type("Row", (), {"__getitem__": lambda s, k: {
+            "role": "assistant",
+            "content": "calling...",
+            "tool_args": '[{"tool_call_id": "c1", "tool_name": "t", "args": "{}", "type": "tool-call"}]',
+            "reasoning": None,
+            "tool_call_id": None,
+            "id": 0,
+        }.get(k), "__getattr__": lambda s, k: None})()
+        msg = _row_to_message(row)
         assert isinstance(msg, AssistantMessage)
         assert msg.tool_calls is not None
         assert len(msg.tool_calls) == 1

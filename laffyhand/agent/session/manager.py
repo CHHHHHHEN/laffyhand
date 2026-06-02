@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from datetime import datetime
 from pathlib import Path
 from collections.abc import Sequence
 from typing import Any, Optional, cast
@@ -10,19 +11,24 @@ from loguru import logger
 
 from laffyhand.agent.llm.specs.models import AssistantMessage, Message, SystemMessage, ToolMessage, UserMessage
 from laffyhand.agent.session.models import (
-    MessageRecord,
     Session,
     _utcnow,
-    _ts,
-    _from_ts,
 )
 from laffyhand.agent.session.schema import create_tables, has_fts5
-from laffyhand.agent.llm.specs.models import ToolCallContent
+from laffyhand.agent.llm.specs.models import ModelID, ProviderID, ToolCallContent
 from laffyhand.agent.schemas import (
     AgentState,
     SessionID,
     SessionUsage,
 )
+
+
+def _ts(dt: datetime | None) -> str | None:
+    return dt.isoformat() if dt is not None else None
+
+
+def _from_ts(ts: str | None) -> datetime | None:
+    return datetime.fromisoformat(ts) if ts is not None else None
 
 
 def _serialize_metadata(meta: dict[str, Any]) -> str:
@@ -39,81 +45,47 @@ def _deserialize_metadata(raw: str) -> dict[str, Any]:
         return {}
 
 
-def _message_to_record(
-    session_id: str,
-    msg: Message,
-    turn_index: int,
-) -> MessageRecord:
+def _message_to_row(session_id: str, msg: Message, turn_index: int) -> dict[str, Any]:
     if isinstance(msg, SystemMessage):
-        return MessageRecord(
-            session_id=session_id,
-            role="system",
-            content=msg.content,
-            turn_index=turn_index,
-        )
+        return dict(session_id=session_id, role="system", content=msg.content, turn_index=turn_index)
     if isinstance(msg, UserMessage):
-        return MessageRecord(
-            session_id=session_id,
-            role="user",
-            content=msg.content,
-            turn_index=turn_index,
-        )
+        return dict(session_id=session_id, role="user", content=msg.content, turn_index=turn_index)
     if isinstance(msg, AssistantMessage):
-        tool_args = None
-        if msg.tool_calls:
-            tool_args = json.dumps(
-                [t.model_dump() for t in msg.tool_calls],
-                default=str,
-            )
-        return MessageRecord(
-            session_id=session_id,
-            role="assistant",
-            content=msg.content,
-            reasoning=msg.reasoning,
-            tool_args=tool_args,
-            token_count=(
-                (msg.tokens.input_tokens or 0) + (msg.tokens.output_tokens or 0)
-            )
-            if msg.tokens
-            else None,
-            turn_index=turn_index,
+        tool_args = json.dumps([t.model_dump() for t in msg.tool_calls], default=str) if msg.tool_calls else None
+        token_count = (msg.tokens.input_tokens or 0) + (msg.tokens.output_tokens or 0) if msg.tokens else None
+        return dict(
+            session_id=session_id, role="assistant", content=msg.content,
+            reasoning=msg.reasoning, tool_args=tool_args,
+            token_count=token_count, turn_index=turn_index,
         )
     if isinstance(msg, ToolMessage):
-        return MessageRecord(
-            session_id=session_id,
-            role="tool",
-            content=msg.content,
-            tool_call_id=msg.tool_call_id,
-            turn_index=turn_index,
+        return dict(
+            session_id=session_id, role="tool", content=msg.content,
+            tool_call_id=msg.tool_call_id, turn_index=turn_index,
         )
     raise TypeError(f"Unknown message type: {type(msg).__name__}")
 
 
-def _record_to_message(rec: MessageRecord) -> Message:
-    if rec.role == "system":
-        return SystemMessage(content=rec.content or "")
-    if rec.role == "user":
-        return UserMessage(content=rec.content or "")
-    if rec.role == "assistant":
+def _row_to_message(row: sqlite3.Row) -> Message:
+    role = row["role"]
+    if role == "system":
+        return SystemMessage(content=row["content"] or "")
+    if role == "user":
+        return UserMessage(content=row["content"] or "")
+    if role == "assistant":
         tool_calls = None
-        if rec.tool_args:
+        raw = row["tool_args"]
+        if raw:
             try:
-                raw = json.loads(rec.tool_args)
+                lst = json.loads(raw)
             except (json.JSONDecodeError, TypeError):
-                logger.warning(f"Failed to parse tool_args JSON for message {rec.id}")
-                raw = []
-            tool_calls = [ToolCallContent(**t) for t in raw]
-        return AssistantMessage(
-            content=rec.content,
-            reasoning=rec.reasoning,
-            tool_calls=tool_calls,
-        )
-    if rec.role == "tool":
-        return ToolMessage(
-            tool_call_id=rec.tool_call_id or "",
-            content=rec.content or "",
-        )
-    raise ValueError(f"Unknown role: {rec.role}")
+                logger.warning(f"Failed to parse tool_args JSON for message {row['id']}")
+                lst = []
+            tool_calls = [ToolCallContent(**t) for t in lst]
+        return AssistantMessage(content=row["content"], reasoning=row["reasoning"], tool_calls=tool_calls)
+    if role == "tool":
+        return ToolMessage(tool_call_id=row["tool_call_id"] or "", content=row["content"] or "")
+    raise ValueError(f"Unknown role: {role}")
 
 
 class SessionManager:
@@ -160,8 +132,8 @@ class SessionManager:
         session = Session(
             title=title,
             cwd=cwd,
-            provider=provider,
-            model=model,
+            provider=ProviderID(provider) if provider else ProviderID(""),
+            model=ModelID(model) if model else ModelID(""),
             agent_version=agent_version,
             parent_id=parent_id,
             fork_id=fork_id,
@@ -212,7 +184,7 @@ class SessionManager:
                 status=?, title=?, cwd=?, model=?, agent_version=?,
                 turn_count=?, step_count=?,
                 input_tokens=?, output_tokens=?, reasoning_tokens=?,
-                cache_read_tokens=?,
+                cache_read_tokens=?, cache_write_tokens=?,
                 message_count=?, summary=?, metadata=?,
                 updated_at=?, ended_at=?
             WHERE id=?""",
@@ -228,6 +200,7 @@ class SessionManager:
                 session.output_tokens,
                 session.reasoning_tokens,
                 session.cache_read_tokens,
+                session.cache_write_tokens,
                 session.message_count,
                 session.summary,
                 _serialize_metadata(session.metadata),
@@ -306,8 +279,8 @@ class SessionManager:
                 return existing
             turn_index = session.turn_count
             for msg in new_messages:
-                rec = _message_to_record(session_id, msg, turn_index)
-                self._insert_record(rec)
+                row = _message_to_row(session_id, msg, turn_index)
+                self._insert_row(row)
             count = session.message_count + len(new_messages)
             self._conn.execute(
                 "UPDATE session SET message_count=?, updated_at=? WHERE id=?",
@@ -332,8 +305,8 @@ class SessionManager:
             self._conn.execute("DELETE FROM message WHERE session_id=?", (session_id,))
             turn_index = 0
             for msg in messages:
-                rec = _message_to_record(session_id, msg, turn_index)
-                self._insert_record(rec)
+                row = _message_to_row(session_id, msg, turn_index)
+                self._insert_row(row)
                 if isinstance(msg, UserMessage):
                     turn_index += 1
             self._conn.execute(
@@ -362,7 +335,7 @@ class SessionManager:
                 "SELECT * FROM message WHERE session_id=? ORDER BY id",
                 (session_id,),
             ).fetchall()
-        return [_record_to_message(self._row_to_record(r)) for r in rows]
+        return [_row_to_message(r) for r in rows]
 
     # ── State persistence ─────────────────────────────────────
 
@@ -376,6 +349,7 @@ class SessionManager:
                 turn_count=?, step_count=?,
                 input_tokens=?, output_tokens=?,
                 reasoning_tokens=?, cache_read_tokens=?,
+                cache_write_tokens=?,
                 updated_at=?
             WHERE id=?""",
             (
@@ -385,6 +359,7 @@ class SessionManager:
                 state.usage.total_output,
                 state.usage.total_reasoning,
                 state.usage.total_cache_read,
+                state.usage.total_cache_write,
                 _ts(_utcnow()),
                 session_id,
             ),
@@ -574,11 +549,11 @@ class SessionManager:
                 id, status, title, cwd, provider, model, agent_version,
                 turn_count, step_count,
                 input_tokens, output_tokens, reasoning_tokens,
-                cache_read_tokens,
+                cache_read_tokens, cache_write_tokens,
                 parent_id, fork_id,
                 message_count, summary, metadata,
                 created_at, updated_at, ended_at
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 session.id,
                 session.status,
@@ -593,6 +568,7 @@ class SessionManager:
                 session.output_tokens,
                 session.reasoning_tokens,
                 session.cache_read_tokens,
+                session.cache_write_tokens,
                 session.parent_id,
                 session.fork_id,
                 session.message_count,
@@ -612,31 +588,10 @@ class SessionManager:
     ) -> None:
         turn_index = 0
         for msg in messages:
-            rec = _message_to_record(session_id, msg, turn_index)
-            self._insert_record(rec)
+            row = _message_to_row(session_id, msg, turn_index)
+            self._insert_row(row)
             if isinstance(msg, UserMessage):
                 turn_index += 1
-
-    def _insert_record(self, rec: MessageRecord) -> None:
-        self._conn.execute(
-            """INSERT INTO message (
-                session_id, role, content, tool_call_id,
-                tool_name, tool_args, reasoning,
-                token_count, timestamp, turn_index
-            ) VALUES (?,?,?,?,?,?,?,?,?,?)""",
-            (
-                rec.session_id,
-                rec.role,
-                rec.content,
-                rec.tool_call_id,
-                rec.tool_name,
-                rec.tool_args,
-                rec.reasoning,
-                rec.token_count,
-                _ts(rec.timestamp),
-                rec.turn_index,
-            ),
-        )
 
     def _update_counters(self, session_id: str, message_count: int) -> None:
         self._conn.execute(
@@ -652,8 +607,8 @@ class SessionManager:
             status=row["status"],
             title=row["title"],
             cwd=row["cwd"],
-            provider=row["provider"] if "provider" in row.keys() else "",
-            model=row["model"],
+            provider=ProviderID(row["provider"]) if "provider" in row.keys() else ProviderID(""),
+            model=ModelID(row["model"]),
             agent_version=row["agent_version"],
             turn_count=row["turn_count"],
             step_count=row["step_count"],
@@ -661,6 +616,7 @@ class SessionManager:
             output_tokens=row["output_tokens"],
             reasoning_tokens=row["reasoning_tokens"],
             cache_read_tokens=row["cache_read_tokens"],
+            cache_write_tokens=row["cache_write_tokens"] if "cache_write_tokens" in row.keys() else 0,
             parent_id=row["parent_id"],
             fork_id=row["fork_id"],
             message_count=row["message_count"],
@@ -671,18 +627,14 @@ class SessionManager:
             ended_at=_from_ts(row["ended_at"]) if row["ended_at"] else None,
         )
 
-    @staticmethod
-    def _row_to_record(row: sqlite3.Row) -> MessageRecord:
-        return MessageRecord(
-            id=row["id"],
-            session_id=row["session_id"],
-            role=row["role"],
-            content=row["content"],
-            tool_call_id=row["tool_call_id"],
-            tool_name=row["tool_name"],
-            tool_args=row["tool_args"],
-            reasoning=row["reasoning"],
-            token_count=row["token_count"],
-            timestamp=_from_ts(row["timestamp"]) or _utcnow(),
-            turn_index=row["turn_index"],
+    def _insert_row(self, row: dict[str, Any]) -> None:
+        self._conn.execute(
+            """INSERT INTO message
+               (session_id, role, content, tool_call_id, tool_name, tool_args, reasoning, token_count, turn_index)
+               VALUES (?,?,?,?,?,?,?,?,?)""",
+            (
+                row.get("session_id"), row.get("role"), row.get("content"),
+                row.get("tool_call_id"), row.get("tool_name"), row.get("tool_args"),
+                row.get("reasoning"), row.get("token_count"), row.get("turn_index"),
+            ),
         )

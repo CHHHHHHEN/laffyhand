@@ -386,8 +386,8 @@ class AgentRuntime:
         if not provider or not model:
             try:
                 provider_key, provider_cfg = resolve_provider(self._config.llm)
-                provider = provider_key
-                model = model or resolve_model(provider_cfg).name
+                provider = ProviderID(provider_key)
+                model = model or ModelID(resolve_model(provider_cfg).name)
             except ValueError:
                 logger.warning(
                     f"Session {session_id}: could not resolve provider/model, "
