@@ -78,7 +78,7 @@ class GatewayServer:
         try:
             await self.transport.close()
         except Exception:
-            pass
+            logger.warning("Error closing transport during shutdown")
         logger.info("Gateway shutdown complete")
 
     def stop(self) -> None:

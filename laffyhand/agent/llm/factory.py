@@ -5,8 +5,9 @@ from laffyhand.agent.llm._bearer_auth import BearerAuth
 from laffyhand.agent.llm._sse_framing import SSEFraming
 from laffyhand.agent.llm.protocols.openai import OpenAIProtocol, OpenAIEndpoint
 from laffyhand.agent.llm.protocols.deepseek import DeepseekProtocol
+from laffyhand.agent.llm.specs.protocol import Protocol
 
-PROTOCOL_MAP: dict[str, type] = {
+PROTOCOL_MAP: dict[str, type[Protocol]] = {
     "openai": OpenAIProtocol,
     "deepseek": DeepseekProtocol,
 }

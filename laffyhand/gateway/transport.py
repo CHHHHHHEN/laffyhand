@@ -39,8 +39,9 @@ class StdioTransport(Transport):
         if self._closed:
             return
         try:
-            self._writer.write(data + "\n")
-            self._writer.flush()
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(None, self._writer.write, data + "\n")
+            await loop.run_in_executor(None, self._writer.flush)
         except Exception as e:
             self._closed = True
             logger.warning(f"StdioTransport.send failed: {e}")

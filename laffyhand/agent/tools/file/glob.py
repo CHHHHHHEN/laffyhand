@@ -43,7 +43,15 @@ class GlobTool(BaseTool):
         if rg_available():
             rg_results = rg_glob(root, pattern)
             if rg_results is not None:
-                matches = [root / p for p in rg_results if p]
+                for p in rg_results:
+                    if not p:
+                        continue
+                    p_obj = (root / p).resolve()
+                    if not str(p_obj).startswith(str(root)):
+                        logger.warning(f"Glob: blocked path traversal: {p_obj}")
+                        continue
+                    if p_obj.is_file():
+                        matches.append(p_obj)
                 logger.debug(
                     f"Glob: ripgrep returned {len(matches)} results for {pattern} in {root}"
                 )

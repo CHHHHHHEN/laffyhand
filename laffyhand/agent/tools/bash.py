@@ -108,6 +108,7 @@ class BashTool(BaseTool):
                 logger.warning(f"Bash blocked: {msg}: {_redact_command(command)}")
                 return f"Blocked: {msg}"
 
+        proc = None
         try:
             proc = await asyncio.create_subprocess_shell(
                 command,
@@ -141,3 +142,10 @@ class BashTool(BaseTool):
                 f"Bash exception on cmd={_redact_command(command)!r}, timeout={timeout}s, workdir={workdir!r}: {e}"
             )
             return "Error: command execution failed"
+        finally:
+            if proc is not None and proc.returncode is None:
+                proc.kill()
+                try:
+                    await asyncio.wait_for(proc.communicate(), timeout=2)
+                except (asyncio.TimeoutError, ProcessLookupError):
+                    pass

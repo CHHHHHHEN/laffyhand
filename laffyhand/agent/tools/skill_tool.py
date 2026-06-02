@@ -86,7 +86,12 @@ class SkillTool(BaseTool):
     @staticmethod
     def _discover_siblings(base_dir: Path, max_files: int = 10) -> list[Path]:
         files: list[Path] = []
-        for child in sorted(base_dir.iterdir()):
+        try:
+            children = sorted(base_dir.iterdir())
+        except PermissionError:
+            logger.warning(f"Permission denied listing skill base dir: {base_dir}")
+            return files
+        for child in children:
             if child.name == "SKILL.md" or child.name.startswith("."):
                 continue
             if child.is_file():

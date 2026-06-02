@@ -80,7 +80,7 @@ class GrepTool(BaseTool):
             return "Pattern is empty"
 
         try:
-            re.compile(pattern_str)
+            pattern = re.compile(pattern_str)
         except re.error as e:
             return f"Invalid regex pattern: {e}"
 
@@ -89,11 +89,11 @@ class GrepTool(BaseTool):
 
         if root.is_file():
             return await self._search_single_file(
-                root, pattern_str, context, offset, limit
+                root, pattern, context, offset, limit
             )
 
         return await self._search_directory(
-            root, pattern_str, include, output_mode, context, offset, limit
+            root, pattern, include, output_mode, context, offset, limit
         )
 
     @staticmethod
@@ -122,7 +122,7 @@ class GrepTool(BaseTool):
         return result
 
     async def _search_single_file(
-        self, path: Path, pattern_str: str, context: int, offset: int, limit: int
+        self, path: Path, pattern: re.Pattern[str], context: int, offset: int, limit: int
     ) -> str:
         if not path.is_file():
             return f"Not a file: {path}"
@@ -136,8 +136,7 @@ class GrepTool(BaseTool):
             logger.warning(f"Grep: failed to read {path}: {e}")
             return f"{path}: error: {e}"
 
-        loop = asyncio.get_event_loop()
-        pattern = re.compile(pattern_str)
+        loop = asyncio.get_running_loop()
         lines = text.splitlines(keepends=True)
 
         def _search_lines() -> list[int]:
@@ -148,11 +147,11 @@ class GrepTool(BaseTool):
                 loop.run_in_executor(None, _search_lines), timeout=5
             )
         except asyncio.TimeoutError:
-            return f"Search timed out for pattern `{pattern_str}` in {path}"
+            return f"Search timed out for pattern `{pattern.pattern}` in {path}"
 
         if not match_indices:
-            logger.info(f"Grep: no matches for `{pattern_str}` in {path}")
-            return f"No matches for `{pattern_str}` in {path}"
+            logger.info(f"Grep: no matches for `{pattern.pattern}` in {path}")
+            return f"No matches for `{pattern.pattern}` in {path}"
 
         total_matches = len(match_indices)
         selected_indices = (
@@ -184,13 +183,14 @@ class GrepTool(BaseTool):
     async def _search_directory(
         self,
         root: Path,
-        pattern_str: str,
+        pattern: re.Pattern[str],
         include: str | None,
         output_mode: str,
         context: int,
         offset: int,
         limit: int,
     ) -> str:
+        pattern_str = pattern.pattern
         if output_mode == "files_only" and rg_available():
             result = self._rg_files_only(root, pattern_str, include, offset, limit)
             if result is not None:
@@ -210,14 +210,14 @@ class GrepTool(BaseTool):
 
         if output_mode == "files_only":
             return await self._py_search_files_only(
-                root, pattern_str, include, offset, limit
+                root, pattern, include, offset, limit
             )
         if output_mode == "count":
             return await self._py_search_count(
-                root, pattern_str, include, offset, limit
+                root, pattern, include, offset, limit
             )
         return await self._py_search_content(
-            root, pattern_str, include, context, offset, limit
+            root, pattern, include, context, offset, limit
         )
 
     def _rg_files_only(
@@ -291,10 +291,11 @@ class GrepTool(BaseTool):
         return result
 
     async def _py_search_files_only(
-        self, root: Path, pattern_str: str, include: str | None, offset: int, limit: int
+        self, root: Path, pattern: re.Pattern[str], include: str | None, offset: int, limit: int
     ) -> str:
+        pattern_str = pattern.pattern
         logger.debug(f"Grep: Python fallback files_only for `{pattern_str}` in {root}")
-        files_with_matches = await self._collect_matches(root, pattern_str, include)
+        files_with_matches = await self._collect_matches(root, pattern, include)
         if not files_with_matches:
             return f"No matches for `{pattern_str}`"
 
@@ -311,10 +312,11 @@ class GrepTool(BaseTool):
         return result
 
     async def _py_search_count(
-        self, root: Path, pattern_str: str, include: str | None, offset: int, limit: int
+        self, root: Path, pattern: re.Pattern[str], include: str | None, offset: int, limit: int
     ) -> str:
+        pattern_str = pattern.pattern
         logger.debug(f"Grep: Python fallback count for `{pattern_str}` in {root}")
-        files_with_matches = await self._collect_matches(root, pattern_str, include)
+        files_with_matches = await self._collect_matches(root, pattern, include)
         if not files_with_matches:
             return f"No matches for `{pattern_str}`"
 
@@ -337,14 +339,15 @@ class GrepTool(BaseTool):
     async def _py_search_content(
         self,
         root: Path,
-        pattern_str: str,
+        pattern: re.Pattern[str],
         include: str | None,
         context: int,
         offset: int,
         limit: int,
     ) -> str:
+        pattern_str = pattern.pattern
         logger.debug(f"Grep: Python fallback content for `{pattern_str}` in {root}")
-        files_with_matches = await self._collect_matches(root, pattern_str, include)
+        files_with_matches = await self._collect_matches(root, pattern, include)
         if not files_with_matches:
             return f"No matches for `{pattern_str}`"
 
@@ -395,15 +398,11 @@ class GrepTool(BaseTool):
         return result
 
     async def _collect_matches(
-        self, root: Path, pattern_str: str, include: str | None
+        self, root: Path, pattern: re.Pattern[str], include: str | None
     ) -> list[tuple[Path, list[int]]]:
         """Scan files and return (file_path, [match_line_index, ...]) pairs.
         Used by _py_search_files_only and _py_search_count.
         """
-        try:
-            pattern = re.compile(pattern_str)
-        except re.error:
-            return []
 
         include_glob = include or "*"
 
@@ -431,9 +430,9 @@ class GrepTool(BaseTool):
             result.sort(key=lambda x: x[0].stat().st_mtime, reverse=True)
             return result
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         try:
             return await asyncio.wait_for(loop.run_in_executor(None, _scan), timeout=30)
         except asyncio.TimeoutError:
-            logger.warning(f"Grep: search timed out for pattern `{pattern_str}`")
+            logger.warning(f"Grep: search timed out for pattern `{pattern.pattern}`")
             return []

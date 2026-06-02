@@ -180,7 +180,7 @@ class _HTTPStreamTransport(Transport):
         try:
             payload = f"data: {data}\n\n"
             await self._response.write(payload.encode())
-        except Exception, asyncio.CancelledError:
+        except (Exception, asyncio.CancelledError):
             self._closed = True
 
     async def recv(self) -> str:
@@ -418,7 +418,7 @@ class HTTPTransport:
         finally:
             try:
                 await response.write_eof()
-            except ConnectionError, asyncio.CancelledError:
+            except (ConnectionError, asyncio.CancelledError):
                 pass
         return response
 

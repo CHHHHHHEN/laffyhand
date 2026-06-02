@@ -142,9 +142,13 @@ Provide a concise structured summary covering:
 - Next Steps: What remains to be done."""
 
 
+_SUMMARY_TAG_OPEN = "<summary>"
+_SUMMARY_TAG_CLOSE = "</summary>"
+
+
 def _is_summary_content(content: str) -> bool:
     s = content.strip()
-    return s.startswith("<summary>") and s.endswith("</summary>")
+    return s.startswith(_SUMMARY_TAG_OPEN) and s.endswith(_SUMMARY_TAG_CLOSE)
 
 
 _MAX_SUMMARY_DEPTH = 3
@@ -169,16 +173,16 @@ def build_summary_text(messages: Sequence[Message], tool_truncate: int = 500) ->
         if isinstance(msg, SystemMessage) and _is_summary_content(msg.content):
             inner = (
                 msg.content.strip()
-                .removeprefix("<summary>")
-                .removesuffix("</summary>")
+                .removeprefix(_SUMMARY_TAG_OPEN)
+                .removesuffix(_SUMMARY_TAG_CLOSE)
                 .strip()
             )
             lines.append(f"[Previous Summary]:\n{inner}")
         elif isinstance(msg, UserMessage) and _is_summary_content(msg.content):
             inner = (
                 msg.content.strip()
-                .removeprefix("<summary>")
-                .removesuffix("</summary>")
+                .removeprefix(_SUMMARY_TAG_OPEN)
+                .removesuffix(_SUMMARY_TAG_CLOSE)
                 .strip()
             )
             lines.append(f"[Previous Summary]:\n{inner}")
@@ -311,7 +315,7 @@ async def compact(agent_state: AgentState, llm: LLM, config: CompactionConfig) -
         logger.warning("Compaction failed: no summary generated")
         return False
 
-    summary_msg = SystemMessage(content=f"<summary>\n{summary.strip()}\n</summary>")
+    summary_msg = SystemMessage(content=f"{_SUMMARY_TAG_OPEN}\n{summary.strip()}\n{_SUMMARY_TAG_CLOSE}")
     agent_state.messages = original_system + [summary_msg] + tail
     logger.info(
         f"Compaction complete: {len(head_to_summarize)} messages -> 1 summary message"
@@ -346,4 +350,4 @@ async def compact_with_chain(
         return None
 
     logger.info(f"Chain compaction summary generated ({len(summary)} chars)")
-    return f"<summary>\n{summary.strip()}\n</summary>", original_system, tail
+    return f"{_SUMMARY_TAG_OPEN}\n{summary.strip()}\n{_SUMMARY_TAG_CLOSE}", original_system, tail

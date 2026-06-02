@@ -75,12 +75,12 @@ class PermissionManager:
             prompt = f"\nAllow {permission} '{pattern}'? [y/N/a] "
             try:
                 answer = (await asyncio.to_thread(input, prompt)).strip().lower()
-            except EOFError, OSError:
+            except (EOFError, OSError):
                 raise RuntimeError(
                     f"Cannot prompt for permission '{permission}:{pattern}' — "
                     "no interactive terminal available. "
                     "Use PermissionManager.allow/deny to configure rules in non-interactive mode."
-                ) from None
+                )
             if answer == "a":
                 self._rules[f"{permission}:{pattern}"] = "allow"
                 logger.info(f"Permission '{permission}:{pattern}' always allowed")

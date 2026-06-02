@@ -540,14 +540,6 @@ class TestHandleChatStream:
         assert last_data["params"]["reason"] == ""
 
 
-def _async_gen(items):
-    async def gen():
-        for item in items:
-            yield item
-
-    return gen()
-
-
 class TestHandleToolsList:
     @pytest.mark.anyio
     async def test_returns_tools(self, runtime, transport):
