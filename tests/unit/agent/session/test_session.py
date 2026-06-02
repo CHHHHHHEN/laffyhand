@@ -483,12 +483,12 @@ class TestAdvancedCRUD:
 
 class TestSchema:
     def test_has_fts5_default(self, session_manager: SessionManager) -> None:
-        from laffyhand.agent.session.schema import has_fts5
+        from laffyhand.agent.db.schema import has_fts5
 
         assert has_fts5(session_manager._conn) is True
 
     def test_create_tables_idempotent(self, session_manager: SessionManager) -> None:
-        from laffyhand.agent.session.schema import create_tables
+        from laffyhand.agent.db.schema import create_tables
 
         create_tables(session_manager._conn)  # should not raise
 
@@ -498,7 +498,7 @@ class TestSchema:
         conn = sqlite3.connect(db_path)
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA foreign_keys=ON")
-        from laffyhand.agent.session.schema import create_tables
+        from laffyhand.agent.db.schema import create_tables
 
         create_tables(conn)
         row = conn.execute("SELECT MAX(version) FROM _schema_version").fetchone()

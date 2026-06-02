@@ -5,7 +5,7 @@ import sqlite3
 import pytest
 
 from laffyhand.agent.session.models import TodoCreate, TodoUpdate
-from laffyhand.agent.session.schema import create_tables
+from laffyhand.agent.db.schema import create_tables
 from laffyhand.agent.session.todo import TodoManager
 
 

@@ -16,7 +16,7 @@ import sqlite3
 
 import pytest
 
-from laffyhand.agent.session.schema import create_tables
+from laffyhand.agent.db.schema import create_tables
 from laffyhand.agent.session.todo import TodoManager
 from laffyhand.agent.tools.todo import TodoTool
 
