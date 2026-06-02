@@ -46,6 +46,8 @@ def runtime():
     r.session_manager = MagicMock()
     r._context_size = 8192
     r.build_system_prompt = AsyncMock(return_value="You are a helpful assistant.")
+    r._generate_title = AsyncMock()
+    r.get_session_lock = MagicMock(return_value=MagicMock())
     return r
 
 
@@ -204,7 +206,7 @@ class TestHandleChat:
 
         assert "content" in result
         assert result["session_id"] == "sess-1"
-        runtime._schedule_title_generation.assert_called_once_with("sess-1", "auto")
+        runtime._generate_title.assert_called_once_with("sess-1", "auto")
 
     @pytest.mark.anyio
     async def test_chat_without_session_creates_one(self, runtime, transport):
@@ -225,7 +227,7 @@ class TestHandleChat:
         result = await handle_chat(runtime, {"message": "hello"}, transport, 1, "c1")
         assert result["session_id"] == "sess-new"
         runtime._schedule_title_generation.assert_any_call("sess-new", "on_create")
-        runtime._schedule_title_generation.assert_any_call("sess-new", "auto")
+        runtime._generate_title.assert_any_call("sess-new", "auto")
 
 
 class TestHandleChatCancel:
@@ -393,10 +395,11 @@ class TestHandleChatStream:
         runtime.run_agent_turn.return_value = _async_gen(
             [TextDelta(id="t1", text="hello")]
         )
+        runtime.subagent_manager = None
 
         await handle_chat_stream(runtime, {"message": "hi"}, transport, 1, "c1")
 
-        runtime._schedule_title_generation.assert_called_once_with("sess-1", "auto")
+        runtime._generate_title.assert_called_once_with("sess-1", "auto")
 
         # Should have sent at least 2 messages: event + finish
         assert transport.send.await_count >= 2
@@ -428,6 +431,7 @@ class TestHandleChatStream:
 
         runtime.run_agent_turn = MagicMock()
         runtime.run_agent_turn.return_value = failing_gen()
+        runtime.subagent_manager = None
 
         await handle_chat_stream(runtime, {"message": "hi"}, transport, 1, "c1")
 
@@ -460,6 +464,7 @@ class TestHandleChatStream:
 
         runtime.run_agent_turn = MagicMock()
         runtime.run_agent_turn.return_value = _async_gen([])
+        runtime.subagent_manager = None
 
         await handle_chat_stream(runtime, {"message": "hi"}, transport, 1, "c1")
 
