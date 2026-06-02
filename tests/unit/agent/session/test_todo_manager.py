@@ -16,8 +16,8 @@ def db():
     conn.execute("PRAGMA foreign_keys=ON")
     create_tables(conn)
     conn.execute(
-        "INSERT INTO session (id, created_at, updated_at) VALUES (?, ?, ?)",
-        ("sess-1", "2025-01-01T00:00:00", "2025-01-01T00:00:00"),
+        "INSERT INTO session (id, provider, model, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+        ("sess-1", "", "", "2025-01-01T00:00:00", "2025-01-01T00:00:00"),
     )
     conn.commit()
     yield conn

@@ -12,6 +12,7 @@ from laffyhand.agent.session.models import (
     TodoUpdate,
     TodoPriority,
     TodoStatus,
+    _generate_id,
     _utcnow,
 )
 
@@ -125,10 +126,13 @@ class TodoManager:
             self._conn.commit()
         except sqlite3.IntegrityError as e:
             self._conn.rollback()
-            raise ValueError(
-                f"Session '{session_id}' does not exist. "
-                "Cannot add todo task without a valid session."
-            ) from e
+            err_msg = str(e)
+            if "FOREIGN KEY" in err_msg or "session" in err_msg.lower():
+                raise ValueError(
+                    f"Session '{session_id}' does not exist. "
+                    "Cannot add todo task without a valid session."
+                ) from e
+            raise
         return item
 
     def add_tasks(
@@ -141,7 +145,7 @@ class TodoManager:
         ids: list[str] = []
         for t in tasks:
             item = TodoItem(
-                id=t.id or "",
+                id=t.id or _generate_id(),
                 session_id=session_id,
                 content=t.content,
                 priority=t.priority,
@@ -181,10 +185,13 @@ class TodoManager:
                 )
             except sqlite3.IntegrityError as e:
                 self._conn.rollback()
-                raise ValueError(
-                    f"Session '{session_id}' does not exist. "
-                    "Cannot add todo tasks without a valid session."
-                ) from e
+                err_msg = str(e)
+                if "FOREIGN KEY" in err_msg or "session" in err_msg.lower():
+                    raise ValueError(
+                        f"Session '{session_id}' does not exist. "
+                        "Cannot add todo tasks without a valid session."
+                    ) from e
+                raise
             ids.append(item.id)
             existing = self.get_tasks(session_id)
             existing_ids = {t.id for t in existing}

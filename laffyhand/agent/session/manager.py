@@ -222,9 +222,16 @@ class SessionManager:
             raise ValueError(f"Session not found: {session_id}")
         self._conn.execute("BEGIN IMMEDIATE")
         try:
+            existing = self._messages.count_by_session(session_id)
+            if existing > session.message_count:
+                logger.warning(
+                    f"store_messages: session.message_count ({session.message_count}) "
+                    f"< actual message count ({existing}). Resetting counter."
+                )
+                session.message_count = existing
             for msg in messages:
                 self._messages.insert(_message_to_session_message(msg, session_id))
-            new_count = session.message_count + len(messages)
+            new_count = existing + len(messages)
             self._update_counters(session_id, new_count)
             self._conn.commit()
         except Exception:

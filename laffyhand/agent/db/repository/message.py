@@ -32,5 +32,11 @@ class MessageRepo:
             ).fetchall()
         return [decode_session_message(r) for r in rows]
 
+    def count_by_session(self, session_id: str) -> int:
+        row = self._conn.execute(
+            "SELECT COUNT(*) AS cnt FROM session_message WHERE session_id=?", (session_id,)
+        ).fetchone()
+        return row["cnt"] if row else 0
+
     def delete_by_session(self, session_id: str) -> None:
         self._conn.execute("DELETE FROM session_message WHERE session_id=?", (session_id,))
