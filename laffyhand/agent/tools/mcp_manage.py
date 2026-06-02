@@ -109,6 +109,7 @@ class MCPConnectTool(BaseTool):
             host = parsed.hostname or ""
             # Block private/internal IP ranges
             import ipaddress
+
             try:
                 addr = ipaddress.ip_address(host)
                 if addr.is_private or addr.is_loopback or addr.is_link_local:
@@ -136,7 +137,8 @@ class MCPConnectTool(BaseTool):
                 return "Using 'eval' with deno is not allowed (inline code execution)"
             # Block shell metacharacters in args
             import re
-            if any(re.search(r'[;|`$()]', arg) for arg in args):
+
+            if any(re.search(r"[;|`$()]", arg) for arg in args):
                 return "Arguments contain shell metacharacters which are not allowed"
             cfg: LocalMCPConfig | RemoteMCPConfig = LocalMCPConfig(
                 command=command,

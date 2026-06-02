@@ -190,8 +190,12 @@ class TestConfigPropagation:
         )
 
         with (
-            patch("laffyhand.main.create_runtime", new_callable=AsyncMock) as mock_create,
-            patch("laffyhand.ui_server.run_ui_server", new_callable=AsyncMock) as mock_ui,
+            patch(
+                "laffyhand.main.create_runtime", new_callable=AsyncMock
+            ) as mock_create,
+            patch(
+                "laffyhand.ui_server.run_ui_server", new_callable=AsyncMock
+            ) as mock_ui,
         ):
             mock_runtime = AsyncMock()
             mock_create.return_value = mock_runtime

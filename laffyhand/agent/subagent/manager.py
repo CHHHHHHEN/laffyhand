@@ -156,14 +156,16 @@ class SubagentManager:
 
                 success = False
                 try:
-                    await _relay_event(SubAgentStart(
+                    await _relay_event(
+                        SubAgentStart(
                             id=task_id,
                             parent_id=parent_subagent_id,
                             agent_type=agent_info.name,
                             description=description or prompt[:80],
                             mode="background",
                             depth=subagent_depth,
-                        ))
+                        )
+                    )
 
                     from laffyhand.agent.loop import agent_loop
 
@@ -177,29 +179,47 @@ class SubagentManager:
                         session_manager=session_manager,
                     ):
                         if isinstance(event, TextDelta):
-                            await _relay_event(SubAgentDelta(
-                                id=task_id, kind="text", content=event.text,
-                            ))
+                            await _relay_event(
+                                SubAgentDelta(
+                                    id=task_id,
+                                    kind="text",
+                                    content=event.text,
+                                )
+                            )
                         elif isinstance(event, ReasoningDelta):
-                            await _relay_event(SubAgentDelta(
-                                id=task_id, kind="reasoning", content=event.text,
-                            ))
+                            await _relay_event(
+                                SubAgentDelta(
+                                    id=task_id,
+                                    kind="reasoning",
+                                    content=event.text,
+                                )
+                            )
                         elif isinstance(event, StreamToolCall):
                             tool_call_count += 1
-                            await _relay_event(SubAgentDelta(
-                                id=task_id, kind="tool",
-                                tool_name=event.name, tool_input=event.input,
-                            ))
+                            await _relay_event(
+                                SubAgentDelta(
+                                    id=task_id,
+                                    kind="tool",
+                                    tool_name=event.name,
+                                    tool_input=event.input,
+                                )
+                            )
                         elif isinstance(event, StreamToolResult):
-                            await _relay_event(SubAgentDelta(
-                                id=task_id, kind="tool_result",
-                                content=event.result[:500],
-                            ))
+                            await _relay_event(
+                                SubAgentDelta(
+                                    id=task_id,
+                                    kind="tool_result",
+                                    content=event.result[:500],
+                                )
+                            )
                         elif isinstance(event, StreamToolError):
-                            await _relay_event(SubAgentDelta(
-                                id=task_id, kind="error",
-                                content=event.message,
-                            ))
+                            await _relay_event(
+                                SubAgentDelta(
+                                    id=task_id,
+                                    kind="error",
+                                    content=event.message,
+                                )
+                            )
 
                     assert child_state.session_id is not None
                     session_manager.save_state(child_state.session_id, child_state)
@@ -223,19 +243,23 @@ class SubagentManager:
                     success = True
 
                     step_usage = child_state.usage
-                    await _relay_event(SubAgentEnd(
+                    await _relay_event(
+                        SubAgentEnd(
                             id=task_id,
                             status="completed",
                             summary=last_content[:200],
                             tool_count=tool_call_count,
                             input_tokens=step_usage.total_input,
                             output_tokens=step_usage.total_output,
-                        ))
+                        )
+                    )
                 except asyncio.CancelledError:
-                    await _relay_event(SubAgentEnd(
-                        id=task_id,
-                        status="cancelled",
-                    ))
+                    await _relay_event(
+                        SubAgentEnd(
+                            id=task_id,
+                            status="cancelled",
+                        )
+                    )
                     assert child_state.session_id is not None
                     result = SubagentResult(
                         task_id=task_id,
@@ -256,11 +280,13 @@ class SubagentManager:
                         status="error",
                         error=str(e),
                     )
-                    await _relay_event(SubAgentEnd(
-                        id=task_id,
-                        status="error",
-                        summary=str(e)[:200],
-                    ))
+                    await _relay_event(
+                        SubAgentEnd(
+                            id=task_id,
+                            status="error",
+                            summary=str(e)[:200],
+                        )
+                    )
 
                 await self._pending_results.put(result)
 

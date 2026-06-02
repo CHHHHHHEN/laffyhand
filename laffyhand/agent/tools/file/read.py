@@ -298,9 +298,7 @@ class ReadTool(BaseTool):
 
         for p in paths:
             if total_size >= max_size:
-                parts.append(
-                    f"... (result truncated, max {max_size} characters)"
-                )
+                parts.append(f"... (result truncated, max {max_size} characters)")
                 break
 
             path = Path(p)

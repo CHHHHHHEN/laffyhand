@@ -126,9 +126,7 @@ class TodoTool(BaseTool):
                 results = self._todo_manager.add_tasks(session_id, creates)
             except ValueError as e:
                 return f"Error: {e}"
-            summary = ", ".join(
-                f"#{t.id} [{t.status}] {t.content}" for t in results
-            )
+            summary = ", ".join(f"#{t.id} [{t.status}] {t.content}" for t in results)
             return f"Planned {len(results)} task(s): {summary}"
 
         if op == "add":
@@ -167,12 +165,9 @@ class TodoTool(BaseTool):
                 )
                 if not updated_list:
                     return "Error: no tasks found to update"
-                return (
-                    f"Updated {len(updated_list)} task(s): "
-                    + ", ".join(
-                        f"#{t.id} → status={t.status}, priority={t.priority}"
-                        for t in updated_list
-                    )
+                return f"Updated {len(updated_list)} task(s): " + ", ".join(
+                    f"#{t.id} → status={t.status}, priority={t.priority}"
+                    for t in updated_list
                 )
             else:
                 assert task_id is not None

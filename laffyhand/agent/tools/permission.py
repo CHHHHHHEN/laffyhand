@@ -75,7 +75,7 @@ class PermissionManager:
             prompt = f"\nAllow {permission} '{pattern}'? [y/N/a] "
             try:
                 answer = (await asyncio.to_thread(input, prompt)).strip().lower()
-            except (EOFError, OSError):
+            except EOFError, OSError:
                 raise RuntimeError(
                     f"Cannot prompt for permission '{permission}:{pattern}' — "
                     "no interactive terminal available. "

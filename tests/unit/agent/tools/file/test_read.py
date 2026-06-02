@@ -214,9 +214,7 @@ class TestReadTool(unittest.TestCase):
         f = self.root / "test.py"
         f.write_text("pre\ndef foo():\n    pass\n\nmid\ndef bar():\n    pass\npost\n")
         tool = ReadTool()
-        result = asyncio.run(
-            tool.run({"file_path": str(f), "pattern": "def"})
-        )
+        result = asyncio.run(tool.run({"file_path": str(f), "pattern": "def"}))
         self.assertIn("2>def foo():", result)
         self.assertIn("6>def bar():", result)
 
@@ -233,10 +231,20 @@ class TestReadTool(unittest.TestCase):
 
     def test_read_with_pattern_and_offset_limit(self):
         f = self.root / "test.py"
-        f.write_text("aaa\nbbb\ndef a():\n    pass\nccc\nddd\ndef b():\n    pass\neee\nfff\ndef c():\n    pass\nggg\n")
+        f.write_text(
+            "aaa\nbbb\ndef a():\n    pass\nccc\nddd\ndef b():\n    pass\neee\nfff\ndef c():\n    pass\nggg\n"
+        )
         tool = ReadTool()
         result = asyncio.run(
-            tool.run({"file_path": str(f), "pattern": "def", "offset": 1, "limit": 1, "context": 0})
+            tool.run(
+                {
+                    "file_path": str(f),
+                    "pattern": "def",
+                    "offset": 1,
+                    "limit": 1,
+                    "context": 0,
+                }
+            )
         )
         self.assertNotIn("def a():", result)
         self.assertIn("def b():", result)
@@ -246,18 +254,14 @@ class TestReadTool(unittest.TestCase):
         f = self.root / "test.txt"
         f.write_text("hello world\n")
         tool = ReadTool()
-        result = asyncio.run(
-            tool.run({"file_path": str(f), "pattern": "nope"})
-        )
+        result = asyncio.run(tool.run({"file_path": str(f), "pattern": "nope"}))
         self.assertIn("No matches", result)
 
     def test_read_with_pattern_invalid_regex(self):
         f = self.root / "test.txt"
         f.write_text("hello\n")
         tool = ReadTool()
-        result = asyncio.run(
-            tool.run({"file_path": str(f), "pattern": "["})
-        )
+        result = asyncio.run(tool.run({"file_path": str(f), "pattern": "["}))
         self.assertIn("Invalid regex", result)
 
     def test_read_with_pattern_separator(self):
@@ -277,9 +281,11 @@ class TestReadTool(unittest.TestCase):
         (self.root / "b.txt").write_text("beta\n")
         tool = ReadTool()
         result = asyncio.run(
-            tool.run({
-                "paths": [str(self.root / "a.txt"), str(self.root / "b.txt")],
-            })
+            tool.run(
+                {
+                    "paths": [str(self.root / "a.txt"), str(self.root / "b.txt")],
+                }
+            )
         )
         self.assertIn("a.txt", result)
         self.assertIn("b.txt", result)
@@ -291,11 +297,13 @@ class TestReadTool(unittest.TestCase):
         (self.root / "b.txt").write_text("bar\nqux\nfoo\n")
         tool = ReadTool()
         result = asyncio.run(
-            tool.run({
-                "paths": [str(self.root / "a.txt"), str(self.root / "b.txt")],
-                "pattern": "foo",
-                "context": 0,
-            })
+            tool.run(
+                {
+                    "paths": [str(self.root / "a.txt"), str(self.root / "b.txt")],
+                    "pattern": "foo",
+                    "context": 0,
+                }
+            )
         )
         self.assertIn("1>foo", result)
         self.assertIn("3>foo", result)
@@ -304,9 +312,11 @@ class TestReadTool(unittest.TestCase):
         (self.root / "a.txt").write_text("alpha\n")
         tool = ReadTool()
         result = asyncio.run(
-            tool.run({
-                "paths": [str(self.root / "a.txt"), str(self.root / "nope.txt")],
-            })
+            tool.run(
+                {
+                    "paths": [str(self.root / "a.txt"), str(self.root / "nope.txt")],
+                }
+            )
         )
         self.assertIn("alpha", result)
         self.assertIn("not found", result.lower())

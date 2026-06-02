@@ -5,4 +5,6 @@ from typing import Any
 
 class Framing(ABC):
     @abstractmethod
-    def frames(self, response: AsyncIterable[bytes]) -> AsyncIterator[dict[str, Any]]: ...
+    def frames(
+        self, response: AsyncIterable[bytes]
+    ) -> AsyncIterator[dict[str, Any]]: ...

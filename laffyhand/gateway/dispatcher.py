@@ -80,7 +80,9 @@ class Dispatcher:
             self._active_tasks[conn_id] = task
 
             def _cleanup(
-                _t: asyncio.Task[None], _cid: str = conn_id, _task: asyncio.Task[None] = task
+                _t: asyncio.Task[None],
+                _cid: str = conn_id,
+                _task: asyncio.Task[None] = task,
             ) -> None:
                 if self._active_tasks.get(_cid) is _task:
                     self._active_tasks.pop(_cid, None)
@@ -95,9 +97,7 @@ class Dispatcher:
         runtime = self.runtime
         assert runtime is not None
         try:
-            result = await entry.func(
-                runtime, params, transport, request.id, conn_id
-            )
+            result = await entry.func(runtime, params, transport, request.id, conn_id)
         except Exception:
             logger.exception(f"Handler error for {request.method} (id={request.id})")
             error = Error(code=INTERNAL_ERROR, message="Internal error")

@@ -544,14 +544,16 @@ class AgentRuntime:
         llm = self._llm_for_session(parent_session_id)
 
         if event_sink:
-            await event_sink(SubAgentStart(
-                id=task_id,
-                parent_id=parent_subagent_id,
-                agent_type=agent_info.name,
-                description=description or prompt[:80],
-                mode="foreground",
-                depth=subagent_depth,
-            ))
+            await event_sink(
+                SubAgentStart(
+                    id=task_id,
+                    parent_id=parent_subagent_id,
+                    agent_type=agent_info.name,
+                    description=description or prompt[:80],
+                    mode="foreground",
+                    depth=subagent_depth,
+                )
+            )
 
         result_parts: list[str] = []
         tool_call_count = 0
@@ -567,29 +569,47 @@ class AgentRuntime:
         ):
             if event_sink:
                 if isinstance(event, TextDelta):
-                    await event_sink(SubAgentDelta(
-                        id=task_id, kind="text", content=event.text,
-                    ))
+                    await event_sink(
+                        SubAgentDelta(
+                            id=task_id,
+                            kind="text",
+                            content=event.text,
+                        )
+                    )
                 elif isinstance(event, ReasoningDelta):
-                    await event_sink(SubAgentDelta(
-                        id=task_id, kind="reasoning", content=event.text,
-                    ))
+                    await event_sink(
+                        SubAgentDelta(
+                            id=task_id,
+                            kind="reasoning",
+                            content=event.text,
+                        )
+                    )
                 elif isinstance(event, StreamToolCall):
                     tool_call_count += 1
-                    await event_sink(SubAgentDelta(
-                        id=task_id, kind="tool",
-                        tool_name=event.name, tool_input=event.input,
-                    ))
+                    await event_sink(
+                        SubAgentDelta(
+                            id=task_id,
+                            kind="tool",
+                            tool_name=event.name,
+                            tool_input=event.input,
+                        )
+                    )
                 elif isinstance(event, StreamToolResult):
-                    await event_sink(SubAgentDelta(
-                        id=task_id, kind="tool_result",
-                        content=event.result[:500],
-                    ))
+                    await event_sink(
+                        SubAgentDelta(
+                            id=task_id,
+                            kind="tool_result",
+                            content=event.result[:500],
+                        )
+                    )
                 elif isinstance(event, StreamToolError):
-                    await event_sink(SubAgentDelta(
-                        id=task_id, kind="error",
-                        content=event.message,
-                    ))
+                    await event_sink(
+                        SubAgentDelta(
+                            id=task_id,
+                            kind="error",
+                            content=event.message,
+                        )
+                    )
             if isinstance(event, StepFinish):
                 last_msg = child_state.messages[-1]
                 if hasattr(last_msg, "content") and last_msg.content:
@@ -606,14 +626,16 @@ class AgentRuntime:
 
         if event_sink:
             step_usage = child_state.usage
-            await event_sink(SubAgentEnd(
-                id=task_id,
-                status="completed",
-                summary=result[:200],
-                tool_count=tool_call_count,
-                input_tokens=step_usage.total_input,
-                output_tokens=step_usage.total_output,
-            ))
+            await event_sink(
+                SubAgentEnd(
+                    id=task_id,
+                    status="completed",
+                    summary=result[:200],
+                    tool_count=tool_call_count,
+                    input_tokens=step_usage.total_input,
+                    output_tokens=step_usage.total_output,
+                )
+            )
 
         return f"<task>\n{result}\n</task>"
 

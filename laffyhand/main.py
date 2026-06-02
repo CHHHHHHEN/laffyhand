@@ -110,7 +110,7 @@ async def _run_gateway_serve(args: argparse.Namespace, config: LaffyConfig) -> N
         for sig in (signal.SIGTERM, signal.SIGINT):
             try:
                 loop.remove_signal_handler(sig)
-            except (NotImplementedError, ValueError):
+            except NotImplementedError, ValueError:
                 pass
 
 

@@ -209,9 +209,13 @@ class GrepTool(BaseTool):
                 return result
 
         if output_mode == "files_only":
-            return await self._py_search_files_only(root, pattern_str, include, offset, limit)
+            return await self._py_search_files_only(
+                root, pattern_str, include, offset, limit
+            )
         if output_mode == "count":
-            return await self._py_search_count(root, pattern_str, include, offset, limit)
+            return await self._py_search_count(
+                root, pattern_str, include, offset, limit
+            )
         return await self._py_search_content(
             root, pattern_str, include, context, offset, limit
         )
@@ -429,9 +433,7 @@ class GrepTool(BaseTool):
 
         loop = asyncio.get_event_loop()
         try:
-            return await asyncio.wait_for(
-                loop.run_in_executor(None, _scan), timeout=30
-            )
+            return await asyncio.wait_for(loop.run_in_executor(None, _scan), timeout=30)
         except asyncio.TimeoutError:
             logger.warning(f"Grep: search timed out for pattern `{pattern_str}`")
             return []

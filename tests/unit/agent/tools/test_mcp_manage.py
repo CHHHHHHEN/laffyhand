@@ -102,7 +102,9 @@ class TestMCPConnectTool:
 
     @pytest.mark.anyio
     async def test_node_inline_code(self, tool):
-        result = await tool.run({"name": "s", "command": ["node", "-e", "console.log(1)"]})
+        result = await tool.run(
+            {"name": "s", "command": ["node", "-e", "console.log(1)"]}
+        )
         assert "-e" in result
         assert "not allowed" in result
 
@@ -116,16 +118,12 @@ class TestMCPConnectTool:
 
     @pytest.mark.anyio
     async def test_shell_metacharacters(self, tool):
-        result = await tool.run(
-            {"name": "s", "command": ["npx", "package; rm -rf /"]}
-        )
+        result = await tool.run({"name": "s", "command": ["npx", "package; rm -rf /"]})
         assert "metacharacters" in result
 
     @pytest.mark.anyio
     async def test_shell_backtick(self, tool):
-        result = await tool.run(
-            {"name": "s", "command": ["npx", "`whoami`"]}
-        )
+        result = await tool.run({"name": "s", "command": ["npx", "`whoami`"]})
         assert "metacharacters" in result
 
     @pytest.mark.anyio

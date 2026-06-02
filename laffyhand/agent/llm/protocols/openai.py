@@ -109,7 +109,9 @@ def _message_to_openai(msg: Message) -> dict[str, Any]:
     return {}
 
 
-def _tool_definitions_to_openai(definitions: list[ToolDefinition]) -> list[dict[str, Any]]:
+def _tool_definitions_to_openai(
+    definitions: list[ToolDefinition],
+) -> list[dict[str, Any]]:
     return [
         {
             "type": "function",

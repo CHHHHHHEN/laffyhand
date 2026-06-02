@@ -71,6 +71,7 @@ class TestUsage(unittest.TestCase):
         self.assertEqual(su.total_input, 10)
         self.assertEqual(su.total_output, 20)
 
+
 class TestCompactionConfig(unittest.TestCase):
     def test_defaults(self):
         c = CompactionConfig()

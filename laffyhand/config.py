@@ -82,9 +82,7 @@ def resolve_provider(
 ) -> tuple[str, ProviderConfig]:
     key = provider or llm_cfg.default_provider
     if not key:
-        raise ValueError(
-            "No provider selected. Set llm.default_provider in config."
-        )
+        raise ValueError("No provider selected. Set llm.default_provider in config.")
     cfg = llm_cfg.providers.get(key)
     if cfg is None:
         raise ValueError(

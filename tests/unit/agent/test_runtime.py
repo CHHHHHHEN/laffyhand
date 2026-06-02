@@ -172,7 +172,9 @@ class TestPreferences:
         assert "Changed rule" in result
 
     @pytest.mark.anyio
-    async def test_poll_new_preferences_returns_empty_when_unchanged(self, runtime, tmp_path):
+    async def test_poll_new_preferences_returns_empty_when_unchanged(
+        self, runtime, tmp_path
+    ):
         agents_md = tmp_path / "AGENTS.md"
         agents_md.write_text("Stable rule")
         runtime._preferences = None
