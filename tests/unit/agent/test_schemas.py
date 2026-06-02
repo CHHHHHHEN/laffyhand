@@ -6,12 +6,14 @@ from laffyhand.agent.llm.specs.models import (
     Usage,
 )
 from laffyhand.agent.schemas import (
-    SessionID,
+    ToolCallContent,
+    ToolDefinition,
+    Usage,
     SessionUsage,
-    estimate_tokens,
     AgentState,
     CompactionConfig,
 )
+from laffyhand.agent.token_utils import estimate_tokens
 
 
 class TestEstimateTokens(unittest.TestCase):

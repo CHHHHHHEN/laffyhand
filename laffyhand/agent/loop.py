@@ -19,8 +19,6 @@ from laffyhand.agent.llm.specs.models import (
 from laffyhand.agent.schemas import (
     AgentState,
     CompactionConfig,
-    SessionID,
-    estimate_tokens,
     StepStart,
     TextStart,
     TextDelta,
@@ -35,12 +33,8 @@ from laffyhand.agent.schemas import (
     Compacting,
     AgentEvent,
 )
-from laffyhand.agent.compaction import (
-    compact,
-    compact_with_chain,
-    estimate_messages_tokens,
-    is_overflow,
-)
+from laffyhand.agent.token_utils import estimate_tokens, estimate_messages_tokens
+from laffyhand.agent.compaction import compact_on_overflow
 from laffyhand.agent.prune import prune
 from laffyhand.agent.tool_executor import ToolExecutor
 from laffyhand.agent.llm.facade import LLM
@@ -49,48 +43,6 @@ from laffyhand.agent.tools import ToolRegistry
 if TYPE_CHECKING:
     from laffyhand.agent.session import SessionManager
     from laffyhand.agent.subagent.manager import SubagentManager
-
-
-# ── Helpers ────────────────────────────────────────────────────
-
-
-async def _compact_on_overflow(
-    agent_state: AgentState,
-    llm: LLM,
-    compaction_config: CompactionConfig,
-    session_manager: SessionManager | None = None,
-    on_compacted: Callable[[str], None] | None = None,
-) -> bool:
-    tokens = estimate_messages_tokens(agent_state.messages)
-    if not is_overflow(tokens, agent_state.usage.context_size):
-        logger.debug(f"No compaction needed: {tokens} tokens within context limit")
-        return False
-    logger.info(f"Compaction triggered: {tokens} tokens")
-
-    if session_manager is not None and agent_state.session_id:
-        result = await compact_with_chain(agent_state, llm, compaction_config)
-        if result is None:
-            return False
-        summary, original_system, tail = result
-        child = session_manager.create_compacted_child(
-            parent_id=agent_state.session_id,
-            system_messages=original_system,
-            summary_content=summary,
-            tail_messages=tail,
-        )
-        summary_msg = SystemMessage(content=summary.strip())
-        agent_state.session_id = SessionID(child.id)
-        agent_state.messages = original_system + [summary_msg] + tail
-        agent_state.step = 0
-        if on_compacted is not None:
-            on_compacted(child.id)
-        return True
-
-    if await compact(agent_state, llm, compaction_config):
-        logger.info("Compaction succeeded")
-        return True
-    logger.warning("Compaction failed: could not compact conversation")
-    return False
 
 
 # ── Main agent loop ────────────────────────────────────────────
@@ -125,7 +77,7 @@ async def agent_loop(
             break
 
         if agent_state.step > 1 and context_size and not _compacted_this_step:
-            if await _compact_on_overflow(
+            if await compact_on_overflow(
                 agent_state,
                 llm,
                 compaction_config,
@@ -313,7 +265,7 @@ async def agent_loop(
             if (
                 context_size
                 and not _compacted_this_step
-                and await _compact_on_overflow(
+                and await compact_on_overflow(
                     agent_state,
                     llm,
                     compaction_config,

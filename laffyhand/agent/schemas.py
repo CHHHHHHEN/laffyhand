@@ -2,26 +2,21 @@ from __future__ import annotations
 
 from loguru import logger
 from pydantic import BaseModel, Field
-from typing import NewType, Any, Optional, List, Literal, Union
+from typing import Any, Optional, List, Literal, Union, NewType
 
 from laffyhand.agent.llm.specs.models import Message, Usage
 
 
 SessionID = NewType("SessionID", str)
-CHARS_PER_TOKEN = 4
-
-
-def estimate_tokens(text: str) -> int:
-    return max(0, round(len(text) / CHARS_PER_TOKEN))
 
 
 class CompactionConfig(BaseModel):
-    tail_turns: int = 2
-    preserve_recent_tokens: Optional[int] = None
-    reserved: Optional[int] = None
-    prune: bool = True
-    auto_continue: bool = True
-    summary_tool_truncate: int = 500
+    tail_turns: int = Field(default=2, description="保留的最近对话轮次数")
+    preserve_recent_tokens: int = Field(default=0, description="保留轮次的 Token 预算上限，0 表示自动")
+    reserved: int = Field(default=0, description="为 LLM 输出预留的 Token 缓冲，0 表示自动")
+    prune: bool = Field(default=True, description="工具调用后是否修剪历史工具输出")
+    auto_continue: bool = Field(default=True, description="压缩后是否自动注入继续提示")
+    summary_tool_truncate: int = Field(default=2000, description="摘要中单条工具输出截断长度（Token）")
 
 
 class SessionUsage(BaseModel):

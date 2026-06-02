@@ -83,7 +83,7 @@ def build_subagent_state(
         model=agent_info.model or "",
     )
     system_content = (
-        agent_info.prompt or "You are a helpful sub-agent. Complete the assigned task."
+        agent_info.system_prompt or "You are a helpful sub-agent. Complete the assigned task."
     )
     system_msg = SystemMessage(content=system_content)
     user_msg = UserMessage(content=prompt)

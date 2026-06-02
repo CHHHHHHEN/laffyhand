@@ -21,13 +21,15 @@ from laffyhand.agent.schemas import (
 from laffyhand.agent.compaction import (
     compact,
     compact_with_chain,
-    estimate_message_tokens,
-    estimate_messages_tokens,
     is_overflow,
     select_tail,
     build_summary_text,
     _select_compaction_targets,
     _is_summary_content,
+)
+from laffyhand.agent.token_utils import (
+    estimate_message_tokens,
+    estimate_messages_tokens,
 )
 from laffyhand.agent.prune import prune, PRUNE_PROTECT
 
