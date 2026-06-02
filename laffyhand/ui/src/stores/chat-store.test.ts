@@ -77,6 +77,28 @@ describe("chat-store", () => {
     expect(message.toolCalls![0]!.result).toBe("file content")
   })
 
+  it("updates tool status in finalized message when status arrives after finalization", () => {
+    const store = useChatStore.getState()
+    store.startStreaming()
+
+    store.addToolCall({
+      id: "call-1",
+      name: "read_file",
+      arguments: { path: "/test" },
+    })
+
+    // Finalize while tool is still running (as happens in real streaming)
+    store.finalizeMessage()
+
+    // Tool result arrives after finalization
+    store.updateToolCallStatus("call-1", "completed", "file content")
+
+    const message = useChatStore.getState().messages[0]!
+    expect(message.toolCalls).toHaveLength(1)
+    expect(message.toolCalls![0]!.status).toBe("completed")
+    expect(message.toolCalls![0]!.result).toBe("file content")
+  })
+
   it("sets error and stops streaming", () => {
     useChatStore.getState().startStreaming()
     useChatStore.getState().setError("Connection failed")
@@ -205,15 +227,15 @@ describe("chat-store", () => {
 
   // ── Content/reasoning promotion ──
 
-  it("promotes reasoning to content when content is empty", () => {
+  it("keeps reasoning separate when content is empty", () => {
     const store = useChatStore.getState()
     store.startStreaming()
     store.setReasoning("only reasoning no content")
     store.finalizeMessage()
 
     const message = useChatStore.getState().messages[0]!
-    expect(message.content).toBe("only reasoning no content")
-    expect(message.reasoning).toBeUndefined()
+    expect(message.content).toBe("")
+    expect(message.reasoning).toBe("only reasoning no content")
   })
 
   it("keeps reasoning separate when content exists", () => {

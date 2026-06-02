@@ -146,17 +146,32 @@ export const useChatStore = create<ChatState>((set, get) => ({
     })),
 
   updateToolCallStatus: (id, status, result, isError) =>
-    set((state) => ({
-      streamToolCalls: state.streamToolCalls.map((tc) =>
-        tc.id === id ? { ...tc, status, ...(result !== undefined ? { result } : {}), ...(isError !== undefined ? { isError } : {}) } : tc,
-      ),
-    })),
+    set((state) => {
+      if (state.isStreaming) {
+        return {
+          streamToolCalls: state.streamToolCalls.map((tc) =>
+            tc.id === id ? { ...tc, status, ...(result !== undefined ? { result } : {}), ...(isError !== undefined ? { isError } : {}) } : tc,
+          ),
+        }
+      }
+      // Not streaming: update the last assistant message's tool calls
+      const messages = state.messages.map((msg) => {
+        if (msg.role !== "assistant" || !msg.toolCalls) return msg
+        const updated = msg.toolCalls.map((tc) =>
+          tc.id === id
+            ? { ...tc, status, ...(result !== undefined ? { result } : {}), ...(isError !== undefined ? { isError } : {}) }
+            : tc,
+        )
+        const changed = updated.some((tc, i) => tc !== msg.toolCalls![i])
+        return changed ? { ...msg, toolCalls: updated } : msg
+      })
+      return { messages }
+    }),
 
   finalizeMessage: (usage, sessionUsage) =>
     set((state) => {
-      // If content empty but reasoning exists, promote reasoning to content
-      const content = state.streamContent || state.streamReasoning || ""
-      const reasoning = state.streamContent ? (state.streamReasoning || undefined) : undefined
+      const content = state.streamContent || ""
+      const reasoning = state.streamReasoning || undefined
 
       // Finalize tool calls — set any still-running to "completed"
       const finalizedToolCalls = state.streamToolCalls.length > 0
