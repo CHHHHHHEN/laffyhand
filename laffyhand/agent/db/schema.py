@@ -22,8 +22,8 @@ _MIGRATIONS: dict[int, str] = {
             CAST(strftime('%s', m.timestamp) AS INTEGER),
             CAST(strftime('%s', m.timestamp) AS INTEGER),
             CASE m.role
-                WHEN 'system' THEN json_object('sessionID', m.session_id, 'text', m.content)
-                WHEN 'user' THEN json_object('text', m.content, 'files', json_array(), 'agents', json_array(), 'references', json_array())
+                WHEN 'system' THEN json_object('sessionID', m.session_id, 'text', COALESCE(m.content, ''))
+                WHEN 'user' THEN json_object('text', COALESCE(m.content, ''), 'files', json_array(), 'agents', json_array(), 'references', json_array())
                 WHEN 'assistant' THEN json_object(
                     'agent', '',
                     'model', json_object('id', '', 'provider', ''),
@@ -125,10 +125,6 @@ def create_tables(conn: sqlite3.Connection) -> None:
     conn.executescript(CORE_DDL)
     migrate(conn)
     conn.commit()
-
-
-def has_fts5(conn: sqlite3.Connection) -> bool:
-    return False
 
 
 def migrate(conn: sqlite3.Connection) -> None:

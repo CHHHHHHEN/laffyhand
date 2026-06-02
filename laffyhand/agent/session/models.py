@@ -151,6 +151,7 @@ class ShellData(BaseModel):
     command: str = Field(description="执行的命令")
     output: str = Field(description="命令输出")
     truncated: bool = Field(default=False, description="输出是否因过长而被截断")
+    is_error: bool = Field(default=False, description="是否错误结果")
     time: MessageTime = Field(description="开始时间与结束时间")
 
 

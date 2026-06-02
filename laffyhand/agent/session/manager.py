@@ -8,7 +8,7 @@ from typing import Optional
 from loguru import logger
 
 from laffyhand.agent.llm.specs.models import AssistantMessage, Message, SystemMessage, ToolMessage, UserMessage
-from laffyhand.agent.llm.specs.models import ModelID, ProviderID, ToolCallContent
+from laffyhand.agent.llm.specs.models import ModelID, ProviderID, ToolCallContent, Usage
 from laffyhand.agent.session.models import (
     AssistantContent,
     AssistantData,
@@ -86,7 +86,7 @@ def _message_to_session_message(msg: Message, session_id: str) -> SessionMessage
             time_created=now, time_updated=now,
             data=ShellData(
                 callID=msg.tool_call_id, command="", output=msg.content,
-                time=MessageTime(created=now),
+                is_error=msg.is_error, time=MessageTime(created=now),
             ),
         )
     raise TypeError(f"Unknown message type: {type(msg).__name__}")
@@ -121,11 +121,16 @@ def _session_message_to_message(sm: SessionMessage) -> Message:
                 elif isinstance(part.state, ToolStatePending):
                     tool_calls.append(ToolCallContent(tool_call_id=part.id, tool_name=part.name, args=part.state.input))
         combined = "".join(content_parts) if content_parts else None
-        return AssistantMessage(content=combined, reasoning=reasoning, tool_calls=tool_calls)
+        usage = Usage(
+            input_tokens=d.tokens.input, output_tokens=d.tokens.output,
+            reasoning_tokens=d.tokens.reasoning,
+            cache_read_tokens=d.tokens.cache.read, cache_write_tokens=d.tokens.cache.write,
+        ) if d.tokens else None
+        return AssistantMessage(content=combined, reasoning=reasoning, tool_calls=tool_calls, tokens=usage)
     if sm.type == "shell":
         d = sm.data
         assert isinstance(d, ShellData)
-        return ToolMessage(tool_call_id=d.callID, content=d.output)
+        return ToolMessage(tool_call_id=d.callID, content=d.output, is_error=d.is_error)
     raise ValueError(f"Unknown session message type: {sm.type}")
 
 
@@ -274,7 +279,9 @@ class SessionManager:
             session_id=SessionID(session.id),
             usage=SessionUsage(
                 total_input=session.input_tokens, total_output=session.output_tokens,
-                total_reasoning=session.reasoning_tokens, total_cache_read=session.cache_read_tokens,
+                total_reasoning=session.reasoning_tokens,
+                total_cache_read=session.cache_read_tokens,
+                total_cache_write=session.cache_write_tokens,
             ),
         )
 

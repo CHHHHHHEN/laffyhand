@@ -283,6 +283,10 @@ async def agent_loop(
                             content="Continue if you have next steps, or stop and ask for clarification if you are unsure how to proceed.",
                         )
                     )
+                    if session_manager is not None and agent_state.session_id:
+                        session_manager.store_messages(
+                            agent_state.session_id, agent_state.messages[-1:]
+                        )
                     yield Compacting(data="Continuing after compaction...")
                     continue
             break

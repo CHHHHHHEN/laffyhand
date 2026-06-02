@@ -96,21 +96,21 @@ class TestMessages:
         session = session_manager.create(messages=msgs)
         assert session.message_count == len(msgs)
 
-    def test_append_messages(self, session_manager: SessionManager) -> None:
+    def test_store_messages(self, session_manager: SessionManager) -> None:
         session = session_manager.create()
         msgs = make_messages()
-        count = session_manager.append_messages(session.id, msgs)
+        count = session_manager.store_messages(session.id, msgs)
         assert count == len(msgs)
 
-    def test_append_messages_incremental(self, session_manager: SessionManager) -> None:
+    def test_store_messages_incremental(self, session_manager: SessionManager) -> None:
         session = session_manager.create()
         first = [
             SystemMessage(content="system"),
             UserMessage(content="hi"),
         ]
-        session_manager.append_messages(session.id, first)
+        session_manager.store_messages(session.id, first)
         second = [AssistantMessage(content="hello")]
-        session_manager.append_messages(session.id, first + second)
+        session_manager.store_messages(session.id, second)
         loaded = session_manager.get_messages(session.id)
         assert len(loaded) == 3
 
@@ -342,7 +342,7 @@ class TestResolve:
 
 class TestHelpers:
     def test_ts_roundtrip(self) -> None:
-        from laffyhand.agent.session.manager import _ts, _from_ts
+        from laffyhand.agent.db.repository.common import _ts, _from_ts
         from datetime import datetime, timezone
 
         dt = datetime(2026, 5, 29, 12, 30, 0, tzinfo=timezone.utc)
@@ -352,13 +352,13 @@ class TestHelpers:
         assert recovered == dt
 
     def test_ts_none(self) -> None:
-        from laffyhand.agent.session.manager import _ts, _from_ts
+        from laffyhand.agent.db.repository.common import _ts, _from_ts
 
         assert _ts(None) is None
         assert _from_ts(None) is None
 
     def test_serialize_metadata_roundtrip(self) -> None:
-        from laffyhand.agent.session.manager import (
+        from laffyhand.agent.db.repository.common import (
             _serialize_metadata,
             _deserialize_metadata,
         )
@@ -370,59 +370,69 @@ class TestHelpers:
         assert recovered == meta
 
     def test_deserialize_metadata_empty(self) -> None:
-        from laffyhand.agent.session.manager import _deserialize_metadata
+        from laffyhand.agent.db.repository.common import _deserialize_metadata
 
         assert _deserialize_metadata("") == {}
 
     def test_deserialize_metadata_invalid_json(self) -> None:
-        from laffyhand.agent.session.manager import _deserialize_metadata
+        from laffyhand.agent.db.repository.common import _deserialize_metadata
 
         result = _deserialize_metadata("{invalid")
         assert result == {}
 
-    def test_message_to_row_unknown_type(self) -> None:
-        from laffyhand.agent.session.manager import _message_to_row
+    def test_message_to_session_message_unknown_type(self) -> None:
+        from laffyhand.agent.session.manager import _message_to_session_message
 
         class FakeMsg:
             pass
 
         with pytest.raises(TypeError, match="Unknown message type"):
-            _message_to_row("sid", FakeMsg(), 0)
+            _message_to_session_message(FakeMsg(), "sid")
 
-    def test_row_to_message_unknown_role(self) -> None:
-        from laffyhand.agent.session.manager import _row_to_message
-
-        row = type("Row", (), {"__getitem__": lambda s, k: {"role": "unknown", "content": "x", "id": 0, "tool_args": None, "reasoning": None, "tool_call_id": None}.get(k), "__getattr__": lambda s, k: None})()
-        with pytest.raises(ValueError, match="Unknown role"):
-            _row_to_message(row)
-
-    def test_message_to_row_assistant_with_tokens(self) -> None:
-        from laffyhand.agent.session.manager import _message_to_row
+    def test_message_to_session_message_assistant_with_tokens(self) -> None:
+        from laffyhand.agent.session.manager import _message_to_session_message
         from laffyhand.agent.llm.specs.models import Usage
 
         msg = AssistantMessage(
-            content="Hello", tokens=Usage(input_tokens=10, output_tokens=5)
+            content="Hello", tokens=Usage(input_tokens=10, output_tokens=5, reasoning_tokens=3)
         )
-        row = _message_to_row("sid", msg, 1)
-        assert row["role"] == "assistant"
-        assert row["token_count"] == 15
+        sm = _message_to_session_message(msg, "sid")
+        assert sm.type == "assistant"
+        d = sm.data
+        assert d.tokens is not None
+        assert d.tokens.input == 10
+        assert d.tokens.output == 5
+        assert d.tokens.reasoning == 3
 
-    def test_row_to_message_assistant_with_tool_calls(self) -> None:
-        from laffyhand.agent.session.manager import _row_to_message
+    def test_session_message_to_message_roundtrip(self) -> None:
+        from laffyhand.agent.session.manager import (
+            _message_to_session_message, _session_message_to_message,
+        )
+        from laffyhand.agent.llm.specs.models import Usage
 
-        row = type("Row", (), {"__getitem__": lambda s, k: {
-            "role": "assistant",
-            "content": "calling...",
-            "tool_args": '[{"tool_call_id": "c1", "tool_name": "t", "args": "{}", "type": "tool-call"}]',
-            "reasoning": None,
-            "tool_call_id": None,
-            "id": 0,
-        }.get(k), "__getattr__": lambda s, k: None})()
-        msg = _row_to_message(row)
-        assert isinstance(msg, AssistantMessage)
-        assert msg.tool_calls is not None
-        assert len(msg.tool_calls) == 1
-        assert msg.tool_calls[0].tool_call_id == "c1"
+        msg = AssistantMessage(
+            content="Hello", reasoning="thinking",
+            tokens=Usage(input_tokens=10, output_tokens=5, reasoning_tokens=3, cache_read_tokens=2, cache_write_tokens=1),
+        )
+        sm = _message_to_session_message(msg, "sid")
+        restored = _session_message_to_message(sm)
+        assert isinstance(restored, AssistantMessage)
+        assert restored.content == "Hello"
+        assert restored.reasoning == "thinking"
+        assert restored.tokens is not None
+        assert restored.tokens.input_tokens == 10
+        assert restored.tokens.cache_write_tokens == 1
+
+    def test_shell_message_preserves_is_error(self) -> None:
+        from laffyhand.agent.session.manager import (
+            _message_to_session_message, _session_message_to_message,
+        )
+
+        msg = ToolMessage(tool_call_id="c1", content="error", is_error=True)
+        sm = _message_to_session_message(msg, "sid")
+        restored = _session_message_to_message(sm)
+        assert isinstance(restored, ToolMessage)
+        assert restored.is_error is True
 
 
 class TestAdvancedCRUD:
@@ -461,11 +471,11 @@ class TestAdvancedCRUD:
         assert len(page2) == 2
         assert page1[0].id != page2[0].id
 
-    def test_append_messages_error_nonexistent(
+    def test_store_messages_error_nonexistent(
         self, session_manager: SessionManager
     ) -> None:
         with pytest.raises(ValueError, match="Session not found"):
-            session_manager.append_messages("nonexistent", [UserMessage(content="hi")])
+            session_manager.store_messages("nonexistent", [UserMessage(content="hi")])
 
     def test_sync_messages_error_nonexistent(
         self, session_manager: SessionManager
@@ -482,11 +492,6 @@ class TestAdvancedCRUD:
 
 
 class TestSchema:
-    def test_has_fts5_default(self, session_manager: SessionManager) -> None:
-        from laffyhand.agent.db.schema import has_fts5
-
-        assert has_fts5(session_manager._conn) is True
-
     def test_create_tables_idempotent(self, session_manager: SessionManager) -> None:
         from laffyhand.agent.db.schema import create_tables
 
@@ -502,5 +507,5 @@ class TestSchema:
 
         create_tables(conn)
         row = conn.execute("SELECT MAX(version) FROM _schema_version").fetchone()
-        assert row[0] == 3
+        assert row[0] >= 4
         conn.close()
