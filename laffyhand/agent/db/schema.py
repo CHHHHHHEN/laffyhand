@@ -4,7 +4,54 @@ import sqlite3
 
 from loguru import logger
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
+
+_MIGRATIONS: dict[int, str] = {
+    5: """
+        -- Migrate from old message table to session_message table
+        INSERT OR IGNORE INTO session_message (id, session_id, type, time_created, time_updated, data)
+        SELECT
+            printf('migrated_%d', m.id),
+            m.session_id,
+            CASE m.role
+                WHEN 'system' THEN 'synthetic'
+                WHEN 'user' THEN 'user'
+                WHEN 'assistant' THEN 'assistant'
+                WHEN 'tool' THEN 'shell'
+            END,
+            CAST(strftime('%s', m.timestamp) AS INTEGER),
+            CAST(strftime('%s', m.timestamp) AS INTEGER),
+            CASE m.role
+                WHEN 'system' THEN json_object('sessionID', m.session_id, 'text', m.content)
+                WHEN 'user' THEN json_object('text', m.content, 'files', json_array(), 'agents', json_array(), 'references', json_array())
+                WHEN 'assistant' THEN json_object(
+                    'agent', '',
+                    'model', json_object('id', '', 'provider', ''),
+                    'content', CASE
+                        WHEN m.reasoning IS NOT NULL AND m.content IS NOT NULL THEN
+                            json_array(json_object('type', 'reasoning', 'id', printf('reasoning_%d', m.id), 'text', m.reasoning), json_object('type', 'text', 'text', m.content))
+                        WHEN m.reasoning IS NOT NULL THEN
+                            json_array(json_object('type', 'reasoning', 'id', printf('reasoning_%d', m.id), 'text', m.reasoning))
+                        WHEN m.content IS NOT NULL THEN
+                            json_array(json_object('type', 'text', 'text', m.content))
+                        ELSE json_array()
+                    END,
+                    'snapshot', json_object(),
+                    'finish', 'stop',
+                    'cost', 0
+                )
+                WHEN 'tool' THEN json_object(
+                    'callID', COALESCE(m.tool_call_id, printf('migrated_%d', m.id)),
+                    'command', '',
+                    'output', COALESCE(m.content, ''),
+                    'truncated', false,
+                    'time', json_object('created', CAST(strftime('%s', m.timestamp) AS INTEGER))
+                )
+            END
+        FROM message m
+        WHERE NOT EXISTS (SELECT 1 FROM session_message sm WHERE sm.session_id = m.session_id);
+    """,
+}
 
 CORE_DDL = """
 CREATE TABLE IF NOT EXISTS _schema_version (
@@ -82,9 +129,6 @@ def create_tables(conn: sqlite3.Connection) -> None:
 
 def has_fts5(conn: sqlite3.Connection) -> bool:
     return False
-
-
-_MIGRATIONS: dict[int, str] = {}
 
 
 def migrate(conn: sqlite3.Connection) -> None:
