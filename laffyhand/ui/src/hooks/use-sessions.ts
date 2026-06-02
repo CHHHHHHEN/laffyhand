@@ -4,7 +4,7 @@ import { rpcClient } from "@/lib/rpc"
 import { useSessionStore } from "@/stores/session-store"
 import { useChatStore } from "@/stores/chat-store"
 import { useTodoStore } from "@/stores/todo-store"
-import type { Session, Message, TodoItem } from "@/types/session"
+import type { Session, Message, TodoItem, ToolCallStatus } from "@/types/session"
 import type { SessionInfo, MessageData } from "@/types/rpc"
 
 function toSession(rpc: SessionInfo): Session {
@@ -100,6 +100,9 @@ function toStoreMessage(m: MessageData): Message {
         typeof tc.arguments === "string"
           ? safeParseJSON(tc.arguments)
           : (tc.arguments as Record<string, unknown>),
+      status: tc.status as ToolCallStatus | undefined,
+      result: tc.result,
+      isError: tc.isError,
     }))
   }
   if (m.usage) {

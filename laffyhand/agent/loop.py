@@ -390,14 +390,14 @@ async def agent_loop(
         agent_state.messages.append(assistant_msg)
         agent_state.usage.add(usage)
 
-        yield StepFinish(index=step_index, reason=finish_reason or "stop", usage=usage)
-
         if finish_reason == "tool_calls" and tool_calls:
             logger.debug(f"Executing {len(tool_calls)} tool call(s)")
             exec_context = {"session_id": agent_state.session_id}
             for tc in tool_calls:
                 exec_result = await ToolExecutor.execute(
-                    tool_registry, tc, context=exec_context,
+                    tool_registry,
+                    tc,
+                    context=exec_context,
                 )
                 agent_state.messages.append(exec_result.message)
                 if exec_result.is_error:
@@ -430,8 +430,13 @@ async def agent_loop(
                 agent_state.messages[-1] = ToolMessage(
                     tool_call_id=last_tool.tool_call_id,
                     content=steer_content,
+                    is_error=last_tool.is_error,
                 )
                 logger.debug("Injected steer text into tool result")
+
+            yield StepFinish(
+                index=step_index, reason=finish_reason or "stop", usage=usage
+            )
 
             if compaction_config.prune:
                 logger.debug("Pruning after tool calls")
@@ -441,6 +446,8 @@ async def agent_loop(
                     agent_state.session_id, agent_state.messages
                 )
             continue
+
+        yield StepFinish(index=step_index, reason=finish_reason or "stop", usage=usage)
 
         if finish_reason is not None:
             if session_manager is not None and agent_state.session_id:

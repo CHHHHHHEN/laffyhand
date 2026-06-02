@@ -176,6 +176,26 @@ export const useChatStore = create<ChatState>((set, get) => ({
         ? state.streamToolCalls
         : undefined
 
+      // Compute per-turn token delta
+      let turnUsage: TurnUsage | null = null
+      if (sessionUsage && state._turnStartUsage) {
+        turnUsage = {
+          input: sessionUsage.total_input - state._turnStartUsage.total_input,
+          output: sessionUsage.total_output - state._turnStartUsage.total_output,
+          reasoning: sessionUsage.total_reasoning - state._turnStartUsage.total_reasoning,
+        }
+      }
+
+      // Skip empty finalization (e.g. finish event after step-finish already finalized)
+      if (!content && !reasoning && !finalizedToolCalls && !state.isStreaming) {
+        return {
+          isStreaming: false,
+          sessionUsage: sessionUsage ?? state.sessionUsage,
+          turnUsage,
+          _turnStartUsage: null,
+        }
+      }
+
       const assistantMessage: Message = {
         id: state.currentAssistantMessageId ?? nextMessageId(),
         role: "assistant",
@@ -185,16 +205,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
         finishReason: "stop",
         usage,
         createdAt: Date.now(),
-      }
-
-      // Compute per-turn token delta
-      let turnUsage: TurnUsage | null = null
-      if (sessionUsage && state._turnStartUsage) {
-        turnUsage = {
-          input: sessionUsage.total_input - state._turnStartUsage.total_input,
-          output: sessionUsage.total_output - state._turnStartUsage.total_output,
-          reasoning: sessionUsage.total_reasoning - state._turnStartUsage.total_reasoning,
-        }
       }
 
       return {

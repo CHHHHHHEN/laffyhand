@@ -71,7 +71,7 @@ export interface MessageData {
   role: "user" | "assistant" | "system" | "tool"
   content: string
   reasoning?: string
-  toolCalls?: { id: string; name: string; arguments: unknown }[]
+  toolCalls?: { id: string; name: string; arguments: unknown; status?: string; result?: string; isError?: boolean }[]
   usage?: { inputTokens?: number; outputTokens?: number }
   createdAt: number
 }

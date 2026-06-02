@@ -307,13 +307,76 @@ class TestSerializeMessages:
         result = _serialize_messages([AssistantMessage(content="")])
         assert result[0]["content"] == ""
 
-    def test_tool_message(self):
+    def test_tool_message_skipped(self):
+        # ToolMessage entries are skipped — content is embedded in AssistantMessage
         result = _serialize_messages(
             [ToolMessage(content="tool output", tool_call_id="call-1")]
         )
-        assert result[0]["role"] == "tool"
-        assert result[0]["content"] == "tool output"
-        assert result[0]["tool_call_id"] == "call-1"
+        assert len(result) == 0
+
+    def test_tool_result_embedded_in_assistant(self):
+        msgs = [
+            AssistantMessage(
+                content="",
+                tool_calls=[
+                    ToolCallContent(
+                        tool_call_id="call-1",
+                        tool_name="read_file",
+                        args='{"path": "/test"}',
+                    )
+                ],
+            ),
+            ToolMessage(content="file content", tool_call_id="call-1"),
+        ]
+        result = _serialize_messages(msgs)
+        assert len(result) == 1
+        assert result[0]["role"] == "assistant"
+        assert result[0]["toolCalls"] == [
+            {
+                "id": "call-1",
+                "name": "read_file",
+                "arguments": '{"path": "/test"}',
+                "status": "completed",
+                "result": "file content",
+                "isError": False,
+            }
+        ]
+
+    def test_tool_result_embedded_is_error(self):
+        msgs = [
+            AssistantMessage(
+                content="",
+                tool_calls=[
+                    ToolCallContent(
+                        tool_call_id="call-1",
+                        tool_name="read_file",
+                        args='{"path": "/test"}',
+                    )
+                ],
+            ),
+            ToolMessage(content="error msg", tool_call_id="call-1", is_error=True),
+        ]
+        result = _serialize_messages(msgs)
+        assert result[0]["toolCalls"][0]["status"] == "error"
+        assert result[0]["toolCalls"][0]["isError"] is True
+        assert result[0]["toolCalls"][0]["result"] == "error msg"
+
+    def test_tool_call_without_result_has_pending_status(self):
+        msgs = [
+            AssistantMessage(
+                content="",
+                tool_calls=[
+                    ToolCallContent(
+                        tool_call_id="call-1",
+                        tool_name="read_file",
+                        args='{"path": "/test"}',
+                    )
+                ],
+            ),
+        ]
+        result = _serialize_messages(msgs)
+        assert result[0]["toolCalls"][0]["status"] == "pending"
+        assert "result" not in result[0]["toolCalls"][0]
 
     def test_mixed_messages(self):
         msgs = [
@@ -323,8 +386,9 @@ class TestSerializeMessages:
             ToolMessage(content="result", tool_call_id="c1"),
         ]
         result = _serialize_messages(msgs)
-        assert len(result) == 4
-        assert [m["role"] for m in result] == ["system", "user", "assistant", "tool"]
+        # ToolMessage is skipped
+        assert len(result) == 3
+        assert [m["role"] for m in result] == ["system", "user", "assistant"]
 
     def test_assistant_without_tool_calls_omits_field(self):
         msg = AssistantMessage(content="no tools")

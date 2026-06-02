@@ -62,6 +62,12 @@ def _next_msg_id() -> str:
 
 
 def _serialize_messages(messages: list[Message]) -> list[dict[str, Any]]:
+    # First pass: collect ToolMessage results keyed by tool_call_id
+    tool_results: dict[str, tuple[str, bool]] = {}
+    for msg in messages:
+        if isinstance(msg, ToolMessage):
+            tool_results[msg.tool_call_id] = (msg.content, msg.is_error)
+
     result: list[dict[str, Any]] = []
     for msg in messages:
         if isinstance(msg, SystemMessage):
@@ -92,10 +98,23 @@ def _serialize_messages(messages: list[Message]) -> list[dict[str, Any]]:
             if msg.reasoning:
                 entry["reasoning"] = msg.reasoning
             if msg.tool_calls:
-                entry["toolCalls"] = [
-                    {"id": tc.tool_call_id, "name": tc.tool_name, "arguments": tc.args}
-                    for tc in msg.tool_calls
-                ]
+                entry["toolCalls"] = []
+                for tc in msg.tool_calls:
+                    result_content, is_error = tool_results.get(
+                        tc.tool_call_id, (None, False)
+                    )
+                    tool_entry: dict[str, Any] = {
+                        "id": tc.tool_call_id,
+                        "name": tc.tool_name,
+                        "arguments": tc.args,
+                    }
+                    if result_content is not None:
+                        tool_entry["status"] = "error" if is_error else "completed"
+                        tool_entry["result"] = result_content
+                        tool_entry["isError"] = is_error
+                    else:
+                        tool_entry["status"] = "pending"
+                    entry["toolCalls"].append(tool_entry)
             if msg.tokens:
                 entry["usage"] = {
                     "inputTokens": msg.tokens.input_tokens,
@@ -103,15 +122,8 @@ def _serialize_messages(messages: list[Message]) -> list[dict[str, Any]]:
                 }
             result.append(entry)
         elif isinstance(msg, ToolMessage):
-            result.append(
-                {
-                    "id": _next_msg_id(),
-                    "role": "tool",
-                    "content": msg.content,
-                    "tool_call_id": msg.tool_call_id,
-                    "createdAt": int(time.time() * 1000),
-                }
-            )
+            # Skip — content is embedded in the corresponding AssistantMessage toolCalls
+            pass
     return result
 
 
@@ -358,7 +370,9 @@ async def handle_chat_stream(
                 ):
                     # Drain background subagent events
                     if runtime.subagent_manager:
-                        bg_events = await runtime.subagent_manager.drain_events(session_id)
+                        bg_events = await runtime.subagent_manager.drain_events(
+                            session_id
+                        )
                         for bg_event in bg_events:
                             await _event_sink(bg_event)
 
@@ -390,7 +404,9 @@ async def handle_chat_stream(
                 try:
                     await transport.send(err_notif.json())
                 except Exception:
-                    logger.warning("Failed to send error event to client in chat stream")
+                    logger.warning(
+                        "Failed to send error event to client in chat stream"
+                    )
             finally:
                 # Drain background subagent events (also on cancel/error)
                 if runtime.subagent_manager:

@@ -95,6 +95,7 @@ class ToolExecutor:
                     content=f"Error: failed to parse tool arguments for {tool_call.tool_name}. "
                     f'Args must be valid JSON object like {{"key": "value"}}. '
                     f"Received: {tool_call.args}",
+                    is_error=True,
                 ),
                 event_data=f"Error: invalid JSON args for {tool_call.tool_name}",
                 is_error=True,
@@ -116,6 +117,7 @@ class ToolExecutor:
                 message=ToolMessage(
                     tool_call_id=tool_call.tool_call_id,
                     content=f"Error executing tool {tool_call.tool_name}: internal error",
+                    is_error=True,
                 ),
                 event_data=f"Error: {tool_call.tool_name} failed: internal error",
                 is_error=True,
