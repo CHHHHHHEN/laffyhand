@@ -38,8 +38,6 @@ from laffyhand.agent.schemas import (
 from laffyhand.agent.compaction import (
     compact,
     compact_with_chain,
-    wrap_last_user,
-    attach_reminder,
     estimate_messages_tokens,
     is_overflow,
 )
@@ -104,7 +102,6 @@ async def agent_loop(
     tool_registry: ToolRegistry,
     compaction_config: CompactionConfig = CompactionConfig(),
     max_steps: int = 50,
-    reminder: str | None = None,
     session_manager: SessionManager | None = None,
     subagent_manager: SubagentManager | None = None,
     preference_checker: Callable[[], Awaitable[str]] | None = None,
@@ -126,12 +123,6 @@ async def agent_loop(
         if agent_state.step > max_steps:
             logger.info(f"Reached max steps ({max_steps}), stopping")
             break
-
-        if reminder and agent_state.step == 1:
-            agent_state.messages = attach_reminder(agent_state.messages, reminder)
-
-        if agent_state.step > 1:
-            agent_state.messages = wrap_last_user(agent_state.messages)
 
         if agent_state.step > 1 and context_size and not _compacted_this_step:
             if await _compact_on_overflow(

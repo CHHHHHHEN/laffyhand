@@ -203,40 +203,6 @@ def build_summary_text(messages: Sequence[Message], tool_truncate: int = 500) ->
     return "\n".join(lines)
 
 
-def wrap_last_user(messages: list[Message]) -> list[Message]:
-    result = list(messages)
-    for i in range(len(result) - 1, -1, -1):
-        msg = result[i]
-        if isinstance(msg, UserMessage):
-            content = msg.content
-            if content.startswith("<system-reminder>") and content.rstrip().endswith(
-                "</system-reminder>"
-            ):
-                logger.debug("User message already wrapped, skipping")
-                return result
-            result[i] = UserMessage(
-                content=f"<system-reminder>\n{content}\n</system-reminder>"
-            )
-            logger.debug("Last user message wrapped with system-reminder tags")
-            return result
-    logger.warning("No UserMessage found to wrap")
-    return result
-
-
-def attach_reminder(messages: list[Message], reminder: str) -> list[Message]:
-    for i, msg in enumerate(messages):
-        if isinstance(msg, SystemMessage):
-            if reminder not in msg.content:
-                result = list(messages)
-                result[i] = SystemMessage(content=msg.content + f"\n\n{reminder}")
-                logger.debug("Reminder attached to system message")
-                return result
-            logger.debug("Reminder already present, not re-attaching")
-            return list(messages)
-    logger.warning("No SystemMessage found, cannot attach reminder")
-    return list(messages)
-
-
 async def _summarize(
     llm: LLM, head: Sequence[Message], tool_truncate: int = 500
 ) -> str | None:

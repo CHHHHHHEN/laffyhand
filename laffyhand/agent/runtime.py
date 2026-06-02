@@ -37,9 +37,15 @@ from laffyhand.agent.tools.mcp_manage import (
 from laffyhand.agent.mcp import MCPService
 from laffyhand.agent.loop import agent_loop
 from laffyhand.agent.schemas import (
+    StepStart,
     StepFinish,
+    TextStart,
     TextDelta,
+    TextEnd,
+    ReasoningStart,
     ReasoningDelta,
+    ReasoningEnd,
+    Compacting,
     ToolCall as StreamToolCall,
     ToolResult as StreamToolResult,
     ToolError as StreamToolError,
@@ -611,6 +617,18 @@ class AgentRuntime:
                             content=event.message,
                         )
                     )
+                elif isinstance(event, StepStart):
+                    await event_sink(event)
+                elif isinstance(event, TextStart):
+                    await event_sink(event)
+                elif isinstance(event, TextEnd):
+                    await event_sink(event)
+                elif isinstance(event, ReasoningStart):
+                    await event_sink(event)
+                elif isinstance(event, ReasoningEnd):
+                    await event_sink(event)
+                elif isinstance(event, Compacting):
+                    await event_sink(event)
             if isinstance(event, StepFinish):
                 last_msg = child_state.messages[-1]
                 if hasattr(last_msg, "content") and last_msg.content:

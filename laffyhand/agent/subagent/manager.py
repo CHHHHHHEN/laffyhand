@@ -16,6 +16,12 @@ from laffyhand.agent.schemas import (
     SessionUsage,
 )
 from laffyhand.agent.schemas import (
+    StepStart,
+    TextStart,
+    TextEnd,
+    ReasoningStart,
+    ReasoningEnd,
+    Compacting,
     SubAgentStart,
     SubAgentDelta,
     SubAgentEnd,
@@ -220,6 +226,8 @@ class SubagentManager:
                                     content=event.message,
                                 )
                             )
+                        elif isinstance(event, (StepStart, TextStart, TextEnd, ReasoningStart, ReasoningEnd, Compacting)):
+                            await _relay_event(event)
 
                     assert child_state.session_id is not None
                     session_manager.save_state(child_state.session_id, child_state)

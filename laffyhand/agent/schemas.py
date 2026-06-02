@@ -192,7 +192,6 @@ AgentEvent = Union[
     ToolError,
     StepFinish,
     Finish,
-    ProviderError,
     Compacting,
     PermissionRequest,
     SubAgentStart,

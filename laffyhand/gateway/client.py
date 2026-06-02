@@ -19,8 +19,11 @@ from laffyhand.agent.schemas import (
     ToolError,
     StepFinish,
     Finish,
-    ProviderError,
     Compacting,
+    PermissionRequest,
+    SubAgentStart,
+    SubAgentDelta,
+    SubAgentEnd,
     AgentEvent,
 )
 from laffyhand.gateway.protocol import (
@@ -58,8 +61,11 @@ _EVENT_TYPE_MAP: dict[str, type[AgentEvent]] = {
     "tool-error": ToolError,
     "step-finish": StepFinish,
     "finish": Finish,
-    "provider-error": ProviderError,
     "compacting": Compacting,
+    "permission-request": PermissionRequest,
+    "subagent-start": SubAgentStart,
+    "subagent-delta": SubAgentDelta,
+    "subagent-end": SubAgentEnd,
 }
 
 
