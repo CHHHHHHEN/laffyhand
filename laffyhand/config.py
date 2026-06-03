@@ -38,7 +38,7 @@ class LogConfig(BaseModel):
     dir: str = "logs"
     level: str = "INFO"
     retention_days: int = 10
-    console: bool = False
+    console: bool = True
 
 
 class AgentConfig(BaseModel):

@@ -25,7 +25,7 @@ def setup_logging(
     log_dir: str = "logs",
     level: str = "INFO",
     retention: int = 10,
-    console: bool = False,
+    console: bool = True,
 ) -> None:
     global _LOGGING_INITIALIZED
     if _LOGGING_INITIALIZED:
