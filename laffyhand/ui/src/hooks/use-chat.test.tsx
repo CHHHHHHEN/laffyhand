@@ -6,9 +6,11 @@ import { useChatStore, resetMessageCounter } from "@/stores/chat-store"
 import type { StreamEvent } from "@/types/rpc"
 import type { ReactNode } from "react"
 
+const SID = "sess-test"
+
 // Mock react-router-dom
 vi.mock("react-router-dom", () => ({
-  useParams: () => ({ sessionId: "sess-test" }),
+  useParams: () => ({ sessionId: SID }),
 }))
 
 function createWrapper() {
@@ -46,15 +48,8 @@ vi.mock("@/lib/rpc", () => ({
 beforeEach(() => {
   vi.clearAllMocks()
   resetMessageCounter()
-  useChatStore.setState({
-    messages: [],
-    isStreaming: false,
-    streamContent: "",
-    streamReasoning: "",
-    streamToolCalls: [],
-    currentAssistantMessageId: null,
-    error: null,
-  })
+  useChatStore.setState({ sessions: {} })
+  useChatStore.getState().addSession(SID)
 })
 
 describe("useChat", () => {
@@ -82,7 +77,7 @@ describe("useChat", () => {
       await result.current.sendMessage("hi")
     })
 
-    const state = useChatStore.getState()
+    const state = useChatStore.getState().sessions[SID]!
     expect(state.messages.length).toBeGreaterThanOrEqual(1)
     const lastMsg = state.messages[state.messages.length - 1]
     expect(lastMsg?.role).toBe("assistant")
@@ -100,7 +95,7 @@ describe("useChat", () => {
   })
 
   it("does not send when already streaming", async () => {
-    useChatStore.setState({ isStreaming: true })
+    useChatStore.getState().startStreaming(SID)
 
     const { result } = renderHook(() => useChat(), { wrapper: createWrapper() })
 
@@ -120,7 +115,7 @@ describe("useChat", () => {
       await result.current.sendMessage("hello")
     })
 
-    const state = useChatStore.getState()
+    const state = useChatStore.getState().sessions[SID]!
     expect(state.error).toBe("Network error")
     expect(state.isStreaming).toBe(false)
   })
@@ -184,7 +179,7 @@ describe("useChat", () => {
       await result.current.cancelStream()
     })
 
-    const state = useChatStore.getState()
+    const state = useChatStore.getState().sessions[SID]!
     expect(state.error).toBe("Stream cancelled")
   })
 })

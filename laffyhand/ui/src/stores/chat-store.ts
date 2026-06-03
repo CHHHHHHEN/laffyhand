@@ -8,7 +8,7 @@ export interface TurnUsage {
   reasoning: number
 }
 
-export interface ChatState {
+export interface SessionChatState {
   messages: Message[]
   isStreaming: boolean
   streamContent: string
@@ -16,42 +16,41 @@ export interface ChatState {
   streamToolCalls: ToolCall[]
   currentAssistantMessageId: string | null
   error: string | null
-
-  // Persistent session info
   model: string
   sessionUsage: SessionUsage | null
-
-  // Per-turn token delta tracking
   turnUsage: TurnUsage | null
   _turnStartUsage: SessionUsage | null
-
-  // Subagent activity tracking
   foregroundSubagents: ActiveSubagent[]
   backgroundSubagents: ActiveSubagent[]
-
-  // Queue for busy_mode="queue"
   pendingQueue: string[]
+}
 
-  addUserMessage: (content: string) => void
-  startStreaming: () => void
-  appendContent: (text: string) => void
-  setReasoning: (text: string) => void
-  addToolCall: (toolCall: ToolCall) => void
-  updateToolCallStatus: (id: string, status: ToolCallStatus, result?: string, isError?: boolean) => void
-  finalizeMessage: (usage?: { inputTokens: number; outputTokens: number }, sessionUsage?: SessionUsage | null) => void
-  setError: (error: string) => void
-  clearMessages: () => void
-  loadMessages: (messages: Message[]) => void
-  setSessionInfo: (model: string, usage: SessionUsage | null) => void
-  enqueueMessage: (content: string) => void
-  dequeueMessage: () => string | undefined
-  hasPendingMessages: () => boolean
-  addPermissionRequest: (req: PermissionInfo) => void
-  resolvePermissionRequest: (messageId: string) => void
-  startSubagent: (event: { id: string; parent_id?: string; agent_type: string; description: string; mode: "foreground" | "background"; depth: number }) => void
-  updateSubagent: (id: string, event: { kind: string; content?: string; tool_name?: string; tool_input?: string }) => void
-  endSubagent: (id: string, event: { status: string; summary?: string; tool_count?: number; input_tokens?: number; output_tokens?: number }) => void
-  clearForegroundSubagents: () => void
+export interface ChatStore {
+  sessions: Record<string, SessionChatState>
+
+  addSession: (sessionId: string) => void
+  removeSession: (sessionId: string) => void
+
+  addUserMessage: (sessionId: string, content: string) => void
+  startStreaming: (sessionId: string) => void
+  appendContent: (sessionId: string, text: string) => void
+  setReasoning: (sessionId: string, text: string) => void
+  addToolCall: (sessionId: string, toolCall: ToolCall) => void
+  updateToolCallStatus: (sessionId: string, id: string, status: ToolCallStatus, result?: string, isError?: boolean) => void
+  finalizeMessage: (sessionId: string, usage?: { inputTokens: number; outputTokens: number }, sessionUsage?: SessionUsage | null) => void
+  setError: (sessionId: string, error: string) => void
+  clearMessages: (sessionId: string) => void
+  loadMessages: (sessionId: string, messages: Message[]) => void
+  setSessionInfo: (sessionId: string, model: string, usage: SessionUsage | null) => void
+  enqueueMessage: (sessionId: string, content: string) => void
+  dequeueMessage: (sessionId: string) => string | undefined
+  hasPendingMessages: (sessionId: string) => boolean
+  addPermissionRequest: (sessionId: string, req: PermissionInfo) => void
+  resolvePermissionRequest: (sessionId: string, messageId: string) => void
+  startSubagent: (sessionId: string, event: { id: string; parent_id?: string; agent_type: string; description: string; mode: "foreground" | "background"; depth: number }) => void
+  updateSubagent: (sessionId: string, id: string, event: { kind: string; content?: string; tool_name?: string; tool_input?: string }) => void
+  endSubagent: (sessionId: string, id: string, event: { status: string; summary?: string; tool_count?: number; input_tokens?: number; output_tokens?: number }) => void
+  clearForegroundSubagents: (sessionId: string) => void
 }
 
 let messageCounter = 0
@@ -63,141 +62,241 @@ function nextMessageId(): string {
   return `msg-${Date.now()}-${messageCounter}`
 }
 
-export const useChatStore = create<ChatState>((set, get) => ({
-  messages: [],
-  isStreaming: false,
-  streamContent: "",
-  streamReasoning: "",
-  streamToolCalls: [],
-  currentAssistantMessageId: null,
-  error: null,
-  model: "",
-  sessionUsage: null,
-  turnUsage: null,
-  _turnStartUsage: null,
-  foregroundSubagents: [],
-  backgroundSubagents: [],
-  pendingQueue: [],
+function createInitialSessionState(): SessionChatState {
+  return {
+    messages: [],
+    isStreaming: false,
+    streamContent: "",
+    streamReasoning: "",
+    streamToolCalls: [],
+    currentAssistantMessageId: null,
+    error: null,
+    model: "",
+    sessionUsage: null,
+    turnUsage: null,
+    _turnStartUsage: null,
+    foregroundSubagents: [],
+    backgroundSubagents: [],
+    pendingQueue: [],
+  }
+}
 
-  addPermissionRequest: (req) =>
-    set((state) => ({
-      messages: [
-        ...state.messages,
-        {
-          id: nextMessageId(),
-          role: "permission-request",
-          content: `Allow ${req.permission} '${req.pattern}'?`,
-          permissionInfo: req,
-          createdAt: Date.now(),
+export const useChatStore = create<ChatStore>((set, get) => ({
+  sessions: {},
+
+  addSession: (sessionId) =>
+    set((state) => {
+      if (state.sessions[sessionId]) return state
+      return {
+        sessions: { ...state.sessions, [sessionId]: createInitialSessionState() },
+      }
+    }),
+
+  removeSession: (sessionId) =>
+    set((state) => {
+      const { [sessionId]: _, ...rest } = state.sessions
+      return { sessions: rest }
+    }),
+
+  addPermissionRequest: (sessionId, req) =>
+    set((state) => {
+      const sess = state.sessions[sessionId]
+      if (!sess) return state
+      const msg: Message = {
+        id: nextMessageId(),
+        role: "permission-request",
+        content: `Allow ${req.permission} '${req.pattern}'?`,
+        permissionInfo: req,
+        createdAt: Date.now(),
+      }
+      return {
+        sessions: {
+          ...state.sessions,
+          [sessionId]: { ...sess, messages: [...sess.messages, msg] },
         },
-      ],
-    })),
+      }
+    }),
 
-  resolvePermissionRequest: (messageId) =>
-    set((state) => ({
-      messages: state.messages.map((msg) =>
-        msg.id === messageId && msg.permissionInfo
-          ? { ...msg, permissionInfo: { ...msg.permissionInfo, resolved: true } }
-          : msg,
-      ),
-    })),
-
-  addUserMessage: (content) =>
-    set((state) => ({
-      messages: [
-        ...state.messages,
-        {
-          id: nextMessageId(),
-          role: "user",
-          content,
-          createdAt: Date.now(),
+  resolvePermissionRequest: (sessionId, messageId) =>
+    set((state) => {
+      const sess = state.sessions[sessionId]
+      if (!sess) return state
+      return {
+        sessions: {
+          ...state.sessions,
+          [sessionId]: {
+            ...sess,
+            messages: sess.messages.map((msg) =>
+              msg.id === messageId && msg.permissionInfo
+                ? { ...msg, permissionInfo: { ...msg.permissionInfo, resolved: true } }
+                : msg,
+            ),
+          },
         },
-      ],
-      error: null,
-    })),
+      }
+    }),
 
-  startStreaming: () => {
+  addUserMessage: (sessionId, content) =>
+    set((state) => {
+      const sess = state.sessions[sessionId]
+      if (!sess) return state
+      return {
+        sessions: {
+          ...state.sessions,
+          [sessionId]: {
+            ...sess,
+            messages: [
+              ...sess.messages,
+              {
+                id: nextMessageId(),
+                role: "user",
+                content,
+                createdAt: Date.now(),
+              },
+            ],
+            error: null,
+          },
+        },
+      }
+    }),
+
+  startStreaming: (sessionId) => {
+    const sess = get().sessions[sessionId]
+    if (!sess) return
     const id = nextMessageId()
-    const { sessionUsage } = get()
     set({
-      isStreaming: true,
-      streamContent: "",
-      streamReasoning: "",
-      streamToolCalls: [],
-      currentAssistantMessageId: id,
-      error: null,
-      _turnStartUsage: sessionUsage,
+      sessions: {
+        ...get().sessions,
+        [sessionId]: {
+          ...sess,
+          isStreaming: true,
+          streamContent: "",
+          streamReasoning: "",
+          streamToolCalls: [],
+          currentAssistantMessageId: id,
+          error: null,
+          _turnStartUsage: sess.sessionUsage,
+        },
+      },
     })
   },
 
-  appendContent: (text) =>
-    set((state) => ({
-      streamContent: state.streamContent + text,
-    })),
-
-  setReasoning: (text) =>
-    set((state) => ({
-      streamReasoning: state.streamReasoning + text,
-    })),
-
-  addToolCall: (toolCall) =>
-    set((state) => ({
-      streamToolCalls: [...state.streamToolCalls, { ...toolCall, status: "running" as const }],
-    })),
-
-  updateToolCallStatus: (id, status, result, isError) =>
+  appendContent: (sessionId, text) =>
     set((state) => {
-      if (state.isStreaming) {
-        return {
-          streamToolCalls: state.streamToolCalls.map((tc) =>
-            tc.id === id ? { ...tc, status, ...(result !== undefined ? { result } : {}), ...(isError !== undefined ? { isError } : {}) } : tc,
-          ),
-        }
+      const sess = state.sessions[sessionId]
+      if (!sess) return state
+      return {
+        sessions: {
+          ...state.sessions,
+          [sessionId]: { ...sess, streamContent: sess.streamContent + text },
+        },
       }
-      // Not streaming: update the last assistant message's tool calls
-      const messages = state.messages.map((msg) => {
-        if (msg.role !== "assistant" || !msg.toolCalls) return msg
-        const updated = msg.toolCalls.map((tc) =>
-          tc.id === id
-            ? { ...tc, status, ...(result !== undefined ? { result } : {}), ...(isError !== undefined ? { isError } : {}) }
-            : tc,
-        )
-        return { ...msg, toolCalls: updated }
-      })
-      return { messages }
     }),
 
-  finalizeMessage: (usage, sessionUsage) =>
+  setReasoning: (sessionId, text) =>
     set((state) => {
-      const content = state.streamContent || ""
-      const reasoning = state.streamReasoning || undefined
+      const sess = state.sessions[sessionId]
+      if (!sess) return state
+      return {
+        sessions: {
+          ...state.sessions,
+          [sessionId]: { ...sess, streamReasoning: sess.streamReasoning + text },
+        },
+      }
+    }),
 
-      const finalizedToolCalls = state.streamToolCalls.length > 0
-        ? state.streamToolCalls
+  addToolCall: (sessionId, toolCall) =>
+    set((state) => {
+      const sess = state.sessions[sessionId]
+      if (!sess) return state
+      return {
+        sessions: {
+          ...state.sessions,
+          [sessionId]: {
+            ...sess,
+            streamToolCalls: [...sess.streamToolCalls, { ...toolCall, status: "running" as const }],
+          },
+        },
+      }
+    }),
+
+  updateToolCallStatus: (sessionId, id, status, result, isError) =>
+    set((state) => {
+      const sess = state.sessions[sessionId]
+      if (!sess) return state
+      if (sess.isStreaming) {
+        return {
+          sessions: {
+            ...state.sessions,
+            [sessionId]: {
+              ...sess,
+              streamToolCalls: sess.streamToolCalls.map((tc) =>
+                tc.id === id ? { ...tc, status, ...(result !== undefined ? { result } : {}), ...(isError !== undefined ? { isError } : {}) } : tc,
+              ),
+            },
+          },
+        }
+      }
+      return {
+        sessions: {
+          ...state.sessions,
+          [sessionId]: {
+            ...sess,
+            messages: sess.messages.map((msg) => {
+              if (msg.role !== "assistant" || !msg.toolCalls) return msg
+              return {
+                ...msg,
+                toolCalls: msg.toolCalls.map((tc) =>
+                  tc.id === id
+                    ? { ...tc, status, ...(result !== undefined ? { result } : {}), ...(isError !== undefined ? { isError } : {}) }
+                    : tc,
+                ),
+              }
+            }),
+          },
+        },
+      }
+    }),
+
+  finalizeMessage: (sessionId, usage, sessionUsage) =>
+    set((state) => {
+      const sess = state.sessions[sessionId]
+      if (!sess) return state
+
+      const content = sess.streamContent || ""
+      const reasoning = sess.streamReasoning || undefined
+
+      const finalizedToolCalls = sess.streamToolCalls.length > 0
+        ? sess.streamToolCalls
         : undefined
 
-      // Compute per-turn token delta
       let turnUsage: TurnUsage | null = null
-      if (sessionUsage && state._turnStartUsage) {
+      const finalUsage = sessionUsage ?? sess.sessionUsage
+      if (finalUsage && sess._turnStartUsage) {
         turnUsage = {
-          input: sessionUsage.total_input - state._turnStartUsage.total_input,
-          output: sessionUsage.total_output - state._turnStartUsage.total_output,
-          reasoning: sessionUsage.total_reasoning - state._turnStartUsage.total_reasoning,
+          input: finalUsage.total_input - sess._turnStartUsage.total_input,
+          output: finalUsage.total_output - sess._turnStartUsage.total_output,
+          reasoning: finalUsage.total_reasoning - sess._turnStartUsage.total_reasoning,
         }
       }
 
-      // Skip empty finalization (e.g. finish event after step-finish already finalized)
-      if (!content && !reasoning && !finalizedToolCalls && !state.isStreaming) {
+      if (!content && !reasoning && !finalizedToolCalls && !sess.isStreaming) {
         return {
-          isStreaming: false,
-          sessionUsage: sessionUsage ?? state.sessionUsage,
-          turnUsage,
-          _turnStartUsage: null,
+          sessions: {
+            ...state.sessions,
+            [sessionId]: {
+              ...sess,
+              isStreaming: false,
+              sessionUsage: finalUsage,
+              turnUsage,
+              _turnStartUsage: null,
+            },
+          },
         }
       }
 
       const assistantMessage: Message = {
-        id: state.currentAssistantMessageId ?? nextMessageId(),
+        id: sess.currentAssistantMessageId ?? nextMessageId(),
         role: "assistant",
         content,
         reasoning,
@@ -208,73 +307,134 @@ export const useChatStore = create<ChatState>((set, get) => ({
       }
 
       return {
-        messages: [...state.messages, assistantMessage],
-        isStreaming: false,
-        streamContent: "",
-        streamReasoning: "",
-        streamToolCalls: [],
-        currentAssistantMessageId: null,
-        foregroundSubagents: [],
-        backgroundSubagents: state.backgroundSubagents.filter(
-          (sa) => sa.status !== "completed" && sa.status !== "error",
-        ),
-        sessionUsage: sessionUsage ?? state.sessionUsage,
-        turnUsage,
-        _turnStartUsage: null,
+        sessions: {
+          ...state.sessions,
+          [sessionId]: {
+            ...sess,
+            messages: [...sess.messages, assistantMessage],
+            isStreaming: false,
+            streamContent: "",
+            streamReasoning: "",
+            streamToolCalls: [],
+            currentAssistantMessageId: null,
+            foregroundSubagents: [],
+            backgroundSubagents: sess.backgroundSubagents.filter(
+              (sa) => sa.status !== "completed" && sa.status !== "error",
+            ),
+            sessionUsage: finalUsage,
+            turnUsage,
+            _turnStartUsage: null,
+          },
+        },
       }
     }),
 
-  setError: (error) =>
-    set({ error, isStreaming: false }),
-
-  clearMessages: () =>
-    set({
-      messages: [],
-      isStreaming: false,
-      streamContent: "",
-      streamReasoning: "",
-      streamToolCalls: [],
-      currentAssistantMessageId: null,
-      foregroundSubagents: [],
-      backgroundSubagents: [],
-      error: null,
-      turnUsage: null,
-      _turnStartUsage: null,
+  setError: (sessionId, error) =>
+    set((state) => {
+      const sess = state.sessions[sessionId]
+      if (!sess) return state
+      return {
+        sessions: {
+          ...state.sessions,
+          [sessionId]: { ...sess, error, isStreaming: false },
+        },
+      }
     }),
 
-  loadMessages: (messages) =>
-    set({
-      messages,
-      isStreaming: false,
-      streamContent: "",
-      streamReasoning: "",
-      streamToolCalls: [],
-      currentAssistantMessageId: null,
-      error: null,
-      turnUsage: null,
-      _turnStartUsage: null,
+  clearMessages: (sessionId) =>
+    set((state) => {
+      const sess = state.sessions[sessionId]
+      if (!sess) return state
+      return {
+        sessions: {
+          ...state.sessions,
+          [sessionId]: {
+            ...sess,
+            messages: [],
+            isStreaming: false,
+            streamContent: "",
+            streamReasoning: "",
+            streamToolCalls: [],
+            currentAssistantMessageId: null,
+            foregroundSubagents: [],
+            backgroundSubagents: [],
+            error: null,
+            turnUsage: null,
+            _turnStartUsage: null,
+          },
+        },
+      }
     }),
 
-  setSessionInfo: (model, usage) =>
-    set({ model, sessionUsage: usage, turnUsage: null, _turnStartUsage: null }),
+  loadMessages: (sessionId, messages) =>
+    set((state) => {
+      const sess = state.sessions[sessionId]
+      if (!sess) return state
+      return {
+        sessions: {
+          ...state.sessions,
+          [sessionId]: {
+            ...sess,
+            messages,
+            isStreaming: false,
+            streamContent: "",
+            streamReasoning: "",
+            streamToolCalls: [],
+            currentAssistantMessageId: null,
+            error: null,
+            turnUsage: null,
+            _turnStartUsage: null,
+          },
+        },
+      }
+    }),
 
-  enqueueMessage: (content) =>
-    set((state) => ({
-      pendingQueue: [...state.pendingQueue, content],
-    })),
+  setSessionInfo: (sessionId, model, usage) =>
+    set((state) => {
+      const sess = state.sessions[sessionId]
+      if (!sess) return state
+      return {
+        sessions: {
+          ...state.sessions,
+          [sessionId]: { ...sess, model, sessionUsage: usage, turnUsage: null, _turnStartUsage: null },
+        },
+      }
+    }),
 
-  dequeueMessage: () => {
-    const { pendingQueue } = get()
-    if (pendingQueue.length === 0) return undefined
-    const [first, ...rest] = pendingQueue
-    set({ pendingQueue: rest })
+  enqueueMessage: (sessionId, content) =>
+    set((state) => {
+      const sess = state.sessions[sessionId]
+      if (!sess) return state
+      return {
+        sessions: {
+          ...state.sessions,
+          [sessionId]: { ...sess, pendingQueue: [...sess.pendingQueue, content] },
+        },
+      }
+    }),
+
+  dequeueMessage: (sessionId) => {
+    const sess = get().sessions[sessionId]
+    if (!sess || sess.pendingQueue.length === 0) return undefined
+    const [first, ...rest] = sess.pendingQueue
+    set({
+      sessions: {
+        ...get().sessions,
+        [sessionId]: { ...sess, pendingQueue: rest },
+      },
+    })
     return first
   },
 
-  hasPendingMessages: () => get().pendingQueue.length > 0,
+  hasPendingMessages: (sessionId) => {
+    const sess = get().sessions[sessionId]
+    return sess ? sess.pendingQueue.length > 0 : false
+  },
 
-  startSubagent: (event) =>
+  startSubagent: (sessionId, event) =>
     set((state) => {
+      const sess = state.sessions[sessionId]
+      if (!sess) return state
       const sa: ActiveSubagent = {
         id: event.id,
         parentId: event.parent_id ?? null,
@@ -291,14 +451,25 @@ export const useChatStore = create<ChatState>((set, get) => ({
         outputTokens: 0,
       }
       if (event.mode === "foreground") {
-        return { foregroundSubagents: [...state.foregroundSubagents, sa] }
-      } else {
-        return { backgroundSubagents: [...state.backgroundSubagents, sa] }
+        return {
+          sessions: {
+            ...state.sessions,
+            [sessionId]: { ...sess, foregroundSubagents: [...sess.foregroundSubagents, sa] },
+          },
+        }
+      }
+      return {
+        sessions: {
+          ...state.sessions,
+          [sessionId]: { ...sess, backgroundSubagents: [...sess.backgroundSubagents, sa] },
+        },
       }
     }),
 
-  updateSubagent: (id, event) =>
+  updateSubagent: (sessionId, id, event) =>
     set((state) => {
+      const sess = state.sessions[sessionId]
+      if (!sess) return state
       const update = (sa: ActiveSubagent): ActiveSubagent => {
         if (sa.id !== id) return sa
         switch (event.kind) {
@@ -315,18 +486,25 @@ export const useChatStore = create<ChatState>((set, get) => ({
           case "error":
             return { ...sa, status: "error", text: sa.text + (event.content ?? "") }
           default:
-            console.warn("updateSubagent: unhandled event kind:", event.kind)
             return sa
         }
       }
       return {
-        foregroundSubagents: state.foregroundSubagents.map(update),
-        backgroundSubagents: state.backgroundSubagents.map(update),
+        sessions: {
+          ...state.sessions,
+          [sessionId]: {
+            ...sess,
+            foregroundSubagents: sess.foregroundSubagents.map(update),
+            backgroundSubagents: sess.backgroundSubagents.map(update),
+          },
+        },
       }
     }),
 
-  endSubagent: (id, event) =>
+  endSubagent: (sessionId, id, event) =>
     set((state) => {
+      const sess = state.sessions[sessionId]
+      if (!sess) return state
       const update = (sa: ActiveSubagent): ActiveSubagent => {
         if (sa.id !== id) return sa
         return {
@@ -338,11 +516,26 @@ export const useChatStore = create<ChatState>((set, get) => ({
         }
       }
       return {
-        foregroundSubagents: state.foregroundSubagents.map(update),
-        backgroundSubagents: state.backgroundSubagents.map(update),
+        sessions: {
+          ...state.sessions,
+          [sessionId]: {
+            ...sess,
+            foregroundSubagents: sess.foregroundSubagents.map(update),
+            backgroundSubagents: sess.backgroundSubagents.map(update),
+          },
+        },
       }
     }),
 
-  clearForegroundSubagents: () =>
-    set({ foregroundSubagents: [] }),
+  clearForegroundSubagents: (sessionId) =>
+    set((state) => {
+      const sess = state.sessions[sessionId]
+      if (!sess) return state
+      return {
+        sessions: {
+          ...state.sessions,
+          [sessionId]: { ...sess, foregroundSubagents: [] },
+        },
+      }
+    }),
 }))

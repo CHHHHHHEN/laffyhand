@@ -1,7 +1,6 @@
 import { useEffect } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { rpcClient } from "@/lib/rpc"
-import { useSessionStore } from "@/stores/session-store"
 import { useChatStore } from "@/stores/chat-store"
 import { useTodoStore } from "@/stores/todo-store"
 import type { Session, Message, TodoItem, ToolCallStatus } from "@/types/session"
@@ -129,8 +128,9 @@ function toStoreMessage(m: MessageData): Message {
 }
 
 export function useCurrentSession(sessionId: string | undefined) {
-  const setCurrentSessionId = useSessionStore((s) => s.setCurrentSessionId)
+  const addSession = useChatStore((s) => s.addSession)
   const loadMessages = useChatStore((s) => s.loadMessages)
+  const setSessionInfoAction = useChatStore((s) => s.setSessionInfo)
 
   const { data: session, isLoading, isError } = useQuery({
     queryKey: ["session", sessionId],
@@ -143,13 +143,14 @@ export function useCurrentSession(sessionId: string | undefined) {
 
   useEffect(() => {
     if (session && sessionId) {
-      setCurrentSessionId(sessionId)
-      useChatStore.getState().setSessionInfo(
+      addSession(sessionId)
+      setSessionInfoAction(
+        sessionId,
         session.model ?? "",
         session.usage ?? null,
       )
       if (session.messages) {
-        loadMessages(session.messages.map(toStoreMessage))
+        loadMessages(sessionId, session.messages.map(toStoreMessage))
       }
       rpcClient.todoList(sessionId).then((result) => {
         const tasks: TodoItem[] = result.tasks.map((t) => ({
@@ -166,11 +167,9 @@ export function useCurrentSession(sessionId: string | undefined) {
           taskToolId: t.taskToolId,
         }))
         useTodoStore.getState().setTasks(tasks)
-      }).catch(() => {
-        // best effort
-      })
+      }).catch(() => {})
     }
-  }, [session, sessionId, setCurrentSessionId, loadMessages])
+  }, [session, sessionId, addSession, loadMessages, setSessionInfoAction])
 
   return { session, isLoading, isError }
 }

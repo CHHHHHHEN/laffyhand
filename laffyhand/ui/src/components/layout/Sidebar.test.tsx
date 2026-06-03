@@ -51,7 +51,7 @@ vi.mock("react-router-dom", async () => {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  useSessionStore.setState({ currentSessionId: null })
+  useSessionStore.setState({ activeSessionId: "s1", activeSessionIds: [] })
 })
 
 function renderSidebar() {

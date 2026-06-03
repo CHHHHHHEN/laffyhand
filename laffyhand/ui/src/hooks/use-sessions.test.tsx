@@ -4,7 +4,6 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import type { ReactNode } from "react"
 import { useSessions, useCurrentSession } from "./use-sessions"
 import { useChatStore, resetMessageCounter } from "@/stores/chat-store"
-import { useSessionStore } from "@/stores/session-store"
 
 // Mock rpcClient
 const mockSessionList = vi.fn()
@@ -71,11 +70,7 @@ const mockSessions = [
 beforeEach(() => {
   vi.clearAllMocks()
   resetMessageCounter()
-  useChatStore.setState({
-    messages: [], isStreaming: false, streamContent: "", streamReasoning: "",
-    streamToolCalls: [], currentAssistantMessageId: null, error: null,
-  })
-  useSessionStore.setState({ currentSessionId: null })
+  useChatStore.setState({ sessions: {} })
 })
 
 describe("useSessions", () => {
@@ -158,13 +153,14 @@ describe("useCurrentSession", () => {
     await waitFor(() => expect(result.current.isLoading).toBe(false))
 
     expect(mockSessionLoad).toHaveBeenCalledWith("sess-1")
-    const state = useChatStore.getState()
-    expect(state.messages).toHaveLength(2)
-    expect(state.messages[0]?.content).toBe("hello")
-    expect(state.messages[1]?.content).toBe("hi")
+    const state = useChatStore.getState().sessions["sess-1"]
+    expect(state).toBeDefined()
+    expect(state!.messages).toHaveLength(2)
+    expect(state!.messages[0]?.content).toBe("hello")
+    expect(state!.messages[1]?.content).toBe("hi")
   })
 
-  it("sets current session ID in store", async () => {
+  it("does not set global currentSessionId in session-store", async () => {
     mockSessionLoad.mockResolvedValue({
       session_id: "sess-target",
       messages_count: 0,
@@ -176,7 +172,9 @@ describe("useCurrentSession", () => {
 
     await waitFor(() => expect(result.current.isLoading).toBe(false))
 
-    expect(useSessionStore.getState().currentSessionId).toBe("sess-target")
+    const state = useChatStore.getState().sessions["sess-target"]
+    expect(state).toBeDefined()
+    expect(state!.messages).toHaveLength(0)
   })
 
   it("returns null for undefined sessionId", async () => {

@@ -13,7 +13,7 @@ export function Sidebar() {
     deleteSession, forkSession, isForking,
   } = useSessions()
   const { agents } = useAgents()
-  const currentSessionId = useSessionStore((s) => s.currentSessionId)
+  const activeSessionId = useSessionStore((s) => s.activeSessionId)
   const [selectedAgent, setSelectedAgent] = useState("build")
   const [searchQuery, setSearchQuery] = useState("")
   const searchRef = useRef<HTMLInputElement>(null)
@@ -45,7 +45,7 @@ export function Sidebar() {
   }
 
   const handleFork = async () => {
-    const targetId = sessionId ?? currentSessionId
+    const targetId = sessionId ?? activeSessionId
     if (!targetId) return
     const childId = await forkSession()
     navigate(`/chat/${childId}`)
@@ -57,7 +57,7 @@ export function Sidebar() {
     const title = session?.title || "Untitled"
     if (!confirm(`Delete session "${title}"?`)) return
     await deleteSession(id)
-    if ((sessionId ?? currentSessionId) === id) {
+    if ((sessionId ?? activeSessionId) === id) {
       navigate("/chat", { replace: true })
     }
   }
@@ -99,7 +99,7 @@ export function Sidebar() {
           </svg>
           {isCreating ? "Creating..." : "New Session"}
         </Button>
-        {(sessionId ?? currentSessionId) && (
+        {(sessionId ?? activeSessionId) && (
           <Button
             onClick={handleFork}
             disabled={isForking}
@@ -179,7 +179,7 @@ export function Sidebar() {
         )}
 
         {filteredSessions.map((s) => {
-          const isActive = (sessionId ?? currentSessionId) === s.id
+          const isActive = (sessionId ?? activeSessionId) === s.id
           return (
             <div
               key={s.id}

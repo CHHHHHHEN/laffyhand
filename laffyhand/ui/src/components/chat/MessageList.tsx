@@ -20,26 +20,28 @@ function formatDateSeparator(date: Date): string {
 }
 
 interface MessageListProps {
+  sessionId: string
   onRetry?: () => void
 }
 
-export function MessageList({ onRetry }: MessageListProps) {
-  const messages = useChatStore((s) => s.messages)
-  const isStreaming = useChatStore((s) => s.isStreaming)
-  const streamContent = useChatStore((s) => s.streamContent)
-  const streamReasoning = useChatStore((s) => s.streamReasoning)
-  const streamToolCalls = useChatStore((s) => s.streamToolCalls)
-  const foregroundSubagents = useChatStore((s) => s.foregroundSubagents)
-  const error = useChatStore((s) => s.error)
+export function MessageList({ sessionId, onRetry }: MessageListProps) {
+  const sess = useChatStore((s) => (sessionId ? s.sessions[sessionId] : undefined))
   const resolvePermissionRequest = useChatStore((s) => s.resolvePermissionRequest)
+  const messages = sess?.messages ?? []
+  const isStreaming = sess?.isStreaming ?? false
+  const streamContent = sess?.streamContent ?? ""
+  const streamReasoning = sess?.streamReasoning ?? ""
+  const streamToolCalls = sess?.streamToolCalls ?? []
+  const foregroundSubagents = sess?.foregroundSubagents ?? []
+  const error = sess?.error ?? null
   const containerRef = useRef<HTMLDivElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const [isNearBottom, setIsNearBottom] = useState(true)
   const [showScrollBtn, setShowScrollBtn] = useState(false)
 
   const handleResolvePermission = useCallback(
-    (messageId: string) => resolvePermissionRequest(messageId),
-    [resolvePermissionRequest],
+    (messageId: string) => resolvePermissionRequest(sessionId, messageId),
+    [resolvePermissionRequest, sessionId],
   )
 
   // Check if user is near bottom

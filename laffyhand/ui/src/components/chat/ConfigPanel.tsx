@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { rpcClient, type ConfigProvidersResult, type MCPStatusResult } from "@/lib/rpc"
 import { useChatStore } from "@/stores/chat-store"
+import { useSessionStore } from "@/stores/session-store"
 
 type Tab = "tools" | "mcp" | "config"
 
@@ -18,7 +19,8 @@ export function ConfigPanel() {
   const [tools, setTools] = useState<ToolInfo[] | null>(null)
   const [loading, setLoading] = useState(false)
 
-  const model = useChatStore((s) => s.model)
+  const activeSessionId = useSessionStore((s) => s.activeSessionId)
+  const model = useChatStore((s) => activeSessionId ? s.sessions[activeSessionId]?.model ?? "" : "")
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -61,7 +63,9 @@ export function ConfigPanel() {
   const handleSwitch = async (provider: string, modelName: string) => {
     try {
       await rpcClient.sessionSetConfig({ provider, model: modelName })
-      useChatStore.getState().setSessionInfo(modelName, null)
+      if (activeSessionId) {
+        useChatStore.getState().setSessionInfo(activeSessionId, modelName, null)
+      }
       setOpen(false)
     } catch {
       // ignore

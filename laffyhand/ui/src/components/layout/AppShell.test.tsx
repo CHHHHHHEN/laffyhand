@@ -1,9 +1,15 @@
-import { describe, it, expect, beforeEach } from "vitest"
+import { describe, it, expect, beforeEach, vi } from "vitest"
 import { render, screen, fireEvent } from "@testing-library/react"
 import { MemoryRouter, Route, Routes } from "react-router-dom"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { AppShell } from "./AppShell"
 import { useUiStore } from "@/stores/ui-store"
+
+vi.mock("@/hooks/use-sessions", () => ({
+  useSessions: () => ({ sessions: [], isLoading: false, error: null, refetch: vi.fn(), createSession: vi.fn(), deleteSession: vi.fn(), forkSession: vi.fn(), isCreating: false, isDeleting: false, isForking: false }),
+  useAgents: () => ({ agents: [], isLoading: false, error: null }),
+  useCurrentSession: () => ({ session: null, isLoading: false, isError: false }),
+}))
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: false } },

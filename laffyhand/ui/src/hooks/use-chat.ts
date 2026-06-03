@@ -1,10 +1,29 @@
-import { useCallback, useEffect, useRef } from "react"
+import { useCallback, useRef } from "react"
 import { useParams } from "react-router-dom"
 import { useQueryClient } from "@tanstack/react-query"
 import { rpcClient } from "@/lib/rpc"
 import { useChatStore } from "@/stores/chat-store"
 import { useTodoStore } from "@/stores/todo-store"
 import type { TodoItem } from "@/types/session"
+
+function refreshTodo(sessionId: string) {
+  rpcClient.todoList(sessionId).then((result) => {
+    const tasks: TodoItem[] = result.tasks.map((t) => ({
+      id: t.id,
+      sessionId: t.sessionId,
+      content: t.content,
+      status: t.status as TodoItem["status"],
+      priority: t.priority as TodoItem["priority"],
+      dependsOn: t.dependsOn,
+      blockedBy: t.blockedBy,
+      createdAt: t.createdAt,
+      updatedAt: t.updatedAt,
+      completedAt: t.completedAt,
+      taskToolId: t.taskToolId,
+    }))
+    useTodoStore.getState().setTasks(tasks)
+  }).catch(() => {})
+}
 
 export function useChat() {
   const queryClient = useQueryClient()
@@ -14,36 +33,7 @@ export function useChat() {
   const sessionIdRef = useRef(urlSessionId)
   sessionIdRef.current = urlSessionId
 
-  // Refresh session list and TODO list when streaming ends
-  const isStreaming = useChatStore((s) => s.isStreaming)
-  const prevStreamingRef = useRef(isStreaming)
-  useEffect(() => {
-    const wasStreaming = prevStreamingRef.current
-    prevStreamingRef.current = isStreaming
-    if (wasStreaming && !isStreaming) {
-      queryClient.invalidateQueries({ queryKey: ["sessions"] })
-      if (urlSessionId) {
-        rpcClient.todoList(urlSessionId).then((result) => {
-          const tasks: TodoItem[] = result.tasks.map((t) => ({
-            id: t.id,
-            sessionId: t.sessionId,
-            content: t.content,
-            status: t.status as TodoItem["status"],
-            priority: t.priority as TodoItem["priority"],
-            dependsOn: t.dependsOn,
-            blockedBy: t.blockedBy,
-            createdAt: t.createdAt,
-            updatedAt: t.updatedAt,
-            completedAt: t.completedAt,
-            taskToolId: t.taskToolId,
-          }))
-          useTodoStore.getState().setTasks(tasks)
-        }).catch(() => {})
-      }
-    }
-  }, [isStreaming, queryClient, urlSessionId])
-
-  const _cancelAndFinalize = useCallback(async () => {
+  const _cancelAndFinalize = useCallback(async (sessionId: string) => {
     if (abortRef.current) {
       abortRef.current.abort()
       abortRef.current = null
@@ -53,12 +43,13 @@ export function useChat() {
     } catch (err) {
       console.warn("cancelStream failed", err)
     }
-    const state = useChatStore.getState()
-    if (!state.isStreaming) return false
-    if (state.streamContent || state.streamToolCalls.length > 0) {
-      state.finalizeMessage()
+    const store = useChatStore.getState()
+    const sess = store.sessions[sessionId]
+    if (!sess || !sess.isStreaming) return false
+    if (sess.streamContent || sess.streamToolCalls.length > 0) {
+      store.finalizeMessage(sessionId)
     } else {
-      state.setError("Stream cancelled")
+      store.setError(sessionId, "Stream cancelled")
     }
     return true
   }, [])
@@ -66,16 +57,22 @@ export function useChat() {
   const sendMessage = useCallback(
     async (content: string, bypassBusyCheck = false) => {
       const chatStore = useChatStore.getState()
-
+      const sessionId = sessionIdRef.current
+      if (!sessionId) return
       if (!content.trim()) return
-      if (!bypassBusyCheck && chatStore.isStreaming) return
 
-      chatStore.addUserMessage(content)
-      chatStore.startStreaming()
+      // Ensure session state exists in the store
+      chatStore.addSession(sessionId)
+
+      const sess = chatStore.sessions[sessionId]
+      if (!bypassBusyCheck && sess?.isStreaming) return
+
+      chatStore.addUserMessage(sessionId, content)
+      chatStore.startStreaming(sessionId)
 
       const abortController = new AbortController()
       abortRef.current = abortController
-      const sessionAtSend = sessionIdRef.current
+      const sessionAtSend = sessionId
 
       try {
         await rpcClient.chatStream(
@@ -83,21 +80,22 @@ export function useChat() {
           {
             onEvent: (event) => {
               const store = useChatStore.getState()
-              if (!store.isStreaming && event.type !== "step-start") return
+              const currentSess = store.sessions[sessionId]
+              if (!currentSess?.isStreaming && event.type !== "step-start") return
               switch (event.type) {
                 case "step-start":
-                  if (!store.isStreaming) {
-                    store.startStreaming()
+                  if (!currentSess?.isStreaming) {
+                    store.startStreaming(sessionId)
                   }
                   break
                 case "text-delta":
                   if (event.text) {
-                    store.appendContent(event.text)
+                    store.appendContent(sessionId, event.text)
                   }
                   break
                 case "reasoning-delta":
                   if (event.text) {
-                    store.setReasoning(event.text)
+                    store.setReasoning(sessionId, event.text)
                   }
                   break
                 case "tool-call": {
@@ -107,7 +105,7 @@ export function useChat() {
                   } catch {
                     args = {}
                   }
-                  store.addToolCall({
+                  store.addToolCall(sessionId, {
                     id: event.id,
                     name: event.name,
                     arguments: args,
@@ -115,65 +113,62 @@ export function useChat() {
                   break
                 }
                 case "tool-result":
-                  store.updateToolCallStatus(event.id, "completed", event.result)
+                  store.updateToolCallStatus(sessionId, event.id, "completed", event.result)
                   break
                 case "tool-error":
-                  store.updateToolCallStatus(event.id, "error", event.message, true)
+                  store.updateToolCallStatus(sessionId, event.id, "error", event.message, true)
                   break
                 case "step-finish":
                   if (event.reason === "tool_calls") {
                     const stepUsage = event.usage
-                      ? {
-                          inputTokens: event.usage.input_tokens,
-                          outputTokens: event.usage.output_tokens,
-                        }
+                      ? { inputTokens: event.usage.input_tokens, outputTokens: event.usage.output_tokens }
                       : undefined
-                    store.finalizeMessage(stepUsage)
+                    store.finalizeMessage(sessionId, stepUsage)
                   }
                   break
                 case "finish": {
                   const usage = event.usage
-                    ? {
-                        inputTokens: event.usage.input_tokens,
-                        outputTokens: event.usage.output_tokens,
-                      }
+                    ? { inputTokens: event.usage.input_tokens, outputTokens: event.usage.output_tokens }
                     : undefined
-                  store.finalizeMessage(usage, event.session_usage ?? null)
+                  store.finalizeMessage(sessionId, usage, event.session_usage ?? null)
 
                   if (event.leftover_steer) {
                     leftoverSteerRef.current = event.leftover_steer
                   }
+
+                  queryClient.invalidateQueries({ queryKey: ["sessions"] })
+                  refreshTodo(sessionId)
                   break
                 }
                 case "permission-request":
-                  store.addPermissionRequest({
+                  store.addPermissionRequest(sessionId, {
                     requestId: event.request_id,
                     permission: event.permission,
                     pattern: event.pattern,
                   })
                   break
                 case "subagent-start":
-                  store.startSubagent(event)
+                  store.startSubagent(sessionId, event)
                   break
                 case "subagent-delta":
-                  store.updateSubagent(event.id, event)
+                  store.updateSubagent(sessionId, event.id, event)
                   break
                 case "subagent-end":
-                  store.endSubagent(event.id, event)
+                  store.endSubagent(sessionId, event.id, event)
                   break
                 case "provider-error":
-                  store.setError(event.message)
+                  store.setError(sessionId, event.message)
                   break
               }
             },
             onError: (error) => {
               if (abortController.signal.aborted) return
               if (sessionIdRef.current !== sessionAtSend) return
-              useChatStore.getState().setError(error.message)
+              useChatStore.getState().setError(sessionId, error.message)
+              queryClient.invalidateQueries({ queryKey: ["sessions"] })
+              refreshTodo(sessionId)
             },
-            onComplete: () => {
-              // handled in finish event
-            },
+            onComplete: () => {},
           },
           abortController.signal,
           urlSessionId,
@@ -181,10 +176,12 @@ export function useChat() {
       } catch (err) {
         if (abortController.signal.aborted) return
         if (sessionIdRef.current !== sessionAtSend) return
-        const store = useChatStore.getState()
-        store.setError(
+        useChatStore.getState().setError(
+          sessionId,
           err instanceof Error ? err.message : "Unknown error",
         )
+        queryClient.invalidateQueries({ queryKey: ["sessions"] })
+        refreshTodo(sessionId)
       }
 
       if (sessionIdRef.current !== sessionAtSend) return
@@ -196,26 +193,29 @@ export function useChat() {
         return
       }
 
-      if (useChatStore.getState().hasPendingMessages()) {
-        const next = useChatStore.getState().dequeueMessage()
+      if (useChatStore.getState().hasPendingMessages(sessionId)) {
+        const next = useChatStore.getState().dequeueMessage(sessionId)
         if (next) {
           await sendMessage(next, true)
         }
       }
     },
-    [urlSessionId],
+    [urlSessionId, queryClient],
   )
 
   const interruptMessage = useCallback(
     async (content: string) => {
+      const sessionId = sessionIdRef.current
+      if (!sessionId) return
       if (!content.trim()) return
       const store = useChatStore.getState()
-      if (!store.isStreaming) {
+      const sess = store.sessions[sessionId]
+      if (!sess?.isStreaming) {
         await sendMessage(content)
         return
       }
 
-      await _cancelAndFinalize()
+      await _cancelAndFinalize(sessionId)
       await sendMessage(content, true)
     },
     [sendMessage, _cancelAndFinalize],
@@ -223,15 +223,19 @@ export function useChat() {
 
   const steerMessage = useCallback(
     async (content: string) => {
-      const store = useChatStore.getState()
+      const sessionId = sessionIdRef.current
+      if (!sessionId) return
       if (!content.trim()) return
-      if (!store.isStreaming) return
+      const sess = useChatStore.getState().sessions[sessionId]
+      if (!sess?.isStreaming) return
 
       try {
         await rpcClient.steerMessage(content, urlSessionId)
       } catch (err) {
-        const store = useChatStore.getState()
-        store.setError(err instanceof Error ? err.message : "Steer failed")
+        useChatStore.getState().setError(
+          sessionId,
+          err instanceof Error ? err.message : "Steer failed",
+        )
       }
     },
     [urlSessionId],
@@ -239,14 +243,18 @@ export function useChat() {
 
   const queueMessage = useCallback(
     async (content: string) => {
+      const sessionId = sessionIdRef.current
+      if (!sessionId) return
       if (!content.trim()) return
-      useChatStore.getState().enqueueMessage(content)
+      useChatStore.getState().enqueueMessage(sessionId, content)
     },
     [],
   )
 
   const cancelStream = useCallback(async () => {
-    await _cancelAndFinalize()
+    const sessionId = sessionIdRef.current
+    if (!sessionId) return
+    await _cancelAndFinalize(sessionId)
   }, [_cancelAndFinalize])
 
   return { sendMessage, interruptMessage, steerMessage, queueMessage, cancelStream }

@@ -5,8 +5,10 @@ import { useUiStore } from "@/stores/ui-store"
 import { TodoPanel } from "@/components/todo/TodoPanel"
 import { useTodoStore } from "@/stores/todo-store"
 import { useChatStore } from "@/stores/chat-store"
+import { useSessionStore } from "@/stores/session-store"
 import { ConfigPanel } from "@/components/chat/ConfigPanel"
 import { SubagentFooter } from "@/components/chat/SubagentFooter"
+import { SessionTabs } from "@/components/chat/SessionTabs"
 import { useEffect } from "react"
 
 function formatTokens(n: number): string {
@@ -23,10 +25,12 @@ export function AppShell() {
   const darkMode = useUiStore((s) => s.darkMode)
   const toggleDarkMode = useUiStore((s) => s.toggleDarkMode)
 
-  const isStreaming = useChatStore((s) => s.isStreaming)
-  const model = useChatStore((s) => s.model)
-  const sessionUsage = useChatStore((s) => s.sessionUsage)
-  const turnUsage = useChatStore((s) => s.turnUsage)
+  const activeSessionId = useSessionStore((s) => s.activeSessionId)
+  const sessionState = useChatStore((s) => activeSessionId ? s.sessions[activeSessionId] : undefined)!
+  const isStreaming = sessionState?.isStreaming ?? false
+  const model = sessionState?.model ?? ""
+  const sessionUsage = sessionState?.sessionUsage ?? null
+  const turnUsage = sessionState?.turnUsage ?? null
 
   // Sync dark mode class to <html>
   useEffect(() => {
@@ -49,7 +53,7 @@ export function AppShell() {
 
       {/* 主内容区 */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        {/* 合并后的顶部栏 — 导航 + 工具栏 */}
+        {/* 合并后的顶部栏 */}
         <div className="flex items-center gap-1.5 px-2 h-11 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shrink-0 select-none">
           <button
             onClick={toggleSidebar}
@@ -68,7 +72,7 @@ export function AppShell() {
             LAFFYHAND
           </span>
 
-          {/* Model + Token usage — 上下文信息 */}
+          {/* Model + Token usage */}
           {(model || sessionUsage) && (
             <>
               <span className="w-px h-4 bg-gray-200 dark:bg-gray-700 mx-1 shrink-0" />
@@ -234,6 +238,9 @@ export function AppShell() {
             )}
           </button>
         </div>
+
+        {/* Session tabs */}
+        <SessionTabs />
 
         <div className="flex-1 flex flex-col min-h-0">
           <ErrorBoundary>

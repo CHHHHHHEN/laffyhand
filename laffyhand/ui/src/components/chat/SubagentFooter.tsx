@@ -1,10 +1,18 @@
-import { useMemo } from "react"
+import { useMemo, useRef } from "react"
 import { useChatStore } from "@/stores/chat-store"
+import { useSessionStore } from "@/stores/session-store"
 import { buildSubagentTree } from "@/lib/subagentTree"
 import { SubagentCard } from "./SubagentCard"
 
 export function SubagentFooter() {
-  const backgroundSubagents = useChatStore((s) => s.backgroundSubagents)
+  const activeSessionId = useSessionStore((s) => s.activeSessionId)
+  const emptyRef = useRef<never[]>([])
+  const backgroundSubagents = useChatStore(
+    (s) => {
+      if (!activeSessionId) return emptyRef.current
+      return s.sessions[activeSessionId]?.backgroundSubagents ?? emptyRef.current
+    },
+  )
 
   const tree = useMemo(
     () => buildSubagentTree(backgroundSubagents),

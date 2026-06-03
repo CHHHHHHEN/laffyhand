@@ -5,6 +5,7 @@ import { MessageList } from "@/components/chat/MessageList"
 import { useChat } from "@/hooks/use-chat"
 import { useCurrentSession } from "@/hooks/use-sessions"
 import { useChatStore } from "@/stores/chat-store"
+import { useSessionStore } from "@/stores/session-store"
 import { Spinner } from "@/components/ui/Spinner"
 
 export function ChatPage() {
@@ -12,8 +13,20 @@ export function ChatPage() {
   const navigate = useNavigate()
   const { sendMessage, interruptMessage, steerMessage, queueMessage, cancelStream } = useChat()
   const { isLoading, session, isError } = useCurrentSession(sessionId)
-  const isStreaming = useChatStore((s) => s.isStreaming)
-  const messages = useChatStore((s) => s.messages)
+
+  const setActiveSessionId = useSessionStore((s) => s.setActiveSessionId)
+  const addActiveSession = useSessionStore((s) => s.addActiveSession)
+
+  useEffect(() => {
+    if (sessionId) {
+      setActiveSessionId(sessionId)
+      addActiveSession(sessionId)
+    }
+  }, [sessionId, setActiveSessionId, addActiveSession])
+
+  const sessionState = useChatStore((s) => (sessionId ? s.sessions[sessionId] : undefined))
+  const isStreaming = sessionState?.isStreaming ?? false
+  const messages = sessionState?.messages ?? []
 
   useEffect(() => {
     if (isError) {
@@ -22,11 +35,15 @@ export function ChatPage() {
   }, [isError, navigate])
 
   const retryLastMessage = useCallback(() => {
-    const lastUserMsg = [...useChatStore.getState().messages].reverse().find((m) => m.role === "user")
+    if (!sessionId) return
+    const state = useChatStore.getState()
+    const sess = state.sessions[sessionId]
+    if (!sess) return
+    const lastUserMsg = [...sess.messages].reverse().find((m) => m.role === "user")
     if (lastUserMsg) {
       sendMessage(lastUserMsg.content)
     }
-  }, [sendMessage])
+  }, [sendMessage, sessionId])
 
   // Update page title with session name
   useEffect(() => {
@@ -62,7 +79,7 @@ export function ChatPage() {
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
-      <MessageList onRetry={retryLastMessage} />
+      <MessageList sessionId={sessionId} onRetry={retryLastMessage} />
       <ChatInput
         onSend={sendMessage}
         onInterrupt={interruptMessage}
