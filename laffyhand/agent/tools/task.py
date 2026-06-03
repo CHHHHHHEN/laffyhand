@@ -60,11 +60,16 @@ class TaskTool(BaseTool):
         background = params.get("background", False)
         todo_id = params.get("todo_id")
 
+        parent_session_id = self._runtime.current_session_id
+        if parent_session_id is None:
+            return "Error: no active session"
+
         agent_info = self._runtime.agent_registry.get(subagent_type)
         if agent_info is None:
             return f"Error: unknown sub-agent '{subagent_type}'"
 
         result = await self._runtime.create_subagent(
+            parent_session_id,
             agent_info,
             prompt,
             description=description,

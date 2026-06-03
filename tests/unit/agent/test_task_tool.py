@@ -13,6 +13,7 @@ def runtime():
     rt = MagicMock()
     rt.agent_registry = AgentRegistry()
     rt.create_subagent = AsyncMock()
+    rt.current_session_id = "session-123"
     return rt
 
 
@@ -34,6 +35,7 @@ class TestTaskTool:
         assert result == "<task>\nDone\n</task>"
         agent = runtime.agent_registry.get("explore")
         runtime.create_subagent.assert_awaited_once_with(
+            "session-123",
             agent,
             "Find the main function",
             description="",
@@ -54,6 +56,7 @@ class TestTaskTool:
         assert result == "Sub-agent started"
         agent = runtime.agent_registry.get("general")
         runtime.create_subagent.assert_awaited_once_with(
+            "session-123",
             agent,
             "Do something",
             description="",
@@ -73,6 +76,7 @@ class TestTaskTool:
         )
         agent = runtime.agent_registry.get("build")
         runtime.create_subagent.assert_awaited_once_with(
+            "session-123",
             agent,
             "Fix the bug",
             description="Fix bug",
