@@ -20,9 +20,12 @@ from laffyhand.gateway.handlers import (
     handle_chat_cancel,
     handle_config_providers,
     handle_mcp_status,
+    handle_mcp_add_server,
+    handle_mcp_remove_server,
     handle_session_set_config,
     handle_permission_respond,
     handle_tools_list,
+    handle_tools_set_disabled,
     _serialize_messages,
     _next_msg_id,
 )
@@ -163,12 +166,28 @@ class TestHandleSessionDelete:
 class TestHandleSessionFork:
     @pytest.mark.anyio
     async def test_forks_session(self, runtime, transport):
+        runtime.current_session_id = "sess-1"
         runtime.fork_session = MagicMock(return_value="forked-id")
         result = await handle_session_fork(runtime, {}, transport, 1, "c1")
         assert result["session_id"] == "forked-id"
+        runtime.fork_session.assert_called_once_with("sess-1")
+
+    @pytest.mark.anyio
+    async def test_uses_current_session_id(self, runtime, transport):
+        runtime.current_session_id = "sess-target"
+        runtime.fork_session = MagicMock(return_value="forked-id")
+        await handle_session_fork(runtime, {}, transport, 1, "c1")
+        runtime.fork_session.assert_called_once_with("sess-target")
 
     @pytest.mark.anyio
     async def test_raises_on_no_active(self, runtime, transport):
+        runtime.current_session_id = None
+        with pytest.raises(ValueError, match="No active session"):
+            await handle_session_fork(runtime, {}, transport, 1, "c1")
+
+    @pytest.mark.anyio
+    async def test_raises_when_fork_returns_none(self, runtime, transport):
+        runtime.current_session_id = "sess-1"
         runtime.fork_session = MagicMock(return_value=None)
         with pytest.raises(ValueError, match="No active session"):
             await handle_session_fork(runtime, {}, transport, 1, "c1")
@@ -535,11 +554,16 @@ class TestHandleChatStream:
 
 class TestHandleToolsList:
     @pytest.mark.anyio
-    async def test_returns_tools(self, runtime, transport):
+    async def test_returns_tools_with_enabled_field(self, runtime, transport):
+        runtime.state.disabled_tools = set()
         tool1 = MagicMock()
-        tool1.model_dump.return_value = {"name": "read"}
+        tool1.name = "read"
+        tool1.description = "Read file"
+        tool1.input_schema = {}
         tool2 = MagicMock()
-        tool2.model_dump.return_value = {"name": "write"}
+        tool2.name = "write"
+        tool2.description = "Write file"
+        tool2.input_schema = {}
         runtime.tool_registry.build_tool_definitions = AsyncMock(
             return_value=[tool1, tool2]
         )
@@ -548,6 +572,55 @@ class TestHandleToolsList:
 
         assert len(result["tools"]) == 2
         assert result["tools"][0]["name"] == "read"
+        assert result["tools"][0]["enabled"] is True
+
+    @pytest.mark.anyio
+    async def test_reflects_disabled_tools(self, runtime, transport):
+        runtime.state.disabled_tools = {"read"}
+        tool1 = MagicMock()
+        tool1.name = "read"
+        tool1.description = "Read file"
+        tool1.input_schema = {}
+        tool2 = MagicMock()
+        tool2.name = "write"
+        tool2.description = "Write file"
+        tool2.input_schema = {}
+        runtime.tool_registry.build_tool_definitions = AsyncMock(
+            return_value=[tool1, tool2]
+        )
+
+        result = await handle_tools_list(runtime, {}, transport, 1, "c1")
+
+        tools = {t["name"]: t["enabled"] for t in result["tools"]}
+        assert tools["read"] is False
+        assert tools["write"] is True
+
+
+class TestHandleToolsSetDisabled:
+    @pytest.mark.anyio
+    async def test_sets_disabled_tools(self, runtime, transport):
+        runtime.state.disabled_tools = set()
+        result = await handle_tools_set_disabled(
+            runtime, {"tool_names": ["read", "write"]}, transport, 1, "c1"
+        )
+        assert result["status"] == "ok"
+        assert set(result["disabled_tools"]) == {"read", "write"}
+        assert runtime.state.disabled_tools == {"read", "write"}
+
+    @pytest.mark.anyio
+    async def test_clears_disabled_tools(self, runtime, transport):
+        runtime.state.disabled_tools = {"read", "write"}
+        result = await handle_tools_set_disabled(
+            runtime, {"tool_names": []}, transport, 1, "c1"
+        )
+        assert result["status"] == "ok"
+        assert runtime.state.disabled_tools == set()
+
+    @pytest.mark.anyio
+    async def test_raises_when_no_state(self, runtime, transport):
+        runtime.state = None
+        with pytest.raises(RuntimeError, match="No active session"):
+            await handle_tools_set_disabled(runtime, {}, transport, 1, "c1")
 
 
 class TestHandleSessionSearch:
@@ -929,6 +1002,86 @@ class TestHandlePermissionRespond:
                 1,
                 "c1",
             )
+
+
+class TestHandleMCPAddServer:
+    @pytest.mark.anyio
+    async def test_adds_local_server(self, runtime, transport):
+        runtime.add_mcp_server = AsyncMock(return_value=["mcp_test_tool1"])
+        result = await handle_mcp_add_server(
+            runtime,
+            {"name": "test-server", "type": "local", "command": ["echo", "hi"]},
+            transport, 1, "c1",
+        )
+        assert result["status"] == "connected"
+        assert result["name"] == "test-server"
+        assert result["tools"] == ["mcp_test_tool1"]
+
+    @pytest.mark.anyio
+    async def test_adds_remote_server(self, runtime, transport):
+        runtime.add_mcp_server = AsyncMock(return_value=["mcp_remote_tool1"])
+        result = await handle_mcp_add_server(
+            runtime,
+            {"name": "remote-server", "type": "remote", "url": "https://example.com/mcp"},
+            transport, 1, "c1",
+        )
+        assert result["status"] == "connected"
+        assert result["name"] == "remote-server"
+
+    @pytest.mark.anyio
+    async def test_requires_name(self, runtime, transport):
+        with pytest.raises(ValueError, match="name is required"):
+            await handle_mcp_add_server(
+                runtime, {}, transport, 1, "c1",
+            )
+
+    @pytest.mark.anyio
+    async def test_requires_command_for_local(self, runtime, transport):
+        with pytest.raises(ValueError, match="command is required"):
+            await handle_mcp_add_server(
+                runtime, {"name": "x", "type": "local"}, transport, 1, "c1",
+            )
+
+    @pytest.mark.anyio
+    async def test_requires_url_for_remote(self, runtime, transport):
+        with pytest.raises(ValueError, match="url is required"):
+            await handle_mcp_add_server(
+                runtime, {"name": "x", "type": "remote"}, transport, 1, "c1",
+            )
+
+    @pytest.mark.anyio
+    async def test_invalid_type(self, runtime, transport):
+        with pytest.raises(ValueError, match="Invalid MCP server type"):
+            await handle_mcp_add_server(
+                runtime, {"name": "x", "type": "invalid"}, transport, 1, "c1",
+            )
+
+    @pytest.mark.anyio
+    async def test_connection_failure(self, runtime, transport):
+        runtime.add_mcp_server = AsyncMock(side_effect=RuntimeError("connection failed"))
+        with pytest.raises(ValueError, match="Failed to connect"):
+            await handle_mcp_add_server(
+                runtime,
+                {"name": "bad-server", "type": "local", "command": ["bad"]},
+                transport, 1, "c1",
+            )
+
+
+class TestHandleMCPRemoveServer:
+    @pytest.mark.anyio
+    async def test_removes_server(self, runtime, transport):
+        runtime.remove_mcp_server = AsyncMock(return_value=3)
+        result = await handle_mcp_remove_server(
+            runtime, {"name": "test-server"}, transport, 1, "c1",
+        )
+        assert result["status"] == "disconnected"
+        assert result["name"] == "test-server"
+        assert result["unregistered_tools"] == 3
+
+    @pytest.mark.anyio
+    async def test_requires_name(self, runtime, transport):
+        with pytest.raises(ValueError, match="name is required"):
+            await handle_mcp_remove_server(runtime, {}, transport, 1, "c1")
 
 
 def _async_gen(items):

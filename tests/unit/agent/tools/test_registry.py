@@ -60,3 +60,35 @@ class TestRegistry(unittest.TestCase):
         self.registry.unregister_tool("echo")
         result = asyncio.run(self.registry.run_tool("echo", {}))
         self.assertIn("not registered", result)
+
+    def test_build_tool_definitions_exclude(self):
+        self.registry.register_tool(EchoTool())
+        defs = asyncio.run(self.registry.build_tool_definitions(exclude={"echo"}))
+        self.assertEqual(len(defs), 0)
+
+    def test_build_tool_definitions_exclude_partial(self):
+        class OtherTool(BaseTool):
+            name = "other"
+            description = "Other tool"
+            def _input_schema(self) -> dict:
+                return {"type": "object", "properties": {}}
+            async def run(self, params: dict) -> str:
+                return "ok"
+
+        self.registry.register_tool(OtherTool())
+        defs = asyncio.run(self.registry.build_tool_definitions(exclude={"echo"}))
+        self.assertEqual(len(defs), 1)
+        self.assertEqual(defs[0].name, "other")
+
+    def test_build_tool_definitions_exclude_none(self):
+        defs = asyncio.run(self.registry.build_tool_definitions(exclude=None))
+        self.assertEqual(len(defs), 1)
+        self.assertEqual(defs[0].name, "echo")
+
+    def test_build_tool_prompt_exclude(self):
+        prompt = self.registry.build_tool_prompt(exclude={"echo"})
+        self.assertNotIn("echo", prompt)
+
+    def test_build_tool_prompt_exclude_none(self):
+        prompt = self.registry.build_tool_prompt(exclude=None)
+        self.assertIn("echo", prompt)
