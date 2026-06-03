@@ -79,13 +79,16 @@ describe("MessageList", () => {
     expect(screen.getByText("partial response")).toBeInTheDocument()
   })
 
-  it("shows stream reasoning inline when streaming without content", () => {
+  it("shows stream reasoning inside ReasoningBlock when streaming without content", () => {
     useChatStore.setState({
       isStreaming: true,
       streamReasoning: "thinking step by step",
     })
     render(<MessageList />)
-    expect(screen.getByText("thinking step by step")).toBeInTheDocument()
+    // ReasoningBlock shows the "Thinking" header with line count
+    expect(screen.getByText("Show (1 lines)")).toBeInTheDocument()
+    // Reasoning text is hidden inside the collapsed panel
+    expect(screen.queryByText("thinking step by step")).not.toBeInTheDocument()
   })
 
   it("shows thinking spinner when streaming without reasoning or content", () => {

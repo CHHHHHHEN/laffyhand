@@ -119,7 +119,7 @@ export function MessageList({ onRetry }: MessageListProps) {
               {/* 流式推理 — 使用折叠面板 */}
               {streamReasoning && <ReasoningBlock text={streamReasoning} />}
 
-              {/* 流式内容：优先显示 content，若为空则回退显示 reasoning */}
+              {/* 流式内容 */}
               {streamContent ? (
                 <div
                   className="prose prose-sm dark:prose-invert max-w-none"
@@ -127,10 +127,6 @@ export function MessageList({ onRetry }: MessageListProps) {
                     __html: DOMPurify.sanitize(streamContent.replace(/\n/g, "<br>")),
                   }}
                 />
-              ) : streamReasoning ? (
-                <div className="text-sm text-gray-600 dark:text-gray-300 whitespace-pre-wrap leading-relaxed">
-                  {streamReasoning}
-                </div>
               ) : (
                 <div className="flex items-center gap-2.5 py-1">
                   <Spinner size="sm" />
