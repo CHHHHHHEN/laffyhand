@@ -83,7 +83,7 @@ export function useChat() {
           {
             onEvent: (event) => {
               const store = useChatStore.getState()
-              if (!store.isStreaming) return
+              if (!store.isStreaming && event.type !== "step-start") return
               switch (event.type) {
                 case "step-start":
                   if (!store.isStreaming) {

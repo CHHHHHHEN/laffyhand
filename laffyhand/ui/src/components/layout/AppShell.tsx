@@ -33,9 +33,6 @@ export function AppShell() {
     document.documentElement.classList.toggle("dark", darkMode)
   }, [darkMode])
 
-  const totalTokens = sessionUsage
-    ? sessionUsage.total_input + sessionUsage.total_output
-    : 0
   const ctxSize = sessionUsage?.context_size ?? 0
   const contextTokens = sessionUsage?.curr_context_usage ?? 0
 
@@ -86,13 +83,12 @@ export function AppShell() {
                 <>
                   <span className="text-gray-300 dark:text-gray-600 select-none text-xs shrink-0">|</span>
 
-                  <span className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400 text-[11px] shrink-0" title="This turn / Cumulative / Context size">
+                  <span className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400 text-[11px] shrink-0" title="Context usage / Context size">
                     <svg className="w-3 h-3 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
                     </svg>
-                    <span className="font-medium">{formatTokens(turnUsage.input + turnUsage.output)}</span>
-                    <span className="text-gray-400 dark:text-gray-500">/ {formatTokens(totalTokens)}</span>
-                    <span className="text-gray-300 dark:text-gray-500">/ {formatTokens(ctxSize)}</span>
+                    <span className="font-medium">{formatTokens(contextTokens)}</span>
+                    <span className="text-gray-400 dark:text-gray-500">/ {formatTokens(ctxSize)}</span>
                     {ctxSize > 0 && contextTokens > 0 && (
                       <span className={`text-[10px] font-medium ${
                         contextTokens / ctxSize > 0.8
@@ -153,11 +149,11 @@ export function AppShell() {
               {!turnUsage && sessionUsage && (
                 <>
                   <span className="text-gray-300 dark:text-gray-600 select-none text-xs shrink-0">|</span>
-                  <span className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400 text-[11px] shrink-0" title="Cumulative tokens / Context size">
+                  <span className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400 text-[11px] shrink-0" title="Context usage / Context size">
                     <svg className="w-3 h-3 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
                     </svg>
-                    <span className="font-medium">{formatTokens(totalTokens)}</span>
+                    <span className="font-medium">{formatTokens(contextTokens)}</span>
                     <span className="text-gray-400 dark:text-gray-500">/ {formatTokens(ctxSize)}</span>
                     {ctxSize > 0 && contextTokens > 0 && (
                       <span className={`text-[10px] font-medium ${
