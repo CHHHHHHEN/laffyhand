@@ -19,7 +19,6 @@ from laffyhand.agent.schemas import (
     SessionUsage,
 )
 from laffyhand.agent.compaction import (
-    compact,
     compact_with_chain,
     is_overflow,
     select_tail,
@@ -31,6 +30,7 @@ from laffyhand.agent.token_utils import (
     estimate_message_tokens,
     estimate_messages_tokens,
 )
+from laffyhand.agent.context import build_llm_context
 from laffyhand.agent.prune import prune, PRUNE_PROTECT
 
 
@@ -236,21 +236,46 @@ class TestPrune(unittest.TestCase):
         self.assertLess(pruned_count, 3)
 
 
-class TestCompact(unittest.TestCase):
-    @pytest.mark.anyio
-    async def test_compact_no_head_returns_false(self):
+class TestBuildLlmContext(unittest.TestCase):
+    def test_no_prune_when_disabled(self):
+        config = CompactionConfig(prune=False)
         state = AgentState(
-            messages=[SystemMessage(content="sys"), UserMessage(content="hi")],
+            messages=[
+                SystemMessage(content="sys"),
+                ToolMessage(tool_call_id="c1", content="test"),
+            ],
             session_id=SessionID("test"),
-            usage=SessionUsage(context_size=0),
         )
-        config = CompactionConfig(tail_turns=5)
-        llm = MagicMock()
-        result = await compact(state, llm, config)
-        self.assertFalse(result)
+        ctx = build_llm_context(state, config)
+        self.assertEqual(len(ctx), 2)
+        self.assertEqual(ctx[1].content, "test")
 
+    def test_prune_applied_to_context_view(self):
+        config = CompactionConfig(prune=True)
+        original = "x" * (PRUNE_PROTECT * 4 + 5)
+        msgs = [
+            SystemMessage(content="sys"),
+            ToolMessage(tool_call_id="c1", content=original),
+        ]
+        state = AgentState(
+            messages=list(msgs),
+            session_id=SessionID("test"),
+        )
+        ctx = build_llm_context(state, config)
+        self.assertTrue(
+            ctx[1].content.startswith("[Old tool result content cleared:"),
+            "context view should have pruned tool output",
+        )
+        self.assertEqual(
+            msgs[1].content,
+            original,
+            "original messages must not be mutated by build_llm_context",
+        )
+
+
+class TestCompactWithChainStateMutation(unittest.TestCase):
     @pytest.mark.anyio
-    async def test_compact_generates_summary(self):
+    async def test_compact_with_chain_and_apply_state(self):
         msgs = [SystemMessage(content="sys")]
         for i in range(20):
             msgs.append(UserMessage(content=f"user {i}"))
@@ -269,10 +294,12 @@ class TestCompact(unittest.TestCase):
         llm = MagicMock()
         llm.stream = mock_stream
 
-        result = await compact(state, llm, config)
-        self.assertTrue(result)
+        result = await compact_with_chain(state, llm, config)
+        self.assertIsNotNone(result)
+        summary, original_system, tail = result
+        summary_msg = SystemMessage(content=summary)
+        state.messages = original_system + [summary_msg] + tail
         self.assertLess(len(state.messages), len(msgs))
-        # Summary should be wrapped in <summary> tags
         summary_msgs = [
             m
             for m in state.messages
@@ -281,28 +308,6 @@ class TestCompact(unittest.TestCase):
         self.assertEqual(
             len(summary_msgs), 1, "should have exactly one summary message"
         )
-
-    @pytest.mark.anyio
-    async def test_compact_stream_error_returns_false(self):
-        msgs = [SystemMessage(content="sys")]
-        for i in range(20):
-            msgs.append(UserMessage(content=f"user {i}"))
-            msgs.append(AssistantMessage(content=f"asst {i}"))
-        state = AgentState(
-            messages=msgs,
-            session_id=SessionID("test"),
-            usage=SessionUsage(context_size=100_000),
-        )
-        config = CompactionConfig(tail_turns=2, preserve_recent_tokens=6)
-
-        async def mock_stream(*args, **kwargs):
-            yield StreamError(error="LLM failed")
-
-        llm = MagicMock()
-        llm.stream = mock_stream
-
-        result = await compact(state, llm, config)
-        self.assertFalse(result)
 
 
 class TestCompactWithChain(unittest.TestCase):
@@ -433,8 +438,8 @@ class TestSummaryChain(unittest.TestCase):
 
     @pytest.mark.anyio
     async def test_second_compaction_passes_previous_summary(self):
-        """Compact twice; verify that the second compaction's input includes
-        the first summary as [Previous Summary]."""
+        """Compact twice via compact_with_chain; verify that the second
+        compaction's input includes the first summary as [Previous Summary]."""
         msgs = [SystemMessage(content="sys")]
         for i in range(10):
             msgs.append(UserMessage(content=f"user {i}"))
@@ -468,8 +473,17 @@ class TestSummaryChain(unittest.TestCase):
         llm = MagicMock()
         llm.stream = mock_stream
 
+        async def _apply_compact(state: AgentState) -> bool:
+            result = await compact_with_chain(state, llm, config)
+            if result is None:
+                return False
+            summary, original_system, tail = result
+            summary_msg = SystemMessage(content=summary)
+            state.messages = original_system + [summary_msg] + tail
+            return True
+
         # First compaction
-        result1 = await compact(state, llm, config)
+        result1 = await _apply_compact(state)
         self.assertTrue(result1)
 
         # Add more messages to trigger second compaction
@@ -478,7 +492,7 @@ class TestSummaryChain(unittest.TestCase):
             state.messages.append(AssistantMessage(content=f"asst {i}"))
 
         # Second compaction
-        result2 = await compact(state, llm, config)
+        result2 = await _apply_compact(state)
         self.assertTrue(result2)
 
         # Verify that the first summary was passed to the second compaction

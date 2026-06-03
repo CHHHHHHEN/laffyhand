@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
-from laffyhand.agent.llm.specs.models import AssistantMessage, SystemMessage, ToolMessage, UserMessage
+from laffyhand.agent.llm.specs.models import AssistantMessage, UserMessage
 from laffyhand.agent.llm.specs.models import (
     StreamText,
     StreamReasoning,
@@ -33,9 +33,9 @@ from laffyhand.agent.schemas import (
     Compacting,
     AgentEvent,
 )
-from laffyhand.agent.token_utils import estimate_tokens, estimate_messages_tokens
+
 from laffyhand.agent.compaction import compact_on_overflow
-from laffyhand.agent.prune import prune
+from laffyhand.agent.context import build_llm_context
 from laffyhand.agent.tool_executor import ToolExecutor
 from laffyhand.agent.llm.facade import LLM
 from laffyhand.agent.tools import ToolRegistry
@@ -112,7 +112,7 @@ async def agent_loop(
             new_prefs = await preference_checker()
             if new_prefs:
                 wrapped = f"<system-reminder>\n{new_prefs}\n</system-reminder>"
-                agent_state.messages.append(SystemMessage(content=wrapped))
+                agent_state.messages.append(UserMessage(content=wrapped))
                 logger.info("Injected new preferences via <system-reminder>")
 
         reasoning_buf: list[str] = []
@@ -124,13 +124,14 @@ async def agent_loop(
         text_id: str | None = None
         reasoning_id: str | None = None
         tool_definitions = await tool_registry.build_tool_definitions()
+        llm_context = build_llm_context(agent_state, compaction_config)
         logger.debug(
-            f"Sending {len(agent_state.messages)} messages to LLM, {len(tool_definitions)} tools"
+            f"Sending {len(llm_context)} messages to LLM, {len(tool_definitions)} tools"
         )
 
         yield StepStart(index=step_index)
 
-        async for event in llm.stream(agent_state.messages, tools=tool_definitions):
+        async for event in llm.stream(llm_context, tools=tool_definitions):
             if isinstance(event, StreamReasoning):
                 reasoning_buf.append(event.delta)
                 if reasoning_id is None:
@@ -174,13 +175,6 @@ async def agent_loop(
             f"Turn {agent_state.turn_count} complete, finish_reason={finish_reason}"
         )
 
-        if usage is None:
-            logger.warning("API did not return usage, falling back to estimate_tokens")
-            usage = Usage(
-                input_tokens=estimate_messages_tokens(agent_state.messages),
-                output_tokens=estimate_tokens("".join(content_buf)),
-            )
-
         # Ensure AssistantMessage always has content or tool_calls — the API rejects
         # assistant messages where both are absent (e.g. after a stream error).
         combined_content = "".join(content_buf) if content_buf else None
@@ -201,7 +195,8 @@ async def agent_loop(
             tokens=usage,
         )
         agent_state.messages.append(assistant_msg)
-        agent_state.usage.add(usage)
+        if usage is not None:
+            agent_state.usage.add(usage)
 
         if finish_reason == "tool_calls" and tool_calls:
             logger.debug(f"Executing {len(tool_calls)} tool call(s)")
@@ -226,34 +221,20 @@ async def agent_loop(
                         result=exec_result.event_data,
                     )
 
-            # Inject pending steer into the last tool result
-            if (
-                agent_state.pending_steer
-                and agent_state.messages
-                and isinstance(agent_state.messages[-1], ToolMessage)
-            ):
+            # Inject pending steer as a separate UserMessage —
+            # never mutate an existing ToolMessage (preserves original for replay)
+            if agent_state.pending_steer:
                 steer_text = agent_state.pending_steer
                 agent_state.pending_steer = None
-                last_tool: ToolMessage = agent_state.messages[-1]
-                steer_content = (
-                    last_tool.content + f"\n\n[User steers: {steer_text}]"
-                    if last_tool.content
-                    else f"[User steers: {steer_text}]"
+                agent_state.messages.append(
+                    UserMessage(content=f"[User steers: {steer_text}]")
                 )
-                agent_state.messages[-1] = ToolMessage(
-                    tool_call_id=last_tool.tool_call_id,
-                    content=steer_content,
-                    is_error=last_tool.is_error,
-                )
-                logger.debug("Injected steer text into tool result")
+                logger.debug("Injected steer text as UserMessage")
 
             yield StepFinish(
                 index=step_index, reason=finish_reason or "stop", usage=usage
             )
 
-            if compaction_config.prune:
-                logger.debug("Pruning after tool calls")
-                agent_state.messages = prune(agent_state.messages)
             if session_manager is not None and agent_state.session_id:
                 new_msgs = agent_state.messages[_stored_count:]
                 if new_msgs:

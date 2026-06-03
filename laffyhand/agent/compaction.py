@@ -230,20 +230,6 @@ def _select_compaction_targets(
     return head_to_summarize, original_system, tail
 
 
-async def compact(agent_state: AgentState, llm: LLM, config: CompactionConfig) -> bool:
-    result = await compact_with_chain(agent_state, llm, config)
-    if result is None:
-        return False
-
-    summary, original_system, tail = result
-    summary_msg = SystemMessage(content=summary)
-    agent_state.messages = original_system + [summary_msg] + tail
-    logger.info(
-        f"Compaction complete: summary + {len(tail)} tail messages"
-    )
-    return True
-
-
 async def compact_with_chain(
     agent_state: AgentState,
     llm: LLM,
@@ -289,27 +275,24 @@ async def compact_on_overflow(
         return False
     logger.info(f"Compaction triggered: {tokens} tokens")
 
-    if session_manager is not None and agent_state.session_id:
-        result = await compact_with_chain(agent_state, llm, compaction_config)
-        if result is None:
-            return False
-        summary, original_system, tail = result
-        child = session_manager.create_compacted_child(
-            parent_id=agent_state.session_id,
-            system_messages=original_system,
-            summary_content=summary,
-            tail_messages=tail,
-        )
-        summary_msg = SystemMessage(content=summary.strip())
-        agent_state.session_id = SessionID(child.id)
-        agent_state.messages = original_system + [summary_msg] + tail
-        agent_state.step = 0
-        if on_compacted is not None:
-            on_compacted(child.id)
-        return True
+    if session_manager is None or not agent_state.session_id:
+        logger.error("Compaction requires a session_manager")
+        return False
 
-    if await compact(agent_state, llm, compaction_config):
-        logger.info("Compaction succeeded")
-        return True
-    logger.warning("Compaction failed: could not compact conversation")
-    return False
+    result = await compact_with_chain(agent_state, llm, compaction_config)
+    if result is None:
+        return False
+    summary, original_system, tail = result
+    child = session_manager.create_compacted_child(
+        parent_id=agent_state.session_id,
+        system_messages=original_system,
+        summary_content=summary,
+        tail_messages=tail,
+    )
+    summary_msg = SystemMessage(content=summary.strip())
+    agent_state.session_id = SessionID(child.id)
+    agent_state.messages = original_system + [summary_msg] + tail
+    agent_state.step = 0
+    if on_compacted is not None:
+        on_compacted(child.id)
+    return True

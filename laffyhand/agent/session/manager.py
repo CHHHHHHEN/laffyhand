@@ -157,9 +157,10 @@ class SessionManager:
                 for msg in state.messages[existing:]:
                     self._messages.insert(message_to_session_message(msg, session_id))
             elif len(state.messages) < existing:
-                self._messages.delete_by_session(session_id)
-                for msg in state.messages:
-                    self._messages.insert(message_to_session_message(msg, session_id))
+                logger.warning(
+                    f"save_state: state has fewer messages ({len(state.messages)}) "
+                    f"than DB ({existing}). Appending nothing — DB is source of truth."
+                )
 
             self._sessions.update_counters(
                 session_id,
@@ -171,7 +172,7 @@ class SessionManager:
                 cache_read_tokens=state.usage.total_cache_read,
                 cache_write_tokens=state.usage.total_cache_write,
                 cost=state.usage.cost,
-                message_count=len(state.messages),
+                message_count=max(len(state.messages), existing),
             )
             self._conn.commit()
         except Exception:

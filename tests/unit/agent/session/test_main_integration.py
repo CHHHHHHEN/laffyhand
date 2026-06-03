@@ -151,7 +151,7 @@ class TestCompactOnOverflow:
         assert state.step == 0
 
     @pytest.mark.anyio
-    async def test_overflow_without_session_manager(
+    async def test_overflow_without_session_manager_returns_false(
         self, session_manager: SessionManager
     ) -> None:
         from laffyhand.agent.compaction import compact_on_overflow as _compact_on_overflow
@@ -178,8 +178,7 @@ class TestCompactOnOverflow:
         )
         config = CompactionConfig(tail_turns=1)
         result = await _compact_on_overflow(state, llm, config, None)
-        assert result is True
-        assert len(state.messages) < len(msgs)
+        assert result is False, "compaction without session_manager must return False"
 
     @pytest.mark.anyio
     async def test_overflow_with_session_compact_fails(
