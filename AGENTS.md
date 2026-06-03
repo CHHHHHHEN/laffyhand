@@ -7,10 +7,12 @@
 - 使用 uv run mypy laffyhand/ 运行静态检查
 - 使用 uv run ruff 运行风格检查
 - 使用 uv run vulture --min-confidence 70 运行死代码检查
+- 使用 uv run pytest tests/ 运行测试
 
 假如修改了前端 UI:
 - 使用 pnpm build 进行构建测试
 - 使用 eslint 检查代码风格
+- 使用 pnpm vitest run 运行测试
 
 问题排查规范：
 - 优先选择**客观**最佳方案，而不是 Quick fix

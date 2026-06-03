@@ -457,6 +457,16 @@ class HTTPTransport:
                 {"jsonrpc": "2.0", "id": message.id, "result": result},
                 origin=origin,
             )
+        except ValueError as e:
+            logger.error(f"HTTP RPC validation error for method={message.method}: {e}")
+            return _json_response(
+                {
+                    "jsonrpc": "2.0",
+                    "error": {"code": -32000, "message": str(e)},
+                    "id": message.id,
+                },
+                origin=origin,
+            )
         except Exception:
             logger.opt(exception=True).error(f"HTTP RPC error for method={message.method}")
             return _json_response(
@@ -465,7 +475,6 @@ class HTTPTransport:
                     "error": {"code": -32603, "message": "Internal error"},
                     "id": message.id,
                 },
-                status=500,
                 origin=origin,
             )
 

@@ -1,5 +1,5 @@
 import { useEffect, useCallback } from "react"
-import { useParams } from "react-router-dom"
+import { useParams, useNavigate } from "react-router-dom"
 import { ChatInput } from "@/components/chat/ChatInput"
 import { MessageList } from "@/components/chat/MessageList"
 import { useChat } from "@/hooks/use-chat"
@@ -9,10 +9,17 @@ import { Spinner } from "@/components/ui/Spinner"
 
 export function ChatPage() {
   const { sessionId } = useParams()
+  const navigate = useNavigate()
   const { sendMessage, interruptMessage, steerMessage, queueMessage, cancelStream } = useChat()
-  const { isLoading, session } = useCurrentSession(sessionId)
+  const { isLoading, session, isError } = useCurrentSession(sessionId)
   const isStreaming = useChatStore((s) => s.isStreaming)
   const messages = useChatStore((s) => s.messages)
+
+  useEffect(() => {
+    if (isError) {
+      navigate("/chat", { replace: true })
+    }
+  }, [isError, navigate])
 
   const retryLastMessage = useCallback(() => {
     const lastUserMsg = [...useChatStore.getState().messages].reverse().find((m) => m.role === "user")

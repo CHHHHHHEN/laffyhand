@@ -237,9 +237,10 @@ class TestHandleRpcCall:
             http_transport._dispatcher,
             "http://localhost:1420",
         )
-        assert response.status == 500
+        assert response.status == 200
         body = json.loads(response.body)
-        assert body["error"]["code"] == -32603
+        assert body["error"]["code"] == -32000
+        assert body["error"]["message"] == "bad params"
 
 
 class TestSseTaskTracking:

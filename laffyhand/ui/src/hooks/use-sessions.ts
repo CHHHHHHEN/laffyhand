@@ -132,7 +132,7 @@ export function useCurrentSession(sessionId: string | undefined) {
   const setCurrentSessionId = useSessionStore((s) => s.setCurrentSessionId)
   const loadMessages = useChatStore((s) => s.loadMessages)
 
-  const { data: session, isLoading } = useQuery({
+  const { data: session, isLoading, isError } = useQuery({
     queryKey: ["session", sessionId],
     queryFn: async () => {
       if (!sessionId) return null
@@ -172,5 +172,5 @@ export function useCurrentSession(sessionId: string | undefined) {
     }
   }, [session, sessionId, setCurrentSessionId, loadMessages])
 
-  return { session, isLoading }
+  return { session, isLoading, isError }
 }
