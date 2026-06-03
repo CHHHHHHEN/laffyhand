@@ -28,6 +28,9 @@ from laffyhand.gateway.protocol import (
     SESSION_FORK,
     SESSION_SEARCH,
     SESSION_SET_TITLE,
+    TOOLS_SET_DISABLED,
+    MCP_ADD_SERVER,
+    MCP_REMOVE_SERVER,
     SESSION_GENERATE_TITLE,
     SESSION_ARCHIVE,
     SUBAGENT_LIST_ACTIVE,
@@ -254,7 +257,10 @@ async def handle_session_fork(
     _request_id: str | int | None,
     conn_id: str,
 ) -> dict[str, Any]:
-    child_id = runtime.fork_session()
+    session_id = runtime.current_session_id
+    if not session_id:
+        raise ValueError("No active session to fork")
+    child_id = runtime.fork_session(session_id)
     if child_id is None:
         raise ValueError("No active session to fork")
     return {"session_id": child_id}

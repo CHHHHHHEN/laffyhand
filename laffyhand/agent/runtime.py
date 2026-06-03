@@ -268,7 +268,8 @@ class AgentRuntime:
         ]
         parts.append("<env>\n" + "\n".join(env_parts) + "\n</env>")
 
-        parts.append(self.tool_registry.build_tool_prompt())
+        disabled = (self.state.disabled_tools) if self.state else set()
+        parts.append(self.tool_registry.build_tool_prompt(exclude=disabled))
 
         if self.skill_registry.all():
             parts.append(self.skill_registry.build_skills_summary())
@@ -289,9 +290,35 @@ class AgentRuntime:
         self._states[child.id] = forked
         return child.id
 
+    async def add_mcp_server(self, name: str, cfg: Any) -> list[str]:
+        from laffyhand.agent.mcp.service import MCPWrappedTool
+
+        tool_defs = await self.mcp_service.connect_server(name, cfg)
+        tool_names: list[str] = []
+        for td in tool_defs:
+            wrapper = MCPWrappedTool(name, td, self.mcp_service)
+            self.tool_registry.register_tool(wrapper)
+            tool_names.append(wrapper.name)
+        return tool_names
+
+    async def remove_mcp_server(self, name: str) -> int:
+        prefix = f"mcp_{name}_"
+        unregistered = 0
+        for tool_name in list(self.tool_registry.list_tools()):
+            if tool_name.startswith(prefix):
+                self.tool_registry.unregister_tool(tool_name)
+                unregistered += 1
+        await self.mcp_service.disconnect(name)
+        return unregistered
+
     def switch_session(self, session_id: str) -> bool:
         """Switch the active session to *session_id*. Returns True on success."""
-        from laffyhand.agent.session.models import Session as SessionModel
+        # Check in-memory state first (e.g. freshly created session not yet in DB)
+        if session_id in self._states:
+            self.state = self._states[session_id]
+            return True
+        if self.state and self.state.session_id == session_id:
+            return True
 
         loaded = self.session_manager.load_state(session_id)
         if loaded is None:
