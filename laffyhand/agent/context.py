@@ -8,5 +8,9 @@ def build_llm_context(
     compaction_config: CompactionConfig,
 ) -> list[Message]:
     if compaction_config.prune:
-        return prune(agent_state.messages)
+        return prune(
+            agent_state.messages,
+            curr_context_usage=agent_state.usage.curr_context_usage,
+            context_size=agent_state.usage.context_size,
+        )
     return agent_state.messages

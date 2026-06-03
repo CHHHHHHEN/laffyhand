@@ -9,7 +9,17 @@ PRUNE_MINIMUM = 20_000
 _PRUNE_MIN_SAVINGS = 50
 
 
-def prune(messages: list[Message]) -> list[Message]:
+def prune(
+    messages: list[Message],
+    curr_context_usage: int = 0,
+    context_size: int = 0,
+) -> list[Message]:
+    # If we know the actual token usage and it's well within context capacity,
+    # skip pruning entirely — the char-based estimator overcounts tool tokens
+    # compared to the LLM's real tokenizer, causing false positives.
+    if curr_context_usage and context_size and curr_context_usage < context_size * 0.7:
+        return messages
+
     tool_indices: list[int] = []
     total_tokens = 0
     for i in range(len(messages) - 1, -1, -1):
