@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import json
+import time
+from collections.abc import AsyncIterator
+from typing import Any
 from unittest.mock import MagicMock, AsyncMock
 
 import pytest
@@ -348,6 +352,196 @@ async def test_rpc_handler_error_logging(transport_pair):
     assert "error" in resp
     assert resp["error"]["code"] == -32603
     assert "internal db failure" not in str(resp)  # should not leak details
+
+    await _shutdown_gateway(client_t)
+    await task
+
+
+class _ControllableAgent:
+    """Mock agent that can hold mid-stream for concurrency tests."""
+
+    def __init__(self) -> None:
+        self._holds: dict[str, asyncio.Event] = {}
+
+    def hold(self, session_id: str) -> asyncio.Event:
+        if session_id not in self._holds:
+            self._holds[session_id] = asyncio.Event()
+        return self._holds[session_id]
+
+    def release_all(self) -> None:
+        for ev in self._holds.values():
+            ev.set()
+
+    async def run(self, **kwargs: Any) -> AsyncIterator[Any]:
+        from laffyhand.agent.schemas import TextDelta, StepFinish
+        from laffyhand.agent.llm.specs.models import Usage
+
+        yield TextDelta(id="text-1", text="Hello from LLM")
+        sid: str = kwargs.get("session_id", "")
+        await self.hold(sid).wait()
+        yield StepFinish(index=1, reason="stop", usage=Usage(input_tokens=10, output_tokens=5))
+
+
+def _make_session_state(session_id: str) -> MagicMock:
+    usage = MagicMock()
+    usage.model_dump.return_value = {"total_input": 10, "total_output": 5}
+    state = MagicMock()
+    state.session_id = session_id
+    state.messages = []
+    state.step = 0
+    state.pending_steer = None
+    state.usage = usage
+    return state
+
+
+def _make_base_runtime() -> MagicMock:
+    r = MagicMock()
+    r._states = {}
+    r.get_state = MagicMock(side_effect=lambda sid: r._states.get(sid))
+    r.context_size = 128000
+    r.tool_registry.build_tool_definitions = MagicMock(return_value=[])
+    r.tool_registry.build_tool_prompt = MagicMock(return_value="")
+    r.skill_registry.all = MagicMock(return_value=[])
+    r.build_system_prompt = AsyncMock(return_value="You are helpful.")
+    r.session_manager = MagicMock()
+    r._generate_title = AsyncMock()
+    r._schedule_title_generation = MagicMock()
+    r.get_session_lock = MagicMock(return_value=MagicMock())
+    r.subagent_manager = None
+    return r
+
+
+@pytest.mark.anyio
+async def test_duplicate_stream_rejection(transport_pair):
+    """Second chat/stream for same session is rejected with SESSION_ALREADY_STREAMING."""
+    server_t, client_t = transport_pair
+    runtime = _make_base_runtime()
+    agent = _ControllableAgent()
+    runtime.run_agent_turn = agent.run
+    runtime._states["sess-a"] = _make_session_state("sess-a")
+
+    gateway = GatewayServer(runtime, server_t)
+    import asyncio
+
+    task = asyncio.create_task(_run_gateway(gateway))
+    await asyncio.sleep(0.05)
+
+    req1 = Request(id=1, method="chat/stream", params={"message": "hello", "session_id": "sess-a"})
+    await client_t.send(req1.json())
+    await asyncio.sleep(0.05)
+
+    req2 = Request(id=2, method="chat/stream", params={"message": "hello dupe", "session_id": "sess-a"})
+    await client_t.send(req2.json())
+
+    from laffyhand.gateway.protocol import from_json, ErrorResponse
+
+    found_error = False
+    deadline = time.monotonic() + 3
+    while time.monotonic() < deadline:
+        try:
+            raw = await asyncio.wait_for(client_t.recv(), timeout=0.5)
+            msg = from_json(raw)
+            if isinstance(msg, ErrorResponse) and msg.id == 2:
+                assert msg.error.code == -32001
+                found_error = True
+                break
+        except asyncio.TimeoutError:
+            break
+
+    assert found_error, "Expected SESSION_ALREADY_STREAMING error"
+    agent.release_all()
+    await _shutdown_gateway(client_t)
+    await task
+
+
+@pytest.mark.anyio
+async def test_session_scoped_cancel(transport_pair):
+    """Cancelling a session only stops that session's stream, not others."""
+    server_t, client_t = transport_pair
+    runtime = _make_base_runtime()
+    agent = _ControllableAgent()
+    runtime.run_agent_turn = agent.run
+    runtime._states["sess-a"] = _make_session_state("sess-a")
+    runtime._states["sess-b"] = _make_session_state("sess-b")
+
+    gateway = GatewayServer(runtime, server_t)
+    import asyncio
+
+    task = asyncio.create_task(_run_gateway(gateway))
+    await asyncio.sleep(0.05)
+
+    req1 = Request(id=1, method="chat/stream", params={"message": "hello", "session_id": "sess-a"})
+    await client_t.send(req1.json())
+    await asyncio.sleep(0.05)
+
+    req2 = Request(id=2, method="chat/stream", params={"message": "hello", "session_id": "sess-b"})
+    await client_t.send(req2.json())
+    await asyncio.sleep(0.05)
+
+    req3 = Request(id=3, method="chat/cancel", params={"session_id": "sess-a"})
+    await client_t.send(req3.json())
+
+    from laffyhand.gateway.protocol import from_json, ErrorResponse, Notification
+
+    saw_cancelled_a = False
+    deadline = time.monotonic() + 3
+    while time.monotonic() < deadline:
+        try:
+            raw = await asyncio.wait_for(client_t.recv(), timeout=0.5)
+            msg = from_json(raw)
+            if isinstance(msg, ErrorResponse):
+                continue
+            if not isinstance(msg, Notification) or msg.method != "event":
+                continue
+            p = msg.params or {}
+            if p.get("type") == "finish" and p.get("reason") == "cancelled":
+                saw_cancelled_a = True
+                break
+        except asyncio.TimeoutError:
+            break
+
+    assert saw_cancelled_a, "Session A should have been cancelled"
+
+    agent.hold("sess-b").set()
+
+    saw_finish_b = False
+    deadline = time.monotonic() + 3
+    while time.monotonic() < deadline:
+        try:
+            raw = await asyncio.wait_for(client_t.recv(), timeout=0.5)
+            msg = from_json(raw)
+            if isinstance(msg, Notification) and msg.method == "event":
+                p = msg.params or {}
+                if p.get("type") == "finish" and p.get("reason") == "stop":
+                    saw_finish_b = True
+                    break
+        except asyncio.TimeoutError:
+            break
+
+    assert saw_finish_b, "Session B should complete normally after A is cancelled"
+    agent.release_all()
+    await _shutdown_gateway(client_t)
+    await task
+
+
+@pytest.mark.anyio
+async def test_cancel_no_active_stream(transport_pair):
+    """Cancelling a session with no active stream returns no_active_stream."""
+    server_t, client_t = transport_pair
+    runtime = _make_base_runtime()
+
+    gateway = GatewayServer(runtime, server_t)
+    import asyncio
+
+    task = asyncio.create_task(_run_gateway(gateway))
+    await asyncio.sleep(0.05)
+
+    req = Request(id=1, method="chat/cancel", params={"session_id": "nonexistent"})
+    await client_t.send(req.json())
+    raw = await asyncio.wait_for(client_t.recv(), timeout=2)
+    resp = json.loads(raw)
+    assert resp["id"] == 1
+    assert resp["result"]["status"] == "no_active_stream"
 
     await _shutdown_gateway(client_t)
     await task

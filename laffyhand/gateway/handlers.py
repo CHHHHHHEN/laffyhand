@@ -495,29 +495,36 @@ async def handle_chat_cancel(
     if session_id:
         runtime.interrupt_session(session_id)
 
-    # 1. Try dispatcher-based cancellation (WS/stdio transports)
     dispatcher: Dispatcher | None = getattr(transport, "dispatcher", None)
+
+    # 1. Session-scoped cancel (precise — only cancels one session's stream)
+    if dispatcher is not None and session_id:
+        if dispatcher.cancel_session_stream(session_id):
+            logger.info(f"Streaming task cancelled for session {session_id}")
+            return {"status": "cancelled"}
+
+    # 2. Conn_id-based cancel via dispatcher (WS/stdio transports)
     if dispatcher is not None:
         if dispatcher.cancel_connection(conn_id):
             logger.info(f"Streaming task cancelled for connection {conn_id}")
             return {"status": "cancelled"}
         logger.debug(f"No active streaming task for connection {conn_id}")
-        return {"status": "no_active_stream"}
 
-    # 2. Try HTTP SSE transport cancellation
+    # 3. HTTP SSE canceller fallback
     sse_canceller = getattr(transport, "sse_canceller", None)
     if sse_canceller is not None:
         if sse_canceller(conn_id):
             logger.info(f"SSE stream cancelled for connection {conn_id}")
             return {"status": "cancelled"}
         logger.debug(f"No active SSE stream for connection {conn_id}")
-        return {"status": "no_active_stream"}
 
-    # 3. No cancellation mechanism available
-    logger.warning(
-        f"Cancellation not supported for transport {type(transport).__name__} (conn={conn_id})"
-    )
-    return {"status": "cancellation_not_supported"}
+    # 4. No cancellation mechanism available
+    if dispatcher is None and sse_canceller is None:
+        logger.warning(
+            f"Cancellation not supported for transport {type(transport).__name__} (conn={conn_id})"
+        )
+
+    return {"status": "no_active_stream"}
 
 
 async def handle_tools_list(

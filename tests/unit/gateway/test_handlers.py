@@ -267,31 +267,44 @@ class TestHandleChat:
 
 class TestHandleChatCancel:
     @pytest.mark.anyio
-    async def test_cancels_when_dispatcher_on_transport(self, runtime, transport):
-        """transport.dispatcher is set -> used directly."""
+    async def test_cancels_by_session(self, runtime, transport):
+        """cancel_session_stream is tried first when session_id is present."""
+        dispatcher = MagicMock()
+        dispatcher.cancel_session_stream = MagicMock(return_value=True)
+        transport.dispatcher = dispatcher
+        result = await handle_chat_cancel(runtime, {"session_id": "sess-1"}, transport, 1, "c1")
+        assert result["status"] == "cancelled"
+        dispatcher.cancel_session_stream.assert_called_once_with("sess-1")
+
+    @pytest.mark.anyio
+    async def test_cancels_by_conn_id_when_no_session(self, runtime, transport):
+        """Without session_id, falls back to conn_id-based cancel."""
         dispatcher = MagicMock()
         dispatcher.cancel_connection = MagicMock(return_value=True)
         transport.dispatcher = dispatcher
+        transport.sse_canceller = None
         result = await handle_chat_cancel(runtime, {}, transport, 1, "c1")
         assert result["status"] == "cancelled"
         dispatcher.cancel_connection.assert_called_once_with("c1")
 
     @pytest.mark.anyio
     async def test_no_active_stream_when_cancel_fails(self, runtime, transport):
-        """cancel_connection returns False -> no_active_stream."""
+        """Both session and conn_id cancel fail -> no_active_stream."""
         dispatcher = MagicMock()
+        dispatcher.cancel_session_stream = MagicMock(return_value=False)
         dispatcher.cancel_connection = MagicMock(return_value=False)
         transport.dispatcher = dispatcher
-        result = await handle_chat_cancel(runtime, {}, transport, 1, "c1")
+        transport.sse_canceller = None
+        result = await handle_chat_cancel(runtime, {"session_id": "sess-1"}, transport, 1, "c1")
         assert result["status"] == "no_active_stream"
 
     @pytest.mark.anyio
-    async def test_cancellation_not_supported(self, runtime, transport):
-        """No dispatcher or SSE canceller on transport -> cancellation_not_supported."""
+    async def test_no_active_stream_when_no_mechanism(self, runtime, transport):
+        """No dispatcher or SSE canceller -> no_active_stream."""
         transport.dispatcher = None
         transport.sse_canceller = None
         result = await handle_chat_cancel(runtime, {}, transport, 1, "c1")
-        assert result["status"] == "cancellation_not_supported"
+        assert result["status"] == "no_active_stream"
 
 
 class TestSerializeMessages:

@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 from loguru import logger
 
-from laffyhand.gateway.protocol import MAX_MESSAGE_SIZE
+from laffyhand.gateway.protocol import MAX_MESSAGE_SIZE, SESSION_ALREADY_STREAMING
 from laffyhand.gateway.transport import Transport, _NullTransport
 
 if TYPE_CHECKING:
@@ -352,6 +352,25 @@ class HTTPTransport:
     ) -> aiohttp.web.StreamResponse:
         import aiohttp.web
 
+        # Reject duplicate streaming for the same session
+        params = message.params or {}
+        session_id: str | None = params.get("session_id")
+        if session_id is not None and dispatcher.get_active_session_stream(session_id) is not None:
+            from laffyhand.gateway.protocol import Error, ErrorResponse
+
+            return _json_response(
+                {
+                    "jsonrpc": "2.0",
+                    "error": {
+                        "code": SESSION_ALREADY_STREAMING,
+                        "message": f"Session {session_id} already has an active stream",
+                    },
+                    "id": message.id,
+                },
+                status=409,
+                origin=origin,
+            )
+
         response = aiohttp.web.StreamResponse(
             status=200,
             headers={
@@ -374,13 +393,22 @@ class HTTPTransport:
             entry.func(runtime, message.params or {}, transport, message.id, conn_id),
         )
         self._sse_tasks[conn_id] = task
-        task.add_done_callback(
-            lambda _: (
-                self._sse_tasks.pop(conn_id, None)
-                if self._sse_tasks.get(conn_id) is task
-                else None
-            )
-        )
+        if session_id is not None:
+            dispatcher.register_session_stream(session_id, task)
+
+        def _cleanup(
+            _t: asyncio.Task[Any],
+            _sid: str | None = session_id,
+            _cid: str = conn_id,
+            _task: asyncio.Task[Any] = task,
+        ) -> None:
+            if self._sse_tasks.get(_cid) is _task:
+                self._sse_tasks.pop(_cid, None)
+            if _sid is not None:
+                if dispatcher.get_active_session_stream(_sid) is _task:
+                    dispatcher.unregister_session_stream(_sid)
+
+        task.add_done_callback(_cleanup)
 
         try:
             await task
@@ -435,9 +463,10 @@ class HTTPTransport:
             runtime = self.runtime
             assert runtime is not None
             if message.method == CHAT_CANCEL:
-                # Attach SSE canceller so handle_chat_cancel can cancel active SSE tasks
+                # Attach SSE canceller + dispatcher so handle_chat_cancel can cancel by session
                 cancel_transport = _NullTransport()
                 cancel_transport.sse_canceller = self._cancel_sse_task
+                cancel_transport.dispatcher = self._dispatcher
                 result = await entry.func(
                     runtime,
                     message.params or {},

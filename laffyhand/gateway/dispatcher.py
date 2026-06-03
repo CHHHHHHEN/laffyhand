@@ -16,6 +16,7 @@ from laffyhand.gateway.protocol import (
     Error,
     METHOD_NOT_FOUND,
     INTERNAL_ERROR,
+    SESSION_ALREADY_STREAMING,
     SHUTDOWN,
 )
 from laffyhand.gateway.transport import Transport
@@ -39,6 +40,23 @@ class Dispatcher:
     handlers: dict[str, RegisteredHandler] = field(default_factory=dict)
     shutdown_requested: bool = False
     _active_tasks: dict[str, asyncio.Task[None]] = field(default_factory=dict)
+    _session_streams: dict[str, asyncio.Task[Any]] = field(default_factory=dict)
+
+    def register_session_stream(self, session_id: str, task: asyncio.Task[Any]) -> None:
+        self._session_streams[session_id] = task
+
+    def unregister_session_stream(self, session_id: str) -> None:
+        self._session_streams.pop(session_id, None)
+
+    def get_active_session_stream(self, session_id: str) -> asyncio.Task[None] | None:
+        return self._session_streams.get(session_id)
+
+    def cancel_session_stream(self, session_id: str) -> bool:
+        task = self._session_streams.get(session_id)
+        if task is not None and not task.done():
+            task.cancel()
+            return True
+        return False
 
     def register(
         self,
@@ -74,18 +92,40 @@ class Dispatcher:
         t0 = time.monotonic()
 
         if entry.streaming and request.method != SHUTDOWN:
+            session_id: str | None = params.get("session_id")
+            if session_id is not None:
+                existing = self._session_streams.get(session_id)
+                if existing is not None and not existing.done():
+                    error = Error(
+                        code=SESSION_ALREADY_STREAMING,
+                        message=f"Session {session_id} already has an active stream",
+                    )
+                    await transport.send(ErrorResponse(id=request.id, error=error).json())
+                    elapsed_ms = (time.monotonic() - t0) * 1000
+                    logger.warning(
+                        f"Rejected duplicate streaming for session {session_id} "
+                        f"({elapsed_ms:.1f}ms)"
+                    )
+                    return
+
             task = asyncio.create_task(
                 self._run_streaming(entry, params, transport, request.id, conn_id),
             )
             self._active_tasks[conn_id] = task
+            if session_id is not None:
+                self._session_streams[session_id] = task
 
             def _cleanup(
                 _t: asyncio.Task[None],
                 _cid: str = conn_id,
                 _task: asyncio.Task[None] = task,
+                _sid: str | None = session_id,
             ) -> None:
                 if self._active_tasks.get(_cid) is _task:
                     self._active_tasks.pop(_cid, None)
+                if _sid is not None:
+                    if self._session_streams.get(_sid) is _task:
+                        self._session_streams.pop(_sid, None)
 
             task.add_done_callback(_cleanup)
             elapsed_ms = (time.monotonic() - t0) * 1000
