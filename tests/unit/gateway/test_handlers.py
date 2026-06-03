@@ -68,24 +68,18 @@ class TestHandleShutdown:
 class TestHandleSessionCreate:
     @pytest.mark.anyio
     async def test_creates_and_returns_session(self, runtime, transport):
-        session = MagicMock()
-        session.id = "sess-new"
-        runtime.session_manager.create = MagicMock(return_value=session)
         runtime.state = None
 
         result = await handle_session_create(runtime, {}, transport, 1, "c1")
 
-        assert result["session_id"] == "sess-new"
+        assert result["session_id"] is not None and isinstance(result["session_id"], str)
+        runtime.session_manager.set_pending_meta.assert_called_once()
         runtime._schedule_title_generation.assert_called_once_with(
-            "sess-new", "on_create"
+            result["session_id"], "on_create"
         )
 
     @pytest.mark.anyio
-    async def test_raises_on_failure(self, runtime, transport):
-        session = MagicMock()
-        session.id = "sess-new"
-        runtime.session_manager.create = MagicMock(return_value=session)
-
+    async def test_returns_session_id(self, runtime, transport):
         result = await handle_session_create(runtime, {}, transport, 1, "c1")
         assert "session_id" in result
 
@@ -209,22 +203,24 @@ class TestHandleChat:
     async def test_chat_without_session_creates_one(self, runtime, transport):
         runtime.state = None
         runtime.current_session_id = None
-        session = MagicMock()
-        session.id = "sess-new"
-        runtime.session_manager.create = MagicMock(return_value=session)
 
-        state = MagicMock()
-        state.session_id = "sess-new"
-        state.messages = []
-        state.step = 0
-        runtime.get_state = MagicMock(return_value=state)
+        # capture the real session state when _ensure_session sets it
+        captured_state = {}
+
+        def set_state_side_effect(new_state):
+            captured_state["session_id"] = new_state.session_id
+        runtime.state = None
+        runtime._session_id = None
+
         runtime.run_agent_turn = MagicMock()
         runtime.run_agent_turn.return_value = _async_gen([])
 
         result = await handle_chat(runtime, {"message": "hello"}, transport, 1, "c1")
-        assert result["session_id"] == "sess-new"
-        runtime._schedule_title_generation.assert_any_call("sess-new", "on_create")
-        runtime._generate_title.assert_any_call("sess-new", "auto")
+        session_id = result["session_id"]
+        assert session_id is not None and isinstance(session_id, str)
+        runtime.session_manager.set_pending_meta.assert_called_once()
+        runtime._schedule_title_generation.assert_any_call(session_id, "on_create")
+        runtime._generate_title.assert_any_call(session_id, "auto")
 
 
 class TestHandleChatCancel:

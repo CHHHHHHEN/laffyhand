@@ -328,6 +328,12 @@ class AgentRuntime:
 
     def switch_session(self, session_id: str) -> bool:
         self.save_current_state()
+        # Check in-memory states first (session may not be persisted to DB yet)
+        existing = self._states.get(session_id)
+        if existing is not None:
+            self._session_id = session_id
+            return True
+        # Fall back to DB
         tip = self.session_manager.get_compression_tip(session_id)
         loaded = self.session_manager.load_state(tip)
         if loaded is None:

@@ -548,12 +548,22 @@ async def _ensure_session(
     agent_name = params.get("agent", "") or "build"
     system_content = await _system_prompt(runtime, params.get("system_prompt", ""), agent_name)
     system_message = SystemMessage(content=system_content)
-    session = runtime.session_manager.create(
+    # Create session in memory only — defer DB persistence until the first message is stored
+    from laffyhand.agent.session.models import Session as SessionModel
+    session = SessionModel(
         title=params.get("title", ""),
         cwd=params.get("cwd", os.getcwd()),
         provider=params.get("provider", ""),
         model=params.get("model", ""),
         agent_version=agent_name,
+    )
+    runtime.session_manager.set_pending_meta(
+        session.id,
+        title=session.title,
+        cwd=session.cwd,
+        provider=str(session.provider) if session.provider else "",
+        model=str(session.model) if session.model else "",
+        agent_version=session.agent_version,
     )
     runtime.state = AgentState(
         messages=[system_message],

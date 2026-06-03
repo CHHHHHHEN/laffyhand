@@ -161,22 +161,30 @@ async def test_session_lifecycle(runtime, transport_pair):
     await asyncio.sleep(0.05)
 
     # No active session initially — create one via session/create
-    session = MagicMock()
-    session.id = "sess-new"
-    runtime.session_manager.create.return_value = session
-    runtime.state = MagicMock()
-    runtime.state.session_id = "sess-new"
     runtime.build_system_prompt = AsyncMock(return_value="You are a helpful assistant.")
+    runtime.state = None
+    runtime.current_session_id = None
 
     req = Request(id=1, method="session/create", params={})
     await client_t.send(req.json())
     raw = await asyncio.wait_for(client_t.recv(), timeout=2)
     resp = json.loads(raw)
     assert resp["id"] == 1
-    assert resp["result"]["session_id"] == "sess-new"
+    session_id = resp["result"]["session_id"]
+    assert session_id is not None and isinstance(session_id, str)
 
-    # List sessions
-    runtime.session_manager.list_sessions.return_value = [session]
+    # Build a mock session for listing
+    list_session = MagicMock()
+    list_session.id = session_id
+    list_session.status = "active"
+    list_session.title = ""
+    list_session.message_count = 0
+    list_session.turn_count = 0
+    list_session.input_tokens = 0
+    list_session.output_tokens = 0
+    list_session.created_at.isoformat.return_value = "2025-01-01T00:00:00"
+    list_session.updated_at.isoformat.return_value = "2025-01-01T01:00:00"
+    runtime.session_manager.list_sessions.return_value = [list_session]
 
     req = Request(id=2, method="session/list", params={})
     await client_t.send(req.json())

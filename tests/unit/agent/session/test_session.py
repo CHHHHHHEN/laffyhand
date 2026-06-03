@@ -471,17 +471,23 @@ class TestAdvancedCRUD:
         assert len(page2) == 2
         assert page1[0].id != page2[0].id
 
-    def test_store_messages_error_nonexistent(
+    def test_store_messages_creates_session_if_not_exists(
         self, session_manager: SessionManager
     ) -> None:
-        with pytest.raises(ValueError, match="Session not found"):
-            session_manager.store_messages("nonexistent", [UserMessage(content="hi")])
+        count = session_manager.store_messages("nonexistent", [UserMessage(content="hi")])
+        assert count == 1
+        session = session_manager.get("nonexistent")
+        assert session is not None
+        assert session.message_count == 1
 
-    def test_sync_messages_error_nonexistent(
+    def test_sync_messages_creates_session_if_not_exists(
         self, session_manager: SessionManager
     ) -> None:
-        with pytest.raises(ValueError, match="Session not found"):
-            session_manager.sync_messages("nonexistent", [])
+        session_manager.sync_messages("nonexistent", [UserMessage(content="hi")])
+        session = session_manager.get("nonexistent")
+        assert session is not None
+        messages = session_manager.get_messages("nonexistent")
+        assert len(messages) == 1
 
     def test_fork_with_custom_title(self, session_manager: SessionManager) -> None:
         msgs = [UserMessage(content="hi")]
