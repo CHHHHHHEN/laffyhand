@@ -67,15 +67,15 @@ export function MessageList({ onRetry }: MessageListProps) {
 
   if (messages.length === 0 && !isStreaming && !error) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center text-gray-400 dark:text-gray-500 space-y-4 animate-[fade-in_0.3s_ease-out]">
-        <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-blue-900/20 dark:to-indigo-900/20 flex items-center justify-center">
-          <svg className="w-8 h-8 text-blue-400 dark:text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <div className="flex-1 flex flex-col items-center justify-center text-gray-400 dark:text-gray-500 space-y-5 animate-[fade-in_0.3s_ease-out]">
+        <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-blue-900/20 dark:to-indigo-900/20 flex items-center justify-center">
+          <svg className="w-10 h-10 text-blue-400 dark:text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
           </svg>
         </div>
-        <div className="text-center">
+        <div className="text-center space-y-1.5">
           <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Start a conversation</p>
-          <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Type a message below to begin</p>
+          <p className="text-xs text-gray-400 dark:text-gray-500">Type a message below to begin</p>
         </div>
       </div>
     )
@@ -168,12 +168,12 @@ export function MessageList({ onRetry }: MessageListProps) {
       {/* 错误提示 */}
       {error && (
         <div className="flex justify-center mb-5 animate-[fade-in_0.2s_ease-out]">
-          <div className="flex flex-col items-center gap-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/40 rounded-xl px-4 py-2.5 text-sm shadow-sm">
-            <div className="flex items-center gap-2">
+          <div className="flex flex-col items-center gap-2.5 bg-red-50/80 dark:bg-red-900/15 border border-red-200 dark:border-red-800/40 rounded-xl px-5 py-3 text-sm shadow-sm">
+            <div className="flex items-center gap-2.5">
               <svg className="w-4 h-4 shrink-0 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              <span className="text-red-600 dark:text-red-400">{error}</span>
+              <span className="text-red-600 dark:text-red-400 text-xs">{error}</span>
             </div>
             {onRetry && (
               <button

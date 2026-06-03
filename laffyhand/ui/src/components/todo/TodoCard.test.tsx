@@ -49,7 +49,7 @@ describe("TodoCard", () => {
 
   it("renders high priority with red class", () => {
     const { container } = render(<TodoCard task={makeTask({ priority: "high" })} />)
-    const dot = container.querySelector(".text-red-600")
+    const dot = container.querySelector(".text-red-500")
     expect(dot).toBeTruthy()
   })
 })

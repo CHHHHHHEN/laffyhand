@@ -84,17 +84,20 @@ export function Sidebar() {
   }
 
   return (
-    <div className="h-full flex flex-col bg-gray-50 dark:bg-gray-900 transition-colors duration-200">
+    <div className="h-full flex flex-col bg-gray-50 dark:bg-gray-900/50 transition-colors duration-200">
       {/* 操作按钮区 */}
-      <div className="p-3 border-b border-gray-200 dark:border-gray-700 space-y-2">
+      <div className="p-3 border-b border-gray-200 dark:border-gray-800 space-y-2">
         <Button
           onClick={handleNewSession}
           disabled={isCreating}
           size="sm"
           variant="primary"
-          className="w-full font-medium shadow-sm"
+          className="w-full font-medium"
         >
-          {isCreating ? "Creating..." : "+ New Session"}
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+          </svg>
+          {isCreating ? "Creating..." : "New Session"}
         </Button>
         {(sessionId ?? currentSessionId) && (
           <Button
@@ -102,14 +105,12 @@ export function Sidebar() {
             disabled={isForking}
             variant="secondary"
             size="sm"
-            className="w-full text-xs"
+            className="w-full"
           >
-            <span className="flex items-center gap-1">
-              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5v14l9-7-9-7z" />
-              </svg>
-              {isForking ? "Forking..." : "Fork"}
-            </span>
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5v14l9-7-9-7z" />
+            </svg>
+            {isForking ? "Forking..." : "Fork"}
           </Button>
         )}
         {/* Agent 选择器 */}
@@ -118,7 +119,7 @@ export function Sidebar() {
             <select
               value={selectedAgent}
               onChange={(e) => setSelectedAgent(e.target.value)}
-              className="w-full px-2 py-1.5 text-xs rounded-md border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400/30 transition-all appearance-none cursor-pointer"
+              className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400/30 transition-all appearance-none cursor-pointer"
             >
               {agents.map((a) => (
                 <option key={a.name} value={a.name}>
@@ -127,7 +128,7 @@ export function Sidebar() {
               ))}
             </select>
             <svg
-              className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400 pointer-events-none"
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400 pointer-events-none"
               fill="none" stroke="currentColor" viewBox="0 0 24 24"
             >
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -138,9 +139,7 @@ export function Sidebar() {
         <div className="relative">
           <svg
             className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
+            fill="none" stroke="currentColor" viewBox="0 0 24 24"
           >
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
           </svg>
@@ -150,7 +149,7 @@ export function Sidebar() {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search sessions... (⌘K)"
-            className="w-full pl-8 pr-2 py-1.5 text-xs rounded-md border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-500 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400/30 transition-all"
+            className="w-full pl-8 pr-8 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-500 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400/30 transition-all"
           />
           {searchQuery && (
             <button
@@ -166,16 +165,16 @@ export function Sidebar() {
       </div>
 
       {/* 会话列表 */}
-      <div className="flex-1 overflow-y-auto p-2 space-y-1">
+      <div className="flex-1 overflow-y-auto p-2 space-y-0.5">
         {isLoading && (
-          <div className="flex justify-center py-4">
+          <div className="flex justify-center py-6">
             <Spinner size="sm" />
           </div>
         )}
 
         {!isLoading && searchQuery && filteredSessions.length === 0 && (
-          <p className="text-xs text-gray-400 text-center py-4">
-            No sessions match "{searchQuery}"
+          <p className="text-xs text-gray-400 text-center py-6">
+            No sessions match "<span className="font-medium">{searchQuery}</span>"
           </p>
         )}
 
@@ -184,14 +183,14 @@ export function Sidebar() {
           return (
             <div
               key={s.id}
-              className="group relative animate-[fade-in_0.2s_ease-out] border-b border-gray-100 dark:border-gray-800 last:border-0"
+              className="group relative"
             >
               <button
                 onClick={() => navigate(`/chat/${s.id}`)}
                 className={`w-full text-left px-3 py-2.5 rounded-lg text-sm transition-all duration-150 cursor-pointer ${
                   isActive
-                    ? "bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 shadow-sm border-l-2 border-blue-500 dark:border-blue-400"
-                    : "text-gray-700 dark:text-gray-300 hover:bg-gray-200/70 dark:hover:bg-gray-800/70 hover:translate-x-0.5"
+                    ? "bg-blue-100 dark:bg-blue-900/35 text-blue-700 dark:text-blue-300 shadow-sm"
+                    : "text-gray-600 dark:text-gray-400 hover:bg-gray-200/60 dark:hover:bg-gray-800/60"
                 }`}
               >
                 <div className="flex items-center justify-between gap-2">
@@ -213,7 +212,7 @@ export function Sidebar() {
               {/* 删除按钮 */}
               <button
                 onClick={(e) => handleDelete(e, s.id)}
-                className={`absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-md transition-all duration-150 cursor-pointer opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30`}
+                className={`absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-md transition-all duration-150 cursor-pointer opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/25`}
                 title="Delete session"
               >
                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -225,7 +224,7 @@ export function Sidebar() {
         })}
 
         {!isLoading && !searchQuery && sessions.length === 0 && (
-          <p className="text-xs text-gray-400 text-center py-4">
+          <p className="text-xs text-gray-400 text-center py-6">
             No sessions yet
           </p>
         )}

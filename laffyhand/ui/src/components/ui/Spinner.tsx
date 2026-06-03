@@ -4,15 +4,15 @@ interface SpinnerProps {
 }
 
 const sizeStyles: Record<string, string> = {
-  sm: "h-4 w-4 border-2",
-  md: "h-6 w-6 border-2",
-  lg: "h-8 w-8 border-4",
+  sm: "h-4 w-4 border-[2.5px]",
+  md: "h-5 w-5 border-[2.5px]",
+  lg: "h-7 w-7 border-[3px]",
 }
 
 export function Spinner({ size = "md", className = "" }: SpinnerProps) {
   return (
     <div
-      className={`animate-spin rounded-full border-gray-300 border-t-blue-600 ${sizeStyles[size]} ${className}`}
+      className={`animate-spin rounded-full border-gray-200 dark:border-gray-700 border-t-blue-500 dark:border-t-blue-400 ${sizeStyles[size]} ${className}`}
     />
   )
 }

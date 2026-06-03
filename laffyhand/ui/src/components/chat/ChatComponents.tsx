@@ -1,10 +1,10 @@
 import { useState } from "react"
 import type { ToolCall } from "@/types/session"
 
-/** AI 头像：蓝-靛渐变圆形 */
+/** AI 头像：蓝-靛渐变，带机器人图标 */
 export function AiAvatar() {
   return (
-    <div className="shrink-0 w-7 h-7 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-sm">
+    <div className="shrink-0 w-7 h-7 rounded-full bg-gradient-to-br from-blue-500 via-blue-600 to-indigo-700 flex items-center justify-center shadow-sm ring-1 ring-white/20 dark:ring-white/10">
       <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
       </svg>
@@ -12,10 +12,10 @@ export function AiAvatar() {
   )
 }
 
-/** 用户头像：灰色圆形 */
+/** 用户头像：优雅的灰色渐变圆形 */
 export function UserAvatar() {
   return (
-    <div className="shrink-0 w-7 h-7 rounded-full bg-gray-300 dark:bg-gray-600 flex items-center justify-center shadow-sm">
+    <div className="shrink-0 w-7 h-7 rounded-full bg-gradient-to-br from-gray-400 to-gray-500 dark:from-gray-500 dark:to-gray-600 flex items-center justify-center shadow-sm ring-1 ring-white/20 dark:ring-white/10">
       <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
       </svg>
@@ -23,35 +23,33 @@ export function UserAvatar() {
   )
 }
 
-/** 推理过程折叠面板 */
+/** 推理过程折叠面板 — 更精致的 UI */
 export function ReasoningBlock({ text }: { text: string }) {
   const [expanded, setExpanded] = useState(false)
   const [showAll, setShowAll] = useState(false)
   const lineCount = text.split('\n').length
 
   return (
-    <div className="mb-2 rounded-lg border border-gray-200 dark:border-gray-600 overflow-hidden">
+    <div className="mb-2 rounded-lg border border-amber-200/60 dark:border-amber-700/40 overflow-hidden bg-amber-50/30 dark:bg-amber-900/10">
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/50 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors cursor-pointer"
+        className="w-full flex items-center gap-1.5 px-3 py-1.5 text-xs text-amber-600 dark:text-amber-400 hover:bg-amber-100/50 dark:hover:bg-amber-900/20 transition-colors cursor-pointer select-none"
       >
         <svg
           className={`w-3 h-3 transition-transform duration-200 ${expanded ? "rotate-90" : ""}`}
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
+          fill="none" stroke="currentColor" viewBox="0 0 24 24"
         >
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
         </svg>
-        <span>Thinking</span>
-        <span className="ml-auto text-gray-400 dark:text-gray-500">
+        <span className="font-medium">Thinking</span>
+        <span className="ml-auto text-amber-500 dark:text-amber-500/70">
           {expanded ? "Hide" : `Show (${lineCount} lines)`}
         </span>
       </button>
       {expanded && (
         <div className="relative">
           <div
-            className={`px-3 py-2 text-xs text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-800 whitespace-pre-wrap leading-relaxed border-t border-gray-100 dark:border-gray-700 animate-[fade-in_0.15s_ease-out] ${
+            className={`px-3 py-2 text-xs text-amber-800 dark:text-amber-200/80 bg-white/50 dark:bg-gray-900/30 whitespace-pre-wrap leading-relaxed border-t border-amber-200/40 dark:border-amber-700/30 animate-[fade-in_0.15s_ease-out] ${
               !showAll ? "max-h-60 overflow-hidden" : ""
             }`}
           >
@@ -59,10 +57,10 @@ export function ReasoningBlock({ text }: { text: string }) {
           </div>
           {!showAll && lineCount > 20 && (
             <>
-              <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-white dark:from-gray-800 to-transparent pointer-events-none" />
+              <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-white/50 dark:from-gray-900/50 to-transparent pointer-events-none" />
               <button
                 onClick={() => setShowAll(true)}
-                className="w-full text-[10px] py-1 text-blue-500 dark:text-blue-400 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors cursor-pointer font-sans border-t border-gray-100 dark:border-gray-700"
+                className="w-full text-[10px] py-1 text-amber-600 dark:text-amber-400 bg-white/50 dark:bg-gray-900/30 hover:bg-amber-50/50 dark:hover:bg-amber-900/20 transition-colors cursor-pointer font-sans border-t border-amber-200/30 dark:border-amber-700/20"
               >
                 Show all ({lineCount} lines)
               </button>
@@ -71,7 +69,7 @@ export function ReasoningBlock({ text }: { text: string }) {
           {showAll && lineCount > 20 && (
             <button
               onClick={() => setShowAll(false)}
-              className="w-full text-[10px] py-1 text-blue-500 dark:text-blue-400 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors cursor-pointer font-sans border-t border-gray-100 dark:border-gray-700"
+              className="w-full text-[10px] py-1 text-amber-600 dark:text-amber-400 bg-white/50 dark:bg-gray-900/30 hover:bg-amber-50/50 dark:hover:bg-amber-900/20 transition-colors cursor-pointer font-sans border-t border-amber-200/30 dark:border-amber-700/20"
             >
               Show less
             </button>
@@ -87,29 +85,33 @@ function StatusDot({ status }: { status: ToolCall["status"] }) {
   switch (status) {
     case "running":
       return (
-        <span className="relative flex h-3 w-3 shrink-0">
+        <span className="relative flex h-2.5 w-2.5 shrink-0">
           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
-          <span className="relative inline-flex rounded-full h-3 w-3 bg-blue-500" />
+          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-blue-500" />
         </span>
       )
     case "completed":
-      return <span className="w-3 h-3 shrink-0 rounded-full bg-green-500 flex items-center justify-center">
-        <svg className="w-2 h-2 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-        </svg>
-      </span>
+      return (
+        <span className="w-2.5 h-2.5 shrink-0 rounded-full bg-green-500 flex items-center justify-center ring-1 ring-green-300 dark:ring-green-700">
+          <svg className="w-1.5 h-1.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+          </svg>
+        </span>
+      )
     case "error":
-      return <span className="w-3 h-3 shrink-0 rounded-full bg-red-500 flex items-center justify-center">
-        <svg className="w-2 h-2 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" />
-        </svg>
-      </span>
+      return (
+        <span className="w-2.5 h-2.5 shrink-0 rounded-full bg-red-500 flex items-center justify-center ring-1 ring-red-300 dark:ring-red-700">
+          <svg className="w-1.5 h-1.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </span>
+      )
     default:
-      return <span className="w-3 h-3 shrink-0 rounded-full bg-gray-300 dark:bg-gray-600" />
+      return <span className="w-2.5 h-2.5 shrink-0 rounded-full bg-gray-300 dark:bg-gray-600" />
   }
 }
 
-/** 工具调用卡片：支持流式状态 + 可展开结果 */
+/** 工具调用卡片：精致卡片式设计，支持流式状态 + 可展开结果 */
 export function ToolCallCard({ toolCall }: { toolCall: ToolCall }) {
   const argStr = JSON.stringify(toolCall.arguments, null, 2)
   const displayInput = argStr
@@ -123,20 +125,20 @@ export function ToolCallCard({ toolCall }: { toolCall: ToolCall }) {
 
   // Border color by status
   const borderColor = toolCall.status === "error"
-    ? "border-red-300 dark:border-red-700"
+    ? "border-red-200 dark:border-red-700/50"
     : toolCall.status === "completed"
-      ? "border-green-200 dark:border-green-700"
+      ? "border-green-200 dark:border-green-700/40"
       : toolCall.status === "running"
-        ? "border-blue-300 dark:border-blue-600 animate-pulse"
+        ? "border-blue-200 dark:border-blue-600/50 animate-pulse"
         : "border-gray-200 dark:border-gray-700"
 
   const bgColor = toolCall.status === "error"
-    ? "bg-red-50/50 dark:bg-red-900/10"
+    ? "bg-red-50/40 dark:bg-red-900/8"
     : toolCall.status === "completed"
-      ? "bg-green-50/50 dark:bg-green-900/10"
+      ? "bg-green-50/40 dark:bg-green-900/8"
       : toolCall.status === "running"
-        ? "bg-blue-50/60 dark:bg-blue-900/15"
-        : "bg-gray-50 dark:bg-gray-800/80"
+        ? "bg-blue-50/50 dark:bg-blue-900/12"
+        : "bg-gray-50 dark:bg-gray-800/60"
 
   return (
     <div className={`rounded-lg px-3 py-2 text-xs font-mono border transition-all duration-150 ${borderColor} ${bgColor}`}>
@@ -147,17 +149,17 @@ export function ToolCallCard({ toolCall }: { toolCall: ToolCall }) {
           <span className="font-semibold text-gray-700 dark:text-gray-200 truncate">
             {toolCall.name}
           </span>
-          <span className="text-gray-400 dark:text-gray-500 text-[10px]">
+          <span className="text-gray-400 dark:text-gray-500 text-[10px] font-mono">
             {toolCall.id?.slice(0, 6)}
           </span>
           {/* Status label badge */}
           {toolCall.status === "error" && (
-            <span className="text-[9px] px-1 py-0.5 rounded bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 font-medium">
+            <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 font-semibold leading-none">
               failed
             </span>
           )}
           {toolCall.status === "completed" && (
-            <span className="text-[9px] px-1 py-0.5 rounded bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 font-medium">
+            <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 font-semibold leading-none">
               done
             </span>
           )}
@@ -167,15 +169,9 @@ export function ToolCallCard({ toolCall }: { toolCall: ToolCall }) {
       {/* Arguments area */}
       {displayInput && (
         <>
-          {showAllArgs ? (
-            <pre className="mt-1.5 text-gray-600 dark:text-gray-300 whitespace-pre-wrap break-all leading-relaxed">
-              {displayInput}
-            </pre>
-          ) : (
-            <pre className="mt-1.5 text-gray-600 dark:text-gray-300 whitespace-pre-wrap break-all leading-relaxed line-clamp-3">
-              {displayInput}
-            </pre>
-          )}
+          <pre className={`mt-1.5 text-gray-500 dark:text-gray-400 whitespace-pre-wrap break-all leading-relaxed ${showAllArgs ? "" : "line-clamp-3"}`}>
+            {displayInput}
+          </pre>
           {argLines > 6 && (
             <button
               onClick={() => setShowAllArgs(!showAllArgs)}
@@ -203,7 +199,7 @@ export function ToolCallCard({ toolCall }: { toolCall: ToolCall }) {
             >
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
             </svg>
-            <span className={toolCall.isError ? "text-red-500" : "text-green-600 dark:text-green-400"}>
+            <span className={toolCall.isError ? "text-red-500 font-medium" : "text-green-600 dark:text-green-400 font-medium"}>
               {toolCall.isError ? "Error" : "Result"}
             </span>
             {!resultExpanded && (
@@ -251,15 +247,16 @@ export function ToolCallCard({ toolCall }: { toolCall: ToolCall }) {
 /** Token 消耗标签 */
 export function UsageBadge({ usage }: { usage: { inputTokens: number; outputTokens: number } }) {
   return (
-    <div className="mt-1.5 flex items-center gap-2 text-[10px] text-gray-400 dark:text-gray-500">
-      <span className="flex items-center gap-0.5">
-        <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <div className="mt-2 flex items-center gap-2 text-[10px] text-gray-400 dark:text-gray-500 bg-gray-50 dark:bg-gray-800/50 rounded-md px-2 py-1 w-fit">
+      <span className="flex items-center gap-0.5" title="Input tokens">
+        <svg className="w-2.5 h-2.5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 11l5-5m0 0l5 5m-5-5v12" />
         </svg>
         {usage.inputTokens}
       </span>
-      <span className="flex items-center gap-0.5">
-        <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <span className="text-gray-300 dark:text-gray-600">·</span>
+      <span className="flex items-center gap-0.5" title="Output tokens">
+        <svg className="w-2.5 h-2.5 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 13l-5 5m0 0l-5-5m5 5V6" />
         </svg>
         {usage.outputTokens}

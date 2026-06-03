@@ -7,6 +7,31 @@
   :root {
     --color-accent: #3b82f6;
     --color-accent-light: #dbeafe;
+    --color-surface: #ffffff;
+    --color-surface-secondary: #f9fafb;
+    --color-border: #e5e7eb;
+    --color-text-primary: #111827;
+    --color-text-secondary: #6b7280;
+
+    /* 代码块主题色（亮色） */
+    --code-bg: #f8f9fa;
+    --code-border: #e9ecef;
+    --code-header-bg: #f1f3f5;
+    --code-lang-color: #6b7280;
+  }
+
+  .dark {
+    --color-surface: #111827;
+    --color-surface-secondary: #1f2937;
+    --color-border: #374151;
+    --color-text-primary: #f3f4f6;
+    --color-text-secondary: #9ca3af;
+
+    /* 代码块主题色（暗色） */
+    --code-bg: #1a1d2e;
+    --code-border: #2d3148;
+    --code-header-bg: #1e2136;
+    --code-lang-color: #6b7280;
   }
 
   html, body, #root {
@@ -15,22 +40,24 @@
     overflow: hidden;
   }
 
-  /* 主题切换平滑过渡 */
   body {
     transition: background-color 0.2s ease, color 0.2s ease;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 
-  /* 自定义滚动条 */
+  /* 自定义滚动条 — 更精致 */
   ::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+    width: 5px;
+    height: 5px;
   }
   ::-webkit-scrollbar-track {
     background: transparent;
   }
   ::-webkit-scrollbar-thumb {
     background: #d1d5db;
-    border-radius: 3px;
+    border-radius: 4px;
+    transition: background 0.2s;
   }
   ::-webkit-scrollbar-thumb:hover {
     background: #9ca3af;
@@ -40,99 +67,6 @@
   }
   .dark ::-webkit-scrollbar-thumb:hover {
     background: #6b7280;
-  }
-
-  /* Prose 代码块样式增强 */
-  .prose pre {
-    background: #f3f4f6 !important;
-    border: 1px solid #e5e7eb;
-    border-radius: 8px;
-    padding: 12px 14px !important;
-    font-size: 12.5px;
-    line-height: 1.6;
-    overflow-x: auto;
-  }
-  .dark .prose pre {
-    background: #1f2937 !important;
-    border-color: #374151;
-  }
-  .prose code {
-    font-size: 12.5px;
-    background: #f3f4f6;
-    padding: 1px 4px;
-    border-radius: 3px;
-    font-weight: 450;
-  }
-  .dark .prose code {
-    background: #374151;
-  }
-  .prose pre code {
-    background: none !important;
-    padding: 0;
-    border-radius: 0;
-  }
-  .prose p > code::before,
-  .prose p > code::after {
-    content: none;
-  }
-
-  /* 表格样式增强 */
-  .prose table {
-    font-size: 12px;
-    border-collapse: separate;
-    border-spacing: 0;
-    width: 100%;
-    overflow: hidden;
-    border-radius: 8px;
-    border: 1px solid #e5e7eb;
-  }
-  .dark .prose table {
-    border-color: #374151;
-  }
-  .prose th {
-    background: #f3f4f6;
-    font-weight: 600;
-    text-align: left;
-    padding: 8px 12px;
-    white-space: nowrap;
-  }
-  .dark .prose th {
-    background: #1f2937;
-    color: #e5e7eb;
-  }
-  .prose td {
-    padding: 8px 12px;
-    border-top: 1px solid #f3f4f6;
-  }
-  .dark .prose td {
-    border-top-color: #1f2937;
-  }
-  .prose tbody tr:hover {
-    background: #f9fafb;
-  }
-  .dark .prose tbody tr:hover {
-    background: #111827;
-  }
-
-  /* 引用样式增强 */
-  .prose blockquote {
-    border-left: 3px solid #3b82f6;
-    padding: 4px 12px;
-    margin: 8px 0;
-    background: #f8fafc;
-    border-radius: 0 4px 4px 0;
-  }
-  .dark .prose blockquote {
-    border-left-color: #60a5fa;
-    background: #0f172a;
-  }
-
-  /* 列表间距 */
-  .prose ul, .prose ol {
-    padding-left: 1.25em;
-  }
-  .prose li {
-    margin: 2px 0;
   }
 
   /* 选中文字颜色 */
@@ -148,7 +82,219 @@
   }
 }
 
-/* 消息进入动画 */
+/* ============================================================
+   Prose（markdown 渲染）
+   ============================================================ */
+@layer base {
+  .prose {
+    --tw-prose-body: #374151;
+    --tw-prose-headings: #111827;
+    --tw-prose-links: #3b82f6;
+    --tw-prose-bold: #111827;
+    --tw-prose-code: #1f2937;
+    --tw-prose-pre-bg: var(--code-bg);
+    line-height: 1.65;
+  }
+  .dark .prose {
+    --tw-prose-body: #d1d5db;
+    --tw-prose-headings: #f3f4f6;
+    --tw-prose-links: #60a5fa;
+    --tw-prose-bold: #f3f4f6;
+    --tw-prose-code: #e5e7eb;
+  }
+
+  /* 代码块 — 更精致 */
+  .prose pre {
+    background: var(--code-bg) !important;
+    border: 1px solid var(--code-border);
+    border-radius: 10px;
+    padding: 14px 16px !important;
+    font-size: 12.5px;
+    line-height: 1.6;
+    overflow-x: auto;
+    position: relative;
+  }
+  .dark .prose pre {
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.03);
+  }
+
+  /* 代码块包装器 */
+  .code-block-wrapper {
+    position: relative;
+    margin: 1em 0;
+  }
+
+  .code-block-wrapper pre {
+    margin: 0;
+  }
+
+  /* 复制按钮 */
+  .copy-code-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    padding: 3px 8px;
+    font-size: 10px;
+    border-radius: 6px;
+    background: rgba(156, 163, 175, 0.15);
+    color: var(--code-lang-color);
+    opacity: 0;
+    transition: all 0.15s ease;
+    cursor: pointer;
+    z-index: 10;
+    font-family: system-ui, -apple-system, sans-serif;
+    backdrop-filter: blur(4px);
+    border: 1px solid transparent;
+  }
+  .code-block-wrapper:hover .copy-code-btn {
+    opacity: 1;
+  }
+  .copy-code-btn:hover {
+    background: rgba(156, 163, 175, 0.3);
+    border-color: rgba(156, 163, 175, 0.2);
+  }
+  .copy-code-btn:active {
+    transform: scale(0.95);
+  }
+
+  /* 代码展开按钮 */
+  .code-expand-btn {
+    width: 100%;
+    font-size: 10px;
+    padding: 5px 0;
+    text-align: center;
+    color: var(--code-lang-color);
+    background: transparent;
+    border: none;
+    border-top: 1px solid var(--code-border);
+    cursor: pointer;
+    font-family: system-ui, -apple-system, sans-serif;
+    transition: all 0.15s ease;
+  }
+  .code-expand-btn:hover {
+    background: rgba(156, 163, 175, 0.08);
+  }
+
+  /* 行内代码 */
+  .prose code {
+    font-size: 12.5px;
+    background: #f3f4f6;
+    padding: 2px 5px;
+    border-radius: 4px;
+    font-weight: 450;
+    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'SF Mono', 'Menlo', monospace;
+  }
+  .dark .prose code {
+    background: #374151;
+    color: #e5e7eb;
+  }
+  .prose pre code {
+    background: none !important;
+    padding: 0;
+    border-radius: 0;
+    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'SF Mono', 'Menlo', monospace;
+  }
+
+  /* 移除 code 在 p 中的前后缀 */
+  .prose p > code::before,
+  .prose p > code::after {
+    content: none;
+  }
+
+  /* 表格样式 — 更精致 */
+  .prose table {
+    font-size: 12px;
+    border-collapse: separate;
+    border-spacing: 0;
+    width: 100%;
+    overflow: hidden;
+    border-radius: 10px;
+    border: 1px solid var(--code-border);
+  }
+  .prose th {
+    background: #f3f4f6;
+    font-weight: 600;
+    text-align: left;
+    padding: 10px 14px;
+    white-space: nowrap;
+    font-size: 11.5px;
+    letter-spacing: 0.01em;
+  }
+  .dark .prose th {
+    background: #1f2937;
+    color: #e5e7eb;
+  }
+  .prose td {
+    padding: 8px 14px;
+    border-top: 1px solid #f3f4f6;
+  }
+  .dark .prose td {
+    border-top-color: #1f2937;
+  }
+  .prose tbody tr:hover {
+    background: #f9fafb;
+  }
+  .dark .prose tbody tr:hover {
+    background: rgba(31, 41, 55, 0.5);
+  }
+
+  /* 引用样式 */
+  .prose blockquote {
+    border-left: 3px solid #3b82f6;
+    padding: 6px 14px;
+    margin: 10px 0;
+    background: #f8fafc;
+    border-radius: 0 6px 6px 0;
+    color: #6b7280;
+    font-style: normal;
+  }
+  .dark .prose blockquote {
+    border-left-color: #60a5fa;
+    background: rgba(15, 23, 42, 0.5);
+    color: #9ca3af;
+  }
+
+  /* 列表间距 */
+  .prose ul, .prose ol {
+    padding-left: 1.25em;
+  }
+  .prose li {
+    margin: 3px 0;
+  }
+
+  /* 标题间距 */
+  .prose h1, .prose h2, .prose h3, .prose h4 {
+    margin-top: 1.25em;
+    margin-bottom: 0.5em;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+  .prose h1 { font-size: 1.25em; }
+  .prose h2 { font-size: 1.1em; }
+  .prose h3 { font-size: 1em; }
+  .prose h4 { font-size: 0.9em; }
+
+  /* 段落间距 */
+  .prose p {
+    margin: 0.6em 0;
+  }
+
+  /* 水平线 */
+  .prose hr {
+    margin: 1.5em 0;
+    border-color: var(--code-border);
+  }
+
+  /* 图片 */
+  .prose img {
+    border-radius: 8px;
+    margin: 1em 0;
+  }
+}
+
+/* ============================================================
+   动画
+   ============================================================ */
 @keyframes message-in {
   from {
     opacity: 0;
@@ -159,6 +305,7 @@
     transform: translateY(0) scale(1);
   }
 }
+
 @keyframes message-in-user {
   from {
     opacity: 0;
@@ -169,10 +316,12 @@
     transform: translateX(0);
   }
 }
+
 @keyframes fade-in {
   from { opacity: 0; }
   to { opacity: 1; }
 }
+
 @keyframes slide-up {
   from {
     opacity: 0;
@@ -183,15 +332,37 @@
     transform: translateY(0);
   }
 }
+
+@keyframes slide-down {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 @keyframes pulse-dot {
   0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); }
   40% { opacity: 1; transform: scale(1); }
 }
 
-/* 侧边栏切换动画 */
 @keyframes sidebar-in {
   from { transform: translateX(-100%); opacity: 0; }
   to { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 /* 打字指示器 */

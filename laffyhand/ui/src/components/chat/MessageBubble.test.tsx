@@ -28,7 +28,7 @@ describe("MessageBubble", () => {
     // 用户头像（灰色圆形用户SVG）
     const avatars = document.querySelectorAll(".rounded-full")
     const userAvatar = Array.from(avatars).find(
-      (el) => el.classList.contains("bg-gray-300") && !el.classList.contains("bg-gradient-to-br"),
+      (el) => el.classList.contains("from-gray-400"),
     )
     expect(userAvatar).toBeTruthy()
   })

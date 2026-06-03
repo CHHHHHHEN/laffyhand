@@ -90,10 +90,10 @@ export function ChatInput({ onSend, onInterrupt, onSteer, onQueue, onCancel, isS
   const submitLabel = isStreaming ? currentMode.label : "Send"
 
   return (
-    <div className="border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-4 py-3 transition-colors duration-200">
+    <div className="border-t border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-3 transition-colors duration-200">
       {/* Busy mode 选择器 */}
       {isStreaming && (
-        <div className="flex items-center gap-2 mb-2 animate-[fade-in_0.15s_ease-out]">
+        <div className="flex items-center gap-2 mb-2.5 animate-[fade-in_0.15s_ease-out]">
           <span className="text-[11px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider mr-1">
             When busy:
           </span>
@@ -107,7 +107,7 @@ export function ChatInput({ onSend, onInterrupt, onSteer, onQueue, onCancel, isS
                   type="button"
                   onClick={() => setBusyMode(mode)}
                   title={config.description}
-                  className={`flex items-center gap-1 px-2.5 py-1 text-xs rounded-md transition-all duration-150 cursor-pointer ${
+                  className={`flex items-center gap-1 px-2.5 py-1 text-xs rounded-md transition-all duration-150 cursor-pointer select-none ${
                     isActive
                       ? `${config.color} shadow-sm font-medium`
                       : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700/50"
@@ -138,7 +138,7 @@ export function ChatInput({ onSend, onInterrupt, onSteer, onQueue, onCancel, isS
             className="w-full resize-none rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 pl-4 pr-10 py-2.5 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500/15 transition-all placeholder-gray-400 dark:placeholder-gray-500"
           />
           {/* 快捷键提示 */}
-          <div className="absolute right-3 bottom-2.5 flex items-center gap-1 pointer-events-none">
+          <div className="absolute right-3 bottom-2.5 flex items-center gap-1 pointer-events-none select-none">
             <kbd className="hidden sm:inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-700 rounded border border-gray-200 dark:border-gray-600 font-sans">
               ↵
             </kbd>
@@ -164,9 +164,13 @@ export function ChatInput({ onSend, onInterrupt, onSteer, onQueue, onCancel, isS
           variant={isStreaming ? "secondary" : "primary"}
           onClick={handleSubmit}
           disabled={!inputValue.trim()}
-          className={`transition-all duration-150 ${inputValue.trim() ? "opacity-100" : "opacity-60"}`}
+          className={`transition-all duration-150 ${inputValue.trim() ? "opacity-100" : "opacity-50"}`}
         >
-          {isStreaming ? currentMode.icon : ""}
+          {isStreaming ? currentMode.icon : (
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h14m0 0l-7-7m7 7l-7 7" />
+            </svg>
+          )}
           {' '}
           {submitLabel}
         </Button>
@@ -174,7 +178,7 @@ export function ChatInput({ onSend, onInterrupt, onSteer, onQueue, onCancel, isS
 
       {/* 底部提示 */}
       <div className="flex items-center justify-between mt-1.5 px-1">
-        <span className="text-[10px] text-gray-400 dark:text-gray-500">
+        <span className="text-[10px] text-gray-400 dark:text-gray-500 select-none">
           Shift+Enter for new line
         </span>
       </div>

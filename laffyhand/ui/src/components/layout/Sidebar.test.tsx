@@ -67,7 +67,7 @@ describe("Sidebar", () => {
 
   it("renders new session button", () => {
     renderSidebar()
-    expect(screen.getByText("+ New Session")).toBeInTheDocument()
+    expect(screen.getByText("New Session")).toBeInTheDocument()
   })
 
   it("renders fork button when session is selected", () => {
@@ -99,7 +99,7 @@ describe("Sidebar", () => {
 
   it("creates new session and navigates", async () => {
     renderSidebar()
-    fireEvent.click(screen.getByText("+ New Session"))
+    fireEvent.click(screen.getByText("New Session"))
     expect(mockUseSessions.createSession).toHaveBeenCalled()
     // wait for async
     await vi.waitFor(() => {

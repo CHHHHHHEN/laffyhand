@@ -35,14 +35,18 @@ function MarkdownContent({ content }: { content: string }) {
 
       // Copy button
       const copyBtn = document.createElement('button')
-      copyBtn.className = 'copy-code-btn absolute top-2 right-2 px-2 py-1 text-[10px] rounded-md bg-gray-200/70 dark:bg-gray-700/70 text-gray-500 dark:text-gray-400 opacity-0 group-hover:opacity-100 hover:bg-gray-300 dark:hover:bg-gray-600 transition-all duration-150 cursor-pointer font-sans z-10'
+      copyBtn.className = 'copy-code-btn'
       copyBtn.textContent = 'Copy'
       copyBtn.onclick = async () => {
         const code = pre.querySelector('code') || pre
         try {
           await navigator.clipboard.writeText(code.textContent || '')
           copyBtn.textContent = 'Copied!'
-          setTimeout(() => { copyBtn.textContent = 'Copy' }, 2000)
+          copyBtn.classList.add('!opacity-100')
+          setTimeout(() => { 
+            copyBtn.textContent = 'Copy'
+            copyBtn.classList.remove('!opacity-100')
+          }, 2000)
         } catch {
           copyBtn.textContent = 'Failed'
         }
@@ -54,10 +58,10 @@ function MarkdownContent({ content }: { content: string }) {
       if (lineCount > 15) {
         pre.style.maxHeight = '200px'
         pre.style.overflow = 'hidden'
-        pre.style.transition = 'max-height 0.2s ease'
+        pre.style.transition = 'max-height 0.25s ease'
 
         const expandBtn = document.createElement('button')
-        expandBtn.className = 'code-expand-btn w-full text-[10px] py-1 text-gray-400 dark:text-gray-500 bg-gray-50 dark:bg-gray-800/50 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors cursor-pointer font-sans border-t border-gray-200 dark:border-gray-700'
+        expandBtn.className = 'code-expand-btn'
         expandBtn.textContent = `Show more (${lineCount} lines)`
 
         let expanded = false
@@ -86,12 +90,12 @@ function SystemMessageBlock({ content }: { content: string }) {
   const [expanded, setExpanded] = useState(false)
 
   return (
-    <div className="flex justify-center mb-5 animate-[fade-in_0.2s_ease-out]">
+    <div className="flex justify-center mb-4 animate-[fade-in_0.2s_ease-out]">
       <div className="max-w-[85%] min-w-0">
-        <div className="bg-gray-50/60 dark:bg-gray-800/30 border border-dashed border-gray-200 dark:border-gray-700/50 rounded-xl px-4 py-2 text-center">
+        <div className="bg-gray-50/50 dark:bg-gray-800/20 border border-dashed border-gray-200 dark:border-gray-700/40 rounded-xl px-4 py-2 text-center">
           <button
             onClick={() => setExpanded(!expanded)}
-            className="flex items-center justify-center gap-1.5 w-full text-[11px] text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-400 transition-colors cursor-pointer"
+            className="flex items-center justify-center gap-1.5 w-full text-[11px] text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-400 transition-colors cursor-pointer select-none"
           >
             <svg
               className={`w-3 h-3 transition-transform duration-150 ${expanded ? "rotate-90" : ""}`}
@@ -124,11 +128,14 @@ export function MessageBubble({ message, onResolvePermission }: MessageBubblePro
   if (message.role === "permission-request" && message.permissionInfo) {
     const info = message.permissionInfo
     return (
-      <div className="flex justify-center mb-5 animate-[fade-in_0.2s_ease-out]">
+      <div className="flex justify-center mb-4 animate-[fade-in_0.2s_ease-out]">
         <div className="max-w-[85%] min-w-0 w-full">
-          <div className="bg-amber-50 dark:bg-amber-900/15 border border-amber-200 dark:border-amber-700/40 rounded-xl px-4 py-3">
-            <div className="text-sm text-amber-900 dark:text-amber-200 mb-3">
-              Allow <span className="font-medium">{info.permission}</span> '<span className="font-mono text-xs">{info.pattern}</span>'?
+          <div className="bg-amber-50 dark:bg-amber-900/15 border border-amber-200 dark:border-amber-700/40 rounded-xl px-4 py-3 shadow-sm">
+            <div className="text-sm text-amber-900 dark:text-amber-200 mb-3 flex items-center gap-1.5">
+              <svg className="w-4 h-4 shrink-0 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+              </svg>
+              <span>Allow <span className="font-semibold">{info.permission}</span> '<span className="font-mono text-xs">{info.pattern}</span>'?</span>
             </div>
             {info.resolved ? (
               <div className="text-xs text-amber-600 dark:text-amber-400 italic">
@@ -141,7 +148,7 @@ export function MessageBubble({ message, onResolvePermission }: MessageBubblePro
                     await rpcClient.permissionRespond(info.requestId, "deny")
                     onResolvePermission?.(message.id)
                   }}
-                  className="px-3 py-1.5 text-xs rounded-lg border border-amber-300 dark:border-amber-600 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-800/30 cursor-pointer"
+                  className="px-3 py-1.5 text-xs rounded-lg border border-amber-300 dark:border-amber-600 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-800/30 transition-colors cursor-pointer"
                 >
                   Deny
                 </button>
@@ -150,7 +157,7 @@ export function MessageBubble({ message, onResolvePermission }: MessageBubblePro
                     await rpcClient.permissionRespond(info.requestId, "allow")
                     onResolvePermission?.(message.id)
                   }}
-                  className="px-3 py-1.5 text-xs rounded-lg bg-blue-600 text-white hover:bg-blue-700 cursor-pointer"
+                  className="px-3 py-1.5 text-xs rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors cursor-pointer"
                 >
                   Allow Once
                 </button>
@@ -159,7 +166,7 @@ export function MessageBubble({ message, onResolvePermission }: MessageBubblePro
                     await rpcClient.permissionRespond(info.requestId, "always")
                     onResolvePermission?.(message.id)
                   }}
-                  className="px-3 py-1.5 text-xs rounded-lg bg-green-600 text-white hover:bg-green-700 cursor-pointer"
+                  className="px-3 py-1.5 text-xs rounded-lg bg-green-600 text-white hover:bg-green-700 transition-colors cursor-pointer"
                 >
                   Always Allow
                 </button>
@@ -181,12 +188,12 @@ export function MessageBubble({ message, onResolvePermission }: MessageBubblePro
       {isUser ? <UserAvatar /> : <AiAvatar />}
 
       {/* 消息内容 */}
-      <div className={`max-w-[75%] min-w-0 ${isUser ? "items-end" : "items-start"}`}>
+      <div className={`max-w-[75%] min-w-0 flex flex-col ${isUser ? "items-end" : "items-start"}`}>
         {isUser ? (
           <div className="bg-blue-500 text-white rounded-2xl rounded-tr-md px-4 py-2.5 shadow-sm">
             <p className="whitespace-pre-wrap text-sm leading-relaxed">{message.content}</p>
             {message.createdAt && (
-              <div className="mt-1 text-[10px] text-blue-200 text-right">
+              <div className="mt-1 text-[10px] text-blue-200/80 text-right">
                 {new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
               </div>
             )}

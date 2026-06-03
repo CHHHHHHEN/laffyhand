@@ -51,7 +51,7 @@ describe("AppShell", () => {
 
   it("shows branding text", () => {
     renderAppShell()
-    expect(screen.getByText("Laffyhand")).toBeInTheDocument()
+    expect(screen.getByText("LAFFYHAND")).toBeInTheDocument()
   })
 
   it("renders child route content", () => {
