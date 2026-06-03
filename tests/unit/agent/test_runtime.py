@@ -307,6 +307,69 @@ class TestSwitchSession:
         result = runtime.switch_session("nonexistent")
         assert result is False
 
+    def test_switch_to_session_set_via_state(self, runtime):
+        """Simulates _ensure_session flow: state set via runtime.state, then switch_session."""
+        session_id = "sess-from-state"
+        state = AgentState(
+            messages=[SystemMessage(content="ensure flow")],
+            session_id=SessionID(session_id),
+            usage=SessionUsage(context_size=0),
+        )
+        # This is exactly what _ensure_session does:
+        # runtime.state = AgentState(session_id=session.id)
+        runtime.state = state
+        # _ensure_session also does: runtime._states[session.id] = runtime.state
+        runtime._states[session_id] = runtime.state
+
+        result = runtime.switch_session(session_id)
+        assert result is True
+        assert runtime.state is state
+
+    def test_switch_to_session_only_in_state_not_states(self, runtime):
+        """session only in runtime.state but not in _states — should still be found by self.state check."""
+        session_id = "sess-only-in-state"
+        state = AgentState(
+            messages=[SystemMessage(content="only in state")],
+            session_id=SessionID(session_id),
+            usage=SessionUsage(context_size=0),
+        )
+        runtime.state = state
+        # Deliberately NOT adding to _states — the self.state fallback must handle this
+
+        result = runtime.switch_session(session_id)
+        assert result is True
+        assert runtime.state is state
+
+    def test_ensure_session_then_switch_session_and_chat(self, runtime, session_manager):
+        """Full flow: _ensure_session creates session, then switch_session, then _prepare_chat-equivalent."""
+        from laffyhand.agent.session.models import Session as SessionModel
+
+        session = SessionModel(provider="test", model="test")
+        state = AgentState(
+            messages=[SystemMessage(content="system prompt")],
+            session_id=SessionID(session.id),
+            usage=SessionUsage(context_size=0),
+        )
+        # _ensure_session steps:
+        runtime.session_manager.set_pending_meta(session.id, title="", cwd="", provider="", model="", agent_version="build")
+        runtime.state = state
+        runtime._states[session.id] = runtime.state
+
+        # session/load: switch_session
+        assert runtime.switch_session(session.id) is True
+
+        # chat/stream: _prepare_chat calls switch_session again with same id
+        assert runtime.switch_session(session.id) is True
+
+        # Switch to another session and back — still works
+        other = session_manager.create(messages=[UserMessage(content="other")])
+        other_state = AgentState(messages=[], session_id=SessionID(other.id), usage=SessionUsage(context_size=0))
+        runtime._states[other.id] = other_state
+        assert runtime.switch_session(other.id) is True
+
+        # Switch back to original — must still be findable
+        assert runtime.switch_session(session.id) is True
+
 
 class TestForkSession:
     def test_forks_current_session(self, runtime, session_manager):

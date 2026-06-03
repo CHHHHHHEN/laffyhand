@@ -219,6 +219,37 @@ class TestHandleChat:
         runtime._generate_title.assert_called_once_with("sess-1", "auto")
 
     @pytest.mark.anyio
+    async def test_chat_with_session_id_in_params(self, runtime, transport):
+        """_prepare_chat with session_id should call switch_session with that id."""
+        runtime.state = MagicMock()
+        runtime.state.session_id = "sess-1"
+        runtime.state.messages = []
+        runtime.state.step = 0
+        runtime.current_session_id = "sess-1"
+        runtime.get_state = MagicMock(return_value=runtime.state)
+        runtime.switch_session = MagicMock(return_value=True)
+
+        events = []
+        runtime.run_agent_turn = MagicMock()
+        runtime.run_agent_turn.return_value = _async_gen(events)
+
+        result = await handle_chat(
+            runtime, {"message": "hello", "session_id": "sess-1"}, transport, 1, "c1"
+        )
+
+        assert result["session_id"] == "sess-1"
+        runtime.switch_session.assert_called_once_with("sess-1")
+
+    @pytest.mark.anyio
+    async def test_chat_with_session_id_raises_on_not_found(self, runtime, transport):
+        """_prepare_chat with unknown session_id should raise."""
+        runtime.switch_session = MagicMock(return_value=False)
+        with pytest.raises(ValueError, match="Session not found"):
+            await handle_chat(
+                runtime, {"message": "hello", "session_id": "unknown"}, transport, 1, "c1"
+            )
+
+    @pytest.mark.anyio
     async def test_chat_without_session_creates_one(self, runtime, transport):
         runtime.state = None
         runtime.current_session_id = None
