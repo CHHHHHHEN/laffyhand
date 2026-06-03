@@ -381,22 +381,22 @@ class TestHelpers:
         assert result == {}
 
     def test_message_to_session_message_unknown_type(self) -> None:
-        from laffyhand.agent.session.manager import _message_to_session_message
+        from laffyhand.agent.session.converters import message_to_session_message
 
         class FakeMsg:
             pass
 
         with pytest.raises(TypeError, match="Unknown message type"):
-            _message_to_session_message(FakeMsg(), "sid")
+            message_to_session_message(FakeMsg(), "sid")
 
     def test_message_to_session_message_assistant_with_tokens(self) -> None:
-        from laffyhand.agent.session.manager import _message_to_session_message
+        from laffyhand.agent.session.converters import message_to_session_message
         from laffyhand.agent.llm.specs.models import Usage
 
         msg = AssistantMessage(
             content="Hello", tokens=Usage(input_tokens=10, output_tokens=5, reasoning_tokens=3)
         )
-        sm = _message_to_session_message(msg, "sid")
+        sm = message_to_session_message(msg, "sid")
         assert sm.type == "assistant"
         d = sm.data
         assert d.tokens is not None
@@ -405,8 +405,8 @@ class TestHelpers:
         assert d.tokens.reasoning == 3
 
     def test_session_message_to_message_roundtrip(self) -> None:
-        from laffyhand.agent.session.manager import (
-            _message_to_session_message, _session_message_to_message,
+        from laffyhand.agent.session.converters import (
+            message_to_session_message, session_message_to_message,
         )
         from laffyhand.agent.llm.specs.models import Usage
 
@@ -414,8 +414,8 @@ class TestHelpers:
             content="Hello", reasoning="thinking",
             tokens=Usage(input_tokens=10, output_tokens=5, reasoning_tokens=3, cache_read_tokens=2, cache_write_tokens=1),
         )
-        sm = _message_to_session_message(msg, "sid")
-        restored = _session_message_to_message(sm)
+        sm = message_to_session_message(msg, "sid")
+        restored = session_message_to_message(sm)
         assert isinstance(restored, AssistantMessage)
         assert restored.content == "Hello"
         assert restored.reasoning == "thinking"
@@ -424,13 +424,13 @@ class TestHelpers:
         assert restored.tokens.cache_write_tokens == 1
 
     def test_shell_message_preserves_is_error(self) -> None:
-        from laffyhand.agent.session.manager import (
-            _message_to_session_message, _session_message_to_message,
+        from laffyhand.agent.session.converters import (
+            message_to_session_message, session_message_to_message,
         )
 
         msg = ToolMessage(tool_call_id="c1", content="error", is_error=True)
-        sm = _message_to_session_message(msg, "sid")
-        restored = _session_message_to_message(sm)
+        sm = message_to_session_message(msg, "sid")
+        restored = session_message_to_message(sm)
         assert isinstance(restored, ToolMessage)
         assert restored.is_error is True
 
