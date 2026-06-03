@@ -224,6 +224,9 @@ async def handle_session_load(
     if state is None:
         raise ValueError(f"Session not found: {session_id}")
     session = runtime.session_manager.get(session_id)
+    is_streaming = False
+    if transport.dispatcher is not None:
+        is_streaming = transport.dispatcher.get_active_session_stream(session_id) is not None
     return {
         "session_id": state.session_id,
         "model": session.model if session else "",
@@ -232,6 +235,7 @@ async def handle_session_load(
         "turn_count": state.turn_count,
         "usage": state.usage.model_dump() if state.usage else None,
         "messages": _serialize_messages(state.messages),
+        "is_streaming": is_streaming,
     }
 
 

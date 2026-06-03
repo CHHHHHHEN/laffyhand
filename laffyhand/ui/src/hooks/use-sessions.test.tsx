@@ -184,4 +184,62 @@ describe("useCurrentSession", () => {
     expect(result.current.isLoading).toBe(false)
     expect(mockSessionLoad).not.toHaveBeenCalled()
   })
+
+  // ── Reconnection polling ──
+
+  it("polls session/load when is_streaming is true", async () => {
+    mockSessionLoad.mockResolvedValueOnce({
+      session_id: "sess-poll",
+      messages_count: 1,
+      turn_count: 1,
+      is_streaming: true,
+      messages: [
+        { id: "m1", role: "assistant" as const, content: "partial", createdAt: 100 },
+      ],
+    })
+
+    renderHook(() => useCurrentSession("sess-poll"), { wrapper: createWrapper() })
+
+    await waitFor(() => expect(mockSessionLoad).toHaveBeenCalledTimes(1))
+
+    // Second call returns final data
+    mockSessionLoad.mockResolvedValue({
+      session_id: "sess-poll",
+      messages_count: 2,
+      turn_count: 1,
+      is_streaming: false,
+      messages: [
+        { id: "m1", role: "assistant" as const, content: "partial", createdAt: 100 },
+        { id: "m2", role: "assistant" as const, content: "complete", createdAt: 200 },
+      ],
+    })
+
+    // Wait for the 2s polling interval to fire
+    await waitFor(() => expect(mockSessionLoad).toHaveBeenCalledTimes(2), { timeout: 5000 })
+
+    const state = useChatStore.getState().sessions["sess-poll"]
+    expect(state!.messages).toHaveLength(2)
+    expect(state!.messages[1]!.content).toBe("complete")
+  }, 10000)
+
+  it("does not poll when is_streaming is false", async () => {
+    mockSessionLoad.mockResolvedValue({
+      session_id: "sess-no-poll",
+      messages_count: 0,
+      turn_count: 0,
+      is_streaming: false,
+      messages: [],
+    })
+
+    renderHook(() => useCurrentSession("sess-no-poll"), { wrapper: createWrapper() })
+
+    await waitFor(() => expect(mockSessionLoad).toHaveBeenCalledTimes(1))
+
+    // Small delay — no polling should trigger
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 100))
+    })
+
+    expect(mockSessionLoad).toHaveBeenCalledTimes(1)
+  })
 })

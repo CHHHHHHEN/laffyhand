@@ -107,6 +107,7 @@ export interface SessionLoadResult {
   turn_count: number
   usage?: SessionUsage
   messages: MessageData[]
+  is_streaming?: boolean
 }
 
 export interface SessionDeleteResult {

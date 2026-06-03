@@ -79,6 +79,16 @@ export function ChatPage() {
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
+      {session?.is_streaming && !isStreaming && (
+        <div className="flex items-center gap-2 px-4 py-1.5 text-xs text-yellow-700 dark:text-yellow-400 bg-yellow-50 dark:bg-yellow-900/20 border-b border-yellow-200 dark:border-yellow-800/30 shrink-0">
+          <span className="relative flex h-2 w-2">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-yellow-400 opacity-75" />
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-yellow-500" />
+          </span>
+          <span className="font-medium">Reconnecting</span>
+          <span className="text-yellow-600 dark:text-yellow-500">— session is still processing on the server</span>
+        </div>
+      )}
       <MessageList sessionId={sessionId} onRetry={retryLastMessage} />
       <ChatInput
         onSend={sendMessage}
