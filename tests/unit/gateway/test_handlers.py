@@ -44,9 +44,10 @@ def runtime():
     r.state.messages = []
     r.state.turn_count = 0
     r.session_manager = MagicMock()
-    r._context_size = 8192
+    r.context_size = 8192
     r.build_system_prompt = AsyncMock(return_value="You are a helpful assistant.")
     r._generate_title = AsyncMock()
+    r._schedule_title_generation = MagicMock()
     r.get_session_lock = MagicMock(return_value=MagicMock())
     return r
 
@@ -57,7 +58,7 @@ class TestHandleInitialize:
         result = await handle_initialize(runtime, {}, transport, 1, "c1")
         assert result["protocol_version"] == "2.0"
         assert result["server_info"]["name"] == "laffyhand"
-        assert result["session_id"] == "sess-1"
+        assert result["session_id"] is None
 
 
 class TestHandleShutdown:
@@ -71,7 +72,10 @@ class TestHandleShutdown:
 class TestHandleSessionCreate:
     @pytest.mark.anyio
     async def test_creates_and_returns_session(self, runtime, transport):
-        runtime.state = None
+        runtime._states = {}
+        runtime.get_state = MagicMock(
+            side_effect=lambda sid: runtime._states.get(sid)
+        )
 
         result = await handle_session_create(runtime, {}, transport, 1, "c1")
 
@@ -83,6 +87,11 @@ class TestHandleSessionCreate:
 
     @pytest.mark.anyio
     async def test_returns_session_id(self, runtime, transport):
+        runtime._states = {}
+        runtime.get_state = MagicMock(
+            side_effect=lambda sid: runtime._states.get(sid)
+        )
+
         result = await handle_session_create(runtime, {}, transport, 1, "c1")
         assert "session_id" in result
 
@@ -119,11 +128,11 @@ class TestHandleSessionList:
 class TestHandleSessionLoad:
     @pytest.mark.anyio
     async def test_loads_session(self, runtime, transport):
-        runtime.switch_session = MagicMock(return_value=True)
-        runtime.state = MagicMock()
-        runtime.state.session_id = "sess-target"
-        runtime.state.messages = ["m1", "m2"]
-        runtime.state.turn_count = 7
+        mock_state = MagicMock()
+        mock_state.session_id = "sess-target"
+        mock_state.messages = ["m1", "m2"]
+        mock_state.turn_count = 7
+        runtime.load_session_state = MagicMock(return_value=mock_state)
 
         result = await handle_session_load(
             runtime, {"session_id": "sess-target"}, transport, 1, "c1"
@@ -140,7 +149,7 @@ class TestHandleSessionLoad:
 
     @pytest.mark.anyio
     async def test_raises_on_not_found(self, runtime, transport):
-        runtime.switch_session = MagicMock(return_value=False)
+        runtime.load_session_state = MagicMock(return_value=None)
         with pytest.raises(ValueError, match="not found"):
             await handle_session_load(
                 runtime, {"session_id": "invalid"}, transport, 1, "c1"
@@ -166,31 +175,27 @@ class TestHandleSessionDelete:
 class TestHandleSessionFork:
     @pytest.mark.anyio
     async def test_forks_session(self, runtime, transport):
-        runtime.current_session_id = "sess-1"
         runtime.fork_session = MagicMock(return_value="forked-id")
-        result = await handle_session_fork(runtime, {}, transport, 1, "c1")
+        result = await handle_session_fork(runtime, {"session_id": "sess-1"}, transport, 1, "c1")
         assert result["session_id"] == "forked-id"
         runtime.fork_session.assert_called_once_with("sess-1")
 
     @pytest.mark.anyio
-    async def test_uses_current_session_id(self, runtime, transport):
-        runtime.current_session_id = "sess-target"
+    async def test_uses_session_id(self, runtime, transport):
         runtime.fork_session = MagicMock(return_value="forked-id")
-        await handle_session_fork(runtime, {}, transport, 1, "c1")
+        await handle_session_fork(runtime, {"session_id": "sess-target"}, transport, 1, "c1")
         runtime.fork_session.assert_called_once_with("sess-target")
 
     @pytest.mark.anyio
-    async def test_raises_on_no_active(self, runtime, transport):
-        runtime.current_session_id = None
-        with pytest.raises(ValueError, match="No active session"):
+    async def test_raises_when_missing_session_id(self, runtime, transport):
+        with pytest.raises(ValueError, match="session_id is required"):
             await handle_session_fork(runtime, {}, transport, 1, "c1")
 
     @pytest.mark.anyio
     async def test_raises_when_fork_returns_none(self, runtime, transport):
-        runtime.current_session_id = "sess-1"
         runtime.fork_session = MagicMock(return_value=None)
-        with pytest.raises(ValueError, match="No active session"):
-            await handle_session_fork(runtime, {}, transport, 1, "c1")
+        with pytest.raises(ValueError, match="not found"):
+            await handle_session_fork(runtime, {"session_id": "sess-1"}, transport, 1, "c1")
 
 
 class TestHandleChat:
@@ -201,18 +206,19 @@ class TestHandleChat:
 
     @pytest.mark.anyio
     async def test_chat_with_existing_session(self, runtime, transport):
-        runtime.state = MagicMock()
-        runtime.state.session_id = "sess-1"
-        runtime.state.messages = []
-        runtime.state.step = 0
-        runtime.current_session_id = "sess-1"
-        runtime.get_state = MagicMock(return_value=runtime.state)
+        mock_state = MagicMock()
+        mock_state.session_id = "sess-1"
+        mock_state.messages = []
+        mock_state.step = 0
+        runtime.get_state = MagicMock(return_value=mock_state)
 
         events = []
         runtime.run_agent_turn = MagicMock()
         runtime.run_agent_turn.return_value = _async_gen(events)
 
-        result = await handle_chat(runtime, {"message": "hello"}, transport, 1, "c1")
+        result = await handle_chat(
+            runtime, {"message": "hello", "session_id": "sess-1"}, transport, 1, "c1"
+        )
 
         assert "content" in result
         assert result["session_id"] == "sess-1"
@@ -220,14 +226,12 @@ class TestHandleChat:
 
     @pytest.mark.anyio
     async def test_chat_with_session_id_in_params(self, runtime, transport):
-        """_prepare_chat with session_id should call switch_session with that id."""
-        runtime.state = MagicMock()
-        runtime.state.session_id = "sess-1"
-        runtime.state.messages = []
-        runtime.state.step = 0
-        runtime.current_session_id = "sess-1"
-        runtime.get_state = MagicMock(return_value=runtime.state)
-        runtime.switch_session = MagicMock(return_value=True)
+        """_prepare_chat with session_id uses get_state."""
+        mock_state = MagicMock()
+        mock_state.session_id = "sess-1"
+        mock_state.messages = []
+        mock_state.step = 0
+        runtime.get_state = MagicMock(return_value=mock_state)
 
         events = []
         runtime.run_agent_turn = MagicMock()
@@ -238,30 +242,18 @@ class TestHandleChat:
         )
 
         assert result["session_id"] == "sess-1"
-        runtime.switch_session.assert_called_once_with("sess-1")
 
     @pytest.mark.anyio
     async def test_chat_with_session_id_raises_on_not_found(self, runtime, transport):
         """_prepare_chat with unknown session_id should raise."""
-        runtime.switch_session = MagicMock(return_value=False)
-        with pytest.raises(ValueError, match="Session not found"):
+        runtime.get_state = MagicMock(return_value=None)
+        with pytest.raises(RuntimeError, match="Session state not found"):
             await handle_chat(
                 runtime, {"message": "hello", "session_id": "unknown"}, transport, 1, "c1"
             )
 
     @pytest.mark.anyio
     async def test_chat_without_session_creates_one(self, runtime, transport):
-        runtime.state = None
-        runtime.current_session_id = None
-
-        # capture the real session state when _ensure_session sets it
-        captured_state = {}
-
-        def set_state_side_effect(new_state):
-            captured_state["session_id"] = new_state.session_id
-        runtime.state = None
-        runtime._session_id = None
-
         runtime.run_agent_turn = MagicMock()
         runtime.run_agent_turn.return_value = _async_gen([])
 
@@ -461,14 +453,14 @@ class TestNextMsgId:
 class TestHandleSessionLoadWithMessages:
     @pytest.mark.anyio
     async def test_returns_messages(self, runtime, transport):
-        runtime.switch_session = MagicMock(return_value=True)
-        runtime.state = MagicMock()
-        runtime.state.session_id = "sess-target"
-        runtime.state.messages = [
+        mock_state = MagicMock()
+        mock_state.session_id = "sess-target"
+        mock_state.messages = [
             UserMessage(content="hello"),
             AssistantMessage(content="hi there"),
         ]
-        runtime.state.turn_count = 2
+        mock_state.turn_count = 2
+        runtime.load_session_state = MagicMock(return_value=mock_state)
 
         result = await handle_session_load(
             runtime, {"session_id": "sess-target"}, transport, 1, "c1"
@@ -485,18 +477,17 @@ class TestHandleChatStream:
     async def test_streams_events_and_finish(self, runtime, transport):
         from laffyhand.agent.schemas import TextDelta
 
-        runtime.state = MagicMock()
-        runtime.state.session_id = "sess-1"
-        runtime.state.messages = []
-        runtime.state.step = 0
-        runtime.state.pending_steer = None
-        runtime.state.usage = MagicMock()
-        runtime.state.usage.model_dump.return_value = {
+        mock_state = MagicMock()
+        mock_state.session_id = "sess-1"
+        mock_state.messages = []
+        mock_state.step = 0
+        mock_state.pending_steer = None
+        mock_state.usage = MagicMock()
+        mock_state.usage.model_dump.return_value = {
             "total_input": 0,
             "total_output": 0,
         }
-        runtime.current_session_id = "sess-1"
-        runtime.get_state = MagicMock(return_value=runtime.state)
+        runtime.get_state = MagicMock(return_value=mock_state)
 
         runtime.run_agent_turn = MagicMock()
         runtime.run_agent_turn.return_value = _async_gen(
@@ -504,7 +495,9 @@ class TestHandleChatStream:
         )
         runtime.subagent_manager = None
 
-        await handle_chat_stream(runtime, {"message": "hi"}, transport, 1, "c1")
+        await handle_chat_stream(
+            runtime, {"message": "hi", "session_id": "sess-1"}, transport, 1, "c1"
+        )
 
         runtime._generate_title.assert_called_once_with("sess-1", "auto")
 
@@ -519,18 +512,17 @@ class TestHandleChatStream:
 
     @pytest.mark.anyio
     async def test_streams_error_as_event_on_exception(self, runtime, transport):
-        runtime.state = MagicMock()
-        runtime.state.session_id = "sess-1"
-        runtime.state.messages = []
-        runtime.state.step = 0
-        runtime.state.pending_steer = None
-        runtime.state.usage = MagicMock()
-        runtime.state.usage.model_dump.return_value = {
+        mock_state = MagicMock()
+        mock_state.session_id = "sess-1"
+        mock_state.messages = []
+        mock_state.step = 0
+        mock_state.pending_steer = None
+        mock_state.usage = MagicMock()
+        mock_state.usage.model_dump.return_value = {
             "total_input": 0,
             "total_output": 0,
         }
-        runtime.current_session_id = "sess-1"
-        runtime.get_state = MagicMock(return_value=runtime.state)
+        runtime.get_state = MagicMock(return_value=mock_state)
 
         async def failing_gen():
             raise RuntimeError("provider failed")
@@ -540,7 +532,9 @@ class TestHandleChatStream:
         runtime.run_agent_turn.return_value = failing_gen()
         runtime.subagent_manager = None
 
-        await handle_chat_stream(runtime, {"message": "hi"}, transport, 1, "c1")
+        await handle_chat_stream(
+            runtime, {"message": "hi", "session_id": "sess-1"}, transport, 1, "c1"
+        )
 
         # Should have sent both error event and finish
         assert transport.send.await_count >= 2
@@ -556,24 +550,25 @@ class TestHandleChatStream:
 
     @pytest.mark.anyio
     async def test_streams_finish_on_empty_turn(self, runtime, transport):
-        runtime.state = MagicMock()
-        runtime.state.session_id = "sess-1"
-        runtime.state.messages = []
-        runtime.state.step = 0
-        runtime.state.pending_steer = None
-        runtime.state.usage = MagicMock()
-        runtime.state.usage.model_dump.return_value = {
+        mock_state = MagicMock()
+        mock_state.session_id = "sess-1"
+        mock_state.messages = []
+        mock_state.step = 0
+        mock_state.pending_steer = None
+        mock_state.usage = MagicMock()
+        mock_state.usage.model_dump.return_value = {
             "total_input": 0,
             "total_output": 0,
         }
-        runtime.current_session_id = "sess-1"
-        runtime.get_state = MagicMock(return_value=runtime.state)
+        runtime.get_state = MagicMock(return_value=mock_state)
 
         runtime.run_agent_turn = MagicMock()
         runtime.run_agent_turn.return_value = _async_gen([])
         runtime.subagent_manager = None
 
-        await handle_chat_stream(runtime, {"message": "hi"}, transport, 1, "c1")
+        await handle_chat_stream(
+            runtime, {"message": "hi", "session_id": "sess-1"}, transport, 1, "c1"
+        )
 
         import json
 
@@ -586,7 +581,9 @@ class TestHandleChatStream:
 class TestHandleToolsList:
     @pytest.mark.anyio
     async def test_returns_tools_with_enabled_field(self, runtime, transport):
-        runtime.state.disabled_tools = set()
+        mock_state = MagicMock()
+        mock_state.disabled_tools = set()
+        runtime.get_state = MagicMock(return_value=mock_state)
         tool1 = MagicMock()
         tool1.name = "read"
         tool1.description = "Read file"
@@ -599,7 +596,9 @@ class TestHandleToolsList:
             return_value=[tool1, tool2]
         )
 
-        result = await handle_tools_list(runtime, {}, transport, 1, "c1")
+        result = await handle_tools_list(
+            runtime, {"session_id": "sess-1"}, transport, 1, "c1"
+        )
 
         assert len(result["tools"]) == 2
         assert result["tools"][0]["name"] == "read"
@@ -607,7 +606,9 @@ class TestHandleToolsList:
 
     @pytest.mark.anyio
     async def test_reflects_disabled_tools(self, runtime, transport):
-        runtime.state.disabled_tools = {"read"}
+        mock_state = MagicMock()
+        mock_state.disabled_tools = {"read"}
+        runtime.get_state = MagicMock(return_value=mock_state)
         tool1 = MagicMock()
         tool1.name = "read"
         tool1.description = "Read file"
@@ -620,7 +621,9 @@ class TestHandleToolsList:
             return_value=[tool1, tool2]
         )
 
-        result = await handle_tools_list(runtime, {}, transport, 1, "c1")
+        result = await handle_tools_list(
+            runtime, {"session_id": "sess-1"}, transport, 1, "c1"
+        )
 
         tools = {t["name"]: t["enabled"] for t in result["tools"]}
         assert tools["read"] is False
@@ -630,28 +633,34 @@ class TestHandleToolsList:
 class TestHandleToolsSetDisabled:
     @pytest.mark.anyio
     async def test_sets_disabled_tools(self, runtime, transport):
-        runtime.state.disabled_tools = set()
+        mock_state = MagicMock()
+        mock_state.disabled_tools = set()
+        runtime.get_state = MagicMock(return_value=mock_state)
         result = await handle_tools_set_disabled(
-            runtime, {"tool_names": ["read", "write"]}, transport, 1, "c1"
+            runtime, {"tool_names": ["read", "write"], "session_id": "sess-1"}, transport, 1, "c1"
         )
         assert result["status"] == "ok"
         assert set(result["disabled_tools"]) == {"read", "write"}
-        assert runtime.state.disabled_tools == {"read", "write"}
+        assert mock_state.disabled_tools == {"read", "write"}
 
     @pytest.mark.anyio
     async def test_clears_disabled_tools(self, runtime, transport):
-        runtime.state.disabled_tools = {"read", "write"}
+        mock_state = MagicMock()
+        mock_state.disabled_tools = {"read", "write"}
+        runtime.get_state = MagicMock(return_value=mock_state)
         result = await handle_tools_set_disabled(
-            runtime, {"tool_names": []}, transport, 1, "c1"
+            runtime, {"tool_names": [], "session_id": "sess-1"}, transport, 1, "c1"
         )
         assert result["status"] == "ok"
-        assert runtime.state.disabled_tools == set()
+        assert mock_state.disabled_tools == set()
 
     @pytest.mark.anyio
     async def test_raises_when_no_state(self, runtime, transport):
-        runtime.state = None
-        with pytest.raises(RuntimeError, match="No active session"):
-            await handle_tools_set_disabled(runtime, {}, transport, 1, "c1")
+        runtime.get_state = MagicMock(return_value=None)
+        with pytest.raises(RuntimeError, match="Session not found"):
+            await handle_tools_set_disabled(
+                runtime, {"tool_names": [], "session_id": "sess-1"}, transport, 1, "c1"
+            )
 
 
 class TestHandleSessionSearch:
@@ -693,9 +702,9 @@ class TestHandleSessionSetTitle:
         runtime.session_manager.set_title.assert_called_once_with("sess-1", "New Title")
 
     @pytest.mark.anyio
-    async def test_uses_current_session(self, runtime, transport):
+    async def test_uses_session_id(self, runtime, transport):
         await handlers.handle_session_set_title(
-            runtime, {"title": "Auto"}, transport, 1, "c1"
+            runtime, {"title": "Auto", "session_id": "sess-1"}, transport, 1, "c1"
         )
         runtime.session_manager.set_title.assert_called_once_with("sess-1", "Auto")
 
@@ -705,9 +714,8 @@ class TestHandleSessionSetTitle:
             await handlers.handle_session_set_title(runtime, {}, transport, 1, "c1")
 
     @pytest.mark.anyio
-    async def test_requires_active_session(self, runtime, transport):
-        runtime.current_session_id = None
-        with pytest.raises(ValueError, match="No active session"):
+    async def test_requires_session_id(self, runtime, transport):
+        with pytest.raises(ValueError, match="session_id is required"):
             await handlers.handle_session_set_title(
                 runtime, {"title": "T"}, transport, 1, "c1"
             )
@@ -716,17 +724,18 @@ class TestHandleSessionSetTitle:
 class TestHandleSessionGenerateTitle:
     @pytest.mark.anyio
     async def test_returns_title(self, runtime, transport):
-        runtime.generate_title_for_current = AsyncMock(return_value="Generated")
+        runtime._do_generate_title = AsyncMock(return_value="Generated")
         result = await handlers.handle_session_generate_title(
-            runtime, {}, transport, 1, "c1"
+            runtime, {"session_id": "sess-1"}, transport, 1, "c1"
         )
         assert result["title"] == "Generated"
+        runtime._do_generate_title.assert_awaited_once_with("sess-1")
 
     @pytest.mark.anyio
     async def test_returns_none(self, runtime, transport):
-        runtime.generate_title_for_current = AsyncMock(return_value=None)
+        runtime._do_generate_title = AsyncMock(return_value=None)
         result = await handlers.handle_session_generate_title(
-            runtime, {}, transport, 1, "c1"
+            runtime, {"session_id": "sess-1"}, transport, 1, "c1"
         )
         assert result["title"] is None
 
@@ -742,14 +751,8 @@ class TestHandleSessionArchive:
         runtime.session_manager.archive.assert_called_once_with("sess-target")
 
     @pytest.mark.anyio
-    async def test_archives_current(self, runtime, transport):
-        await handlers.handle_session_archive(runtime, {}, transport, 1, "c1")
-        runtime.session_manager.archive.assert_called_once_with("sess-1")
-
-    @pytest.mark.anyio
     async def test_requires_session_id(self, runtime, transport):
-        runtime.current_session_id = None
-        with pytest.raises(ValueError, match="No active session"):
+        with pytest.raises(ValueError, match="session_id is required"):
             await handlers.handle_session_archive(runtime, {}, transport, 1, "c1")
 
 
@@ -763,14 +766,13 @@ class TestHandleSubagentListActive:
             ]
         )
         result = await handlers.handle_subagent_list_active(
-            runtime, {}, transport, 1, "c1"
+            runtime, {"session_id": "sess-1"}, transport, 1, "c1"
         )
         assert len(result["subagents"]) == 1
         assert result["subagents"][0]["task_id"] == "t1"
 
     @pytest.mark.anyio
     async def test_returns_empty_when_no_session(self, runtime, transport):
-        runtime.current_session_id = None
         result = await handlers.handle_subagent_list_active(
             runtime, {}, transport, 1, "c1"
         )
@@ -780,20 +782,25 @@ class TestHandleSubagentListActive:
 class TestHandleUsageGet:
     @pytest.mark.anyio
     async def test_returns_usage(self, runtime, transport):
-        runtime.state.usage.total_input = 100
-        runtime.state.usage.total_output = 50
-        runtime.state.usage.total_reasoning = 10
-        runtime.state.usage.total_cache_read = 5
-        runtime.state.usage.context_size = 8192
+        mock_usage = MagicMock()
+        mock_usage.total_input = 100
+        mock_usage.total_output = 50
+        mock_usage.total_reasoning = 10
+        mock_usage.total_cache_read = 5
+        mock_usage.context_size = 8192
+        mock_state = MagicMock()
+        mock_state.usage = mock_usage
+        runtime.get_state = MagicMock(return_value=mock_state)
 
-        result = await handlers.handle_usage_get(runtime, {}, transport, 1, "c1")
+        result = await handlers.handle_usage_get(
+            runtime, {"session_id": "sess-1"}, transport, 1, "c1"
+        )
         assert result["total_input"] == 100
         assert result["total_output"] == 50
         assert result["context_size"] == 8192
 
     @pytest.mark.anyio
     async def test_returns_none_when_no_state(self, runtime, transport):
-        runtime.state = None
         result = await handlers.handle_usage_get(runtime, {}, transport, 1, "c1")
         assert result["total_input"] == 0
         assert result["total_output"] == 0
@@ -875,12 +882,13 @@ class TestHandleSessionSetConfig:
         new_session = MagicMock()
         new_session.id = "sess-new"
         runtime.session_manager.create = MagicMock(return_value=new_session)
-        runtime.state = MagicMock()
-        runtime.state.session_id = "sess-old"
+        mock_state = MagicMock()
+        mock_state.session_id = "sess-old"
+        runtime.get_state = MagicMock(return_value=mock_state)
 
         result = await handle_session_set_config(
             runtime,
-            {"provider": "opencode", "model": "deepseek-v4"},
+            {"provider": "opencode", "model": "deepseek-v4", "session_id": "sess-1"},
             transport,
             1,
             "c1",
@@ -892,12 +900,23 @@ class TestHandleSessionSetConfig:
         )
 
     @pytest.mark.anyio
-    async def test_raises_when_no_active_session(self, runtime, transport):
-        runtime.state = None
-        with pytest.raises(ValueError, match="No active session"):
+    async def test_raises_when_no_session_id(self, runtime, transport):
+        with pytest.raises(ValueError, match="session_id is required"):
             await handle_session_set_config(
                 runtime,
                 {"provider": "opencode", "model": "deepseek-v4"},
+                transport,
+                1,
+                "c1",
+            )
+
+    @pytest.mark.anyio
+    async def test_raises_when_session_not_found(self, runtime, transport):
+        runtime.get_state = MagicMock(return_value=None)
+        with pytest.raises(RuntimeError, match="Session not found"):
+            await handle_session_set_config(
+                runtime,
+                {"provider": "opencode", "model": "deepseek-v4", "session_id": "sess-1"},
                 transport,
                 1,
                 "c1",
@@ -908,11 +927,12 @@ class TestHandleSessionSetConfig:
         new_session = MagicMock()
         new_session.id = "sess-new"
         runtime.session_manager.create = MagicMock(return_value=new_session)
-        runtime.state = MagicMock()
+        mock_state = MagicMock()
+        runtime.get_state = MagicMock(return_value=mock_state)
 
         result = await handle_session_set_config(
             runtime,
-            {},
+            {"session_id": "sess-1"},
             transport,
             1,
             "c1",

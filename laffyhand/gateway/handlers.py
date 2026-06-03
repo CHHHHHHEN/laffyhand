@@ -149,7 +149,7 @@ async def handle_initialize(
             "name": "laffyhand",
             "version": "0.1.0",
         },
-        "session_id": runtime.current_session_id,
+        "session_id": None,
     }
 
 
@@ -170,10 +170,11 @@ async def handle_session_create(
     _request_id: str | int | None,
     conn_id: str,
 ) -> dict[str, Any]:
-    await _ensure_session(runtime, params)
-    if runtime.state is None:
+    session_id = await _ensure_session(runtime, params)
+    state = runtime.get_state(session_id)
+    if state is None:
         raise RuntimeError("Session creation failed")
-    return {"session_id": runtime.state.session_id}
+    return {"session_id": state.session_id}
 
 
 async def handle_session_list(
@@ -219,20 +220,18 @@ async def handle_session_load(
     session_id: str = params.get("session_id", "")
     if not session_id:
         raise ValueError("session_id is required")
-    ok = runtime.switch_session(session_id)
-    if not ok:
+    state = runtime.load_session_state(session_id)
+    if state is None:
         raise ValueError(f"Session not found: {session_id}")
-    if runtime.state is None:
-        raise RuntimeError("Session load failed")
     session = runtime.session_manager.get(session_id)
     return {
-        "session_id": runtime.state.session_id,
+        "session_id": state.session_id,
         "model": session.model if session else "",
         "agent": session.agent_version if session else "",
-        "messages_count": len(runtime.state.messages),
-        "turn_count": runtime.state.turn_count,
-        "usage": runtime.state.usage.model_dump() if runtime.state.usage else None,
-        "messages": _serialize_messages(runtime.state.messages),
+        "messages_count": len(state.messages),
+        "turn_count": state.turn_count,
+        "usage": state.usage.model_dump() if state.usage else None,
+        "messages": _serialize_messages(state.messages),
     }
 
 
@@ -257,12 +256,12 @@ async def handle_session_fork(
     _request_id: str | int | None,
     conn_id: str,
 ) -> dict[str, Any]:
-    session_id = runtime.current_session_id
+    session_id = params.get("session_id", "")
     if not session_id:
-        raise ValueError("No active session to fork")
+        raise ValueError("session_id is required")
     child_id = runtime.fork_session(session_id)
     if child_id is None:
-        raise ValueError("No active session to fork")
+        raise ValueError(f"Session not found: {session_id}")
     return {"session_id": child_id}
 
 
@@ -275,13 +274,8 @@ async def _prepare_chat(
         raise ValueError("message is required")
 
     session_id: str | None = params.get("session_id")
-    if session_id:
-        if not runtime.switch_session(session_id):
-            raise ValueError(f"Session not found: {session_id}")
-    elif runtime.state is None:
+    if not session_id:
         session_id = await _ensure_session(runtime, params)
-    else:
-        session_id = runtime.current_session_id
 
     if session_id is None:
         raise RuntimeError("Session ID is None after preparation")
@@ -456,7 +450,7 @@ async def handle_chat_stream(
             reason=finish_reason,
             usage=usage_info,
             session_id=session_id,
-            session_usage=runtime.state.usage.model_dump() if runtime.state else None,
+            session_usage=state.usage.model_dump() if state and state.usage else None,
             leftover_steer=leftover_steer,
         ).model_dump(exclude_none=True)
         done = Notification(method="event", params=done_params)
@@ -483,10 +477,7 @@ async def handle_chat_steer(
 
     session_id: str | None = params.get("session_id")
     if not session_id:
-        session_id = runtime.current_session_id
-
-    if session_id is None:
-        raise RuntimeError("No active session to steer")
+        raise ValueError("session_id is required")
     ok = runtime.steer_session(session_id, message)
     if not ok:
         raise RuntimeError(f"Session state not found: {session_id}")
@@ -500,14 +491,9 @@ async def handle_chat_cancel(
     _request_id: str | int | None,
     conn_id: str,
 ) -> dict[str, Any]:
-    # 0. Signal interrupt to the agent state if we can identify the session
     session_id: str | None = params.get("session_id")
     if session_id:
         runtime.interrupt_session(session_id)
-    else:
-        current = runtime.current_session_id
-        if current:
-            runtime.interrupt_session(current)
 
     # 1. Try dispatcher-based cancellation (WS/stdio transports)
     dispatcher: Dispatcher | None = getattr(transport, "dispatcher", None)
@@ -542,7 +528,9 @@ async def handle_tools_list(
     conn_id: str,
 ) -> dict[str, Any]:
     tools = await runtime.tool_registry.build_tool_definitions()
-    disabled = (runtime.state.disabled_tools) if runtime.state else set()
+    session_id: str | None = params.get("session_id")
+    state = runtime.get_state(session_id) if session_id else None
+    disabled = state.disabled_tools if state else set()
     return {
         "tools": [
             {
@@ -564,9 +552,13 @@ async def handle_tools_set_disabled(
     conn_id: str,
 ) -> dict[str, Any]:
     tool_names: list[str] = params.get("tool_names", [])
-    if runtime.state is None:
-        raise RuntimeError("No active session")
-    runtime.state.disabled_tools = set(tool_names)
+    session_id: str | None = params.get("session_id")
+    if not session_id:
+        raise ValueError("session_id is required")
+    state = runtime.get_state(session_id)
+    if state is None:
+        raise RuntimeError(f"Session not found: {session_id}")
+    state.disabled_tools = set(tool_names)
     return {"status": "ok", "disabled_tools": tool_names}
 
 
@@ -594,12 +586,12 @@ async def _ensure_session(
         model=str(session.model) if session.model else "",
         agent_version=session.agent_version,
     )
-    runtime.state = AgentState(
+    state = AgentState(
         messages=[system_message],
         session_id=SessionID(session.id),
         usage=SessionUsage(context_size=runtime.context_size),
     )
-    runtime._states[session.id] = runtime.state
+    runtime._states[session.id] = state
     runtime._schedule_title_generation(session.id, "on_create")
     return session.id
 
@@ -645,9 +637,9 @@ async def handle_session_set_title(
     title: str = params.get("title", "")
     if not title:
         raise ValueError("title is required")
-    session_id: str | None = params.get("session_id") or runtime.current_session_id
+    session_id: str | None = params.get("session_id")
     if not session_id:
-        raise ValueError("No active session")
+        raise ValueError("session_id is required")
     runtime.session_manager.set_title(session_id, title)
     return {"status": "ok", "session_id": session_id, "title": title}
 
@@ -659,7 +651,10 @@ async def handle_session_generate_title(
     _request_id: str | int | None,
     conn_id: str,
 ) -> dict[str, Any]:
-    title = await runtime.generate_title_for_current()
+    session_id: str | None = params.get("session_id")
+    if not session_id:
+        raise ValueError("session_id is required")
+    title = await runtime._do_generate_title(session_id)
     return {"title": title}
 
 
@@ -670,9 +665,9 @@ async def handle_session_archive(
     _request_id: str | int | None,
     conn_id: str,
 ) -> dict[str, Any]:
-    session_id: str | None = params.get("session_id") or runtime.current_session_id
+    session_id: str | None = params.get("session_id")
     if not session_id:
-        raise ValueError("No active session")
+        raise ValueError("session_id is required")
     runtime.session_manager.archive(session_id)
     return {"status": "archived", "session_id": session_id}
 
@@ -684,7 +679,7 @@ async def handle_subagent_list_active(
     _request_id: str | int | None,
     conn_id: str,
 ) -> dict[str, Any]:
-    session_id: str | None = params.get("session_id") or runtime.current_session_id
+    session_id: str | None = params.get("session_id")
     if not session_id:
         return {"subagents": []}
     return {"subagents": runtime.subagent_manager.list_active(session_id)}
@@ -785,14 +780,21 @@ async def handle_session_set_config(
 ) -> dict[str, Any]:
     provider = params.get("provider", "")
     model = params.get("model", "")
-    if not runtime.state:
-        raise ValueError("No active session")
-    runtime.complete_current_session()
-    runtime.state.session_id = SessionID(runtime.session_manager.create(
+    session_id: str | None = params.get("session_id")
+    if not session_id:
+        raise ValueError("session_id is required")
+    state = runtime.get_state(session_id)
+    if state is None:
+        raise RuntimeError(f"Session not found: {session_id}")
+    runtime.session_manager.complete(session_id)
+    new_session_id = runtime.session_manager.create(
         provider=provider,
         model=model,
-    ).id)
-    return {"session_id": runtime.state.session_id}
+    ).id
+    state.session_id = SessionID(new_session_id)
+    runtime._states[new_session_id] = state
+    runtime._states.pop(session_id, None)
+    return {"session_id": new_session_id}
 
 
 async def handle_permission_respond(
@@ -831,12 +833,30 @@ async def handle_usage_get(
     _request_id: str | int | None,
     conn_id: str,
 ) -> dict[str, Any]:
+    session_id: str | None = params.get("session_id")
+    if not session_id:
+        return {
+            "curr_context_usage": 0,
+            "total_input": 0,
+            "total_output": 0,
+            "total_reasoning": 0,
+            "context_size": 0,
+        }
+    state = runtime.get_state(session_id)
+    if state is None or state.usage is None:
+        return {
+            "curr_context_usage": 0,
+            "total_input": 0,
+            "total_output": 0,
+            "total_reasoning": 0,
+            "context_size": 0,
+        }
     return {
-        "curr_context_usage": runtime.state.usage.curr_context_usage if runtime.state else 0,
-        "total_input": runtime.state.usage.total_input if runtime.state else 0,
-        "total_output": runtime.state.usage.total_output if runtime.state else 0,
-        "total_reasoning": runtime.state.usage.total_reasoning if runtime.state else 0,
-        "context_size": runtime.state.usage.context_size if runtime.state else 0,
+        "curr_context_usage": state.usage.curr_context_usage,
+        "total_input": state.usage.total_input,
+        "total_output": state.usage.total_output,
+        "total_reasoning": state.usage.total_reasoning,
+        "context_size": state.usage.context_size,
     }
 
 
@@ -847,7 +867,7 @@ async def handle_todo_list(
     _request_id: str | int | None,
     conn_id: str,
 ) -> dict[str, Any]:
-    session_id: str = params.get("session_id") or runtime.current_session_id or ""
+    session_id: str = params.get("session_id", "")
     if not session_id:
         return {"tasks": []}
     status = params.get("status")
@@ -879,7 +899,7 @@ async def handle_todo_update(
     _request_id: str | int | None,
     conn_id: str,
 ) -> dict[str, Any]:
-    session_id: str = params.get("session_id") or runtime.current_session_id or ""
+    session_id: str = params.get("session_id", "")
     if not session_id:
         raise ValueError("session_id is required")
     task_id: str = params.get("task_id", "")

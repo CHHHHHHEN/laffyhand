@@ -15,8 +15,8 @@ from laffyhand.gateway.handlers import register_all_handlers
 @pytest.fixture
 def runtime():
     r = MagicMock()
-    r.current_session_id = None
-    r.state = None
+    r._states = {}
+    r.get_state = MagicMock(side_effect=lambda sid: r._states.get(sid))
     r.context_size = 128000
     r.tool_registry.build_tool_definitions = AsyncMock(return_value=[])
     r.tool_registry.build_tool_prompt = MagicMock(return_value="")
@@ -25,6 +25,7 @@ def runtime():
     r.session_manager.create = MagicMock(return_value=MagicMock(id="sess-1"))
     r.session_manager.list_sessions = MagicMock(return_value=[])
     r._generate_title = AsyncMock()
+    r._schedule_title_generation = MagicMock()
     r.get_session_lock = MagicMock(return_value=MagicMock())
     return r
 
@@ -62,7 +63,8 @@ async def _mock_run_agent_turn(**kwargs):
 async def test_initialize(transport_pair):
     server_t, client_t = transport_pair
     runtime = MagicMock()
-    runtime.current_session_id = "sess-1"
+    runtime._states = {}
+    runtime.get_state = MagicMock(side_effect=lambda sid: runtime._states.get(sid))
     gateway = GatewayServer(runtime, server_t)
 
     import asyncio
@@ -162,8 +164,6 @@ async def test_session_lifecycle(runtime, transport_pair):
 
     # No active session initially — create one via session/create
     runtime.build_system_prompt = AsyncMock(return_value="You are a helpful assistant.")
-    runtime.state = None
-    runtime.current_session_id = None
 
     req = Request(id=1, method="session/create", params={})
     await client_t.send(req.json())
@@ -201,8 +201,8 @@ async def test_chat_stream_via_gateway(transport_pair):
     """End-to-end chat_stream: sends message, receives streamed notifications, then finish."""
     server_t, client_t = transport_pair
     runtime = MagicMock()
-    runtime.current_session_id = None
-    runtime.state = None
+    runtime._states = {}
+    runtime.get_state = MagicMock(side_effect=lambda sid: runtime._states.get(sid))
     runtime.context_size = 128000
     runtime.tool_registry.build_tool_definitions = MagicMock(return_value=[])
     runtime.tool_registry.build_tool_prompt = MagicMock(return_value="")
@@ -212,6 +212,7 @@ async def test_chat_stream_via_gateway(transport_pair):
     runtime.session_manager.create = MagicMock(return_value=MagicMock(id="sess-stream"))
     runtime.run_agent_turn = _mock_run_agent_turn
     runtime._generate_title = AsyncMock()
+    runtime._schedule_title_generation = MagicMock()
     runtime.get_session_lock = MagicMock(return_value=MagicMock())
     runtime.subagent_manager = None
 
@@ -222,17 +223,17 @@ async def test_chat_stream_via_gateway(transport_pair):
     await asyncio.sleep(0.05)
 
     # First create a session so there's a state
-    runtime.state = MagicMock()
-    runtime.state.session_id = "sess-stream"
-    runtime.state.messages = []
-    runtime.state.step = 0
-    runtime.state.pending_steer = None
-    runtime.state.usage = MagicMock()
-    runtime.state.usage.model_dump.return_value = {"total_input": 10, "total_output": 5}
-    runtime.current_session_id = "sess-stream"
-    runtime.get_state = MagicMock(return_value=runtime.state)
+    usage_mock = MagicMock()
+    usage_mock.model_dump.return_value = {"total_input": 10, "total_output": 5}
+    state = MagicMock()
+    state.session_id = "sess-stream"
+    state.messages = []
+    state.step = 0
+    state.pending_steer = None
+    state.usage = usage_mock
+    runtime._states["sess-stream"] = state
 
-    req = Request(id=1, method="chat/stream", params={"message": "hello"})
+    req = Request(id=1, method="chat/stream", params={"message": "hello", "session_id": "sess-stream"})
     await client_t.send(req.json())
 
     notifications = []
@@ -264,7 +265,6 @@ async def test_chat_stream_via_gateway(transport_pair):
 async def test_session_set_title_via_gateway(transport_pair):
     server_t, client_t = transport_pair
     runtime = MagicMock()
-    runtime.current_session_id = "sess-1"
     runtime.session_manager = MagicMock()
     gateway = GatewayServer(runtime, server_t)
 
@@ -273,7 +273,7 @@ async def test_session_set_title_via_gateway(transport_pair):
     task = asyncio.create_task(_run_gateway(gateway))
     await asyncio.sleep(0.05)
 
-    req = Request(id=1, method="session/set_title", params={"title": "Custom Title"})
+    req = Request(id=1, method="session/set_title", params={"title": "Custom Title", "session_id": "sess-1"})
     await client_t.send(req.json())
     raw = await asyncio.wait_for(client_t.recv(), timeout=2)
     resp = json.loads(raw)
@@ -288,13 +288,18 @@ async def test_session_set_title_via_gateway(transport_pair):
 async def test_usage_get_via_gateway(transport_pair):
     server_t, client_t = transport_pair
     runtime = MagicMock()
-    runtime.current_session_id = "sess-1"
-    runtime.state = MagicMock()
-    runtime.state.usage.total_input = 100
-    runtime.state.usage.total_output = 50
-    runtime.state.usage.total_reasoning = 10
-    runtime.state.usage.total_cache_read = 5
-    runtime.state.usage.context_size = 8192
+
+    usage_mock = MagicMock()
+    usage_mock.total_input = 100
+    usage_mock.total_output = 50
+    usage_mock.total_reasoning = 10
+    usage_mock.total_cache_read = 5
+    usage_mock.context_size = 8192
+    state_mock = MagicMock()
+    state_mock.usage = usage_mock
+    runtime._states = {"sess-1": state_mock}
+    runtime.get_state = MagicMock(side_effect=lambda sid: runtime._states.get(sid))
+
     gateway = GatewayServer(runtime, server_t)
 
     import asyncio
@@ -302,7 +307,7 @@ async def test_usage_get_via_gateway(transport_pair):
     task = asyncio.create_task(_run_gateway(gateway))
     await asyncio.sleep(0.05)
 
-    req = Request(id=1, method="usage/get", params={})
+    req = Request(id=1, method="usage/get", params={"session_id": "sess-1"})
     await client_t.send(req.json())
     raw = await asyncio.wait_for(client_t.recv(), timeout=2)
     resp = json.loads(raw)
@@ -333,7 +338,7 @@ async def test_rpc_handler_error_logging(transport_pair):
     task = asyncio.create_task(_run_gateway(gateway))
     await asyncio.sleep(0.05)
 
-    runtime.switch_session = MagicMock(side_effect=ValueError("internal db failure"))
+    runtime.load_session_state = MagicMock(side_effect=ValueError("internal db failure"))
 
     req = Request(id=1, method="session/load", params={"session_id": "bad"})
     await client_t.send(req.json())

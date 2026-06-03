@@ -30,6 +30,7 @@ class TestTaskTool:
             {
                 "subagent_type": "explore",
                 "prompt": "Find the main function",
+                "session_id": "session-123",
             }
         )
         assert result == "<task>\nDone\n</task>"
@@ -51,6 +52,7 @@ class TestTaskTool:
                 "subagent_type": "general",
                 "prompt": "Do something",
                 "background": True,
+                "session_id": "session-123",
             }
         )
         assert result == "Sub-agent started"
@@ -72,6 +74,7 @@ class TestTaskTool:
                 "subagent_type": "build",
                 "prompt": "Fix the bug",
                 "description": "Fix bug",
+                "session_id": "session-123",
             }
         )
         agent = runtime.agent_registry.get("build")
@@ -90,6 +93,7 @@ class TestTaskTool:
             {
                 "subagent_type": "nonexistent",
                 "prompt": "Do something",
+                "session_id": "session-123",
             }
         )
         assert "unknown sub-agent" in result.lower()

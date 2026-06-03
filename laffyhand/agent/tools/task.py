@@ -60,8 +60,8 @@ class TaskTool(BaseTool):
         background = params.get("background", False)
         todo_id = params.get("todo_id")
 
-        parent_session_id = self._runtime.current_session_id
-        if parent_session_id is None:
+        parent_session_id = params.get("session_id", "")
+        if not parent_session_id:
             return "Error: no active session"
 
         agent_info = self._runtime.agent_registry.get(subagent_type)

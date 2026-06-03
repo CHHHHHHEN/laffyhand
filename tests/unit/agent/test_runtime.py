@@ -38,10 +38,7 @@ class TestAgentRuntimeInit:
         assert runtime.subagent_manager.active_count() == 0
 
     def test_initial_state_is_none(self, runtime):
-        assert runtime.state is None
-
-    def test_current_session_id_is_none_when_no_state(self, runtime):
-        assert runtime.current_session_id is None
+        assert runtime.get_state("nonexistent") is None
 
 
 class TestStateProperty:
@@ -51,18 +48,20 @@ class TestStateProperty:
             session_id=SessionID("s1"),
             usage=SessionUsage(context_size=1000),
         )
-        runtime.state = state
-        assert runtime.state is state
-        assert runtime.current_session_id == "s1"
+        runtime._states["s1"] = state
+        assert runtime.get_state("s1") is state
 
-    def test_current_session_id_none_when_state_has_no_id(self, runtime):
+    def test_get_state_returns_none_for_missing(self, runtime):
+        assert runtime.get_state("nonexistent") is None
+
+    def test_state_with_empty_id(self, runtime):
         state = AgentState(
             messages=[],
             session_id=SessionID(""),
             usage=SessionUsage(context_size=0),
         )
-        runtime.state = state
-        assert runtime.current_session_id == ""
+        runtime._states[""] = state
+        assert runtime.get_state("") is state
 
 
 class TestLoadAgents:
@@ -237,111 +236,56 @@ class TestAgentStateConstruction:
         assert state.usage.context_size == 128000
 
 
-class TestCompleteCurrentSession:
-    def test_saves_and_completes(self, runtime, session_manager):
+class TestCompleteSession:
+    def test_completes_session(self, runtime, session_manager):
         session = session_manager.create()
-        state = AgentState(
-            messages=[],
-            session_id=session.id,
-            usage=SessionUsage(context_size=0),
-        )
-        runtime.state = state
-        runtime._states[session.id] = state
-        runtime.complete_current_session()
+        runtime.session_manager.complete(session.id)
         fetched = session_manager.get(session.id)
         assert fetched is not None
         assert fetched.status == "completed"
 
-    def test_noop_when_no_state(self, runtime):
-        runtime.state = None
-        runtime.complete_current_session()
+    def test_noop_for_nonexistent(self, runtime):
+        runtime.session_manager.complete("nonexistent")
 
 
-class TestSwitchSession:
-    def test_switches_to_existing_session(self, runtime, session_manager):
+class TestLoadSessionState:
+    def test_loads_existing_session(self, runtime, session_manager):
         session = session_manager.create(messages=[UserMessage(content="hi")])
-        old_state = AgentState(
-            messages=[],
-            session_id=SessionID("old"),
-            usage=SessionUsage(context_size=0),
-        )
-        runtime._states["old"] = old_state
-        runtime.state = old_state
-        result = runtime.switch_session(session.id)
-        assert result is True
-        assert runtime.state is not None
-        assert runtime.state.session_id == session.id
+        result = runtime.load_session_state(session.id)
+        assert result is not None
+        assert result.session_id == session.id
 
     def test_switches_to_in_memory_state(self, runtime):
-        """Session in _states but not in DB can still be switched to."""
+        """Session in _states but not in DB can still be loaded."""
         state = AgentState(
             messages=[SystemMessage(content="in-memory only")],
             session_id=SessionID("mem-sess"),
             usage=SessionUsage(context_size=0),
         )
         runtime._states["mem-sess"] = state
-        result = runtime.switch_session("mem-sess")
-        assert result is True
-        assert runtime.state is state
+        result = runtime.load_session_state("mem-sess")
+        assert result is state
 
-    def test_switches_to_current_state(self, runtime):
-        """self.state is checked even when _states doesn't have the key."""
-        state = AgentState(
-            messages=[SystemMessage(content="current")],
-            session_id=SessionID("current-sess"),
-            usage=SessionUsage(context_size=0),
-        )
-        runtime.state = state
-        result = runtime.switch_session("current-sess")
-        assert result is True
-        assert runtime.state is state
+    def test_returns_none_for_nonexistent(self, runtime):
+        result = runtime.load_session_state("nonexistent")
+        assert result is None
 
-    def test_returns_false_for_nonexistent(self, runtime):
-        state = AgentState(
-            messages=[],
-            session_id=SessionID("old"),
-            usage=SessionUsage(context_size=0),
-        )
-        runtime._states["old"] = state
-        runtime.state = state
-        result = runtime.switch_session("nonexistent")
-        assert result is False
-
-    def test_switch_to_session_set_via_state(self, runtime):
-        """Simulates _ensure_session flow: state set via runtime.state, then switch_session."""
+    def test_load_session_via_states(self, runtime):
+        """State in _states is returned directly by load_session_state."""
         session_id = "sess-from-state"
         state = AgentState(
-            messages=[SystemMessage(content="ensure flow")],
+            messages=[SystemMessage(content="state flow")],
             session_id=SessionID(session_id),
             usage=SessionUsage(context_size=0),
         )
-        # This is exactly what _ensure_session does:
-        # runtime.state = AgentState(session_id=session.id)
-        runtime.state = state
-        # _ensure_session also does: runtime._states[session.id] = runtime.state
-        runtime._states[session_id] = runtime.state
+        runtime._states[session_id] = state
 
-        result = runtime.switch_session(session_id)
-        assert result is True
-        assert runtime.state is state
+        result = runtime.load_session_state(session_id)
+        assert result is state
+        assert runtime.get_state(session_id) is state
 
-    def test_switch_to_session_only_in_state_not_states(self, runtime):
-        """session only in runtime.state but not in _states — should still be found by self.state check."""
-        session_id = "sess-only-in-state"
-        state = AgentState(
-            messages=[SystemMessage(content="only in state")],
-            session_id=SessionID(session_id),
-            usage=SessionUsage(context_size=0),
-        )
-        runtime.state = state
-        # Deliberately NOT adding to _states — the self.state fallback must handle this
-
-        result = runtime.switch_session(session_id)
-        assert result is True
-        assert runtime.state is state
-
-    def test_ensure_session_then_switch_session_and_chat(self, runtime, session_manager):
-        """Full flow: _ensure_session creates session, then switch_session, then _prepare_chat-equivalent."""
+    def test_load_session_state_repeated_calls(self, runtime, session_manager):
+        """load_session_state can be called multiple times with the same id."""
         from laffyhand.agent.session.models import Session as SessionModel
 
         session = SessionModel(provider="test", model="test")
@@ -350,25 +294,17 @@ class TestSwitchSession:
             session_id=SessionID(session.id),
             usage=SessionUsage(context_size=0),
         )
-        # _ensure_session steps:
         runtime.session_manager.set_pending_meta(session.id, title="", cwd="", provider="", model="", agent_version="build")
-        runtime.state = state
-        runtime._states[session.id] = runtime.state
+        runtime._states[session.id] = state
 
-        # session/load: switch_session
-        assert runtime.switch_session(session.id) is True
+        assert runtime.load_session_state(session.id) is state
+        assert runtime.load_session_state(session.id) is state
 
-        # chat/stream: _prepare_chat calls switch_session again with same id
-        assert runtime.switch_session(session.id) is True
-
-        # Switch to another session and back — still works
         other = session_manager.create(messages=[UserMessage(content="other")])
         other_state = AgentState(messages=[], session_id=SessionID(other.id), usage=SessionUsage(context_size=0))
         runtime._states[other.id] = other_state
-        assert runtime.switch_session(other.id) is True
-
-        # Switch back to original — must still be findable
-        assert runtime.switch_session(session.id) is True
+        assert runtime.load_session_state(other.id) is other_state
+        assert runtime.load_session_state(session.id) is state
 
 
 class TestForkSession:
@@ -469,7 +405,6 @@ class TestCreateSubagent:
             usage=SessionUsage(context_size=0),
         )
         runtime._states[session.id] = state
-        runtime.state = state
         agent_info = AgentInfo(name="test", system_prompt="You are test.")
         with patch.object(
             session_manager, "get_depth", return_value=MAX_SUBAGENT_DEPTH + 1
@@ -486,7 +421,6 @@ class TestCreateSubagent:
             usage=SessionUsage(context_size=0),
         )
         runtime._states[session.id] = state
-        runtime.state = state
         agent_info = AgentInfo(name="test", system_prompt="You are test.")
 
         with patch("laffyhand.agent.runtime.agent_loop") as mock_loop:
@@ -518,7 +452,6 @@ class TestCreateSubagent:
             usage=SessionUsage(context_size=0),
         )
         runtime._states[session.id] = state
-        runtime.state = state
         agent_info = AgentInfo(name="test", system_prompt="You are test.")
 
         with patch("laffyhand.agent.runtime.agent_loop") as mock_loop:
@@ -542,7 +475,6 @@ class TestCreateSubagent:
             usage=SessionUsage(context_size=0),
         )
         runtime._states[session.id] = state
-        runtime.state = state
         agent_info = AgentInfo(name="test", system_prompt="You are test.")
 
         with patch.object(
@@ -570,7 +502,6 @@ class TestCreateSubagent:
             usage=SessionUsage(context_size=0),
         )
         runtime._states[session.id] = state
-        runtime.state = state
         agent_info = AgentInfo(name="test", system_prompt="You are test.")
 
         with patch.object(
@@ -585,46 +516,20 @@ class TestCreateSubagent:
 
 class TestGenerateTitleForCurrent:
     @pytest.mark.anyio
-    async def test_off_mode_returns_none(self, runtime):
-        runtime.title_config.mode = "off"
-        result = await runtime.generate_title_for_current()
-        assert result is None
-
-    @pytest.mark.anyio
-    async def test_no_state_returns_none(self, runtime):
-        runtime.title_config.mode = "auto"
-        runtime.state = None
-        result = await runtime.generate_title_for_current()
-        assert result is None
-
-    @pytest.mark.anyio
-    async def test_no_session_id_returns_none(self, runtime):
-        runtime.title_config.mode = "auto"
-        state = AgentState(
-            messages=[],
-            session_id=SessionID(""),
-            usage=SessionUsage(context_size=0),
-        )
-        runtime.state = state
-        result = await runtime.generate_title_for_current()
-        assert result is None
-
-    @pytest.mark.anyio
     async def test_generates_title(self, runtime, session_manager):
-        runtime.title_config.mode = "auto"
         session = session_manager.create(messages=[UserMessage(content="Hello")])
         state = AgentState(
             messages=[UserMessage(content="Hello")],
             session_id=session.id,
             usage=SessionUsage(context_size=0),
         )
-        runtime.state = state
+        runtime._states[session.id] = state
 
         with patch(
             "laffyhand.agent.title.generate_title", new_callable=AsyncMock
         ) as mock_gen:
             mock_gen.return_value = "My Title"
-            result = await runtime.generate_title_for_current()
+            result = await runtime._do_generate_title(session.id)
             assert result == "My Title"
 
 
@@ -699,7 +604,6 @@ class TestShutdown:
             usage=SessionUsage(context_size=0),
         )
         runtime._states[session.id] = state
-        runtime.state = state
         runtime.mcp_service.disconnect_all = AsyncMock()
         await runtime.shutdown()
         runtime.mcp_service.disconnect_all.assert_awaited_once()

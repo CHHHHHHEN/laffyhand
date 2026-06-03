@@ -5,7 +5,9 @@ import copy
 import os
 import sys
 import uuid
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
+from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -63,6 +65,13 @@ MAX_SUBAGENT_DEPTH = 3
 _TURN_DONE = object()
 
 
+@dataclass
+class SessionContext:
+    """Per-call context attached to a running agent turn."""
+    subagent_id: str | None = None
+    subagent_depth: int = 0
+
+
 class AgentRuntime:
     def __init__(
         self,
@@ -76,8 +85,6 @@ class AgentRuntime:
         self.llm = llm
 
         self._event_sinks: dict[str, Callable[[Any], Awaitable[None]]] = {}
-        self._current_subagent_id: str | None = None
-        self._current_subagent_depth: int = 0
 
         self.session_manager = session_manager or SessionManager(config.db.path)
         self.mcp_service = mcp_service or MCPService()
@@ -107,6 +114,7 @@ class AgentRuntime:
 
         self._states: dict[str, AgentState] = {}
         self._session_locks: dict[str, asyncio.Lock] = {}
+        self._session_contexts: dict[str, SessionContext] = {}
         self._pending_permissions: dict[
             str, tuple[asyncio.Event, str, str, bool | None]
         ] = {}
@@ -119,8 +127,7 @@ class AgentRuntime:
         self._session_tasks: dict[str, asyncio.Task[None]] = {}
         self._session_event_queues: dict[str, asyncio.Queue] = {}
 
-        # Track the currently active session state (set by _ensure_session / switch_session)
-        self.state: AgentState | None = None
+
 
     def _build_llm(self, provider: str, model: str) -> LLM:
         from laffyhand.config import resolve_provider
@@ -184,6 +191,30 @@ class AgentRuntime:
             self._session_locks[session_id] = asyncio.Lock()
         return self._session_locks[session_id]
 
+    @asynccontextmanager
+    async def use_session(self, session_id: str) -> AsyncIterator[tuple[AgentState, SessionContext]]:
+        """Context manager: holds the per-session lock and provides (state, ctx).
+
+        Usage:
+            async with runtime.use_session(sid) as (state, ctx):
+                state.messages.append(...)
+                ctx.subagent_id = ...
+        """
+        state = self._states.get(session_id)
+        if state is None:
+            raise RuntimeError(f"Session not found: {session_id}")
+        ctx = SessionContext()
+        self._session_contexts[session_id] = ctx
+        lock = self.get_session_lock(session_id)
+        async with lock:
+            try:
+                yield (state, ctx)
+            finally:
+                self._session_contexts.pop(session_id, None)
+
+    def get_session_context(self, session_id: str) -> SessionContext | None:
+        return self._session_contexts.get(session_id)
+
     @property
     def pending_permissions(
         self,
@@ -193,11 +224,6 @@ class AgentRuntime:
     @property
     def config(self) -> LaffyConfig:
         return self._config
-
-    @property
-    def current_session_id(self) -> str | None:
-        """Return the current session ID, or None if no session is active."""
-        return self.state.session_id if self.state else None
 
     def load_agents(self, agent_dirs: Sequence[str | Path]) -> None:
         self.agent_registry.discover(list(agent_dirs))
@@ -258,7 +284,7 @@ class AgentRuntime:
                 )
         return "\n".join(sections) if sections else ""
 
-    async def build_system_prompt(self, base_prompt: str) -> str:
+    async def build_system_prompt(self, base_prompt: str, disabled_tools: set[str] | None = None) -> str:
         parts: list[str] = []
         parts.append(f"<soul>\n{base_prompt.strip()}\n</soul>")
 
@@ -268,8 +294,7 @@ class AgentRuntime:
         ]
         parts.append("<env>\n" + "\n".join(env_parts) + "\n</env>")
 
-        disabled = (self.state.disabled_tools) if self.state else set()
-        parts.append(self.tool_registry.build_tool_prompt(exclude=disabled))
+        parts.append(self.tool_registry.build_tool_prompt(exclude=disabled_tools or set()))
 
         if self.skill_registry.all():
             parts.append(self.skill_registry.build_skills_summary())
@@ -311,19 +336,13 @@ class AgentRuntime:
         await self.mcp_service.disconnect(name)
         return unregistered
 
-    def switch_session(self, session_id: str) -> bool:
-        """Switch the active session to *session_id*. Returns True on success."""
-        # Check in-memory state first (e.g. freshly created session not yet in DB)
+    def load_session_state(self, session_id: str) -> AgentState | None:
+        """Load session state from in-memory cache or DB into _states."""
         if session_id in self._states:
-            self.state = self._states[session_id]
-            return True
-        if self.state and self.state.session_id == session_id:
-            return True
-
+            return self._states[session_id]
         loaded = self.session_manager.load_state(session_id)
         if loaded is None:
-            return False
-        # Load compressed state if available
+            return None
         system_message = loaded.messages[0] if loaded.messages else None
         if system_message and isinstance(system_message, SystemMessage):
             compressed = self.session_manager.load_compressed_state(
@@ -331,24 +350,10 @@ class AgentRuntime:
             )
             if compressed is not None:
                 loaded = compressed
-        # Ensure context_size is always set (load_state doesn't set it)
         if loaded.usage:
             loaded.usage.context_size = self.context_size
-        self.state = loaded
         self._states[session_id] = loaded
-        return True
-
-    def complete_current_session(self) -> None:
-        """Mark the current session as completed."""
-        if self.state and self.state.session_id:
-            self.session_manager.complete(self.state.session_id)
-
-    async def generate_title_for_current(self) -> str | None:
-        """Generate a title for the current session and return it."""
-        if not self.state or not self.state.session_id:
-            return None
-        title = await self._do_generate_title(self.state.session_id)
-        return title
+        return loaded
 
     def _llm_for_session(self, session_id: str) -> LLM:
         from laffyhand.config import resolve_provider, resolve_model
@@ -461,8 +466,9 @@ class AgentRuntime:
             )
 
         task_id = uuid.uuid4().hex[:12]
-        parent_subagent_id = self._current_subagent_id
-        subagent_depth = self._current_subagent_depth + 1
+        ctx = self._session_contexts.get(parent_session_id)
+        parent_subagent_id = ctx.subagent_id if ctx else None
+        subagent_depth = (ctx.subagent_depth + 1) if ctx else 1
 
         if todo_id:
             from laffyhand.agent.session.todo import TodoUpdate
@@ -508,10 +514,12 @@ class AgentRuntime:
             return f"Sub-agent [{agent_info.name}] started (id: {task_id[:8]}). I'll notify you when it completes."
 
         # Track nesting for foreground
-        prev_subagent_id = self._current_subagent_id
-        prev_subagent_depth = self._current_subagent_depth
-        self._current_subagent_id = task_id
-        self._current_subagent_depth = subagent_depth
+        ctx = self._session_contexts.get(parent_session_id)
+        prev_subagent_id = ctx.subagent_id if ctx else None
+        prev_subagent_depth = ctx.subagent_depth if ctx else 0
+        if ctx:
+            ctx.subagent_id = task_id
+            ctx.subagent_depth = subagent_depth
 
         try:
             result = await self._run_subagent_foreground(
@@ -525,8 +533,9 @@ class AgentRuntime:
                 description=description,
             )
         finally:
-            self._current_subagent_id = prev_subagent_id
-            self._current_subagent_depth = prev_subagent_depth
+            if ctx:
+                ctx.subagent_id = prev_subagent_id
+                ctx.subagent_depth = prev_subagent_depth
 
         if todo_id:
             from laffyhand.agent.session.todo import TodoUpdate

@@ -84,9 +84,11 @@ class TestHandleTodoList:
         assert result["tasks"] == []
 
     @pytest.mark.anyio
-    async def test_no_session_id_uses_current(self, runtime, transport):
+    async def test_session_id_in_params(self, runtime, transport):
         runtime.todo_manager.get_tasks.return_value = []
-        await handle_todo_list(runtime, {}, transport, 1, "c1")
+        await handle_todo_list(
+            runtime, {"session_id": "sess-1"}, transport, 1, "c1"
+        )
         runtime.todo_manager.get_tasks.assert_called_once_with("sess-1", status=None)
 
     @pytest.mark.anyio
