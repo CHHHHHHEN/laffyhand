@@ -12,6 +12,10 @@
 - 使用 pnpm build 进行构建测试
 - 使用 eslint 检查代码风格
 
+问题排查规范：
+- 优先选择**客观**最佳方案，而不是 Quick fix
+- 遇到问题先问 WHY，搜索根因（ROOT CAUSE），而不是 JUST SOLVE PROBLEM
+
 Git提交规范：
 - 格式要求：type(scope): messages
 - messages 需要体现出具体更改的内容, 而不是笼统描述(如 resolve audit problems)
