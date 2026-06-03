@@ -4,18 +4,17 @@ from typing import TYPE_CHECKING, Any, Optional
 
 import sqlite3
 
-from laffyhand.agent.session.models import (
+from laffyhand.agent.session.todo.models import (
     TodoCreate,
     TodoItem,
     TodoUpdate,
     TodoPriority,
     TodoStatus,
-    _generate_id,
-    _utcnow,
 )
-from laffyhand.agent.db.repository import TodoRepo
+from laffyhand.agent.session.models import _generate_id, _utcnow
 
 if TYPE_CHECKING:
+    from laffyhand.agent.db.repository import TodoRepo
     from laffyhand.agent.session.manager import SessionManager
 
 
@@ -30,6 +29,7 @@ class TodoManager:
 
     @classmethod
     def from_session_manager(cls, sm: SessionManager) -> TodoManager:
+        from laffyhand.agent.db.repository import TodoRepo
         return cls(TodoRepo(sm.connection))
 
     # ── CRUD (delegates to repo) ─────────────────────────────

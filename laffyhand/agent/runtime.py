@@ -454,7 +454,7 @@ class AgentRuntime:
         subagent_depth = self._current_subagent_depth + 1
 
         if todo_id:
-            from laffyhand.agent.session.models import TodoUpdate
+            from laffyhand.agent.session.todo import TodoUpdate
 
             self.todo_manager.update_task(
                 todo_id,
@@ -468,7 +468,7 @@ class AgentRuntime:
 
             def _on_complete(_task_id: str, success: bool) -> None:
                 if todo_id:
-                    from laffyhand.agent.session.models import TodoUpdate
+                    from laffyhand.agent.session.todo import TodoUpdate
 
                     self.todo_manager.update_task(
                         todo_id,
@@ -518,176 +518,15 @@ class AgentRuntime:
             self._current_subagent_depth = prev_subagent_depth
 
         if todo_id:
-            from laffyhand.agent.session.models import TodoUpdate
+            from laffyhand.agent.session.todo import TodoUpdate
 
             self.todo_manager.update_task(
                 todo_id,
                 parent_session_id,
-                TodoUpdate(status="completed"),
+                TodoUpdate(status="completed" if success else "pending"),
             )
-
-        return result
-
-    async def _run_subagent_foreground(
-        self,
-        parent_session_id: str,
-        agent_info: AgentInfo,
-        prompt: str,
-        event_sink: Callable[[Any], Awaitable[None]] | None = None,
-        task_id: str = "",
-        parent_subagent_id: str | None = None,
-        subagent_depth: int = 0,
-        description: str = "",
-    ) -> str:
-        child_state, child_registry = build_subagent_state(
-            self.session_manager,
-            parent_session_id,
-            agent_info,
-            prompt,
-            self.tool_registry.permission,
-            self.tool_registry,
-        )
-
-        llm = self._llm_for_session(parent_session_id)
-
-        if event_sink:
-            await event_sink(
-                SubAgentStart(
-                    id=task_id,
-                    parent_id=parent_subagent_id,
-                    agent_type=agent_info.name,
-                    description=description or prompt[:80],
-                    mode="foreground",
-                    depth=subagent_depth,
-                )
-            )
-
-        result_parts: list[str] = []
-        tool_call_count = 0
-        async for event in agent_loop(
-            child_state,
-            llm,
-            child_registry,
-            compaction_config=CompactionConfig(
-                tail_turns=self.compaction_config.tail_turns,
-            ),
-            max_steps=agent_info.max_steps,
-            session_manager=self.session_manager,
-        ):
-            if event_sink:
-                if isinstance(event, TextDelta):
-                    await event_sink(
-                        SubAgentDelta(
-                            id=task_id,
-                            kind="text",
-                            content=event.text,
-                        )
-                    )
-                elif isinstance(event, ReasoningDelta):
-                    await event_sink(
-                        SubAgentDelta(
-                            id=task_id,
-                            kind="reasoning",
-                            content=event.text,
-                        )
-                    )
-                elif isinstance(event, StreamToolCall):
-                    tool_call_count += 1
-                    await event_sink(
-                        SubAgentDelta(
-                            id=task_id,
-                            kind="tool",
-                            tool_name=event.name,
-                            tool_input=event.input,
-                        )
-                    )
-                elif isinstance(event, StreamToolResult):
-                    await event_sink(
-                        SubAgentDelta(
-                            id=task_id,
-                            kind="tool_result",
-                            content=event.result[:500],
-                        )
-                    )
-                elif isinstance(event, StreamToolError):
-                    await event_sink(
-                        SubAgentDelta(
-                            id=task_id,
-                            kind="error",
-                            content=event.message,
-                        )
-                    )
-                elif isinstance(event, StepStart):
-                    await event_sink(event)
-                elif isinstance(event, TextStart):
-                    await event_sink(event)
-                elif isinstance(event, TextEnd):
-                    await event_sink(event)
-                elif isinstance(event, ReasoningStart):
-                    await event_sink(event)
-                elif isinstance(event, ReasoningEnd):
-                    await event_sink(event)
-                elif isinstance(event, Compacting):
-                    await event_sink(event)
-            if isinstance(event, StepFinish):
-                last_msg = child_state.messages[-1]
-                if hasattr(last_msg, "content") and last_msg.content:
-                    if not isinstance(last_msg, SystemMessage):
-                        result_parts.append(last_msg.content)
-
-        assert child_state.session_id is not None
-        self.session_manager.save_state(child_state.session_id, child_state)
-        self.session_manager.complete(child_state.session_id)
-
-        result = "\n".join(part for part in result_parts if part).strip()
-        if not result:
-            result = "[No output]"
-
-        if event_sink:
-            step_usage = child_state.usage
-            await event_sink(
-                SubAgentEnd(
-                    id=task_id,
-                    status="completed",
-                    summary=result[:200],
-                    tool_count=tool_call_count,
-                    input_tokens=step_usage.total_input,
-                    output_tokens=step_usage.total_output,
-                )
-            )
-
-        return f"<task>\n{result}\n</task>"
-
-    async def generate_title_for_current(self) -> str | None:
-        if self.title_config.mode == "off":
-            return None
-        if self._session_id is None:
-            return None
-        state = self._states.get(self._session_id)
-        sid = state.session_id if state and state.session_id else self._session_id
-        from laffyhand.agent.title import generate_title
-
-        llm = self._llm_for_session(sid)
-        return await generate_title(
-            self.session_manager,
-            sid,
-            llm,
-            self.title_config,
-        )
-
-    def _should_generate_title(self, session_id: str, trigger: str) -> bool:
-        """Check if title generation should proceed based on mode, trigger, and session state."""
-        if self.title_config.mode == "off":
-            return False
-        if self.title_config.mode != trigger:
-            return False
-        session = self.session_manager.get(session_id)
-        return session is not None and not session.title
-
-    def _schedule_title_generation(self, session_id: str, trigger: str) -> None:
-        """Fire-and-forget title generation for background triggers (on_create, on_compact)."""
-        if not self._should_generate_title(session_id, trigger):
             return
+
         asyncio.create_task(self._do_generate_title(session_id))
 
     async def _generate_title(self, session_id: str, trigger: str) -> bool:

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from laffyhand.agent.session.models import TodoCreate, TodoUpdate
+from laffyhand.agent.session.todo import TodoCreate, TodoUpdate
 from laffyhand.agent.tools.base import BaseTool
 
 if TYPE_CHECKING:

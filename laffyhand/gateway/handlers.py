@@ -788,7 +788,7 @@ async def handle_todo_update(
     if not task_id:
         raise ValueError("task_id is required")
 
-    from laffyhand.agent.session.models import TodoUpdate as TodoUpdateModel
+    from laffyhand.agent.session.todo import TodoUpdate as TodoUpdateModel
 
     updates = TodoUpdateModel(
         status=params.get("status"),
