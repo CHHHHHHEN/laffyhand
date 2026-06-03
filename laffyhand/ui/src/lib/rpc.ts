@@ -14,6 +14,7 @@ import type {
   StreamEvent,
   TodoListResult,
   TodoItemData,
+  AgentListResult,
 } from "@/types/rpc"
 
 export class RpcError extends Error {
@@ -203,6 +204,10 @@ export interface MCPStatusResult {
 export const rpcClient = {
   initialize(): Promise<ServerInfo> {
     return call<ServerInfo>("initialize")
+  },
+
+  agentList(): Promise<AgentListResult> {
+    return call<AgentListResult>("agent/list")
   },
 
   sessionList(limit = 50, offset = 0): Promise<SessionListResult> {

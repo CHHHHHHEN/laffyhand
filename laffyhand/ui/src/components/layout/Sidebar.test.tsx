@@ -25,8 +25,17 @@ const mockUseSessions = {
   isForking: false,
 }
 
+const mockUseAgents = {
+  agents: [
+    { name: "build", description: "Main coding agent", mode: "primary", system_prompt: "", model: null },
+  ],
+  isLoading: false,
+  error: null,
+}
+
 vi.mock("@/hooks/use-sessions", () => ({
   useSessions: () => mockUseSessions,
+  useAgents: () => mockUseAgents,
 }))
 
 // Mock navigation

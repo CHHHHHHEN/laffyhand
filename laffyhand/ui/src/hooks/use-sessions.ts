@@ -19,6 +19,22 @@ function toSession(rpc: SessionInfo): Session {
   }
 }
 
+export function useAgents() {
+  const query = useQuery({
+    queryKey: ["agents"],
+    queryFn: async () => {
+      const result = await rpcClient.agentList()
+      return result.agents
+    },
+    staleTime: 60_000,
+  })
+  return {
+    agents: query.data ?? [],
+    isLoading: query.isLoading,
+    error: query.error?.message ?? null,
+  }
+}
+
 export function useSessions() {
   const queryClient = useQueryClient()
 
@@ -32,10 +48,8 @@ export function useSessions() {
   })
 
   const createMutation = useMutation({
-    mutationFn: async (title?: string) => {
-      const result = await rpcClient.sessionCreate(
-        title ? { title } : undefined,
-      )
+    mutationFn: async (params?: { title?: string; agent?: string }) => {
+      const result = await rpcClient.sessionCreate(params ?? {})
       return result.session_id
     },
     onSuccess: () => {
@@ -67,7 +81,7 @@ export function useSessions() {
     isLoading: query.isLoading,
     error: query.error?.message ?? null,
     refetch: query.refetch,
-    createSession: createMutation.mutateAsync,
+    createSession: (title?: string, agent?: string) => createMutation.mutateAsync({ title, agent }),
     deleteSession: deleteMutation.mutateAsync,
     forkSession: forkMutation.mutateAsync,
     isCreating: createMutation.isPending,

@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useEffect } from "react"
 import { useNavigate, useParams } from "react-router-dom"
-import { useSessions } from "@/hooks/use-sessions"
+import { useSessions, useAgents } from "@/hooks/use-sessions"
 import { useSessionStore } from "@/stores/session-store"
 import { Button } from "@/components/ui/Button"
 import { Spinner } from "@/components/ui/Spinner"
@@ -12,7 +12,9 @@ export function Sidebar() {
     sessions, isLoading, createSession, isCreating,
     deleteSession, forkSession, isForking,
   } = useSessions()
+  const { agents } = useAgents()
   const currentSessionId = useSessionStore((s) => s.currentSessionId)
+  const [selectedAgent, setSelectedAgent] = useState("build")
   const [searchQuery, setSearchQuery] = useState("")
   const searchRef = useRef<HTMLInputElement>(null)
 
@@ -38,7 +40,7 @@ export function Sidebar() {
   }, [sessions, searchQuery])
 
   const handleNewSession = async () => {
-    const id = await createSession(undefined)
+    const id = await createSession(undefined, selectedAgent)
     navigate(`/chat/${id}`)
   }
 
@@ -109,6 +111,28 @@ export function Sidebar() {
               {isForking ? "Forking..." : "Fork"}
             </span>
           </Button>
+        )}
+        {/* Agent 选择器 */}
+        {agents.length > 0 && (
+          <div className="relative">
+            <select
+              value={selectedAgent}
+              onChange={(e) => setSelectedAgent(e.target.value)}
+              className="w-full px-2 py-1.5 text-xs rounded-md border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400/30 transition-all appearance-none cursor-pointer"
+            >
+              {agents.map((a) => (
+                <option key={a.name} value={a.name}>
+                  {a.name}{a.description ? ` — ${a.description}` : ""}
+                </option>
+              ))}
+            </select>
+            <svg
+              className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400 pointer-events-none"
+              fill="none" stroke="currentColor" viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </div>
         )}
         {/* 搜索框 */}
         <div className="relative">

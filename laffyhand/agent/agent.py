@@ -30,7 +30,9 @@ BUILTIN_AGENTS: dict[str, AgentInfo] = {
         name="build",
         description="Main coding agent with full tool access",
         mode="primary",
-        system_prompt="",
+        system_prompt="You are 'build', the primary coding agent. You have access to a full set of tools "
+        "including file read/write/edit, glob/grep search, bash execution, task management, "
+        "and sub-agent delegation. Complete the user's requests step by step.",
         permission={},
     ),
     "plan": AgentInfo(

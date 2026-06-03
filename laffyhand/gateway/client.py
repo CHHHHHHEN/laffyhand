@@ -154,6 +154,7 @@ class GatewayClient:
         cwd: str = "",
         provider: str = "",
         model: str = "",
+        agent: str = "",
     ) -> str:
         result = await self._request(
             "session/create",
@@ -163,6 +164,7 @@ class GatewayClient:
                 "cwd": cwd,
                 "provider": provider,
                 "model": model,
+                "agent": agent,
             },
         )
         return cast(str, result["session_id"])
@@ -211,6 +213,10 @@ class GatewayClient:
     async def generate_session_title(self) -> str | None:
         result = await self._request("session/generate_title")
         return cast(str | None, result.get("title"))
+
+    async def list_agents(self) -> list[dict[str, Any]]:
+        result = await self._request("agent/list")
+        return cast(list[dict[str, Any]], result["agents"])
 
     async def archive_session(self, session_id: str = "") -> None:
         params: dict[str, Any] = {}

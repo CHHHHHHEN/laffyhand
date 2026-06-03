@@ -44,11 +44,24 @@ export interface SessionInfo {
   status: string
   title: string | null
   model?: string
+  agent?: string
   message_count: number
   turn_count: number
   usage?: { input_tokens: number; output_tokens: number }
   created_at: string
   updated_at?: string
+}
+
+export interface AgentInfo {
+  name: string
+  description: string
+  mode: string
+  system_prompt: string
+  model?: string | null
+}
+
+export interface AgentListResult {
+  agents: AgentInfo[]
 }
 
 export interface SessionListResult {
@@ -60,6 +73,7 @@ export interface SessionCreateParams {
   title?: string
   cwd?: string
   model?: string
+  agent?: string
 }
 
 export interface SessionCreateResult {
@@ -87,6 +101,7 @@ export interface SessionUsage {
 export interface SessionLoadResult {
   session_id: string
   model?: string
+  agent?: string
   title?: string | null
   messages_count: number
   turn_count: number

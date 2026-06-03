@@ -37,6 +37,7 @@ CONFIG_PROVIDERS = "config/providers"
 MCP_STATUS = "mcp/status"
 SESSION_SET_CONFIG = "session/set_config"
 PERMISSION_RESPOND = "permission/respond"
+AGENT_LIST = "agent/list"
 TODO_LIST = "todo/list"
 TODO_UPDATE = "todo/update"
 

@@ -18,6 +18,7 @@ from laffyhand.agent.schemas import (
     SessionUsage,
 )
 from laffyhand.gateway.protocol import (
+    AGENT_LIST,
     INITIALIZE,
     SHUTDOWN,
     SESSION_CREATE,
@@ -124,8 +125,12 @@ def _serialize_messages(messages: list[Message]) -> list[dict[str, Any]]:
     return result
 
 
-async def _system_prompt(runtime: AgentRuntime, base: str = "") -> str:
-    return await runtime.build_system_prompt(base or "You are a helpful assistant.")
+async def _system_prompt(runtime: AgentRuntime, base: str = "", agent_name: str = "") -> str:
+    if not base:
+        name = agent_name or "build"
+        agent = runtime.agent_registry.get(name)
+        base = agent.system_prompt if agent and agent.system_prompt else "You are a helpful assistant."
+    return await runtime.build_system_prompt(base)
 
 
 async def handle_initialize(
@@ -187,6 +192,7 @@ async def handle_session_list(
                 "status": s.status,
                 "title": s.title,
                 "model": s.model,
+                "agent": s.agent_version,
                 "provider": s.provider,
                 "message_count": s.message_count,
                 "turn_count": s.turn_count,
@@ -219,6 +225,7 @@ async def handle_session_load(
     return {
         "session_id": runtime.state.session_id,
         "model": session.model if session else "",
+        "agent": session.agent_version if session else "",
         "messages_count": len(runtime.state.messages),
         "turn_count": runtime.state.turn_count,
         "usage": runtime.state.usage.model_dump() if runtime.state.usage else None,
@@ -538,13 +545,15 @@ async def _ensure_session(
     runtime: AgentRuntime,
     params: dict[str, Any],
 ) -> str:
-    system_content = await _system_prompt(runtime, params.get("system_prompt", ""))
+    agent_name = params.get("agent", "") or "build"
+    system_content = await _system_prompt(runtime, params.get("system_prompt", ""), agent_name)
     system_message = SystemMessage(content=system_content)
     session = runtime.session_manager.create(
         title=params.get("title", ""),
         cwd=params.get("cwd", os.getcwd()),
         provider=params.get("provider", ""),
         model=params.get("model", ""),
+        agent_version=agent_name,
     )
     runtime.state = AgentState(
         messages=[system_message],
@@ -573,6 +582,7 @@ async def handle_session_search(
                 "id": s.id,
                 "status": s.status,
                 "title": s.title,
+                "agent": s.agent_version,
                 "message_count": s.message_count,
                 "turn_count": s.turn_count,
                 "input_tokens": s.input_tokens,
@@ -814,6 +824,28 @@ async def handle_todo_update(
     }
 
 
+async def handle_agent_list(
+    runtime: AgentRuntime,
+    params: dict[str, Any],
+    transport: Transport,
+    _request_id: str | int | None,
+    conn_id: str,
+) -> dict[str, Any]:
+    agents = runtime.agent_registry.list_visible()
+    return {
+        "agents": [
+            {
+                "name": a.name,
+                "description": a.description,
+                "mode": a.mode,
+                "system_prompt": a.system_prompt,
+                "model": a.model,
+            }
+            for a in agents
+        ],
+    }
+
+
 def register_all_handlers(dispatcher: Dispatcher) -> None:
     dispatcher.register(INITIALIZE, handle_initialize)
     dispatcher.register(SHUTDOWN, handle_shutdown)
@@ -826,6 +858,7 @@ def register_all_handlers(dispatcher: Dispatcher) -> None:
     dispatcher.register(SESSION_SET_TITLE, handle_session_set_title)
     dispatcher.register(SESSION_GENERATE_TITLE, handle_session_generate_title)
     dispatcher.register(SESSION_ARCHIVE, handle_session_archive)
+    dispatcher.register(AGENT_LIST, handle_agent_list)
     dispatcher.register(SUBAGENT_LIST_ACTIVE, handle_subagent_list_active)
     dispatcher.register(USAGE_GET, handle_usage_get)
     dispatcher.register(CONFIG_PROVIDERS, handle_config_providers)
