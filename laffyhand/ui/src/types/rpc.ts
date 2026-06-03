@@ -167,7 +167,12 @@ export interface ToolDefinition {
 }
 
 export interface ToolsListResult {
-  tools: ToolDefinition[]
+  tools: (ToolDefinition & { enabled: boolean })[]
+}
+
+export interface ToolsSetDisabledResult {
+  status: string
+  disabled_tools: string[]
 }
 
 export interface CancelResult {
@@ -186,6 +191,18 @@ export interface TodoItemData {
   updatedAt: string
   completedAt: string | null
   taskToolId: string | null
+}
+
+export interface MCPAddServerResult {
+  status: string
+  name: string
+  tools: string[]
+}
+
+export interface MCPRemoveServerResult {
+  status: string
+  name: string
+  unregistered_tools: number
 }
 
 export interface TodoListResult {

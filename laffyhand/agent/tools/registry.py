@@ -32,7 +32,9 @@ class ToolRegistry:
     def list_tools(self) -> dict[str, BaseTool]:
         return dict(self._tools)
 
-    async def build_tool_definitions(self) -> list[ToolDefinition]:
+    async def build_tool_definitions(
+        self, exclude: set[str] | None = None,
+    ) -> list[ToolDefinition]:
         async with self._lock:
             if self._dirty:
                 for cb in self._on_build_defs:
@@ -42,6 +44,8 @@ class ToolRegistry:
                 logger.debug(
                     f"Built {len(self._defs)} tool definition(s): {[d.name for d in self._defs]}"
                 )
+        if exclude:
+            return [d for d in self._defs if d.name not in exclude]
         return self._defs
 
     def _format_params(self, schema: dict[str, Any]) -> str:
@@ -55,9 +59,11 @@ class ToolRegistry:
             parts.append(f"{name}{opt}")
         return f"({', '.join(parts)})" if parts else ""
 
-    def build_tool_prompt(self) -> str:
+    def build_tool_prompt(self, exclude: set[str] | None = None) -> str:
         lines = ["<tools>"]
         for tool in self._tools.values():
+            if exclude and tool.name in exclude:
+                continue
             params = self._format_params(tool.to_definition().input_schema)
             lines.append(f"- **{tool.name}**{params}: {tool.description}")
         lines.append("</tools>")

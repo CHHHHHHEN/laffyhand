@@ -11,6 +11,9 @@ import type {
   SessionForkResult,
   CancelResult,
   ToolsListResult,
+  ToolsSetDisabledResult,
+  MCPAddServerResult,
+  MCPRemoveServerResult,
   StreamEvent,
   TodoListResult,
   TodoItemData,
@@ -240,12 +243,24 @@ export const rpcClient = {
     return call<ToolsListResult>("tools/list")
   },
 
+  toolsSetDisabled(toolNames: string[]): Promise<ToolsSetDisabledResult> {
+    return call<ToolsSetDisabledResult>("tools/set_disabled", { tool_names: toolNames })
+  },
+
   configProviders(): Promise<ConfigProvidersResult> {
     return call<ConfigProvidersResult>("config/providers")
   },
 
   mcpStatus(): Promise<MCPStatusResult> {
     return call<MCPStatusResult>("mcp/status")
+  },
+
+  mcpAddServer(params: { name: string; type: string; command?: string[]; url?: string; env?: Record<string, string>; timeout?: number }): Promise<MCPAddServerResult> {
+    return call<MCPAddServerResult>("mcp/add_server", params)
+  },
+
+  mcpRemoveServer(name: string): Promise<MCPRemoveServerResult> {
+    return call<MCPRemoveServerResult>("mcp/remove_server", { name })
   },
 
   sessionSetConfig(params: { provider: string; model: string }): Promise<{ session_id: string }> {

@@ -49,6 +49,7 @@ class AgentState(BaseModel):
     session_id: SessionID = Field(description="当前会话 ID")
     interrupt_requested: bool = Field(default=False, description="用户请求中断标志")
     pending_steer: str | None = Field(default=None, description="待注入的用户引导文本")
+    disabled_tools: set[str] = Field(default_factory=set, description="当前会话禁用的工具名称集合")
     
 # ─── Agent-level stream events ──────────────────────────────────
 

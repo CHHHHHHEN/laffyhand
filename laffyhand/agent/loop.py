@@ -123,7 +123,8 @@ async def agent_loop(
         step_index = agent_state.step
         text_id: str | None = None
         reasoning_id: str | None = None
-        tool_definitions = await tool_registry.build_tool_definitions()
+        disabled_tools = agent_state.disabled_tools
+        tool_definitions = await tool_registry.build_tool_definitions(exclude=disabled_tools)
         llm_context = build_llm_context(agent_state, compaction_config)
         logger.debug(
             f"Sending {len(llm_context)} messages to LLM, {len(tool_definitions)} tools"

@@ -542,9 +542,32 @@ async def handle_tools_list(
     conn_id: str,
 ) -> dict[str, Any]:
     tools = await runtime.tool_registry.build_tool_definitions()
+    disabled = (runtime.state.disabled_tools) if runtime.state else set()
     return {
-        "tools": [t.model_dump() for t in tools],
+        "tools": [
+            {
+                "name": t.name,
+                "description": t.description,
+                "input_schema": t.input_schema,
+                "enabled": t.name not in disabled,
+            }
+            for t in tools
+        ],
     }
+
+
+async def handle_tools_set_disabled(
+    runtime: AgentRuntime,
+    params: dict[str, Any],
+    transport: Transport,
+    _request_id: str | int | None,
+    conn_id: str,
+) -> dict[str, Any]:
+    tool_names: list[str] = params.get("tool_names", [])
+    if runtime.state is None:
+        raise RuntimeError("No active session")
+    runtime.state.disabled_tools = set(tool_names)
+    return {"status": "ok", "disabled_tools": tool_names}
 
 
 async def _ensure_session(
