@@ -92,25 +92,31 @@ class TodoManager:
         existing = self.get_tasks(session_id)
         existing_ids = {t.id for t in existing}
         ids: list[str] = []
+        id_map: dict[str, str] = {}
         for t in tasks:
+            custom_id = t.id
+            item_id = _generate_id() if (custom_id is not None and (custom_id in existing_ids or custom_id in ids or self._repo.get(custom_id) is not None)) else (custom_id or _generate_id())
+
+            if custom_id is not None and custom_id != item_id:
+                id_map[custom_id] = item_id
+
+            depends_on = [id_map.get(d, d) for d in t.depends_on]
+
             item = TodoItem(
-                id=t.id or _generate_id(),
+                id=item_id,
                 session_id=session_id,
                 content=t.content,
                 priority=t.priority,
-                depends_on=t.depends_on,
+                depends_on=depends_on,
             )
-            if t.depends_on:
-                for dep_id in t.depends_on:
+            if item.depends_on:
+                for dep_id in item.depends_on:
                     if dep_id not in ids and dep_id not in existing_ids:
                         raise ValueError(
                             f"Dependency '{dep_id}' for task '{t.content[:50]}' "
                             f"does not exist in this batch or existing tasks"
                         )
-                self._validate_depends(t.depends_on, existing, task_id=item.id)
-                item.depends_on = t.depends_on
-            else:
-                item.depends_on = []
+                self._validate_depends(item.depends_on, existing, task_id=item.id)
             try:
                 self._repo.insert(item)
             except sqlite3.IntegrityError as e:
