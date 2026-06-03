@@ -4,12 +4,18 @@ import { useChatStore } from "@/stores/chat-store"
 
 type Tab = "tools" | "mcp" | "config"
 
+interface ToolInfo {
+  name: string
+  description: string
+  enabled: boolean
+}
+
 export function ConfigPanel() {
   const [open, setOpen] = useState(false)
   const [tab, setTab] = useState<Tab>("tools")
   const [providers, setProviders] = useState<ConfigProvidersResult | null>(null)
   const [mcp, setMcp] = useState<MCPStatusResult | null>(null)
-  const [tools, setTools] = useState<{ name: string; description: string }[] | null>(null)
+  const [tools, setTools] = useState<ToolInfo[] | null>(null)
   const [loading, setLoading] = useState(false)
 
   const model = useChatStore((s) => s.model)
@@ -29,6 +35,24 @@ export function ConfigPanel() {
       setLoading(false)
     }
   }, [])
+
+  const toggleTool = async (name: string) => {
+    if (!tools) return
+    const current = tools.find((t) => t.name === name)
+    if (!current) return
+    const nextEnabled = !current.enabled
+    const updated = tools.map((t) =>
+      t.name === name ? { ...t, enabled: nextEnabled } : t
+    )
+    setTools(updated)
+    const disabled = updated.filter((t) => !t.enabled).map((t) => t.name)
+    try {
+      await rpcClient.toolsSetDisabled(disabled)
+    } catch {
+      // revert on error
+      setTools(tools)
+    }
+  }
 
   useEffect(() => {
     if (open) loadData()
@@ -110,9 +134,21 @@ export function ConfigPanel() {
               {tools && tools.length > 0 ? (
                 tools.map((t) => (
                   <div key={t.name} className="px-3 py-2.5 bg-white dark:bg-gray-900/50 rounded-lg border border-gray-200 dark:border-gray-700/50 hover:border-gray-300 dark:hover:border-gray-600 transition-all duration-150">
-                    <div className="flex items-center gap-2">
-                      <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />
-                      <div className="text-xs font-medium text-gray-700 dark:text-gray-300 font-mono">{t.name}</div>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${t.enabled ? "bg-blue-500" : "bg-gray-300 dark:bg-gray-600"}`} />
+                        <div className="text-xs font-medium text-gray-700 dark:text-gray-300 font-mono truncate">{t.name}</div>
+                      </div>
+                      <button
+                        onClick={() => toggleTool(t.name)}
+                        className={`relative inline-flex h-4 w-7 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                          t.enabled ? "bg-blue-500" : "bg-gray-300 dark:bg-gray-600"
+                        }`}
+                      >
+                        <span className={`inline-block h-3 w-3 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
+                          t.enabled ? "translate-x-3.5" : "translate-x-0"
+                        }`} />
+                      </button>
                     </div>
                     <div className="text-[10px] text-gray-500 dark:text-gray-400 mt-1 ml-3.5 leading-relaxed line-clamp-2">{t.description || "—"}</div>
                   </div>
@@ -124,24 +160,7 @@ export function ConfigPanel() {
           )}
 
           {!loading && tab === "mcp" && (
-            <div className="space-y-1.5">
-              {mcp && mcp.servers.length > 0 ? (
-                mcp.servers.map((s) => (
-                  <div key={s.name} className="flex items-center justify-between px-3 py-2.5 bg-white dark:bg-gray-900/50 rounded-lg border border-gray-200 dark:border-gray-700/50 hover:border-gray-300 dark:hover:border-gray-600 transition-all duration-150">
-                    <span className="text-xs font-medium text-gray-700 dark:text-gray-300">{s.name}</span>
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
-                      s.status === "connected"
-                        ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400"
-                        : "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400"
-                    }`}>
-                      {s.status}
-                    </span>
-                  </div>
-                ))
-              ) : (
-                <p className="text-xs text-gray-400 text-center py-4">No MCP servers configured</p>
-              )}
-            </div>
+            <MCPTab mcp={mcp} onRefresh={loadData} />
           )}
 
           {!loading && tab === "config" && (
@@ -183,6 +202,157 @@ export function ConfigPanel() {
           )}
         </div>
       </div>
+    </div>
+  )
+}
+
+
+function MCPTab({ mcp, onRefresh }: { mcp: MCPStatusResult | null; onRefresh: () => void }) {
+  const [showAdd, setShowAdd] = useState(false)
+  const [addType, setAddType] = useState<"local" | "remote">("local")
+  const [addName, setAddName] = useState("")
+  const [addCommand, setAddCommand] = useState("")
+  const [addUrl, setAddUrl] = useState("")
+  const [adding, setAdding] = useState(false)
+  const [removing, setRemoving] = useState<string | null>(null)
+
+  const handleAdd = async () => {
+    if (!addName.trim()) return
+    setAdding(true)
+    try {
+      if (addType === "local") {
+        const parts = addCommand.trim().split(/\s+/)
+        await rpcClient.mcpAddServer({ name: addName.trim(), type: "local", command: parts })
+      } else {
+        await rpcClient.mcpAddServer({ name: addName.trim(), type: "remote", url: addUrl.trim() })
+      }
+      setShowAdd(false)
+      setAddName("")
+      setAddCommand("")
+      setAddUrl("")
+      onRefresh()
+    } catch (e) {
+      alert(`Failed to add MCP server: ${e instanceof Error ? e.message : String(e)}`)
+    } finally {
+      setAdding(false)
+    }
+  }
+
+  const handleRemove = async (name: string) => {
+    setRemoving(name)
+    try {
+      await rpcClient.mcpRemoveServer(name)
+      onRefresh()
+    } catch (e) {
+      alert(`Failed to remove MCP server: ${e instanceof Error ? e.message : String(e)}`)
+    } finally {
+      setRemoving(null)
+    }
+  }
+
+  return (
+    <div className="space-y-1.5">
+      {mcp && mcp.servers.length > 0 ? (
+        mcp.servers.map((s) => (
+          <div key={s.name} className="flex items-center justify-between px-3 py-2.5 bg-white dark:bg-gray-900/50 rounded-lg border border-gray-200 dark:border-gray-700/50 hover:border-gray-300 dark:hover:border-gray-600 transition-all duration-150">
+            <span className="text-xs font-medium text-gray-700 dark:text-gray-300">{s.name}</span>
+            <div className="flex items-center gap-2">
+              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
+                s.status === "connected"
+                  ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400"
+                  : "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400"
+              }`}>
+                {s.status}
+              </span>
+              <button
+                onClick={() => handleRemove(s.name)}
+                disabled={removing === s.name}
+                className="p-1 text-gray-400 hover:text-red-500 dark:hover:text-red-400 cursor-pointer rounded-md hover:bg-red-50 dark:hover:bg-red-900/20 transition-all duration-150"
+                title="Remove MCP server"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        ))
+      ) : (
+        <p className="text-xs text-gray-400 text-center py-4">No MCP servers configured</p>
+      )}
+
+      {!showAdd ? (
+        <button
+          onClick={() => setShowAdd(true)}
+          className="w-full mt-2 px-3 py-2 text-xs font-medium text-blue-600 dark:text-blue-400 border border-dashed border-blue-300 dark:border-blue-700 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all cursor-pointer"
+        >
+          + Add MCP Server
+        </button>
+      ) : (
+        <div className="mt-2 p-3 bg-gray-50 dark:bg-gray-900/50 rounded-lg border border-gray-200 dark:border-gray-700/50 space-y-2">
+          <div className="flex gap-2">
+            <button
+              onClick={() => setAddType("local")}
+              className={`px-2 py-1 text-[10px] rounded-md cursor-pointer transition-all ${
+                addType === "local"
+                  ? "bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 font-medium"
+                  : "text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"
+              }`}
+            >
+              Local
+            </button>
+            <button
+              onClick={() => setAddType("remote")}
+              className={`px-2 py-1 text-[10px] rounded-md cursor-pointer transition-all ${
+                addType === "remote"
+                  ? "bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 font-medium"
+                  : "text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"
+              }`}
+            >
+              Remote
+            </button>
+          </div>
+          <input
+            type="text"
+            value={addName}
+            onChange={(e) => setAddName(e.target.value)}
+            placeholder="Server name"
+            className="w-full px-2 py-1.5 text-xs rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 placeholder-gray-400 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400/30 transition-all"
+          />
+          {addType === "local" ? (
+            <input
+              type="text"
+              value={addCommand}
+              onChange={(e) => setAddCommand(e.target.value)}
+              placeholder="Command and args (e.g. npx -y @modelcontextprotocol/server-everything)"
+              className="w-full px-2 py-1.5 text-xs rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 placeholder-gray-400 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400/30 transition-all"
+            />
+          ) : (
+            <input
+              type="text"
+              value={addUrl}
+              onChange={(e) => setAddUrl(e.target.value)}
+              placeholder="URL (e.g. https://example.com/mcp)"
+              className="w-full px-2 py-1.5 text-xs rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 placeholder-gray-400 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400/30 transition-all"
+            />
+          )}
+          <div className="flex gap-2">
+            <button
+              onClick={handleAdd}
+              disabled={adding || !addName.trim()}
+              className="px-3 py-1.5 text-xs font-medium text-white bg-blue-500 rounded-md hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all cursor-pointer"
+            >
+              {adding ? "Connecting..." : "Add & Connect"}
+            </button>
+            <button
+              onClick={() => setShowAdd(false)}
+              className="px-3 py-1.5 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 transition-all cursor-pointer"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

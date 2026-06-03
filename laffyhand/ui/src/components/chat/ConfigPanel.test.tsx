@@ -8,7 +8,10 @@ vi.mock("@/lib/rpc", () => ({
     configProviders: vi.fn(),
     mcpStatus: vi.fn(),
     toolsList: vi.fn(),
+    toolsSetDisabled: vi.fn(),
     sessionSetConfig: vi.fn(),
+    mcpAddServer: vi.fn(),
+    mcpRemoveServer: vi.fn(),
   },
 }))
 
@@ -65,8 +68,8 @@ describe("ConfigPanel", () => {
     vi.mocked(rpcClient.mcpStatus).mockResolvedValue({ servers: [] })
     vi.mocked(rpcClient.toolsList).mockResolvedValue({
       tools: [
-        { name: "read_file", description: "Read a file", input_schema: {} },
-        { name: "write_file", description: "Write a file", input_schema: {} },
+        { name: "read_file", description: "Read a file", input_schema: {}, enabled: true },
+        { name: "write_file", description: "Write a file", input_schema: {}, enabled: true },
       ],
     })
 
