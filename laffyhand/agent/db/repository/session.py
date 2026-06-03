@@ -85,12 +85,12 @@ class SessionRepo:
     def list_sessions(self, status: Optional[str] = None, limit: int = 20, offset: int = 0) -> list[Session]:
         if status:
             rows = self._conn.execute(
-                "SELECT * FROM session WHERE status=? ORDER BY created_at DESC LIMIT ? OFFSET ?",
+                "SELECT * FROM session WHERE status=? AND parent_id IS NULL ORDER BY created_at DESC LIMIT ? OFFSET ?",
                 (status, limit, offset),
             ).fetchall()
         else:
             rows = self._conn.execute(
-                "SELECT * FROM session ORDER BY created_at DESC LIMIT ? OFFSET ?",
+                "SELECT * FROM session WHERE parent_id IS NULL ORDER BY created_at DESC LIMIT ? OFFSET ?",
                 (limit, offset),
             ).fetchall()
         return [self._row_to_session(r) for r in rows]
@@ -184,7 +184,7 @@ class SessionRepo:
         rows = self._conn.execute(
             """SELECT DISTINCT s.* FROM session s
                JOIN session_message m ON m.session_id = s.id
-               WHERE m.data LIKE ? ORDER BY s.updated_at DESC LIMIT ?""",
+               WHERE m.data LIKE ? AND s.parent_id IS NULL ORDER BY s.updated_at DESC LIMIT ?""",
             (like, limit),
         ).fetchall()
         return [self._row_to_session(r) for r in rows]
