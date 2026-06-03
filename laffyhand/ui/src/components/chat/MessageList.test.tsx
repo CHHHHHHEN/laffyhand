@@ -85,10 +85,9 @@ describe("MessageList", () => {
       streamReasoning: "thinking step by step",
     })
     render(<MessageList />)
-    // ReasoningBlock shows the "Thinking" header with line count
-    expect(screen.getByText("Show (1 lines)")).toBeInTheDocument()
-    // Reasoning text is hidden inside the collapsed panel
-    expect(screen.queryByText("thinking step by step")).not.toBeInTheDocument()
+    // Reasoning is auto-expanded during streaming: button shows "Hide" and text is visible
+    expect(screen.getByText("Hide")).toBeInTheDocument()
+    expect(screen.getByText("thinking step by step")).toBeInTheDocument()
   })
 
   it("shows thinking spinner when streaming without reasoning or content", () => {

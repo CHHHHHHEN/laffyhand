@@ -117,7 +117,7 @@ export function MessageList({ onRetry }: MessageListProps) {
           <div className="max-w-[75%] min-w-0">
             <div className="bg-gray-100 dark:bg-gray-700/80 text-gray-900 dark:text-gray-100 rounded-2xl rounded-tl-md px-4 py-2.5 shadow-sm">
               {/* 流式推理 — 使用折叠面板 */}
-              {streamReasoning && <ReasoningBlock text={streamReasoning} />}
+              {streamReasoning && <ReasoningBlock text={streamReasoning} defaultExpanded />}
 
               {/* 流式内容 */}
               {streamContent ? (

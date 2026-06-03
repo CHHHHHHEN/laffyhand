@@ -24,8 +24,8 @@ export function UserAvatar() {
 }
 
 /** 推理过程折叠面板 — 更精致的 UI */
-export function ReasoningBlock({ text }: { text: string }) {
-  const [expanded, setExpanded] = useState(false)
+export function ReasoningBlock({ text, defaultExpanded = false }: { text: string; defaultExpanded?: boolean }) {
+  const [expanded, setExpanded] = useState(defaultExpanded)
   const [showAll, setShowAll] = useState(false)
   const lineCount = text.split('\n').length
 
