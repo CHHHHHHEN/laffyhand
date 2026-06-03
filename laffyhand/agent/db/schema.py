@@ -4,9 +4,15 @@ import sqlite3
 
 from loguru import logger
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 7
 
 _MIGRATIONS: dict[int, str] = {
+    7: """
+        ALTER TABLE session ADD COLUMN cost INTEGER NOT NULL DEFAULT 0;
+    """,
+    6: """
+        ALTER TABLE session ADD COLUMN cache_write_tokens INTEGER NOT NULL DEFAULT 0;
+    """,
     5: """
         -- Migrate from old message table to session_message table
         INSERT OR IGNORE INTO session_message (id, session_id, type, time_created, time_updated, data)
