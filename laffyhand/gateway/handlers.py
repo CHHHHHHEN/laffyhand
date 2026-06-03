@@ -599,6 +599,7 @@ async def _ensure_session(
         session_id=SessionID(session.id),
         usage=SessionUsage(context_size=runtime.context_size),
     )
+    runtime._states[session.id] = runtime.state
     runtime._schedule_title_generation(session.id, "on_create")
     return session.id
 
@@ -726,6 +727,53 @@ async def handle_mcp_status(
     return {
         "servers": [{"name": name, "status": st} for name, st in status.items()],
     }
+
+
+async def handle_mcp_add_server(
+    runtime: AgentRuntime,
+    params: dict[str, Any],
+    transport: Transport,
+    _request_id: str | int | None,
+    conn_id: str,
+) -> dict[str, Any]:
+    name: str = params.get("name", "")
+    if not name:
+        raise ValueError("name is required")
+    from laffyhand.agent.mcp.config import LocalMCPConfig, RemoteMCPConfig
+    from laffyhand.agent.mcp.config import MCPConfig as MCPCfg
+    server_type: str = params.get("type", "local")
+    if server_type == "local":
+        command: list[str] = params.get("command", [])
+        if not command:
+            raise ValueError("command is required for local MCP servers")
+        cfg: MCPCfg = LocalMCPConfig(command=command, env=params.get("env", {}), timeout=params.get("timeout", 300))
+    elif server_type == "remote":
+        url: str = params.get("url", "")
+        if not url:
+            raise ValueError("url is required for remote MCP servers")
+        cfg = RemoteMCPConfig(url=url, transport=params.get("transport"), headers=params.get("headers", {}), timeout=params.get("timeout", 300))
+    else:
+        raise ValueError(f"Invalid MCP server type: {server_type}")
+    try:
+        tool_names = await runtime.add_mcp_server(name, cfg)
+        return {"status": "connected", "name": name, "tools": tool_names}
+    except Exception as e:
+        logger.error(f"Failed to add MCP server '{name}': {e}")
+        raise ValueError(f"Failed to connect MCP server: {e}")
+
+
+async def handle_mcp_remove_server(
+    runtime: AgentRuntime,
+    params: dict[str, Any],
+    transport: Transport,
+    _request_id: str | int | None,
+    conn_id: str,
+) -> dict[str, Any]:
+    name: str = params.get("name", "")
+    if not name:
+        raise ValueError("name is required")
+    count = await runtime.remove_mcp_server(name)
+    return {"status": "disconnected", "name": name, "unregistered_tools": count}
 
 
 async def handle_session_set_config(
@@ -902,12 +950,15 @@ def register_all_handlers(dispatcher: Dispatcher) -> None:
     dispatcher.register(USAGE_GET, handle_usage_get)
     dispatcher.register(CONFIG_PROVIDERS, handle_config_providers)
     dispatcher.register(MCP_STATUS, handle_mcp_status)
+    dispatcher.register(MCP_ADD_SERVER, handle_mcp_add_server)
+    dispatcher.register(MCP_REMOVE_SERVER, handle_mcp_remove_server)
     dispatcher.register(SESSION_SET_CONFIG, handle_session_set_config)
     dispatcher.register(CHAT, handle_chat)
     dispatcher.register(CHAT_STREAM, handle_chat_stream, streaming=True)
     dispatcher.register(CHAT_CANCEL, handle_chat_cancel)
     dispatcher.register(CHAT_STEER, handle_chat_steer)
     dispatcher.register(TOOLS_LIST, handle_tools_list)
+    dispatcher.register(TOOLS_SET_DISABLED, handle_tools_set_disabled)
     dispatcher.register(PERMISSION_RESPOND, handle_permission_respond)
     dispatcher.register(TODO_LIST, handle_todo_list)
     dispatcher.register(TODO_UPDATE, handle_todo_update)
