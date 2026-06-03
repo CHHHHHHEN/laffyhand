@@ -24,13 +24,21 @@ class TodoManager:
     Delegates all SQL persistence to TodoRepo.
     """
 
-    def __init__(self, repo: TodoRepo) -> None:
+    def __init__(self, repo: TodoRepo, session_manager: SessionManager | None = None) -> None:
         self._repo = repo
+        self._session_manager = session_manager
 
     @classmethod
     def from_session_manager(cls, sm: SessionManager) -> TodoManager:
         from laffyhand.agent.db.repository import TodoRepo
-        return cls(TodoRepo(sm.connection))
+        return cls(TodoRepo(sm.connection), session_manager=sm)
+
+    # ── Helpers ──────────────────────────────────────────────
+
+    def _ensure_session(self, session_id: str) -> None:
+        """Ensure the session exists in DB before inserting tasks with FK reference."""
+        if self._session_manager is not None:
+            self._session_manager.ensure_exists(session_id)
 
     # ── CRUD (delegates to repo) ─────────────────────────────
 
@@ -50,6 +58,7 @@ class TodoManager:
         depends_on: Optional[list[str]] = None,
         metadata: Optional[dict[str, Any]] = None,
     ) -> TodoItem:
+        self._ensure_session(session_id)
         item = TodoItem(
             session_id=session_id,
             content=content,
@@ -79,6 +88,7 @@ class TodoManager:
         session_id: str,
         tasks: list[TodoCreate],
     ) -> list[TodoItem]:
+        self._ensure_session(session_id)
         existing = self.get_tasks(session_id)
         existing_ids = {t.id for t in existing}
         ids: list[str] = []
