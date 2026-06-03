@@ -123,12 +123,31 @@ class SessionManager:
     def search(self, query: str, limit: int = 20) -> list[Session]:
         return self._sessions.search(query, limit=limit)
 
+    # ── Transaction helpers ────────────────────────────────────
+
+    def _begin(self) -> bool:
+        """Start a transaction if not already in one. Returns True if we started it."""
+        if not self._conn.in_transaction:
+            self._conn.execute("BEGIN IMMEDIATE")
+            return True
+        return False
+
+    def _end(self, began: bool) -> None:
+        """Commit only if we started the transaction."""
+        if began:
+            self._conn.commit()
+
+    def _rollback(self, began: bool) -> None:
+        """Rollback only if we started the transaction."""
+        if began:
+            self._conn.rollback()
+
     # ── Messages ──────────────────────────────────────────────
 
     def store_messages(self, session_id: str, messages: list[Message]) -> int:
         """Store new Message objects as V2 session messages and update counters."""
         session = self.ensure_exists(session_id)
-        self._conn.execute("BEGIN IMMEDIATE")
+        began = self._begin()
         try:
             existing = self._messages.count_by_session(session_id)
             if existing > session.message_count:
@@ -141,23 +160,23 @@ class SessionManager:
                 self._messages.insert(message_to_session_message(msg, session_id))
             new_count = existing + len(messages)
             self._update_counters(session_id, new_count)
-            self._conn.commit()
+            self._end(began)
         except Exception:
-            self._conn.rollback()
+            self._rollback(began)
             raise
         return new_count
 
     def sync_messages(self, session_id: str, messages: list[Message]) -> int:
         self.ensure_exists(session_id)
-        self._conn.execute("BEGIN IMMEDIATE")
+        began = self._begin()
         try:
             self._messages.delete_by_session(session_id)
             for msg in messages:
                 self._messages.insert(message_to_session_message(msg, session_id))
             self._update_counters(session_id, len(messages))
-            self._conn.commit()
+            self._end(began)
         except Exception:
-            self._conn.rollback()
+            self._rollback(began)
             raise
         return len(messages)
 
@@ -170,7 +189,7 @@ class SessionManager:
         if self._sessions.get(session_id) is None:
             logger.warning(f"save_state: session {session_id} not found, skipping")
             return
-        self._conn.execute("BEGIN IMMEDIATE")
+        began = self._begin()
         try:
             existing = self._messages.count_by_session(session_id)
             if len(state.messages) > existing:
@@ -194,9 +213,9 @@ class SessionManager:
                 cost=state.usage.cost,
                 message_count=max(len(state.messages), existing),
             )
-            self._conn.commit()
+            self._end(began)
         except Exception:
-            self._conn.rollback()
+            self._rollback(began)
             raise
 
     def _reconstruct_curr_context(self, messages: list[Message]) -> int:
