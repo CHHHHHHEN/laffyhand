@@ -135,6 +135,7 @@ class TestPreferences:
     @pytest.mark.anyio
     async def test_poll_new_preferences_detects_new_file(self, runtime, tmp_path):
         runtime._preferences = ""
+        runtime._prefs_initialized = True
         with (
             patch("os.getcwd", return_value=str(tmp_path)),
             patch("os.path.expanduser", return_value="/nonexistent"),
@@ -194,6 +195,7 @@ class TestPreferences:
         agents_md.write_text("Persistent rule")
         runtime._preferences = ""
         runtime._preference_files = {}
+        runtime._prefs_initialized = True
         with (
             patch("os.getcwd", return_value=str(tmp_path)),
             patch("os.path.expanduser", return_value="/nonexistent"),

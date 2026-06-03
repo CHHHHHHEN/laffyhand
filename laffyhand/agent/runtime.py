@@ -122,6 +122,7 @@ class AgentRuntime:
         self._preferences: str | None = None
         self._preference_files: dict[str, str] = {}
         self._pref_lock = asyncio.Lock()
+        self._prefs_initialized: bool = False
 
         # Background session tasks (decoupled from HTTP connections)
         self._session_tasks: dict[str, asyncio.Task[None]] = {}
@@ -253,14 +254,21 @@ class AgentRuntime:
                 for text in self._preference_files.values()
             ]
             self._preferences = "\n".join(sections) if sections else ""
+            self._prefs_initialized = True
             return self._preferences
 
     async def poll_new_preferences(self) -> str:
         current = self._read_preference_files()
-        changed = False
-        sections: list[str] = []
 
         async with self._pref_lock:
+            if not self._prefs_initialized:
+                # Not yet loaded into system prompt — just populate cache without emitting
+                self._preference_files = current
+                return ""
+
+            changed = False
+            sections: list[str] = []
+
             # Detect new/changed files
             for path, text in current.items():
                 prev = self._preference_files.get(path)
