@@ -1,3 +1,28 @@
+## 技术栈
+
+### 后端 (Python 3.14)
+- aiohttp 3.13 (HTTP/SSE 网关)
+- pydantic 2.13 (数据模型)
+- httpx 0.28 (HTTP 客户端)
+- loguru 0.7 (日志)
+- MCP ≥1.26 (模型上下文协议)
+- PyYAML 6.0 (配置)
+
+### 前端 (TypeScript/React 19)
+- React 19 + React Router DOM 7
+- Zustand 5 (状态管理)
+- TanStack React Query 5 (服务端状态)
+- Tailwind CSS 4 (样式)
+- Vite 8 (构建) + Vitest 4 (测试)
+- TypeScript 5.8
+
+### 开发工具
+- uv (Python 包管理)
+- pnpm (前端包管理)
+- mypy 2.1 / ruff 0.15 / vulture 2.16
+
+---
+
 使用 uv 管理 Python 环境
 使用项目目录下的 .venv Python 环境运行脚本
 未经允许禁止添加新依赖
