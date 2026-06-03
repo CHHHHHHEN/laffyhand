@@ -52,7 +52,6 @@ beforeEach(() => {
     streamContent: "",
     streamReasoning: "",
     streamToolCalls: [],
-    streamToolResults: [],
     currentAssistantMessageId: null,
     error: null,
   })
@@ -127,7 +126,6 @@ describe("useChat", () => {
   })
 
   it("cancels stream and finalizes if content exists", async () => {
-    let resolvePromise: () => void = () => {}
     mockChatStream.mockImplementation(
       async (
         _message: string,
@@ -140,7 +138,6 @@ describe("useChat", () => {
       ) => {
         callbacks.onEvent({ type: "text-delta", id: "t1", text: "partial" })
         await new Promise<void>((resolve) => {
-          resolvePromise = resolve
           signal?.addEventListener("abort", () => resolve())
         })
       },
@@ -162,7 +159,6 @@ describe("useChat", () => {
   })
 
   it("shows error if cancel with no content", async () => {
-    let resolvePromise: () => void = () => {}
     mockChatStream.mockImplementation(
       async (
         _message: string,
@@ -170,7 +166,6 @@ describe("useChat", () => {
         signal?: AbortSignal,
       ) => {
         await new Promise<void>((resolve) => {
-          resolvePromise = resolve
           signal?.addEventListener("abort", () => resolve())
         })
       },

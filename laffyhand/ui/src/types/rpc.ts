@@ -87,6 +87,7 @@ export interface SessionUsage {
 export interface SessionLoadResult {
   session_id: string
   model?: string
+  title?: string | null
   messages_count: number
   turn_count: number
   usage?: SessionUsage

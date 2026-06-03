@@ -1,4 +1,4 @@
-import { useRef, useEffect, useCallback, useState, useMemo } from "react"
+import { useRef, useEffect, useCallback, useState } from "react"
 import DOMPurify from "dompurify"
 import { useChatStore } from "@/stores/chat-store"
 import { Spinner } from "@/components/ui/Spinner"
@@ -17,11 +17,6 @@ function formatDateSeparator(date: Date): string {
   if (isToday) return "Today"
   if (isYesterday) return "Yesterday"
   return date.toLocaleDateString([], { weekday: "long", month: "short", day: "numeric", year: date.getFullYear() !== now.getFullYear() ? "numeric" : undefined })
-}
-
-/** Format a timestamp as a short time string */
-function formatTime(ts: number): string {
-  return new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
 }
 
 interface MessageListProps {

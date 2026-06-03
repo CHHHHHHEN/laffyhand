@@ -142,6 +142,7 @@ describe("chat-store", () => {
   it("saves turnStartUsage on startStreaming", () => {
     const store = useChatStore.getState()
     store.setSessionInfo("test-model", {
+      curr_context_usage: 0,
       total_input: 1000,
       total_output: 500,
       total_reasoning: 50,
@@ -151,6 +152,7 @@ describe("chat-store", () => {
 
     const state = useChatStore.getState()
     expect(state._turnStartUsage).toEqual({
+      curr_context_usage: 0,
       total_input: 1000,
       total_output: 500,
       total_reasoning: 50,
@@ -161,6 +163,7 @@ describe("chat-store", () => {
   it("computes turnUsage delta on finalizeMessage", () => {
     const store = useChatStore.getState()
     store.setSessionInfo("test-model", {
+      curr_context_usage: 0,
       total_input: 1000,
       total_output: 500,
       total_reasoning: 50,
@@ -169,6 +172,7 @@ describe("chat-store", () => {
     store.startStreaming()
     store.appendContent("response")
     store.finalizeMessage(undefined, {
+      curr_context_usage: 0,
       total_input: 1500,
       total_output: 700,
       total_reasoning: 80,
@@ -198,6 +202,7 @@ describe("chat-store", () => {
     store.startStreaming()
     store.appendContent("test")
     store.finalizeMessage(undefined, {
+      curr_context_usage: 0,
       total_input: 500,
       total_output: 300,
       total_reasoning: 0,
@@ -215,6 +220,7 @@ describe("chat-store", () => {
     store.startStreaming()
     store.appendContent("test")
     store.finalizeMessage(undefined, {
+      curr_context_usage: 0,
       total_input: 500,
       total_output: 300,
       total_reasoning: 0,

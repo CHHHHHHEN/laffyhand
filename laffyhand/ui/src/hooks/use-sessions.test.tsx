@@ -73,7 +73,7 @@ beforeEach(() => {
   resetMessageCounter()
   useChatStore.setState({
     messages: [], isStreaming: false, streamContent: "", streamReasoning: "",
-    streamToolCalls: [], streamToolResults: [], currentAssistantMessageId: null, error: null,
+    streamToolCalls: [], currentAssistantMessageId: null, error: null,
   })
   useSessionStore.setState({ currentSessionId: null })
 })
