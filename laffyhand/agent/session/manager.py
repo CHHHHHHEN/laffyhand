@@ -6,7 +6,7 @@ from collections.abc import Sequence
 
 from loguru import logger
 
-from laffyhand.agent.llm.specs.models import Message, SystemMessage, UserMessage
+from laffyhand.agent.llm.specs.models import AssistantMessage, Message, SystemMessage, UserMessage
 from laffyhand.agent.llm.specs.models import ModelID, ProviderID
 from laffyhand.agent.session.models import Session, _utcnow
 from laffyhand.agent.session.converters import message_to_session_message, session_message_to_message
@@ -179,6 +179,12 @@ class SessionManager:
             self._conn.rollback()
             raise
 
+    def _reconstruct_curr_context(self, messages: list[Message]) -> int:
+        for msg in reversed(messages):
+            if isinstance(msg, AssistantMessage) and msg.tokens and msg.tokens.input_tokens:
+                return msg.tokens.input_tokens
+        return 0
+
     def load_state(self, session_id: str) -> AgentState | None:
         session = self._sessions.get(session_id)
         if session is None:
@@ -188,6 +194,7 @@ class SessionManager:
             messages=messages, turn_count=session.turn_count, step=session.step_count,
             session_id=SessionID(session.id),
             usage=SessionUsage(
+                curr_context_usage=self._reconstruct_curr_context(messages),
                 total_input=session.input_tokens, total_output=session.output_tokens,
                 total_reasoning=session.reasoning_tokens,
                 total_cache_read=session.cache_read_tokens,

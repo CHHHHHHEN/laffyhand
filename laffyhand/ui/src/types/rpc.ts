@@ -77,6 +77,7 @@ export interface MessageData {
 }
 
 export interface SessionUsage {
+  curr_context_usage: number
   total_input: number
   total_output: number
   total_reasoning: number

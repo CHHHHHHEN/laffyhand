@@ -37,7 +37,7 @@ export function AppShell() {
     ? sessionUsage.total_input + sessionUsage.total_output
     : 0
   const ctxSize = sessionUsage?.context_size ?? 0
-  const contextTokens = sessionUsage?.total_input ?? 0
+  const contextTokens = sessionUsage?.curr_context_usage ?? 0
 
   return (
     <div className="flex h-full overflow-hidden transition-colors duration-200">

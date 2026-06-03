@@ -735,6 +735,7 @@ async def handle_usage_get(
     conn_id: str,
 ) -> dict[str, Any]:
     return {
+        "curr_context_usage": runtime.state.usage.curr_context_usage if runtime.state else 0,
         "total_input": runtime.state.usage.total_input if runtime.state else 0,
         "total_output": runtime.state.usage.total_output if runtime.state else 0,
         "total_reasoning": runtime.state.usage.total_reasoning if runtime.state else 0,
