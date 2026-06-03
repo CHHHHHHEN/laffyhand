@@ -61,6 +61,9 @@ async def agent_loop(
 ) -> AsyncIterator[AgentEvent]:
     context_size = agent_state.usage.context_size
     _compacted_this_step = False
+    # Track how many messages have been persisted to DB,
+    # so we can store all new messages (not just [-1:]) each turn.
+    _stored_count = len(agent_state.messages)
 
     while True:
         if agent_state.interrupt_requested:
@@ -85,6 +88,8 @@ async def agent_loop(
                 on_compacted=on_compacted,
             ):
                 _compacted_this_step = True
+                # Messages were replaced by compaction summary, reset store tracker
+                _stored_count = len(agent_state.messages)
                 yield Compacting(data="Compacting conversation history...")
                 continue
 
@@ -250,20 +255,24 @@ async def agent_loop(
                 logger.debug("Pruning after tool calls")
                 agent_state.messages = prune(agent_state.messages)
             if session_manager is not None and agent_state.session_id:
-                new_msgs = agent_state.messages[-1:]
-                session_manager.store_messages(
-                    agent_state.session_id, new_msgs
-                )
+                new_msgs = agent_state.messages[_stored_count:]
+                if new_msgs:
+                    session_manager.store_messages(
+                        agent_state.session_id, new_msgs
+                    )
+                    _stored_count = len(agent_state.messages)
             continue
 
         yield StepFinish(index=step_index, reason=finish_reason or "stop", usage=usage)
 
         if finish_reason is not None:
             if session_manager is not None and agent_state.session_id:
-                new_msgs = agent_state.messages[-1:]
-                session_manager.store_messages(
-                    agent_state.session_id, new_msgs
-                )
+                new_msgs = agent_state.messages[_stored_count:]
+                if new_msgs:
+                    session_manager.store_messages(
+                        agent_state.session_id, new_msgs
+                    )
+                    _stored_count = len(agent_state.messages)
             if (
                 context_size
                 and not _compacted_this_step
@@ -276,6 +285,8 @@ async def agent_loop(
                 )
             ):
                 _compacted_this_step = True
+                # Messages were replaced by compaction summary, reset store tracker
+                _stored_count = len(agent_state.messages)
                 yield Compacting(data="Compacting conversation history...")
                 if compaction_config.auto_continue:
                     agent_state.messages.append(
@@ -285,8 +296,9 @@ async def agent_loop(
                     )
                     if session_manager is not None and agent_state.session_id:
                         session_manager.store_messages(
-                            agent_state.session_id, agent_state.messages[-1:]
+                            agent_state.session_id, agent_state.messages[_stored_count:]
                         )
+                        _stored_count = len(agent_state.messages)
                     yield Compacting(data="Continuing after compaction...")
                     continue
             break

@@ -146,17 +146,37 @@ class SessionManager:
         if self._sessions.get(session_id) is None:
             logger.warning(f"save_state: session {session_id} not found, skipping")
             return
-        self.sync_messages(session_id, state.messages)
-        self._conn.execute(
-            """UPDATE session SET turn_count=?, step_count=?,
-                input_tokens=?, output_tokens=?, reasoning_tokens=?,
-                cache_read_tokens=?, cache_write_tokens=?, updated_at=?
-            WHERE id=?""",
-            (state.turn_count, state.step, state.usage.total_input, state.usage.total_output,
-             state.usage.total_reasoning, state.usage.total_cache_read, state.usage.total_cache_write,
-             _utcnow().isoformat(), session_id),
-        )
-        self._conn.commit()
+        # Incremental message storage: only append messages not yet in DB.
+        # Avoids the wasteful DELETE + re-INSERT that sync_messages does.
+        # Falls back to full sync only when compaction has reduced the
+        # in-memory message count below what's already in the DB.
+        self._conn.execute("BEGIN IMMEDIATE")
+        try:
+            existing = self._messages.count_by_session(session_id)
+            if len(state.messages) > existing:
+                # Normal case: new messages appended since last save
+                for msg in state.messages[existing:]:
+                    self._messages.insert(message_to_session_message(msg, session_id))
+            elif len(state.messages) < existing:
+                # Compaction/prune reduced in-memory count; full sync needed
+                self._messages.delete_by_session(session_id)
+                for msg in state.messages:
+                    self._messages.insert(message_to_session_message(msg, session_id))
+
+            self._conn.execute(
+                """UPDATE session SET turn_count=?, step_count=?,
+                    input_tokens=?, output_tokens=?, reasoning_tokens=?,
+                    cache_read_tokens=?, cache_write_tokens=?,
+                    message_count=?, updated_at=?
+                WHERE id=?""",
+                (state.turn_count, state.step, state.usage.total_input, state.usage.total_output,
+                 state.usage.total_reasoning, state.usage.total_cache_read, state.usage.total_cache_write,
+                 len(state.messages), _utcnow().isoformat(), session_id),
+            )
+            self._conn.commit()
+        except Exception:
+            self._conn.rollback()
+            raise
 
     def load_state(self, session_id: str) -> Optional[AgentState]:
         session = self._sessions.get(session_id)
