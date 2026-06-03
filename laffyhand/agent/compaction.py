@@ -281,7 +281,7 @@ async def compact_on_overflow(
     session_manager: SessionManager | None = None,
     on_compacted: Callable[[str], None] | None = None,
 ) -> bool:
-    tokens = estimate_messages_tokens(agent_state.messages)
+    tokens = agent_state.usage.curr_context_usage or estimate_messages_tokens(agent_state.messages)
     context_size = agent_state.usage.context_size
     reserved = compaction_config.reserved or min(20_000, context_size // 4)
     if not is_overflow(tokens, context_size, reserved):
