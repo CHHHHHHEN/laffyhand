@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from loguru import logger
 from pydantic import BaseModel, Field
-from typing import Any, Optional, List, Literal, Union, NewType
+from typing import Any, List, Literal, Union, NewType
 
 from laffyhand.agent.llm.specs.models import Message, Usage
 
@@ -27,6 +27,7 @@ class SessionUsage(BaseModel):
     total_cache_read: int = Field(default=0, description="整个会话累积的缓存命中 Token 数")
     total_cache_write: int = Field(default=0, description="整个会话累积的缓存写入 Token 数")
     context_size: int = Field(default=0, description="模型上下文窗口大小（Token）")
+    cost: int = Field(default=0, description="整个会话累积的消耗（微美分）")
 
     def add(self, usage: Usage) -> None:
         self.curr_context_usage = usage.input_tokens or 0
@@ -47,7 +48,7 @@ class AgentState(BaseModel):
     usage: SessionUsage = Field(default_factory=SessionUsage, description="整个会话的Token用量统计")
     session_id: SessionID = Field(description="当前会话 ID")
     interrupt_requested: bool = Field(default=False, description="用户请求中断标志")
-    pending_steer: Optional[str] = Field(default=None, description="待注入的用户引导文本")
+    pending_steer: str | None = Field(default=None, description="待注入的用户引导文本")
     
 # ─── Agent-level stream events ──────────────────────────────────
 

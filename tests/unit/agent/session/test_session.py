@@ -298,28 +298,28 @@ class TestTitle:
         assert fetched.title == "My Title"
 
 
-class TestResolve:
-    def test_resolve_returns_state(self, session_manager: SessionManager) -> None:
+class TestLoadCompressedState:
+    def test_load_compressed_state_returns_state(self, session_manager: SessionManager) -> None:
         session = session_manager.create(model="gpt-4")
         sys_msg = SystemMessage(content="system")
-        state = session_manager.resolve(session.id, sys_msg, context_size=128000)
+        state = session_manager.load_compressed_state(session.id, sys_msg, context_size=128000)
         assert state is not None
         assert state.session_id == session.id
         assert state.usage.context_size == 128000
         assert any(isinstance(m, SystemMessage) for m in state.messages)
 
-    def test_resolve_inserts_system_message(
+    def test_load_compressed_state_inserts_system_message(
         self, session_manager: SessionManager
     ) -> None:
         msgs = [UserMessage(content="hi")]
         session = session_manager.create(messages=msgs)
         sys_msg = SystemMessage(content="You are a helpful assistant.")
-        state = session_manager.resolve(session.id, sys_msg)
+        state = session_manager.load_compressed_state(session.id, sys_msg)
         assert state is not None
         assert state.messages[0].content == "You are a helpful assistant."
         assert state.messages[1].content == "hi"
 
-    def test_resolve_follows_compression_chain(
+    def test_load_compressed_state_follows_compression_chain(
         self, session_manager: SessionManager
     ) -> None:
         parent = session_manager.create()
@@ -330,13 +330,13 @@ class TestResolve:
             tail_messages=[UserMessage(content="tail")],
         )
         sys_msg = SystemMessage(content="system")
-        state = session_manager.resolve(parent.id, sys_msg)
+        state = session_manager.load_compressed_state(parent.id, sys_msg)
         assert state is not None
         assert state.session_id == child.id
 
-    def test_resolve_nonexistent(self, session_manager: SessionManager) -> None:
+    def test_load_compressed_state_nonexistent(self, session_manager: SessionManager) -> None:
         sys_msg = SystemMessage(content="system")
-        result = session_manager.resolve("nonexistent", sys_msg)
+        result = session_manager.load_compressed_state("nonexistent", sys_msg)
         assert result is None
 
 

@@ -3,7 +3,6 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 from collections.abc import Sequence
-from typing import Optional
 
 from loguru import logger
 
@@ -52,9 +51,9 @@ class SessionManager:
         provider: str = "",
         model: str = "",
         agent_version: str = "",
-        parent_id: Optional[str] = None,
-        fork_id: Optional[str] = None,
-        messages: Optional[list[Message]] = None,
+        parent_id: str | None = None,
+        fork_id: str | None = None,
+        messages: list[Message] | None = None,
     ) -> Session:
         session = Session(
             title=title, cwd=cwd,
@@ -68,29 +67,34 @@ class SessionManager:
                 self._messages.insert(message_to_session_message(msg, session.id))
             session.message_count = len(messages)
             self._update_counters(session.id, session.message_count)
+        self._conn.commit()
         logger.debug(f"Session created: {session.id}")
         return session
 
-    def get(self, session_id: str) -> Optional[Session]:
+    def get(self, session_id: str) -> Session | None:
         return self._sessions.get(session_id)
 
-    def get_active(self) -> Optional[Session]:
+    def get_active(self) -> Session | None:
         return self._sessions.get_active()
 
-    def list_sessions(self, status: Optional[str] = None, limit: int = 20, offset: int = 0) -> list[Session]:
+    def list_sessions(self, status: str | None = None, limit: int = 20, offset: int = 0) -> list[Session]:
         return self._sessions.list_sessions(status=status, limit=limit, offset=offset)
 
     def update(self, session: Session) -> None:
         self._sessions.update(session)
+        self._conn.commit()
 
-    def complete(self, session_id: str, summary: Optional[str] = None) -> None:
+    def complete(self, session_id: str, summary: str | None = None) -> None:
         self._sessions.complete(session_id, summary=summary)
+        self._conn.commit()
 
     def archive(self, session_id: str) -> None:
         self._sessions.archive(session_id)
+        self._conn.commit()
 
     def delete(self, session_id: str) -> None:
         self._sessions.delete(session_id)
+        self._conn.commit()
 
     def search(self, query: str, limit: int = 20) -> list[Session]:
         return self._sessions.search(query, limit=limit)
@@ -137,7 +141,7 @@ class SessionManager:
             raise
         return len(messages)
 
-    def get_messages(self, session_id: str, offset: int = 0, limit: Optional[int] = None) -> list[Message]:
+    def get_messages(self, session_id: str, offset: int = 0, limit: int | None = None) -> list[Message]:
         return [session_message_to_message(sm) for sm in self._messages.get_by_session(session_id, offset=offset, limit=limit)]
 
     # ── State persistence ─────────────────────────────────────
@@ -146,39 +150,35 @@ class SessionManager:
         if self._sessions.get(session_id) is None:
             logger.warning(f"save_state: session {session_id} not found, skipping")
             return
-        # Incremental message storage: only append messages not yet in DB.
-        # Avoids the wasteful DELETE + re-INSERT that sync_messages does.
-        # Falls back to full sync only when compaction has reduced the
-        # in-memory message count below what's already in the DB.
         self._conn.execute("BEGIN IMMEDIATE")
         try:
             existing = self._messages.count_by_session(session_id)
             if len(state.messages) > existing:
-                # Normal case: new messages appended since last save
                 for msg in state.messages[existing:]:
                     self._messages.insert(message_to_session_message(msg, session_id))
             elif len(state.messages) < existing:
-                # Compaction/prune reduced in-memory count; full sync needed
                 self._messages.delete_by_session(session_id)
                 for msg in state.messages:
                     self._messages.insert(message_to_session_message(msg, session_id))
 
-            self._conn.execute(
-                """UPDATE session SET turn_count=?, step_count=?,
-                    input_tokens=?, output_tokens=?, reasoning_tokens=?,
-                    cache_read_tokens=?, cache_write_tokens=?,
-                    message_count=?, updated_at=?
-                WHERE id=?""",
-                (state.turn_count, state.step, state.usage.total_input, state.usage.total_output,
-                 state.usage.total_reasoning, state.usage.total_cache_read, state.usage.total_cache_write,
-                 len(state.messages), _utcnow().isoformat(), session_id),
+            self._sessions.update_counters(
+                session_id,
+                turn_count=state.turn_count,
+                step_count=state.step,
+                input_tokens=state.usage.total_input,
+                output_tokens=state.usage.total_output,
+                reasoning_tokens=state.usage.total_reasoning,
+                cache_read_tokens=state.usage.total_cache_read,
+                cache_write_tokens=state.usage.total_cache_write,
+                cost=state.usage.cost,
+                message_count=len(state.messages),
             )
             self._conn.commit()
         except Exception:
             self._conn.rollback()
             raise
 
-    def load_state(self, session_id: str) -> Optional[AgentState]:
+    def load_state(self, session_id: str) -> AgentState | None:
         session = self._sessions.get(session_id)
         if session is None:
             return None
@@ -191,10 +191,11 @@ class SessionManager:
                 total_reasoning=session.reasoning_tokens,
                 total_cache_read=session.cache_read_tokens,
                 total_cache_write=session.cache_write_tokens,
+                cost=session.cost,
             ),
         )
 
-    def resolve(self, session_id: str, system_message: SystemMessage, context_size: int = 0) -> Optional[AgentState]:
+    def load_compressed_state(self, session_id: str, system_message: SystemMessage, context_size: int = 0) -> AgentState | None:
         tip = self.get_compression_tip(session_id)
         loaded = self.load_state(tip)
         if loaded is None:
@@ -228,6 +229,7 @@ class SessionManager:
             parent_id=parent_id, messages=tail_all,
         )
         self._sessions.complete(parent_id, summary=summary_content)
+        self._conn.commit()
         logger.info(f"Compacted {parent_id} -> {child.id}")
         return child
 
@@ -249,7 +251,7 @@ class SessionManager:
 
     # ── Subagent session ──────────────────────────────────────
 
-    def create_child(self, parent_id: str, model: str = "", messages: Optional[list[Message]] = None) -> Session:
+    def create_child(self, parent_id: str, model: str = "", messages: list[Message] | None = None) -> Session:
         parent = self._sessions.get(parent_id)
         child = self.create(
             title="", cwd=parent.cwd if parent else "",
@@ -261,19 +263,11 @@ class SessionManager:
         logger.debug(f"Child session created: {child.id} (parent={parent_id})")
         return child
 
-    def get_parent(self, session_id: str) -> Optional[str]:
+    def get_parent(self, session_id: str) -> str | None:
         return self._sessions.get_parent(session_id)
 
     def get_depth(self, session_id: str) -> int:
-        depth = 0
-        current: Optional[str] = session_id
-        max_depth = 1000
-        while current and depth <= max_depth:
-            current = self._sessions.get_parent(current)
-            depth += 1
-        if depth > max_depth:
-            logger.warning(f"Session chain too deep (>{max_depth}) for {session_id}")
-        return depth
+        return self._sessions.get_depth(session_id)
 
     def get_children(self, session_id: str) -> list[Session]:
         return self._sessions.get_children(session_id)
@@ -282,6 +276,7 @@ class SessionManager:
 
     def set_title(self, session_id: str, title: str) -> None:
         self._sessions.set_title(session_id, title)
+        self._conn.commit()
 
     # ── Internal ──────────────────────────────────────────────
 
@@ -290,4 +285,3 @@ class SessionManager:
             "UPDATE session SET message_count=?, updated_at=? WHERE id=?",
             (message_count, _utcnow().isoformat(), session_id),
         )
-        self._conn.commit()

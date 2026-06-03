@@ -43,7 +43,7 @@ def _generate_id() -> str:
 
 
 def message_to_session_message(msg: Message, session_id: str) -> SessionMessage:
-    now = int(_utcnow().timestamp())
+    now = int(_utcnow().timestamp() * 1000)
     if isinstance(msg, SystemMessage):
         return SessionMessage(
             id=_generate_id(), session_id=session_id, type="synthetic",

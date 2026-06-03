@@ -71,7 +71,6 @@ class SessionRepo:
                 _ts(session.created_at), _ts(session.updated_at), _ts(session.ended_at),
             ),
         )
-        self._conn.commit()
 
     def get(self, session_id: str) -> Optional[Session]:
         row = self._conn.execute("SELECT * FROM session WHERE id=?", (session_id,)).fetchone()
@@ -117,7 +116,6 @@ class SessionRepo:
                 session.id,
             ),
         )
-        self._conn.commit()
 
     def complete(self, session_id: str, summary: Optional[str] = None) -> None:
         now = _utcnow()
@@ -125,22 +123,61 @@ class SessionRepo:
             "UPDATE session SET status='completed', summary=?, ended_at=?, updated_at=? WHERE id=?",
             (summary, _ts(now), _ts(now), session_id),
         )
-        self._conn.commit()
 
     def archive(self, session_id: str) -> None:
         self._conn.execute(
             "UPDATE session SET status='archived', updated_at=? WHERE id=?",
             (_ts(_utcnow()), session_id),
         )
-        self._conn.commit()
 
     def delete(self, session_id: str) -> None:
         self._conn.execute("DELETE FROM session WHERE id=?", (session_id,))
-        self._conn.commit()
 
     def set_title(self, session_id: str, title: str) -> None:
         self._conn.execute("UPDATE session SET title=? WHERE id=?", (title, session_id))
-        self._conn.commit()
+
+    def update_counters(
+        self,
+        session_id: str,
+        *,
+        turn_count: int = 0,
+        step_count: int = 0,
+        input_tokens: int = 0,
+        output_tokens: int = 0,
+        reasoning_tokens: int = 0,
+        cache_read_tokens: int = 0,
+        cache_write_tokens: int = 0,
+        cost: int = 0,
+        message_count: int = 0,
+    ) -> None:
+        self._conn.execute(
+            """UPDATE session SET turn_count=?, step_count=?,
+                input_tokens=?, output_tokens=?, reasoning_tokens=?,
+                cache_read_tokens=?, cache_write_tokens=?, cost=?,
+                message_count=?, updated_at=?
+            WHERE id=?""",
+            (turn_count, step_count, input_tokens, output_tokens,
+             reasoning_tokens, cache_read_tokens, cache_write_tokens,
+             cost, message_count, _ts(_utcnow()), session_id),
+        )
+
+    def get_depth(self, session_id: str, max_depth: int = 1000) -> int:
+        row = self._conn.execute(
+            """WITH RECURSIVE ancestors(id, parent_id, depth) AS (
+                SELECT id, parent_id, 0 FROM session WHERE id = ?
+                UNION ALL
+                SELECT s.id, s.parent_id, a.depth + 1
+                FROM session s
+                JOIN ancestors a ON s.id = a.parent_id
+                WHERE a.depth < ?
+            )
+            SELECT COALESCE(MAX(depth), 0) FROM ancestors""",
+            (session_id, max_depth),
+        ).fetchone()
+        depth: int = row[0] if row else 0
+        if depth >= max_depth:
+            logger.warning(f"Session chain too deep (>{max_depth}) for {session_id}")
+        return depth
 
     def search(self, query: str, limit: int = 20) -> list[Session]:
         like = f"%{query}%"
