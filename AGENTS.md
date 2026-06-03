@@ -12,8 +12,8 @@
 
 - 使用 `uv` 管理 Python 环境，脚本通过项目目录下的 `.venv` 运行
 - **未经允许禁止添加新依赖**
-- 允许破坏性重构，优先保证架构正确性及可维护性，而非兼容性
-- 每个 `fix` / `feature` / `refactor` 必须编写详细测试确保逻辑正确
+- **允许破坏性重构**，优先保证架构正确性及可维护性，而非兼容性
+- 每个 `fix` / `feature` / `refactor` **必须**编写详细测试确保逻辑正确
 
 ## 开发命令
 
@@ -43,6 +43,6 @@ pnpm vitest run                 # 运行测试
 ## Git 提交规范
 
 - **格式**: `type(scope): messages`
-- `messages` 需体现具体更改内容（如 `feat(auth): add OAuth2 login`），避免笼统描述（如 `resolve audit problems`）
-- `scope` 需具体到模块，禁止宏大概括（如 `audit`）
-- 每个 commit 保持单一主题（单 fix / 单 feature / 单主题），否则拆分为多个 commit
+- `messages` 需体现具体更改内容（如 `feat(auth): add OAuth2 login`），**禁止**笼统描述（如 `resolve audit problems`）
+- `scope` 需具体到模块，**禁止**宏大概括（如 `audit`）
+- 每个 commit 保持**单一主题**（单 fix / 单 feature / 单主题），否则拆分为多个 commit
