@@ -11,6 +11,8 @@ export function useChat() {
   const abortRef = useRef<AbortController | null>(null)
   const leftoverSteerRef = useRef<string | null>(null)
   const { sessionId: urlSessionId } = useParams()
+  const sessionIdRef = useRef(urlSessionId)
+  sessionIdRef.current = urlSessionId
 
   // Refresh session list and TODO list when streaming ends
   const isStreaming = useChatStore((s) => s.isStreaming)
@@ -73,6 +75,7 @@ export function useChat() {
 
       const abortController = new AbortController()
       abortRef.current = abortController
+      const sessionAtSend = sessionIdRef.current
 
       try {
         await rpcClient.chatStream(
@@ -80,6 +83,7 @@ export function useChat() {
           {
             onEvent: (event) => {
               const store = useChatStore.getState()
+              if (!store.isStreaming) return
               switch (event.type) {
                 case "step-start":
                   if (!store.isStreaming) {
@@ -164,6 +168,7 @@ export function useChat() {
             },
             onError: (error) => {
               if (abortController.signal.aborted) return
+              if (sessionIdRef.current !== sessionAtSend) return
               useChatStore.getState().setError(error.message)
             },
             onComplete: () => {
@@ -175,11 +180,14 @@ export function useChat() {
         )
       } catch (err) {
         if (abortController.signal.aborted) return
+        if (sessionIdRef.current !== sessionAtSend) return
         const store = useChatStore.getState()
         store.setError(
           err instanceof Error ? err.message : "Unknown error",
         )
       }
+
+      if (sessionIdRef.current !== sessionAtSend) return
 
       if (leftoverSteerRef.current) {
         const steer = leftoverSteerRef.current
