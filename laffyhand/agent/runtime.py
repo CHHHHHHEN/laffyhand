@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
-from laffyhand.agent.llm.specs.models import AssistantMessage, ModelID, ProviderID
+from laffyhand.agent.llm.specs.models import AssistantMessage, ModelID, ProviderID, SystemMessage
 from laffyhand.agent.schemas import (
     AgentState,
     Compacting,
@@ -119,6 +119,9 @@ class AgentRuntime:
         self._session_tasks: dict[str, asyncio.Task[None]] = {}
         self._session_event_queues: dict[str, asyncio.Queue] = {}
 
+        # Track the currently active session state (set by _ensure_session / switch_session)
+        self.state: AgentState | None = None
+
     def _build_llm(self, provider: str, model: str) -> LLM:
         from laffyhand.config import resolve_provider
 
@@ -190,6 +193,11 @@ class AgentRuntime:
     @property
     def config(self) -> LaffyConfig:
         return self._config
+
+    @property
+    def current_session_id(self) -> str | None:
+        """Return the current session ID, or None if no session is active."""
+        return self.state.session_id if self.state else None
 
     def load_agents(self, agent_dirs: Sequence[str | Path]) -> None:
         self.agent_registry.discover(list(agent_dirs))
@@ -280,6 +288,37 @@ class AgentRuntime:
         forked.session_id = SessionID(child.id)
         self._states[child.id] = forked
         return child.id
+
+    def switch_session(self, session_id: str) -> bool:
+        """Switch the active session to *session_id*. Returns True on success."""
+        from laffyhand.agent.session.models import Session as SessionModel
+
+        loaded = self.session_manager.load_state(session_id)
+        if loaded is None:
+            return False
+        # Load compressed state if available
+        system_message = loaded.messages[0] if loaded.messages else None
+        if system_message and isinstance(system_message, SystemMessage):
+            compressed = self.session_manager.load_compressed_state(
+                session_id, system_message, self.context_size,
+            )
+            if compressed is not None:
+                loaded = compressed
+        self.state = loaded
+        self._states[session_id] = loaded
+        return True
+
+    def complete_current_session(self) -> None:
+        """Mark the current session as completed."""
+        if self.state and self.state.session_id:
+            self.session_manager.complete(self.state.session_id)
+
+    async def generate_title_for_current(self) -> str | None:
+        """Generate a title for the current session and return it."""
+        if not self.state or not self.state.session_id:
+            return None
+        title = await self._do_generate_title(self.state.session_id)
+        return title
 
     def _llm_for_session(self, session_id: str) -> LLM:
         from laffyhand.config import resolve_provider, resolve_model

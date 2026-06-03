@@ -458,7 +458,7 @@ class HTTPTransport:
                 origin=origin,
             )
         except Exception:
-            logger.error(f"HTTP RPC error for method={message.method}", exc_info=True)
+            logger.opt(exception=True).error(f"HTTP RPC error for method={message.method}")
             return _json_response(
                 {
                     "jsonrpc": "2.0",
