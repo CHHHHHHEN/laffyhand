@@ -217,11 +217,14 @@ export function MessageBubble({ message, onResolvePermission }: MessageBubblePro
               </div>
             )}
 
-            {message.usage && <UsageBadge usage={message.usage} />}
-
-            {message.createdAt && (
-              <div className="mt-1 text-[10px] text-gray-400 dark:text-gray-500 text-right">
-                {new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            {(message.usage || message.createdAt) && (
+              <div className="mt-2 flex items-center justify-between gap-2">
+                {message.usage && <UsageBadge usage={message.usage} />}
+                {message.createdAt && (
+                  <div className="text-[10px] text-gray-400 dark:text-gray-500">
+                    {new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </div>
+                )}
               </div>
             )}
           </div>

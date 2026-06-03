@@ -247,7 +247,7 @@ export function ToolCallCard({ toolCall }: { toolCall: ToolCall }) {
 /** Token 消耗标签 */
 export function UsageBadge({ usage }: { usage: { inputTokens: number; outputTokens: number } }) {
   return (
-    <div className="mt-2 flex items-center gap-2 text-[10px] text-gray-400 dark:text-gray-500 bg-gray-50 dark:bg-gray-800/50 rounded-md px-2 py-1 w-fit">
+    <div className="flex items-center gap-2 text-[10px] text-gray-400 dark:text-gray-500 bg-gray-50 dark:bg-gray-800/50 rounded-md px-2 py-1 w-fit">
       <span className="flex items-center gap-0.5" title="Input tokens">
         <svg className="w-2.5 h-2.5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 11l5-5m0 0l5 5m-5-5v12" />
