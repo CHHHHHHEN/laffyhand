@@ -58,3 +58,19 @@ export const useUiStore = create<UiState>((set) => ({
     set({ darkMode })
   },
 }))
+
+// ── Auto-follow system color scheme ──
+// When the OS theme changes, update the UI — but only if the user hasn't
+// explicitly set a preference (i.e. nothing in localStorage).
+if (typeof window !== "undefined") {
+  const mq = window.matchMedia("(prefers-color-scheme: dark)")
+  mq.addEventListener("change", (e) => {
+    try {
+      const stored = localStorage.getItem("laffyhand-dark-mode")
+      if (stored !== null) return
+    } catch {
+      return
+    }
+    useUiStore.setState({ darkMode: e.matches })
+  })
+}
