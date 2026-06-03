@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from loguru import logger
 
-from laffyhand.agent.llm.specs.models import SystemMessage, UserMessage
+from laffyhand.agent.llm.specs.models import AssistantMessage, SystemMessage, UserMessage
 from laffyhand.agent.schemas import (
     AgentState,
     CompactionConfig,
@@ -28,8 +28,6 @@ from laffyhand.agent.schemas import (
     TextDelta,
     ReasoningDelta,
     ToolCall as StreamToolCall,
-    ToolResult as StreamToolResult,
-    ToolError as StreamToolError,
 )
 from laffyhand.agent.tools.permission import SubagentPermissions
 
@@ -210,22 +208,6 @@ class SubagentManager:
                                     tool_input=event.input,
                                 )
                             )
-                        elif isinstance(event, StreamToolResult):
-                            await _relay_event(
-                                SubAgentDelta(
-                                    id=task_id,
-                                    kind="tool_result",
-                                    content=event.result[:500],
-                                )
-                            )
-                        elif isinstance(event, StreamToolError):
-                            await _relay_event(
-                                SubAgentDelta(
-                                    id=task_id,
-                                    kind="error",
-                                    content=event.message,
-                                )
-                            )
                         elif isinstance(event, (StepStart, TextStart, TextEnd, ReasoningStart, ReasoningEnd, Compacting)):
                             await _relay_event(event)
 
@@ -234,10 +216,10 @@ class SubagentManager:
                     session_manager.complete(child_state.session_id)
 
                     last_content = ""
-                    if child_state.messages:
-                        last = child_state.messages[-1]
-                        if hasattr(last, "content") and last.content:
-                            last_content = last.content
+                    for msg in reversed(child_state.messages):
+                        if isinstance(msg, AssistantMessage) and msg.content:
+                            last_content = msg.content
+                            break
 
                     assert child_state.session_id is not None
                     result = SubagentResult(

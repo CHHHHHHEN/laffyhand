@@ -11,13 +11,12 @@ from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
-from laffyhand.agent.llm.specs.models import SystemMessage, ModelID, ProviderID
+from laffyhand.agent.llm.specs.models import AssistantMessage, ModelID, ProviderID
 from laffyhand.agent.schemas import (
     AgentState,
     Compacting,
     CompactionConfig,
     SessionID,
-    SessionUsage,
     StepFinish,
     StepStart,
     SubAgentEnd,
@@ -30,8 +29,6 @@ from laffyhand.agent.schemas import (
     ReasoningEnd,
     ReasoningStart,
     ToolCall as StreamToolCall,
-    ToolError as StreamToolError,
-    ToolResult as StreamToolResult,
 )
 from laffyhand.agent.agent import AgentRegistry
 from laffyhand.agent.skill import SkillRegistry
@@ -61,6 +58,9 @@ from laffyhand.config import LaffyConfig
 
 
 MAX_SUBAGENT_DEPTH = 3
+
+# Sentinel object marking agent turn completion
+_TURN_DONE = object()
 
 
 class AgentRuntime:
@@ -110,12 +110,14 @@ class AgentRuntime:
         self._pending_permissions: dict[
             str, tuple[asyncio.Event, str, str, bool | None]
         ] = {}
-        self._session_id: str | None = None
-        self._active_session_id: str | None = None
         self._task_tool: TaskTool | None = None
         self._preferences: str | None = None
         self._preference_files: dict[str, str] = {}
         self._pref_lock = asyncio.Lock()
+
+        # Background session tasks (decoupled from HTTP connections)
+        self._session_tasks: dict[str, asyncio.Task[None]] = {}
+        self._session_event_queues: dict[str, asyncio.Queue] = {}
 
     def _build_llm(self, provider: str, model: str) -> LLM:
         from laffyhand.config import resolve_provider
@@ -170,22 +172,6 @@ class AgentRuntime:
     @property
     def context_size(self) -> int:
         return self._context_size
-
-    @property
-    def state(self) -> AgentState | None:
-        if self._session_id is None:
-            return None
-        return self._states.get(self._session_id)
-
-    @state.setter
-    def state(self, new_state: AgentState) -> None:
-        if new_state.session_id:
-            self._session_id = new_state.session_id
-            self._states[new_state.session_id] = new_state
-
-    @property
-    def current_session_id(self) -> str | None:
-        return self._session_id
 
     def get_state(self, session_id: str) -> AgentState | None:
         return self._states.get(session_id)
@@ -285,100 +271,14 @@ class AgentRuntime:
 
         return "\n".join(parts)
 
-    def create_initial_state(
-        self,
-        system_message: SystemMessage,
-        provider: str = "",
-        model: str = "",
-    ) -> AgentState:
-        session = self.session_manager.create(
-            cwd=os.getcwd(),
-            provider=provider,
-            model=model,
-        )
-        state = AgentState(
-            messages=[system_message],
-            session_id=SessionID(session.id),
-            usage=SessionUsage(context_size=self._context_size),
-        )
-        self._states[session.id] = state
-        self._session_id = session.id
-        return state
-
-    def save_current_state(self) -> None:
-        if self._session_id is not None:
-            state = self._states.get(self._session_id)
-            if state is not None:
-                sid = state.session_id or self._session_id
-                if self.session_manager.get(sid):
-                    self.session_manager.save_state(sid, state)
-                else:
-                    logger.warning(
-                        f"save_current_state: session {sid} not found in DB, skipping"
-                    )
-
-    def complete_current_session(self) -> None:
-        if self._session_id is not None:
-            state = self._states.get(self._session_id)
-            if state is not None:
-                sid = state.session_id or self._session_id
-                if self.session_manager.get(sid):
-                    self.session_manager.save_state(sid, state)
-                self.session_manager.complete(sid)
-
-    def switch_session(self, session_id: str) -> bool:
-        self.save_current_state()
-        # Check in-memory states first (session may not be persisted to DB yet)
-        existing = self._states.get(session_id)
-        if existing is not None:
-            self._session_id = session_id
-            return True
-        # Fall back to DB
-        tip = self.session_manager.get_compression_tip(session_id)
-        loaded = self.session_manager.load_state(tip)
-        if loaded is None:
-            return False
-        loaded.usage.context_size = self._context_size
-        loaded.session_id = SessionID(session_id)  # keep key consistent with _states dict
-        self._states[session_id] = loaded
-        self._session_id = session_id
-        return True
-
-    def new_session(
-        self,
-        system_message: SystemMessage,
-        provider: str = "",
-        model: str = "",
-    ) -> AgentState:
-        self.complete_current_session()
-        session = self.session_manager.create(
-            cwd=os.getcwd(),
-            provider=provider,
-            model=model,
-        )
-        state = AgentState(
-            messages=[system_message] if system_message else [],
-            session_id=SessionID(session.id),
-            turn_count=0,
-            step=0,
-            usage=SessionUsage(context_size=self._context_size),
-        )
-        self._states[session.id] = state
-        self._session_id = session.id
-        return state
-
-    def fork_session(self) -> str | None:
-        if self._session_id is None:
-            return None
-        state = self._states.get(self._session_id)
+    def fork_session(self, session_id: str) -> str | None:
+        state = self._states.get(session_id)
         if state is None or not state.session_id:
             return None
-        self.save_current_state()
         child = self.session_manager.fork(state.session_id)
         forked = copy.deepcopy(state)
         forked.session_id = SessionID(child.id)
         self._states[child.id] = forked
-        self._session_id = child.id
         return child.id
 
     def _llm_for_session(self, session_id: str) -> LLM:
@@ -405,17 +305,14 @@ class AgentRuntime:
 
     async def run_agent_turn(  # type: ignore[no-untyped-def]
         self,
-        session_id: str | None = None,
+        session_id: str,
         event_sink: Callable[[Any], Awaitable[None]] | None = None,
     ):
-        sid = session_id or self._session_id
-        assert sid is not None
-        state = self._states.get(sid)
-        assert state is not None, f"state not found for session {sid}"
-        self._active_session_id = sid
+        state = self._states.get(session_id)
+        assert state is not None, f"state not found for session {session_id}"
         if event_sink is not None:
-            self._event_sinks[sid] = event_sink
-        llm = self._llm_for_session(sid)
+            self._event_sinks[session_id] = event_sink
+        llm = self._llm_for_session(session_id)
         try:
             async for event in agent_loop(
                 state,
@@ -432,20 +329,61 @@ class AgentRuntime:
             ):
                 yield event
         finally:
-            self._active_session_id = None
-            self._event_sinks.pop(sid, None)
+            self._event_sinks.pop(session_id, None)
+
+    # ── Background session tasks ──────────────────────────────
+
+    def is_session_running(self, session_id: str) -> bool:
+        return session_id in self._session_tasks and not self._session_tasks[session_id].done()
+
+    async def start_background_agent_turn(
+        self,
+        session_id: str,
+        event_sink: Callable[[Any], Awaitable[None]] | None = None,
+    ) -> asyncio.Queue:
+        """Run agent_loop in a background task, pushing events to a per-session queue.
+
+        The queue remains valid even after the HTTP connection drops.
+        Returns the event queue for the caller to drain.
+        """
+        queue: asyncio.Queue = asyncio.Queue()
+        self._session_event_queues[session_id] = queue
+
+        async def _run() -> None:
+            try:
+                async for event in self.run_agent_turn(
+                    session_id=session_id,
+                    event_sink=event_sink,
+                ):
+                    await queue.put(event)
+            except asyncio.CancelledError:
+                pass
+            except Exception:
+                logger.exception(f"Background agent turn failed for {session_id}")
+            finally:
+                await queue.put(_TURN_DONE)
+                self._session_tasks.pop(session_id, None)
+                self._session_event_queues.pop(session_id, None)
+                self._event_sinks.pop(session_id, None)
+
+        task = asyncio.create_task(_run())
+        self._session_tasks[session_id] = task
+        return queue
+
+    def cancel_background_agent_turn(self, session_id: str) -> None:
+        task = self._session_tasks.get(session_id)
+        if task is not None and not task.done():
+            task.cancel()
 
     async def create_subagent(
         self,
+        parent_session_id: str,
         agent_info: AgentInfo,
         prompt: str,
         description: str = "",
         background: bool = False,
         todo_id: str | None = None,
     ) -> str:
-        parent_session_id = self._active_session_id or self._session_id
-        assert parent_session_id is not None
-
         depth = self.session_manager.get_depth(parent_session_id)
         if depth > MAX_SUBAGENT_DEPTH:
             return (
@@ -566,7 +504,7 @@ class AgentRuntime:
                 )
             )
 
-        result_parts: list[str] = []
+        result_content = ""
         tool_call_count = 0
         async for event in agent_loop(
             child_state,
@@ -605,45 +543,22 @@ class AgentRuntime:
                             tool_input=event.input,
                         )
                     )
-                elif isinstance(event, StreamToolResult):
-                    await event_sink(
-                        SubAgentDelta(
-                            id=task_id,
-                            kind="tool_result",
-                            content=event.result[:500],
-                        )
-                    )
-                elif isinstance(event, StreamToolError):
-                    await event_sink(
-                        SubAgentDelta(
-                            id=task_id,
-                            kind="error",
-                            content=event.message,
-                        )
-                    )
-                elif isinstance(event, StepStart):
-                    await event_sink(event)
-                elif isinstance(event, TextStart):
-                    await event_sink(event)
-                elif isinstance(event, TextEnd):
-                    await event_sink(event)
-                elif isinstance(event, ReasoningStart):
-                    await event_sink(event)
-                elif isinstance(event, ReasoningEnd):
-                    await event_sink(event)
-                elif isinstance(event, Compacting):
+                elif isinstance(event, (StepStart, TextStart, TextEnd, ReasoningStart, ReasoningEnd, Compacting)):
                     await event_sink(event)
             if isinstance(event, StepFinish):
-                last_msg = child_state.messages[-1]
-                if hasattr(last_msg, "content") and last_msg.content:
-                    if not isinstance(last_msg, SystemMessage):
-                        result_parts.append(last_msg.content)
+                last_assistant_msg = None
+                for msg in reversed(child_state.messages):
+                    if isinstance(msg, AssistantMessage) and msg.content:
+                        last_assistant_msg = msg
+                        break
+                if last_assistant_msg is not None and last_assistant_msg.content:
+                    result_content = last_assistant_msg.content
 
         assert child_state.session_id is not None
         self.session_manager.save_state(child_state.session_id, child_state)
         self.session_manager.complete(child_state.session_id)
 
-        result = "\n".join(part for part in result_parts if part).strip()
+        result = result_content.strip()
         if not result:
             result = "[No output]"
 
@@ -661,23 +576,6 @@ class AgentRuntime:
             )
 
         return f"<task>\n{result}\n</task>"
-
-    async def generate_title_for_current(self) -> str | None:
-        if self.title_config.mode == "off":
-            return None
-        if self._session_id is None:
-            return None
-        state = self._states.get(self._session_id)
-        sid = state.session_id if state and state.session_id else self._session_id
-        from laffyhand.agent.title import generate_title
-
-        llm = self._llm_for_session(sid)
-        return await generate_title(
-            self.session_manager,
-            sid,
-            llm,
-            self.title_config,
-        )
 
     def _should_generate_title(self, session_id: str, trigger: str) -> bool:
         """Check if title generation should proceed based on mode, trigger, and session state."""
