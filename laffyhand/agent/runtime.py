@@ -331,6 +331,9 @@ class AgentRuntime:
             )
             if compressed is not None:
                 loaded = compressed
+        # Ensure context_size is always set (load_state doesn't set it)
+        if loaded.usage:
+            loaded.usage.context_size = self.context_size
         self.state = loaded
         self._states[session_id] = loaded
         return True
