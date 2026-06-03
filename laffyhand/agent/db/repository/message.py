@@ -1,10 +1,21 @@
 from __future__ import annotations
 
+import json
 import sqlite3
-from typing import Optional
+from typing import Optional, cast
 
-from laffyhand.agent.session.models import SessionMessage
-from laffyhand.agent.db.repository.common import decode_session_message
+from pydantic import BaseModel
+
+from laffyhand.agent.session.models import (
+    AgentSwitchedData,
+    AssistantData,
+    CompactionData,
+    ModelSwitchedData,
+    SessionMessage,
+    ShellData,
+    SyntheticData,
+    UserData,
+)
 
 
 class MessageRepo:
@@ -12,6 +23,27 @@ class MessageRepo:
 
     def __init__(self, conn: sqlite3.Connection) -> None:
         self._conn = conn
+
+    @staticmethod
+    def _decode_row(row: sqlite3.Row) -> SessionMessage:
+        raw = json.loads(row["data"])
+        type_map: dict[str, type] = {
+            "user": UserData, "assistant": AssistantData,
+            "synthetic": SyntheticData, "shell": ShellData,
+            "agent-switched": AgentSwitchedData,
+            "model-switched": ModelSwitchedData,
+            "compaction": CompactionData,
+        }
+        model_cls = type_map.get(row["type"])
+        if model_cls is None:
+            raise ValueError(f"Unknown message type: {row['type']}")
+        data_cls = cast(type[BaseModel], model_cls)
+        data = cast("UserData | AssistantData | SyntheticData | ShellData | AgentSwitchedData | ModelSwitchedData | CompactionData", data_cls.model_validate(raw))
+        return SessionMessage(
+            id=row["id"], session_id=row["session_id"], type=row["type"],
+            time_created=row["time_created"], time_updated=row["time_updated"],
+            data=data,
+        )
 
     def insert(self, sm: SessionMessage) -> None:
         self._conn.execute(
@@ -30,7 +62,7 @@ class MessageRepo:
                 "SELECT * FROM session_message WHERE session_id=? ORDER BY time_created",
                 (session_id,),
             ).fetchall()
-        return [decode_session_message(r) for r in rows]
+        return [self._decode_row(r) for r in rows]
 
     def count_by_session(self, session_id: str) -> int:
         row = self._conn.execute(

@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-import json
-import sqlite3
-from datetime import datetime
-from typing import Any, Optional, cast
+from typing import TYPE_CHECKING, Any, Optional
 
-from typing import TYPE_CHECKING
+import sqlite3
+
 from laffyhand.agent.session.models import (
     TodoCreate,
     TodoItem,
@@ -15,72 +13,32 @@ from laffyhand.agent.session.models import (
     _generate_id,
     _utcnow,
 )
-
-
-def _ts(dt: datetime | None) -> str | None:
-    return dt.isoformat() if dt is not None else None
-
-
-def _from_ts(ts: str | None) -> datetime | None:
-    return datetime.fromisoformat(ts) if ts is not None else None
+from laffyhand.agent.db.repository import TodoRepo
 
 if TYPE_CHECKING:
     from laffyhand.agent.session.manager import SessionManager
 
 
-def _serialize_json(val: list[Any] | dict[str, Any]) -> str:
-    return json.dumps(val, default=str)
-
-
-def _deserialize_str_list(raw: str) -> list[str]:
-    if not raw:
-        return []
-    try:
-        return cast(list[str], json.loads(raw))
-    except (json.JSONDecodeError, TypeError):
-        return []
-
-
-def _deserialize_metadata(raw: str) -> dict[str, Any]:
-    if not raw:
-        return {}
-    try:
-        return cast(dict[str, Any], json.loads(raw))
-    except (json.JSONDecodeError, TypeError):
-        return {}
-
-
 class TodoManager:
-    def __init__(self, conn: sqlite3.Connection) -> None:
-        self._conn = conn
+    """Domain logic for todo tasks: DAG validation, blocking resolution, tool integration.
+
+    Delegates all SQL persistence to TodoRepo.
+    """
+
+    def __init__(self, repo: TodoRepo) -> None:
+        self._repo = repo
 
     @classmethod
     def from_session_manager(cls, sm: SessionManager) -> TodoManager:
-        return cls(sm.connection)
+        return cls(TodoRepo(sm.connection))
 
-    # ── CRUD ─────────────────────────────────────────────────
+    # ── CRUD (delegates to repo) ─────────────────────────────
 
     def get_task(self, task_id: str) -> Optional[TodoItem]:
-        row = self._conn.execute(
-            "SELECT * FROM todo WHERE id = ?",
-            (task_id,),
-        ).fetchone()
-        return self._row_to_todo(row) if row else None
+        return self._repo.get(task_id)
 
-    def get_tasks(
-        self, session_id: str, status: Optional[str] = None
-    ) -> list[TodoItem]:
-        if status:
-            rows = self._conn.execute(
-                "SELECT * FROM todo WHERE session_id = ? AND status = ? ORDER BY created_at",
-                (session_id, status),
-            ).fetchall()
-        else:
-            rows = self._conn.execute(
-                "SELECT * FROM todo WHERE session_id = ? ORDER BY created_at",
-                (session_id,),
-            ).fetchall()
-        tasks = [self._row_to_todo(r) for r in rows]
+    def get_tasks(self, session_id: str, status: Optional[str] = None) -> list[TodoItem]:
+        tasks = self._repo.get_by_session(session_id, status=status)
         self._compute_blocked(tasks)
         return tasks
 
@@ -102,30 +60,11 @@ class TodoManager:
         existing = self.get_tasks(session_id)
         if depends_on:
             self._validate_depends(depends_on, existing, task_id=item.id)
-        now = _utcnow()
         try:
-            self._conn.execute(
-                """INSERT INTO todo
-                   (id, session_id, content, status, priority, depends_on,
-                    created_at, updated_at, completed_at, task_tool_id, metadata)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (
-                    item.id,
-                    item.session_id,
-                    item.content,
-                    item.status,
-                    item.priority,
-                    _serialize_json(item.depends_on),
-                    _ts(now),
-                    _ts(now),
-                    None,
-                    None,
-                    _serialize_json(item.metadata),
-                ),
-            )
-            self._conn.commit()
+            self._repo.insert(item)
+            self._repo.commit()
         except sqlite3.IntegrityError as e:
-            self._conn.rollback()
+            self._repo.rollback()
             err_msg = str(e)
             if "FOREIGN KEY" in err_msg or "session" in err_msg.lower():
                 raise ValueError(
@@ -162,29 +101,10 @@ class TodoManager:
                 item.depends_on = t.depends_on
             else:
                 item.depends_on = []
-            now = _utcnow()
             try:
-                self._conn.execute(
-                    """INSERT INTO todo
-                       (id, session_id, content, status, priority, depends_on,
-                        created_at, updated_at, completed_at, task_tool_id, metadata)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (
-                        item.id,
-                        item.session_id,
-                        item.content,
-                        item.status,
-                        item.priority,
-                        _serialize_json(item.depends_on),
-                        _ts(now),
-                        _ts(now),
-                        None,
-                        None,
-                        _serialize_json(item.metadata),
-                    ),
-                )
+                self._repo.insert(item)
             except sqlite3.IntegrityError as e:
-                self._conn.rollback()
+                self._repo.rollback()
                 err_msg = str(e)
                 if "FOREIGN KEY" in err_msg or "session" in err_msg.lower():
                     raise ValueError(
@@ -193,9 +113,9 @@ class TodoManager:
                     ) from e
                 raise
             ids.append(item.id)
-            existing = self.get_tasks(session_id)
+            existing = self._repo.get_by_session(session_id)
             existing_ids = {t.id for t in existing}
-        self._conn.commit()
+        self._repo.commit()
         return self.get_tasks(session_id)
 
     def update_task(
@@ -204,7 +124,7 @@ class TodoManager:
         session_id: str,
         updates: TodoUpdate,
     ) -> Optional[TodoItem]:
-        item = self.get_task(task_id)
+        item = self._repo.get(task_id)
         if item is None:
             return None
 
@@ -213,7 +133,7 @@ class TodoManager:
         if updates.priority is not None:
             item.priority = updates.priority
         if updates.depends_on is not None:
-            existing = self.get_tasks(session_id)
+            existing = self._repo.get_by_session(session_id)
             self._validate_depends(updates.depends_on, existing, task_id=item.id)
             item.depends_on = updates.depends_on
         if "task_tool_id" in updates.model_fields_set:
@@ -230,26 +150,10 @@ class TodoManager:
 
         item.updated_at = _utcnow()
         try:
-            self._conn.execute(
-                """UPDATE todo SET
-                    content=?, status=?, priority=?, depends_on=?,
-                    updated_at=?, completed_at=?, task_tool_id=?, metadata=?
-                   WHERE id=?""",
-                (
-                    item.content,
-                    item.status,
-                    item.priority,
-                    _serialize_json(item.depends_on),
-                    _ts(item.updated_at),
-                    _ts(item.completed_at),
-                    item.task_tool_id,
-                    _serialize_json(item.metadata),
-                    item.id,
-                ),
-            )
-            self._conn.commit()
+            self._repo.update(item)
+            self._repo.commit()
         except Exception:
-            self._conn.rollback()
+            self._repo.rollback()
             raise
 
         if updates.status == "completed":
@@ -259,44 +163,35 @@ class TodoManager:
             and updates.status is not None
             and updates.status != "completed"
         ):
-            all_tasks = self.get_tasks(session_id)
+            all_tasks = self._repo.get_by_session(session_id)
             now = _utcnow()
             try:
                 for t in all_tasks:
-                    self._conn.execute(
-                        "UPDATE todo SET status=?, updated_at=?, metadata=? WHERE id=?",
-                        (t.status, _ts(now), _serialize_json(t.metadata), t.id),
-                    )
-                self._conn.commit()
+                    t.updated_at = now
+                    self._repo.update(t)
+                self._repo.commit()
             except Exception:
-                self._conn.rollback()
+                self._repo.rollback()
                 raise
 
         return item
 
     def delete_task(self, task_id: str) -> bool:
-        item = self.get_task(task_id)
+        item = self._repo.get(task_id)
         if item is None:
             return False
         # Remove this task from all dependents' depends_on lists
-        dependents = self._conn.execute(
-            "SELECT id, depends_on FROM todo WHERE depends_on LIKE ?",
-            (f"%{task_id}%",),
-        ).fetchall()
-        try:
-            for dep in dependents:
-                deps = _deserialize_str_list(dep["depends_on"])
-                if task_id in deps:
-                    deps.remove(task_id)
-                    self._conn.execute(
-                        "UPDATE todo SET depends_on = ? WHERE id = ?",
-                        (_serialize_json(deps), dep["id"]),
-                    )
-            self._conn.execute("DELETE FROM todo WHERE id = ?", (task_id,))
-            self._conn.commit()
-        except Exception:
-            self._conn.rollback()
-            raise
+        dependents = self._repo.get_dependents(task_id)
+        for dep_id, deps in dependents:
+            if task_id in deps:
+                deps.remove(task_id)
+                dep_item = self._repo.get(dep_id)
+                if dep_item is not None:
+                    dep_item.depends_on = deps
+                    dep_item.updated_at = _utcnow()
+                    self._repo.update(dep_item)
+        self._repo.delete(task_id)
+        self._repo.commit()
         return True
 
     def delete_tasks(self, task_ids: list[str]) -> int:
@@ -324,20 +219,16 @@ class TodoManager:
         """Delete tasks matching given statuses (default: completed, cancelled)."""
         if statuses is None:
             statuses = ["completed", "cancelled"]
-        placeholders = ",".join("?" for _ in statuses)
-        rows = self._conn.execute(
-            f"SELECT id FROM todo WHERE session_id = ? AND status IN ({placeholders})",
-            (session_id, *statuses),
-        ).fetchall()
-        ids = [row["id"] for row in rows]
+        tasks = self._repo.get_by_session(session_id)
+        ids = [t.id for t in tasks if t.status in statuses]
         return self.delete_tasks(ids)
 
     def delete_session_tasks(self, session_id: str) -> None:
         try:
-            self._conn.execute("DELETE FROM todo WHERE session_id = ?", (session_id,))
-            self._conn.commit()
+            self._repo.delete_by_session(session_id)
+            self._repo.commit()
         except Exception:
-            self._conn.rollback()
+            self._repo.rollback()
             raise
 
     # ── DAG ───────────────────────────────────────────────────
@@ -391,49 +282,35 @@ class TodoManager:
             if node in visited:
                 continue
             visited.add(node)
-            row = self._conn.execute(
-                "SELECT depends_on FROM todo WHERE id = ?",
-                (node,),
-            ).fetchone()
-            if row:
-                deps = _deserialize_str_list(row["depends_on"])
-                stack.extend(d for d in deps if d not in visited)
+            item = self._repo.get(node)
+            if item:
+                stack.extend(d for d in item.depends_on if d not in visited)
         return False
 
     def resolve_blocked(self, task_id: str, session_id: str) -> None:
         """After task completes, re-evaluate blocked status for dependents."""
-        tasks = self.get_tasks(session_id)
-        try:
-            for t in tasks:
-                if task_id in t.depends_on and t.status == "blocked":
-                    blocked_by = t.metadata.get("blocked_by", [])
-                    if task_id in blocked_by:
-                        remaining = [d for d in blocked_by if d != task_id]
-                        if remaining:
-                            t.metadata["blocked_by"] = remaining
-                        else:
-                            t.metadata.pop("blocked_by", None)
-                            t.status = "pending"
-                            t.updated_at = _utcnow()
-                            self._conn.execute(
-                                """UPDATE todo SET status=?, updated_at=?, metadata=?
-                                   WHERE id=?""",
-                                (
-                                    t.status,
-                                    _ts(t.updated_at),
-                                    _serialize_json(t.metadata),
-                                    t.id,
-                                ),
-                            )
-            self._conn.commit()
-        except Exception:
-            self._conn.rollback()
-            raise
+        tasks = self._repo.get_by_session(session_id)
+        changed = False
+        for t in tasks:
+            if task_id in t.depends_on and t.status == "blocked":
+                blocked_by = t.metadata.get("blocked_by", [])
+                if task_id in blocked_by:
+                    remaining = [d for d in blocked_by if d != task_id]
+                    if remaining:
+                        t.metadata["blocked_by"] = remaining
+                    else:
+                        t.metadata.pop("blocked_by", None)
+                        t.status = "pending"
+                        t.updated_at = _utcnow()
+                        self._repo.update(t)
+                        changed = True
+        if changed:
+            self._repo.commit()
 
     # ── TaskTool integration ──────────────────────────────────
 
     def link_task_tool(self, task_id: str, tool_call_id: str) -> Optional[TodoItem]:
-        item = self.get_task(task_id)
+        item = self._repo.get(task_id)
         if item is None:
             return None
         return self.update_task(
@@ -445,34 +322,12 @@ class TodoManager:
     def on_subagent_complete(
         self, tool_call_id: str, success: bool
     ) -> Optional[TodoItem]:
-        row = self._conn.execute(
-            "SELECT * FROM todo WHERE task_tool_id = ?",
-            (tool_call_id,),
-        ).fetchone()
-        if row is None:
+        item = self._repo.get_by_task_tool_id(tool_call_id)
+        if item is None:
             return None
-        item = self._row_to_todo(row)
         new_status: TodoStatus = "completed" if success else "pending"
         return self.update_task(
             item.id,
             item.session_id,
             TodoUpdate(status=new_status, task_tool_id=None),
-        )
-
-    # ── Internal ──────────────────────────────────────────────
-
-    @staticmethod
-    def _row_to_todo(row: sqlite3.Row) -> TodoItem:
-        return TodoItem(
-            id=row["id"],
-            session_id=row["session_id"],
-            content=row["content"],
-            status=row["status"],
-            priority=row["priority"],
-            depends_on=_deserialize_str_list(row["depends_on"]),
-            created_at=_from_ts(row["created_at"]) or _utcnow(),
-            updated_at=_from_ts(row["updated_at"]) or _utcnow(),
-            completed_at=_from_ts(row["completed_at"]) if row["completed_at"] else None,
-            task_tool_id=row["task_tool_id"],
-            metadata=_deserialize_metadata(row["metadata"]),
         )

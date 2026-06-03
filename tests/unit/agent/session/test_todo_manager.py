@@ -6,6 +6,7 @@ import pytest
 
 from laffyhand.agent.session.models import TodoCreate, TodoUpdate
 from laffyhand.agent.db.schema import create_tables
+from laffyhand.agent.db.repository import TodoRepo
 from laffyhand.agent.session.todo import TodoManager
 
 
@@ -26,7 +27,7 @@ def db():
 
 @pytest.fixture
 def mgr(db):
-    return TodoManager(db)
+    return TodoManager(TodoRepo(db))
 
 
 class TestTodoManagerCRUD:

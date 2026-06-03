@@ -5,11 +5,13 @@ from typing import Optional, cast
 
 from loguru import logger
 
+from laffyhand.agent.llm.specs.models import ModelID, ProviderID
 from laffyhand.agent.session.models import Session, _utcnow
 from laffyhand.agent.db.repository.common import (
+    _from_ts,
     _serialize_metadata,
+    _deserialize_metadata,
     _ts,
-    row_to_session,
 )
 
 
@@ -18,6 +20,33 @@ class SessionRepo:
 
     def __init__(self, conn: sqlite3.Connection) -> None:
         self._conn = conn
+
+    @staticmethod
+    def _row_to_session(row: sqlite3.Row) -> Session:
+        return Session(
+            id=row["id"],
+            status=row["status"],
+            title=row["title"],
+            cwd=row["cwd"],
+            provider=ProviderID(row["provider"]) if "provider" in row.keys() else ProviderID(""),
+            model=ModelID(row["model"]),
+            agent_version=row["agent_version"],
+            turn_count=row["turn_count"],
+            step_count=row["step_count"],
+            input_tokens=row["input_tokens"],
+            output_tokens=row["output_tokens"],
+            reasoning_tokens=row["reasoning_tokens"],
+            cache_read_tokens=row["cache_read_tokens"],
+            cache_write_tokens=row["cache_write_tokens"] if "cache_write_tokens" in row.keys() else 0,
+            parent_id=row["parent_id"],
+            fork_id=row["fork_id"],
+            message_count=row["message_count"],
+            summary=row["summary"],
+            metadata=_deserialize_metadata(row["metadata"] or "{}"),
+            created_at=_from_ts(row["created_at"]) or _utcnow(),
+            updated_at=_from_ts(row["updated_at"]) or _utcnow(),
+            ended_at=_from_ts(row["ended_at"]) if row["ended_at"] else None,
+        )
 
     def insert(self, session: Session) -> None:
         self._conn.execute(
@@ -46,13 +75,13 @@ class SessionRepo:
 
     def get(self, session_id: str) -> Optional[Session]:
         row = self._conn.execute("SELECT * FROM session WHERE id=?", (session_id,)).fetchone()
-        return row_to_session(row) if row else None
+        return self._row_to_session(row) if row else None
 
     def get_active(self) -> Optional[Session]:
         row = self._conn.execute(
             "SELECT * FROM session WHERE status='active' ORDER BY updated_at DESC LIMIT 1",
         ).fetchone()
-        return row_to_session(row) if row else None
+        return self._row_to_session(row) if row else None
 
     def list_sessions(self, status: Optional[str] = None, limit: int = 20, offset: int = 0) -> list[Session]:
         if status:
@@ -65,7 +94,7 @@ class SessionRepo:
                 "SELECT * FROM session ORDER BY created_at DESC LIMIT ? OFFSET ?",
                 (limit, offset),
             ).fetchall()
-        return [row_to_session(r) for r in rows]
+        return [self._row_to_session(r) for r in rows]
 
     def update(self, session: Session) -> None:
         session.updated_at = _utcnow()
@@ -121,7 +150,7 @@ class SessionRepo:
                WHERE m.data LIKE ? ORDER BY s.updated_at DESC LIMIT ?""",
             (like, limit),
         ).fetchall()
-        return [row_to_session(r) for r in rows]
+        return [self._row_to_session(r) for r in rows]
 
     def get_parent(self, session_id: str) -> Optional[str]:
         row = self._conn.execute("SELECT parent_id FROM session WHERE id=?", (session_id,)).fetchone()
@@ -131,7 +160,7 @@ class SessionRepo:
         rows = self._conn.execute(
             "SELECT * FROM session WHERE parent_id=? ORDER BY created_at", (session_id,),
         ).fetchall()
-        return [row_to_session(r) for r in rows]
+        return [self._row_to_session(r) for r in rows]
 
     def get_compression_tip(self, session_id: str) -> str:
         current = session_id

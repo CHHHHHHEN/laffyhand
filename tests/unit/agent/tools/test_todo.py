@@ -3,6 +3,7 @@ import sqlite3
 import pytest
 
 from laffyhand.agent.session.todo import TodoManager
+from laffyhand.agent.db.repository import TodoRepo
 from laffyhand.agent.db.schema import create_tables
 from laffyhand.agent.tools.todo import TodoTool
 
@@ -30,7 +31,7 @@ def manager(db, session_id):
         (session_id, "", "", "2025-01-01T00:00:00", "2025-01-01T00:00:00"),
     )
     db.commit()
-    return TodoManager(db)
+    return TodoManager(TodoRepo(db))
 
 
 @pytest.fixture
