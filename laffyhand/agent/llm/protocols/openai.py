@@ -235,7 +235,9 @@ class OpenAIProtocol(Protocol):
             cache_write_tokens=ptd.cache_write_tokens if ptd else None,
         )
 
-    def parse_frame(self, frame: Frame) -> list[LLMEvent]:
+    def parse_frame(self, frame: Frame | dict[str, Any]) -> list[LLMEvent]:
+        if isinstance(frame, dict):
+            frame = Frame(data=frame)
         chunk = OpenAIChatChunk.model_validate(frame.data)
         events: list[LLMEvent] = []
 

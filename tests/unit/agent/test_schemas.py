@@ -6,9 +6,7 @@ from laffyhand.agent.llm.specs.models import (
     Usage,
 )
 from laffyhand.agent.schemas import (
-    ToolCallContent,
-    ToolDefinition,
-    Usage,
+    SessionID,
     SessionUsage,
     AgentState,
     CompactionConfig,

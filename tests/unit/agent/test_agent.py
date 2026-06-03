@@ -84,13 +84,13 @@ class TestAgentRegistry(TestCase):
             self.assertIsNotNone(self.registry.get(name))
 
     def test_register(self):
-        info = AgentInfo(name="custom")
+        info = AgentInfo(name="custom", system_prompt="")
         self.registry.register(info)
         self.assertIs(self.registry.get("custom"), info)
 
     def test_register_overwrites(self):
-        a = AgentInfo(name="x")
-        b = AgentInfo(name="x", description="new")
+        a = AgentInfo(name="x", system_prompt="")
+        b = AgentInfo(name="x", system_prompt="", description="new")
         self.registry.register(a)
         self.registry.register(b)
         self.assertEqual(self.registry.get("x").description, "new")
@@ -120,7 +120,7 @@ class TestAgentRegistry(TestCase):
 
     def test_all_returns_copy(self):
         result = self.registry.all()
-        result["new"] = AgentInfo(name="new")
+        result["new"] = AgentInfo(name="new", system_prompt="")
         self.assertIsNone(self.registry.get("new"))
 
     def test_discover_skips_nonexistent_dir(self):

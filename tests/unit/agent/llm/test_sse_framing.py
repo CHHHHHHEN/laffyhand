@@ -3,6 +3,7 @@ import unittest
 from collections.abc import AsyncIterator
 
 from laffyhand.agent.llm._sse_framing import SSEFraming
+from laffyhand.agent.llm.specs.models import Frame
 
 
 class _AsyncIter:
@@ -31,7 +32,7 @@ class _AsyncIterIterator:
 class TestSSEFraming(unittest.TestCase):
     """SSEFraming must buffer incomplete chunks and handle malformed frames."""
 
-    def _collect(self, chunks: list[bytes]) -> list[dict]:
+    def _collect(self, chunks: list[bytes]) -> list[Frame]:
         framing = SSEFraming()
         result = []
 
@@ -48,7 +49,7 @@ class TestSSEFraming(unittest.TestCase):
         data = json.dumps({"id": "1", "choices": [{"delta": {"content": "hello"}}]})
         frames = self._collect([f"data: {data}\n\n".encode()])
         self.assertEqual(len(frames), 1)
-        self.assertEqual(frames[0]["id"], "1")
+        self.assertEqual(frames[0].data["id"], "1")
 
     def test_multiple_frames(self):
         data1 = json.dumps({"id": "1", "choices": [{"delta": {"content": "hello"}}]})
@@ -72,7 +73,7 @@ class TestSSEFraming(unittest.TestCase):
         part2 = f"{json_str[25:]}\n\n".encode()
         frames = self._collect([part1, part2])
         self.assertEqual(len(frames), 1, "Should reassemble split JSON")
-        self.assertEqual(frames[0]["id"], "split-id-12345")
+        self.assertEqual(frames[0].data["id"], "split-id-12345")
 
     def test_chunk_split_between_events(self):
         """Two SSE frames where the boundary falls inside a chunk."""
@@ -83,8 +84,8 @@ class TestSSEFraming(unittest.TestCase):
         rest = f"{data2[10:]}\n\n".encode()
         frames = self._collect([chunk, rest])
         self.assertEqual(len(frames), 2)
-        self.assertEqual(frames[0]["id"], "first")
-        self.assertEqual(frames[1]["id"], "second")
+        self.assertEqual(frames[0].data["id"], "first")
+        self.assertEqual(frames[1].data["id"], "second")
 
     def test_malformed_json_does_not_stop_stream(self):
         """A malformed JSON frame should be skipped, not terminate the stream."""
@@ -99,8 +100,8 @@ class TestSSEFraming(unittest.TestCase):
             ]
         )
         self.assertEqual(len(frames), 2, "Should skip malformed frame, keep valid ones")
-        self.assertEqual(frames[0]["id"], "valid")
-        self.assertEqual(frames[1]["id"], "valid")
+        self.assertEqual(frames[0].data["id"], "valid")
+        self.assertEqual(frames[1].data["id"], "valid")
 
     def test_done_marker(self):
         """[DONE] marker should terminate the stream."""
@@ -159,7 +160,7 @@ class TestSSEFraming(unittest.TestCase):
             ]
         )
         self.assertEqual(len(frames), 1)
-        self.assertEqual(frames[0]["id"], "no-trailing-nl")
+        self.assertEqual(frames[0].data["id"], "no-trailing-nl")
 
     def test_multi_data_lines_same_event(self):
         """Multiple data: lines within one SSE event are joined with newline and parsed as combined JSON."""
@@ -169,7 +170,7 @@ class TestSSEFraming(unittest.TestCase):
             ]
         )
         self.assertEqual(len(frames), 1)
-        self.assertEqual(frames[0], {"valid": True})
+        self.assertEqual(frames[0].data, {"valid": True})
 
     def test_done_marker_no_space(self):
         """[DONE] without space after colon should also terminate."""

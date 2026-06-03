@@ -49,7 +49,7 @@ def agent_info():
     return AgentInfo(
         name="test-agent",
         description="A test sub-agent",
-        prompt="You are a test agent.",
+        system_prompt="You are a test agent.",
         permission={"deny": ["write"]},
     )
 
@@ -121,7 +121,7 @@ class TestBuildSubagentState:
     def test_default_prompt_when_none(
         self, session_manager, tool_registry, parent_permission
     ):
-        info = AgentInfo(name="minimal")
+        info = AgentInfo(name="minimal", system_prompt="")
         parent = session_manager.create()
         child_state, _ = build_subagent_state(
             session_manager,

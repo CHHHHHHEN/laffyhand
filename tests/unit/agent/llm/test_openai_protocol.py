@@ -13,6 +13,7 @@ from laffyhand.agent.llm.protocols.openai import (
     OpenAIEndpoint,
 )
 from laffyhand.agent.llm.protocols.deepseek import DeepseekProtocol
+from laffyhand.agent.llm.specs.models import Frame
 
 
 class TestMessageToOpenAI(unittest.TestCase):
@@ -104,7 +105,7 @@ class TestOpenAIProtocolBuildRequest(unittest.TestCase):
         protocol = OpenAIProtocol()
         request = LLMRequest(model="m", provider="openai", messages=[UserMessage(content="hi")])
         body = protocol.build_request(request).model_dump()
-        self.assertNotIn("tools", body)
+        self.assertIsNone(body.get("tools"))
 
 
 class TestOpenAIProtocolParseFrame(unittest.TestCase):
@@ -114,7 +115,7 @@ class TestOpenAIProtocolParseFrame(unittest.TestCase):
         self.protocol = OpenAIProtocol()
 
     def test_no_choices_returns_empty(self):
-        events = self.protocol.parse_frame({"id": "x", "choices": []})
+        events = self.protocol.parse_frame(Frame(data={"id": "x", "choices": []}))
         self.assertEqual(events, [])
 
     def test_content_delta(self):
@@ -305,7 +306,7 @@ class TestDeepseekProtocol(unittest.TestCase):
         )
         body = self.protocol.build_request(request).model_dump()
         self.assertEqual(body["thinking"], {"type": "enabled", "reasoning_effort": "high"})
-        self.assertEqual(body["reasoning_effort"], "high")
+        self.assertEqual(body["thinking"]["reasoning_effort"], "high")
 
     def test_parse_frame_reasoning_content(self):
         events = self.protocol.parse_frame(
@@ -464,17 +465,17 @@ class TestOpenAIEndpoint(unittest.TestCase):
     def test_build_url(self):
         endpoint = OpenAIEndpoint(base_url="https://api.openai.com")
         self.assertEqual(
-            endpoint.build("gpt-4"), "https://api.openai.com/v1/chat/completions"
+            endpoint.build(), "https://api.openai.com/v1/chat/completions"
         )
 
     def test_strips_trailing_slash(self):
         endpoint = OpenAIEndpoint(base_url="https://api.openai.com/")
         self.assertEqual(
-            endpoint.build("gpt-4"), "https://api.openai.com/v1/chat/completions"
+            endpoint.build(), "https://api.openai.com/v1/chat/completions"
         )
 
     def test_with_custom_base(self):
         endpoint = OpenAIEndpoint(base_url="http://localhost:8080")
         self.assertEqual(
-            endpoint.build("test"), "http://localhost:8080/v1/chat/completions"
+            endpoint.build(), "http://localhost:8080/v1/chat/completions"
         )

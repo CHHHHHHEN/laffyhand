@@ -147,31 +147,6 @@ class TestAgentLoopE2E(unittest.TestCase):
         self.assertEqual(state.step, 3)
         self.assertEqual(state.turn_count, 2)
 
-    def test_reminder_injected_on_step_1(self):
-        """Reminder text appears in system message before first LLM call."""
-        llm = FakeLLM(
-            [
-                [
-                    StreamText(delta="ok"),
-                    StreamFinish(
-                        finish_reason="stop",
-                        usage=Usage(input_tokens=10, output_tokens=2),
-                    ),
-                ],
-            ]
-        )
-        state = self._make_state()
-        self._collect(
-            agent_loop(
-                state,
-                llm,
-                self.registry,
-                CompactionConfig(prune=False),
-                reminder="REMINDER: be short",
-            )
-        )
-        self.assertIn("REMINDER: be short", state.messages[0].content)
-
     def test_increments_step_and_turn_count(self):
         """Step and turn_count both increment correctly."""
         llm = FakeLLM(

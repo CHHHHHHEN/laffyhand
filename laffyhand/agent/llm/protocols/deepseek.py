@@ -1,4 +1,4 @@
-from typing import ClassVar, Literal
+from typing import Any, ClassVar, Literal
 from pydantic import BaseModel
 from loguru import logger
 from laffyhand.agent.llm.specs.models import LLMRequest, Frame, ProviderID
@@ -22,7 +22,9 @@ class DeepseekProtocol(OpenAIProtocol):
         base = super().build_request(request)
         return DeepSeekCompletionRequest(**base.model_dump(), thinking=DeepSeekThinking())
 
-    def parse_frame(self, frame: Frame) -> list[LLMEvent]:
+    def parse_frame(self, frame: Frame | dict[str, Any]) -> list[LLMEvent]:
+        if isinstance(frame, dict):
+            frame = Frame(data=frame)
         chunk = OpenAIChatChunk.model_validate(frame.data)
         if chunk.choices:
             delta = chunk.choices[0].delta

@@ -392,7 +392,7 @@ class TestCreateSubagent:
         )
         runtime._states[session.id] = state
         runtime._session_id = session.id
-        agent_info = AgentInfo(name="test")
+        agent_info = AgentInfo(name="test", system_prompt="You are test.")
         with patch.object(
             session_manager, "get_depth", return_value=MAX_SUBAGENT_DEPTH + 1
         ):
@@ -409,7 +409,7 @@ class TestCreateSubagent:
         )
         runtime._states[session.id] = state
         runtime._session_id = session.id
-        agent_info = AgentInfo(name="test", prompt="You are test.")
+        agent_info = AgentInfo(name="test", system_prompt="You are test.")
 
         with patch("laffyhand.agent.runtime.agent_loop") as mock_loop:
 
@@ -439,7 +439,7 @@ class TestCreateSubagent:
         )
         runtime._states[session.id] = state
         runtime._session_id = session.id
-        agent_info = AgentInfo(name="test", prompt="You are test.")
+        agent_info = AgentInfo(name="test", system_prompt="You are test.")
 
         with patch("laffyhand.agent.runtime.agent_loop") as mock_loop:
 
@@ -463,7 +463,7 @@ class TestCreateSubagent:
         )
         runtime._states[session.id] = state
         runtime._session_id = session.id
-        agent_info = AgentInfo(name="test", prompt="You are test.")
+        agent_info = AgentInfo(name="test", system_prompt="You are test.")
 
         with patch.object(
             runtime.subagent_manager, "spawn", new_callable=AsyncMock
@@ -490,7 +490,7 @@ class TestCreateSubagent:
         )
         runtime._states[session.id] = state
         runtime._session_id = session.id
-        agent_info = AgentInfo(name="test", prompt="You are test.")
+        agent_info = AgentInfo(name="test", system_prompt="You are test.")
 
         with patch.object(
             runtime.subagent_manager, "spawn", new_callable=AsyncMock

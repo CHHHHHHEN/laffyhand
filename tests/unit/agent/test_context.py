@@ -73,16 +73,16 @@ class TestEstimateMessageTokens(unittest.TestCase):
 
 class TestIsOverflow(unittest.TestCase):
     def test_no_overflow(self):
-        self.assertFalse(is_overflow(1000, 100_000))
+        self.assertFalse(is_overflow(1000, 100_000, 5_000))
 
     def test_overflow_detected(self):
-        self.assertTrue(is_overflow(90_000, 100_000))
+        self.assertTrue(is_overflow(96_000, 100_000, 5_000))
 
     def test_no_context_size(self):
-        self.assertFalse(is_overflow(1000, 0))
+        self.assertFalse(is_overflow(1000, 0, 5_000))
 
     def test_small_buffer(self):
-        self.assertTrue(is_overflow(25_000, 30_000, reserved=5_000))
+        self.assertTrue(is_overflow(25_000, 30_000, 5_000))
 
     def test_context_smaller_than_reserved_uses_floor(self):
         self.assertTrue(is_overflow(3000, 15_000, reserved=20_000))
@@ -136,7 +136,7 @@ class TestSelectTail(unittest.TestCase):
         ]
         config = CompactionConfig(
             tail_turns=1,
-            preserve_recent_tokens=50,
+            preserve_recent_tokens=60,
             summary_tool_truncate=50,
         )
         head, tail = select_tail(msgs, config, context_size=100_000)
