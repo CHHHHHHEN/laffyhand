@@ -17,6 +17,7 @@
 问题排查规范：
 - 优先选择**客观**最佳方案，而不是 Quick fix
 - 遇到问题先问 WHY，搜索根因（ROOT CAUSE），而不是 JUST SOLVE PROBLEM
+- 如果无法确认 ROOT CAUSE, 优先添加 DEBUG 日志, 而不是盲目解决/猜测
 
 Git提交规范：
 - 格式要求：type(scope): messages
