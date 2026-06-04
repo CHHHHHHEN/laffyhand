@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable, Callable, Coroutine
+import os
+import sys
 import uuid
+from collections.abc import Awaitable, Callable, Coroutine
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Literal
 
 from loguru import logger
@@ -80,11 +83,6 @@ def build_subagent_state(
         parent_id=parent_session_id,
         model=agent_info.model or "",
     )
-    system_content = (
-        agent_info.system_prompt or "You are a helpful sub-agent. Complete the assigned task."
-    )
-    system_msg = SystemMessage(content=system_content)
-    user_msg = UserMessage(content=prompt)
 
     child_permission = SubagentPermissions.compose(
         parent_permission,
@@ -94,6 +92,27 @@ def build_subagent_state(
         tool_registry,
         child_permission,
     )
+
+    system_content = (
+        agent_info.system_prompt or "You are a helpful sub-agent. Complete the assigned task."
+    )
+
+    now = datetime.now(timezone.utc)
+    workspace = child_registry.workspace or os.getcwd()
+    env_parts = [
+        f"Working directory: {os.getcwd()}",
+        f"Workspace: {workspace}",
+        f"Platform: {sys.platform}",
+        f"Current time: {now.isoformat()}",
+    ]
+    env_block = "<env>\n" + "\n".join(env_parts) + "\n</env>"
+
+    system_prompt = f"<soul>\n{system_content.strip()}\n</soul>"
+    system_prompt += f"\n{env_block}"
+    system_prompt += f"\n{child_registry.build_tool_prompt()}"
+
+    system_msg = SystemMessage(content=system_prompt)
+    user_msg = UserMessage(content=prompt)
 
     child_state = AgentState(
         messages=[system_msg, user_msg],

@@ -114,7 +114,11 @@ class TestBuildSubagentState:
         )
         assert len(child_state.messages) == 2
         assert isinstance(child_state.messages[0], SystemMessage)
-        assert child_state.messages[0].content == "You are a test agent."
+        assert "You are a test agent." in child_state.messages[0].content
+        assert "<soul>" in child_state.messages[0].content
+        assert "<env>" in child_state.messages[0].content
+        assert "Workspace:" in child_state.messages[0].content
+        assert "<tools>" in child_state.messages[0].content
         assert isinstance(child_state.messages[1], UserMessage)
         assert child_state.messages[1].content == "Do the thing"
 
@@ -132,6 +136,8 @@ class TestBuildSubagentState:
             tool_registry,
         )
         assert "helpful sub-agent" in child_state.messages[0].content
+        assert "<env>" in child_state.messages[0].content
+        assert "<tools>" in child_state.messages[0].content
 
     def test_permission_filters_registry(
         self, session_manager, tool_registry, parent_permission, agent_info
