@@ -51,6 +51,7 @@ class AgentConfig(BaseModel):
 class PathsConfig(BaseModel):
     skills: list[str] = Field(default_factory=list)
     agents: list[str] = Field(default_factory=list)
+    workspace: str = ""
 
 
 class MCPConfig(BaseModel):

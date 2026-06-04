@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import contextvars
 from collections.abc import Awaitable, Callable
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
 from loguru import logger
@@ -90,6 +91,18 @@ class PermissionManager:
                 logger.info(f"Permission '{permission}:{pattern}' denied")
                 return False
         return True
+
+    async def require_path(self, tool_name: str, path: str | Path, workspace: str | Path | None) -> bool:
+        """Check if a path is within the workspace. If outside, prompts user."""
+        from laffyhand.agent.tools.file._path_boundary import is_within
+
+        if workspace is None:
+            return True
+        resolved = str(Path(path).resolve())
+        if is_within(resolved, workspace):
+            return True
+        logger.info(f"Path {resolved} is outside workspace {workspace}")
+        return await self.ask(f"{tool_name}_outside_workspace", [resolved])
 
 
 _SUBAGENT_EXCLUDED_TOOLS: frozenset[str] = frozenset({"task"})

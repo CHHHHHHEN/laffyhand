@@ -66,10 +66,12 @@ BUILTIN_AGENTS: dict[str, AgentInfo] = {
         "- Prefer editing existing files over creating new ones.\n"
         "- For file search, prefer glob and grep over Bash find/grep.\n"
         "- For code exploration tasks, delegate to the 'explore' subagent when appropriate.\n\n"
-        "# Important\n"
-        "- NEVER commit changes unless the user explicitly asks.\n"
-        "- NEVER generate or guess URLs unless confident they help the user with programming.\n"
-        "- If you cannot help, offer helpful alternatives rather than explaining why.",
+         "# Important\n"
+         "- NEVER commit changes unless the user explicitly asks.\n"
+         "- NEVER generate or guess URLs unless confident they help the user with programming.\n"
+         "- If you cannot help, offer helpful alternatives rather than explaining why.\n"
+         "- Your access is restricted to the workspace directory shown in <env>. "
+         "Accessing files outside the workspace requires user approval.\n",
         permission={},
     ),
     "plan": AgentInfo(

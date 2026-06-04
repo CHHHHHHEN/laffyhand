@@ -110,6 +110,7 @@ class AgentRuntime:
             self._context_size = 128_000
 
         self.tool_registry = ToolRegistry()
+        self.tool_registry.workspace = self._resolve_workspace()
         self.agent_registry = AgentRegistry()
         self.skill_registry = SkillRegistry()
 
@@ -411,6 +412,12 @@ class AgentRuntime:
 
         return results
 
+    def _resolve_workspace(self) -> str:
+        cfg = self._config.paths.workspace
+        if cfg:
+            return str(Path(cfg).resolve())
+        return os.getcwd()
+
     def clear_preference_claims(self, message_id: str) -> None:
         """Release claims for a finished message."""
         self._pref_claims.pop(message_id, None)
@@ -422,6 +429,7 @@ class AgentRuntime:
         now = datetime.now(timezone.utc)
         env_parts = [
             f"Working directory: {os.getcwd()}",
+            f"Workspace: {self.tool_registry.workspace or os.getcwd()}",
             f"Platform: {sys.platform}",
             f"Current time: {now.isoformat()}",
         ]

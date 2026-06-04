@@ -20,6 +20,7 @@ MAX_FILE_SIZE = 1_000_000
 
 class GrepTool(BaseTool):
     name = "grep"
+    path_params = ["path"]
     description = (
         "Search file contents using a regular expression. "
         "Results are sorted by file modification time (newest first) and limited to 100 matches. "

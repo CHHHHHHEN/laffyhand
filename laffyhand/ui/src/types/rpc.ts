@@ -212,3 +212,7 @@ export interface MCPRemoveServerResult {
 export interface TodoListResult {
   tasks: TodoItemData[]
 }
+
+export interface WorkspaceSetResult {
+  workspace: string
+}

@@ -8,6 +8,8 @@ class BaseTool(ABC):
     name: str = ""
     description: str = ""
     max_result_size: int | None = 10000
+    timeout: int = 120
+    path_params: list[str] = []
 
     def to_definition(self) -> ToolDefinition:
         return ToolDefinition(

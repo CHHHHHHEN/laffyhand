@@ -13,6 +13,7 @@ MAX_RESULTS = 100
 
 class GlobTool(BaseTool):
     name = "glob"
+    path_params = ["path"]
     description = (
         "Find files matching a glob pattern. Results are sorted by modification time (newest first) "
         "and limited to 100 files. By default, files matched by .gitignore patterns are excluded. "

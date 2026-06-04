@@ -35,6 +35,7 @@ def _compute_diff(path: Path, old_content: str, new_content: str) -> str:
 
 class WriteTool(BaseTool):
     name = "write"
+    path_params = ["file_path"]
     description = "Write content to a file, creating or overwriting it."
     max_result_size = 50000
 

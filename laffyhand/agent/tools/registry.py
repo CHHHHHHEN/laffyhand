@@ -18,6 +18,7 @@ class ToolRegistry:
         self._on_build_defs: list[Callable[[], None]] = []
         self._lock = asyncio.Lock()
         self.result_post_processor: Callable[[str, str, dict[str, Any]], str] | None = None
+        self.workspace: str | None = None
 
     def on_build_defs(self, callback: Callable[[], None]) -> None:
         self._on_build_defs.append(callback)
@@ -81,7 +82,23 @@ class ToolRegistry:
             return f"Tool '{name}' is not permitted."
 
         logger.info(f"Running tool: {name}")
-        result = await tool.run(params)
+
+        if self.workspace is not None:
+            for param_name in tool.path_params:
+                raw = params.get(param_name)
+                if raw is None:
+                    continue
+                values: list[str] = [raw] if isinstance(raw, str) else (raw if isinstance(raw, list) else [])
+                for p in values:
+                    if not await self.permission.require_path(name, p, self.workspace):
+                        return f"Error: Access to '{p}' outside workspace was denied."
+
+        timeout = getattr(tool, "timeout", 120)
+        try:
+            result = await asyncio.wait_for(tool.run(params), timeout=timeout)
+        except asyncio.TimeoutError:
+            logger.warning(f"Tool '{name}' timed out after {timeout}s")
+            return f"Error: Tool '{name}' timed out after {timeout}s. Try a more specific query or reduce scope."
 
         if self.result_post_processor is not None:
             result = self.result_post_processor(name, result, params)

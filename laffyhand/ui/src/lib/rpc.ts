@@ -18,6 +18,7 @@ import type {
   TodoListResult,
   TodoItemData,
   AgentListResult,
+  WorkspaceSetResult,
 } from "@/types/rpc"
 
 export class RpcError extends Error {
@@ -300,6 +301,10 @@ export const rpcClient = {
     const params: Record<string, unknown> = { task_id: taskId, ...updates }
     if (sessionId) params.session_id = sessionId
     return call<TodoItemData>("todo/update", params)
+  },
+
+  workspaceSet(workspace: string): Promise<WorkspaceSetResult> {
+    return call<WorkspaceSetResult>("workspace/set", { workspace })
   },
 
   chatStream: (

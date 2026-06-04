@@ -224,6 +224,9 @@ export function ConfigPanel() {
                   ))}
                 </div>
               </div>
+
+              {/* Workspace setting */}
+              <WorkspaceSetting />
             </div>
           )}
         </div>
@@ -232,6 +235,55 @@ export function ConfigPanel() {
   )
 }
 
+
+function WorkspaceSetting() {
+  const [path, setPath] = useState("")
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState("")
+
+  const handleSave = async () => {
+    if (!path.trim()) return
+    setSaving(true)
+    setError("")
+    try {
+      await rpcClient.workspaceSet(path.trim())
+      setPath("")
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="px-3 py-2.5 bg-[var(--bg-deep)] rounded-lg border border-[var(--border-muted)]">
+      <div className="text-xs text-[var(--text-base)] flex items-center gap-2 mb-2">
+        <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent)] shrink-0" />
+        Workspace
+      </div>
+      <div className="text-[10px] text-[var(--text-muted)] mb-2">
+        Set the workspace directory. Agent file access is restricted to this path unless you approve otherwise.
+      </div>
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={path}
+          onChange={(e) => setPath(e.target.value)}
+          placeholder="/path/to/workspace"
+          className="flex-1 px-2 py-1.5 text-xs rounded-md border border-[var(--border-base)] bg-[var(--bg-base)] text-[var(--text-base)] placeholder-[var(--text-faint)] outline-none focus:border-[var(--accent)] transition-colors"
+        />
+        <button
+          onClick={handleSave}
+          disabled={saving || !path.trim()}
+          className="px-3 py-1.5 text-xs font-medium text-white bg-[var(--accent)] rounded-md hover:opacity-90 disabled:opacity-50 transition-all cursor-pointer"
+        >
+          {saving ? "Setting..." : "Set"}
+        </button>
+      </div>
+      {error && <div className="text-[10px] text-[var(--state-danger-fg)] mt-1">{error}</div>}
+    </div>
+  )
+}
 
 function MCPTab({ mcp, onRefresh }: { mcp: MCPStatusResult | null; onRefresh: () => void }) {
   const [showAdd, setShowAdd] = useState(false)

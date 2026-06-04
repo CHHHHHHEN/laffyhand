@@ -15,6 +15,7 @@ MAX_CACHE_SIZE = 200
 
 class ReadTool(BaseTool):
     name = "read"
+    path_params = ["file_path", "paths"]
     description = (
         "Read files or directories from the local filesystem. "
         "Supports line-numbered output, pattern-based context reading, and batch reading.\n\n"

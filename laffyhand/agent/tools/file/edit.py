@@ -33,6 +33,7 @@ def _compute_diff(path: Path, old_content: str, new_content: str) -> str:
 
 class EditTool(BaseTool):
     name = "edit"
+    path_params = ["file_path"]
     description = "Perform an exact string replacement in a file."
 
     def _input_schema(self) -> dict[str, Any]:

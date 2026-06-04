@@ -5,6 +5,7 @@ import itertools
 import os
 import time
 import uuid
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from loguru import logger
@@ -43,6 +44,7 @@ from laffyhand.gateway.protocol import (
     CONFIG_PROVIDERS,
     MCP_STATUS,
     SESSION_SET_CONFIG,
+    WORKSPACE_SET,
     PERMISSION_RESPOND,
     TODO_LIST,
     TODO_UPDATE,
@@ -802,6 +804,24 @@ async def handle_mcp_remove_server(
     return {"status": "disconnected", "name": name, "unregistered_tools": count}
 
 
+async def handle_workspace_set(
+    runtime: AgentRuntime,
+    params: dict[str, Any],
+    transport: Transport,
+    _request_id: str | int | None,
+    conn_id: str,
+) -> dict[str, Any]:
+    workspace: str = params.get("workspace", "")
+    if not workspace:
+        return {"error": "workspace path is required"}
+    resolved = str(Path(workspace).resolve())
+    if not os.path.isdir(resolved):
+        return {"error": f"workspace path does not exist: {workspace}"}
+    runtime.tool_registry.workspace = resolved
+    logger.info(f"Workspace set to {resolved} (conn={conn_id})")
+    return {"workspace": resolved}
+
+
 async def handle_session_set_config(
     runtime: AgentRuntime,
     params: dict[str, Any],
@@ -1004,6 +1024,7 @@ def register_all_handlers(dispatcher: Dispatcher) -> None:
     dispatcher.register(MCP_ADD_SERVER, handle_mcp_add_server)
     dispatcher.register(MCP_REMOVE_SERVER, handle_mcp_remove_server)
     dispatcher.register(SESSION_SET_CONFIG, handle_session_set_config)
+    dispatcher.register(WORKSPACE_SET, handle_workspace_set)
     dispatcher.register(CHAT, handle_chat)
     dispatcher.register(CHAT_STREAM, handle_chat_stream, streaming=True)
     dispatcher.register(CHAT_CANCEL, handle_chat_cancel)
