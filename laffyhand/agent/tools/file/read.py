@@ -1,5 +1,7 @@
+import asyncio
 import difflib
 import re
+from collections import OrderedDict
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +13,32 @@ from laffyhand.agent.tools.file._security import looks_binary
 
 MAX_CONSECUTIVE_READS = 4
 MAX_CACHE_SIZE = 200
+
+
+class _LRUCache:
+    """Simple LRU dict that evicts the least-recently-used entry when full."""
+
+    def __init__(self, maxsize: int) -> None:
+        self._maxsize = maxsize
+        self._data: OrderedDict[str, tuple[float, str]] = OrderedDict()
+
+    def get(self, key: str) -> tuple[float, str] | None:
+        if key not in self._data:
+            return None
+        self._data.move_to_end(key)
+        return self._data[key]
+
+    def put(self, key: str, value: tuple[float, str]) -> None:
+        self._data[key] = value
+        self._data.move_to_end(key)
+        if len(self._data) > self._maxsize:
+            self._data.popitem(last=False)
+
+    def pop(self, key: str, default: Any = None) -> Any:
+        return self._data.pop(key, default)
+
+    def __len__(self) -> int:
+        return len(self._data)
 
 
 class ReadTool(BaseTool):
@@ -32,7 +60,7 @@ class ReadTool(BaseTool):
     max_result_size = 50000
 
     def __init__(self, preference_resolver=None) -> None:
-        self._read_cache: dict[str, tuple[float, str]] = {}
+        self._read_cache: _LRUCache = _LRUCache(MAX_CACHE_SIZE)
         self._consecutive: dict[str, int] = {}
         self._preference_resolver = preference_resolver
 
@@ -172,7 +200,7 @@ class ReadTool(BaseTool):
 
         return "\n".join(lines)
 
-    def _read_with_context(
+    async def _read_with_context(
         self,
         path: Path,
         pattern_str: str,
@@ -181,7 +209,9 @@ class ReadTool(BaseTool):
         limit: int | None,
     ) -> str:
         try:
-            text = path.read_text(encoding="utf-8", errors="replace")
+            text = await asyncio.to_thread(
+                path.read_text, encoding="utf-8", errors="replace"
+            )
         except Exception as e:
             return f"Error reading {path}: {e}"
 
@@ -258,22 +288,26 @@ class ReadTool(BaseTool):
     async def _run_single(self, file_path: str, params: dict[str, Any]) -> str:
         path = Path(file_path.strip())
 
-        if not path.exists():
+        exists = await asyncio.to_thread(path.exists)
+        if not exists:
             msg = f"File not found: {path}"
-            suggestions = self._suggest_similar(path)
+            suggestions = await asyncio.to_thread(self._suggest_similar, path)
             if suggestions:
                 msg += "\nDid you mean?\n" + "\n".join(f"  {s}" for s in suggestions)
             return msg
 
-        if path.is_dir():
-            result = self._list_directory(
+        is_dir = await asyncio.to_thread(path.is_dir)
+        if is_dir:
+            result = await asyncio.to_thread(
+                self._list_directory,
                 path, params.get("offset"), params.get("limit"), params.get("depth", 2),
                 params.get("include_ignored", False),
             )
             logger.info(f"Read: listed directory {path}")
             return result
 
-        if looks_binary(path):
+        is_bin = await asyncio.to_thread(looks_binary, path)
+        if is_bin:
             logger.info(f"Read: skipped binary file {path}")
             return f"File appears to be binary and cannot be read as text: {path}"
 
@@ -283,7 +317,7 @@ class ReadTool(BaseTool):
             logger.info(
                 f"Read: context read {path} pattern={pattern} context={context}"
             )
-            return self._read_with_context(
+            return await self._read_with_context(
                 path, pattern, context, params.get("offset"), params.get("limit")
             )
 
@@ -292,12 +326,13 @@ class ReadTool(BaseTool):
         key = self._cache_key(path, offset, limit)
 
         try:
-            current_mtime = path.stat().st_mtime
+            current_mtime = await asyncio.to_thread(lambda: path.stat().st_mtime)
         except OSError:
             current_mtime = 0.0
 
-        if key in self._read_cache:
-            cached_mtime, cached_result = self._read_cache[key]
+        cached = self._read_cache.get(key)
+        if cached is not None:
+            cached_mtime, cached_result = cached
             if cached_mtime == current_mtime:
                 self._consecutive[key] = self._consecutive.get(key, 0) + 1
                 count = self._consecutive[key]
@@ -310,7 +345,9 @@ class ReadTool(BaseTool):
 
         self._consecutive.pop(key, None)
 
-        text = path.read_text(encoding="utf-8", errors="replace")
+        text = await asyncio.to_thread(
+            path.read_text, encoding="utf-8", errors="replace"
+        )
         lines = text.splitlines(keepends=True)
         total_lines = len(lines)
 
@@ -344,10 +381,7 @@ class ReadTool(BaseTool):
         logger.info(
             f"Read: {path} ({total_lines} lines, offset={offset}, limit={limit})"
         )
-        self._read_cache[key] = (current_mtime, result)
-        if len(self._read_cache) > MAX_CACHE_SIZE:
-            oldest = next(iter(self._read_cache))
-            del self._read_cache[oldest]
+        self._read_cache.put(key, (current_mtime, result))
 
         # ── Preference injection: walk upward from the read file ──
         if self._preference_resolver is not None:
@@ -377,12 +411,15 @@ class ReadTool(BaseTool):
             path = Path(p)
             head = f"==== {p} ===="
 
-            if not path.exists():
+            exists = await asyncio.to_thread(path.exists)
+            if not exists:
                 parts.append(f"File not found: {p}")
                 continue
 
-            if path.is_dir():
-                dir_content = self._list_directory(
+            is_dir = await asyncio.to_thread(path.is_dir)
+            if is_dir:
+                dir_content = await asyncio.to_thread(
+                    self._list_directory,
                     path,
                     params.get("offset"),
                     params.get("limit"),
@@ -393,7 +430,8 @@ class ReadTool(BaseTool):
                 total_size += len(dir_content) + len(head) + 2
                 continue
 
-            if looks_binary(path):
+            is_bin = await asyncio.to_thread(looks_binary, path)
+            if is_bin:
                 parts.append(f"{head}\n(binary file)")
                 total_size += len(head) + 15
                 continue

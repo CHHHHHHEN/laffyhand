@@ -71,3 +71,30 @@ class TestGlobTool(unittest.TestCase):
             tool.run({"pattern": "unique_name.txt", "path": str(self.root)})
         )
         self.assertIn("unique_name.txt", result)
+
+    def test_glob_rejects_path_traversal(self):
+        """Patterns that escape the search root should be blocked."""
+        outer = self.root.parent / "malicious.txt"
+        outer.write_text("pwned")
+        try:
+            tool = GlobTool()
+            result = asyncio.run(
+                tool.run(
+                    {
+                        "pattern": "../malicious.txt",
+                        "path": str(self.root),
+                    }
+                )
+            )
+            self.assertIn("No files found", result)
+            result2 = asyncio.run(
+                tool.run(
+                    {
+                        "pattern": "../*/malicious.txt",
+                        "path": str(self.root),
+                    }
+                )
+            )
+            self.assertIn("No files found", result2)
+        finally:
+            outer.unlink()

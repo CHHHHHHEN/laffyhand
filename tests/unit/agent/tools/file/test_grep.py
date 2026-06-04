@@ -150,8 +150,15 @@ class TestGrepTool(unittest.TestCase):
         )
         lines = result.strip().split("\n")
         self.assertEqual(len(lines), 2)
-        self.assertIn("2", lines[0])
-        self.assertIn("1", lines[1])
+        # Both ripen (path:count) and Python fallback (path: count) formats
+        self.assertTrue(
+            any("a.py:2" in ln.replace(" ", "") for ln in lines),
+            f"Expected a.py count 2 in lines: {lines}",
+        )
+        self.assertTrue(
+            any("b.py:1" in ln.replace(" ", "") for ln in lines),
+            f"Expected b.py count 1 in lines: {lines}",
+        )
 
     @mock.patch("laffyhand.agent.tools.file.grep.rg_available", return_value=False)
     def test_grep_python_fallback_content(self, mock_rg):

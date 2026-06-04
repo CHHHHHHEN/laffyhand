@@ -1,5 +1,6 @@
 import shutil
 import subprocess
+from collections.abc import Sequence
 from pathlib import Path
 
 from loguru import logger
@@ -14,24 +15,40 @@ def rg_available() -> bool:
     return _RG_CACHE
 
 
-def glob(cwd: Path, pattern: str, include_ignored: bool = False) -> list[str] | None:
-    """List files matching a glob pattern using ripgrep. Returns None on failure."""
+def _rg_run(
+    args: Sequence[str],
+    cwd: Path,
+    timeout: int = 60,
+) -> subprocess.CompletedProcess[str] | None:
+    """Run ripgrep with a standardised set of flags.
+
+    Returns *None* when rg is unavailable or the call failed.
+    """
     try:
-        cmd = ["rg", "--files", "--glob", pattern]
-        if include_ignored:
-            cmd.append("--no-ignore")
-        cmd.append(".")
         result = subprocess.run(
-            cmd,
+            args,
             cwd=cwd,
             capture_output=True,
             text=True,
-            timeout=30,
+            timeout=timeout,
         )
-        if result.returncode == 0:
-            return result.stdout.splitlines()
+        if result.returncode in (0, 1):
+            return result
+        logger.debug(f"ripgrep exited with code {result.returncode}: {result.stderr[:200]}")
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as e:
-        logger.debug(f"ripgrep glob failed for {pattern} in {cwd}: {e}")
+        logger.debug(f"ripgrep failed: {e}")
+    return None
+
+
+def glob(cwd: Path, pattern: str, include_ignored: bool = False) -> list[str] | None:
+    """List files matching a glob pattern using ripgrep. Returns None on failure."""
+    cmd = ["rg", "--files", "--glob", pattern]
+    if include_ignored:
+        cmd.append("--no-ignore")
+    cmd.append(".")
+    result = _rg_run(cmd, cwd, timeout=30)
+    if result is not None:
+        return result.stdout.splitlines()
     return None
 
 
@@ -39,81 +56,50 @@ def grep(
     cwd: Path, pattern: str, include: str | None = None, context: int = 0
 ) -> str | None:
     """Search file contents using ripgrep. Returns raw output or None on failure."""
-    try:
-        cmd = [
-            "rg",
-            "--line-number",
-            "--no-heading",
-            "--color",
-            "never",
-            "--sort",
-            "modified",
-            pattern,
-        ]
-        if include:
-            cmd.extend(["--glob", include])
-        if context:
-            cmd.extend(["-C", str(context)])
-        cmd.append(".")
-        result = subprocess.run(
-            cmd,
-            cwd=cwd,
-            capture_output=True,
-            text=True,
-            timeout=60,
-        )
-        if result.returncode in (0, 1):
-            return result.stdout
-    except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as e:
-        logger.debug(f"ripgrep grep failed for {pattern} in {cwd}: {e}")
+    cmd = [
+        "rg",
+        "--line-number",
+        "--no-heading",
+        "--color",
+        "never",
+        pattern,
+    ]
+    if include:
+        cmd.extend(["--glob", include])
+    if context:
+        cmd.extend(["-C", str(context)])
+    cmd.append(".")
+    result = _rg_run(cmd, cwd)
+    if result is not None:
+        return result.stdout
     return None
 
 
 def grep_files(cwd: Path, pattern: str, include: str | None = None) -> list[str] | None:
     """List files containing matches using ripgrep. Returns None on failure."""
-    try:
-        cmd = [
-            "rg",
-            "--files-with-matches",
-            "--color",
-            "never",
-            "--sort",
-            "modified",
-            pattern,
-        ]
-        if include:
-            cmd.extend(["--glob", include])
-        cmd.append(".")
-        result = subprocess.run(
-            cmd,
-            cwd=cwd,
-            capture_output=True,
-            text=True,
-            timeout=60,
-        )
-        if result.returncode in (0, 1):
-            return result.stdout.splitlines()
-    except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as e:
-        logger.debug(f"ripgrep grep_files failed for {pattern} in {cwd}: {e}")
+    cmd = [
+        "rg",
+        "--files-with-matches",
+        "--color",
+        "never",
+        pattern,
+    ]
+    if include:
+        cmd.extend(["--glob", include])
+    cmd.append(".")
+    result = _rg_run(cmd, cwd)
+    if result is not None:
+        return result.stdout.splitlines()
     return None
 
 
 def grep_count(cwd: Path, pattern: str, include: str | None = None) -> str | None:
     """Get per-file match counts using ripgrep. Returns raw output or None."""
-    try:
-        cmd = ["rg", "--count", "--color", "never", "--sort", "modified", pattern]
-        if include:
-            cmd.extend(["--glob", include])
-        cmd.append(".")
-        result = subprocess.run(
-            cmd,
-            cwd=cwd,
-            capture_output=True,
-            text=True,
-            timeout=60,
-        )
-        if result.returncode in (0, 1):
-            return result.stdout
-    except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as e:
-        logger.debug(f"ripgrep grep_count failed for {pattern} in {cwd}: {e}")
+    cmd = ["rg", "--count", "--color", "never", pattern]
+    if include:
+        cmd.extend(["--glob", include])
+    cmd.append(".")
+    result = _rg_run(cmd, cwd)
+    if result is not None:
+        return result.stdout
     return None

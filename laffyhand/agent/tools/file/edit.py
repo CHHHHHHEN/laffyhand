@@ -1,9 +1,9 @@
-import difflib
 from pathlib import Path
 from typing import Any
 
 from loguru import logger
 from laffyhand.agent.tools.base import BaseTool
+from laffyhand.agent.tools.file._diff import format_diff
 from laffyhand.agent.tools.file._fuzzy import STRATEGIES, count_diff
 from laffyhand.agent.tools.file._security import (
     atomic_write,
@@ -13,22 +13,6 @@ from laffyhand.agent.tools.file._text_utils import (
     detect_line_ending,
     normalize_newlines,
 )
-
-MAX_DIFF_LINES = 50
-
-
-def _compute_diff(path: Path, old_content: str, new_content: str) -> str:
-    old_lines = old_content.splitlines(keepends=True)
-    new_lines = new_content.splitlines(keepends=True)
-    diff = list(
-        difflib.unified_diff(
-            old_lines,
-            new_lines,
-            fromfile=str(path),
-            tofile=str(path),
-        )
-    )
-    return "".join(diff)
 
 
 class EditTool(BaseTool):
@@ -93,14 +77,7 @@ class EditTool(BaseTool):
         return await self._replace_one(path, content, old, new)
 
     def _append_diff(self, result: str, path: Path, old_content: str, new_content: str) -> str:
-        diff = _compute_diff(path, old_content, new_content)
-        diff_lines = diff.splitlines()
-        if len(diff_lines) > MAX_DIFF_LINES:
-            diff_lines = diff_lines[:MAX_DIFF_LINES]
-            diff_lines.append(
-                f"... diff truncated ({len(diff.splitlines())} lines total)"
-            )
-        diff_display = "\n".join(diff_lines)
+        diff_display = format_diff(path, old_content, new_content)
         if diff_display.strip():
             result += f"\n\n{diff_display}"
         return result

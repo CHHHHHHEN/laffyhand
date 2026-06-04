@@ -4,19 +4,20 @@ from typing import Callable
 
 
 def count_diff(old: str, new: str) -> tuple[int, int]:
-    """Count lines added and removed between two strings."""
-    diff = list(
-        difflib.unified_diff(
-            old.splitlines(keepends=True),
-            new.splitlines(keepends=True),
-        )
-    )
-    additions = sum(
-        1 for line in diff if line.startswith("+") and not line.startswith("+++")
-    )
-    deletions = sum(
-        1 for line in diff if line.startswith("-") and not line.startswith("---")
-    )
+    """Count lines added and removed between two strings using SequenceMatcher."""
+    old_lines = old.splitlines()
+    new_lines = new.splitlines()
+    matcher = difflib.SequenceMatcher(None, old_lines, new_lines)
+    additions = 0
+    deletions = 0
+    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+        if tag == "replace":
+            deletions += i2 - i1
+            additions += j2 - j1
+        elif tag == "delete":
+            deletions += i2 - i1
+        elif tag == "insert":
+            additions += j2 - j1
     return additions, deletions
 
 

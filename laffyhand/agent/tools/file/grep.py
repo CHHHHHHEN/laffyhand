@@ -139,13 +139,14 @@ class GrepTool(BaseTool):
             return f"{path}: error: {e}"
 
         loop = asyncio.get_running_loop()
-        lines = text.splitlines(keepends=True)
 
-        def _search_lines() -> list[int]:
-            return [i for i, line in enumerate(lines) if pattern.search(line)]
+        def _search_lines() -> tuple[list[str], list[int]]:
+            lines_local = text.splitlines(keepends=True)
+            indices = [i for i, line in enumerate(lines_local) if pattern.search(line)]
+            return lines_local, indices
 
         try:
-            match_indices = await asyncio.wait_for(
+            lines, match_indices = await asyncio.wait_for(
                 loop.run_in_executor(None, _search_lines), timeout=5
             )
         except asyncio.TimeoutError:

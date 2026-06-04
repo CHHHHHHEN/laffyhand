@@ -1,9 +1,9 @@
-import difflib
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 from laffyhand.agent.tools.base import BaseTool
+from laffyhand.agent.tools.file._diff import format_diff
 from laffyhand.agent.tools.file._security import (
     atomic_write,
     blocked_write_path,
@@ -15,22 +15,6 @@ from laffyhand.agent.tools.file._text_utils import (
 
 if TYPE_CHECKING:
     from laffyhand.agent.tools.permission import PermissionManager
-
-MAX_DIFF_LINES = 50
-
-
-def _compute_diff(path: Path, old_content: str, new_content: str) -> str:
-    old_lines = old_content.splitlines(keepends=True)
-    new_lines = new_content.splitlines(keepends=True)
-    diff = list(
-        difflib.unified_diff(
-            old_lines,
-            new_lines,
-            fromfile=str(path),
-            tofile=str(path),
-        )
-    )
-    return "".join(diff)
 
 
 class WriteTool(BaseTool):
@@ -121,14 +105,7 @@ class WriteTool(BaseTool):
 
         # Append diff for existing-file edits
         if old_content is not None:
-            diff = _compute_diff(path, old_content, content)
-            diff_lines = diff.splitlines()
-            if len(diff_lines) > MAX_DIFF_LINES:
-                diff_lines = diff_lines[:MAX_DIFF_LINES]
-                diff_lines.append(
-                    f"... diff truncated ({len(diff.splitlines())} lines total)"
-                )
-            diff_display = "\n".join(diff_lines)
+            diff_display = format_diff(path, old_content, content)
             if diff_display.strip():
                 result += f"\n\n{diff_display}"
 
