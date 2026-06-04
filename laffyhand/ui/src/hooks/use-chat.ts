@@ -57,7 +57,7 @@ export function useChat() {
   }, [])
 
   const sendMessage = useCallback(
-    async (content: string, bypassBusyCheck = false) => {
+    async (content: string, bypassBusyCheck = false, skipAddUser = false) => {
       const chatStore = useChatStore.getState()
       const sessionId = sessionIdRef.current
       if (!sessionId) return
@@ -69,7 +69,9 @@ export function useChat() {
       const sess = chatStore.sessions[sessionId]
       if (!bypassBusyCheck && sess?.isStreaming) return
 
-      chatStore.addUserMessage(sessionId, content)
+      if (!skipAddUser) {
+        chatStore.addUserMessage(sessionId, content)
+      }
       chatStore.startStreaming(sessionId)
 
       const abortController = new AbortController()
@@ -208,7 +210,8 @@ export function useChat() {
       if (leftoverSteerRef.current) {
         const steer = leftoverSteerRef.current
         leftoverSteerRef.current = null
-        await sendMessage(steer, true)
+        // skipAddUser=true because steerMessage() already added the message to the store
+        await sendMessage(steer, true, true)
         return
       }
 
@@ -247,6 +250,10 @@ export function useChat() {
       if (!content.trim()) return
       const sess = useChatStore.getState().sessions[sessionId]
       if (!sess?.isStreaming) return
+
+      // Add the steer message to chat history immediately so the user
+      // sees their input even while the existing stream continues.
+      useChatStore.getState().addUserMessage(sessionId, content)
 
       try {
         await rpcClient.steerMessage(content, urlSessionId)

@@ -28,10 +28,12 @@ function createWrapper() {
 // Mock rpcClient
 const mockChatStream = vi.fn()
 const mockCancelStream = vi.fn()
+const mockSteerMessage = vi.fn()
 vi.mock("@/lib/rpc", () => ({
   rpcClient: {
     chatStream: (...args: unknown[]) => mockChatStream(...args),
     cancelStream: () => mockCancelStream(),
+    steerMessage: (...args: unknown[]) => mockSteerMessage(...args),
     todoList: () => Promise.resolve({ tasks: [] }),
   },
   RpcError: class extends Error {
@@ -232,5 +234,73 @@ describe("useChat", () => {
 
     const state = useChatStore.getState().sessions[SID]!
     expect(state.error).toBe("Stream cancelled")
+  })
+
+  // ── Steer message ──
+
+  it("steerMessage adds user message to chat history and calls RPC", async () => {
+    // Start streaming so steer is allowed
+    useChatStore.getState().startStreaming(SID)
+    mockSteerMessage.mockResolvedValue({ status: "steered", session_id: SID })
+
+    const { result } = renderHook(() => useChat(), { wrapper: createWrapper() })
+
+    await act(async () => {
+      await result.current.steerMessage("change direction")
+    })
+
+    // Verify the user message was added to chat history
+    const state = useChatStore.getState().sessions[SID]!
+    const lastMsg = state.messages[state.messages.length - 1]
+    expect(lastMsg?.role).toBe("user")
+    expect(lastMsg?.content).toBe("change direction")
+
+    // Verify RPC was called
+    expect(mockSteerMessage).toHaveBeenCalledWith("change direction", SID)
+  })
+
+  it("steerMessage does nothing when not streaming", async () => {
+    mockSteerMessage.mockResolvedValue({ status: "steered", session_id: SID })
+
+    const { result } = renderHook(() => useChat(), { wrapper: createWrapper() })
+
+    await act(async () => {
+      await result.current.steerMessage("steer while idle")
+    })
+
+    // No message should be added, no RPC should be called
+    const state = useChatStore.getState().sessions[SID]!
+    expect(state.messages).toHaveLength(0)
+    expect(mockSteerMessage).not.toHaveBeenCalled()
+  })
+
+  it("steerMessage does nothing for empty content", async () => {
+    useChatStore.getState().startStreaming(SID)
+
+    const { result } = renderHook(() => useChat(), { wrapper: createWrapper() })
+
+    await act(async () => {
+      await result.current.steerMessage("  ")
+    })
+
+    expect(mockSteerMessage).not.toHaveBeenCalled()
+  })
+
+  it("steerMessage sets error on RPC failure", async () => {
+    useChatStore.getState().startStreaming(SID)
+    mockSteerMessage.mockRejectedValue(new Error("Steer failed"))
+
+    const { result } = renderHook(() => useChat(), { wrapper: createWrapper() })
+
+    await act(async () => {
+      await result.current.steerMessage("change direction")
+    })
+
+    const state = useChatStore.getState().sessions[SID]!
+    expect(state.error).toBe("Steer failed")
+    // Message should still be added even if RPC fails
+    const lastMsg = state.messages[state.messages.length - 1]
+    expect(lastMsg?.role).toBe("user")
+    expect(lastMsg?.content).toBe("change direction")
   })
 })
