@@ -1,3 +1,4 @@
+import difflib
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +13,22 @@ from laffyhand.agent.tools.file._text_utils import (
     detect_line_ending,
     normalize_newlines,
 )
+
+MAX_DIFF_LINES = 50
+
+
+def _compute_diff(path: Path, old_content: str, new_content: str) -> str:
+    old_lines = old_content.splitlines(keepends=True)
+    new_lines = new_content.splitlines(keepends=True)
+    diff = list(
+        difflib.unified_diff(
+            old_lines,
+            new_lines,
+            fromfile=str(path),
+            tofile=str(path),
+        )
+    )
+    return "".join(diff)
 
 
 class EditTool(BaseTool):
@@ -74,6 +91,19 @@ class EditTool(BaseTool):
 
         return await self._replace_one(path, content, old, new)
 
+    def _append_diff(self, result: str, path: Path, old_content: str, new_content: str) -> str:
+        diff = _compute_diff(path, old_content, new_content)
+        diff_lines = diff.splitlines()
+        if len(diff_lines) > MAX_DIFF_LINES:
+            diff_lines = diff_lines[:MAX_DIFF_LINES]
+            diff_lines.append(
+                f"... diff truncated ({len(diff.splitlines())} lines total)"
+            )
+        diff_display = "\n".join(diff_lines)
+        if diff_display.strip():
+            result += f"\n\n{diff_display}"
+        return result
+
     async def _create_file(self, path: Path, content: str) -> str:
         atomic_write(path, content)
         logger.info(f"Edit: created {path}")
@@ -86,7 +116,8 @@ class EditTool(BaseTool):
         atomic_write(path, new_content)
         logger.info(f"Edit: prepended to {path}")
         additions, deletions = count_diff("", prefix)
-        return f"Edited {path}: prepended (+{additions} lines)"
+        result = f"Edited {path}: prepended (+{additions} lines)"
+        return self._append_diff(result, path, content, new_content)
 
     async def _replace_all(self, path: Path, content: str, old: str, new: str) -> str:
         line_ending = detect_line_ending(path)
@@ -98,7 +129,8 @@ class EditTool(BaseTool):
         atomic_write(path, new_content)
         additions, deletions = count_diff(old, new)
         logger.info(f"Edit: replaced {count} occurrence(s) in {path}")
-        return f"Edited {path}: replaced {count} occurrence(s) (+{additions} lines, -{deletions} lines)"
+        result = f"Edited {path}: replaced {count} occurrence(s) (+{additions} lines, -{deletions} lines)"
+        return self._append_diff(result, path, content, new_content)
 
     async def _replace_one(self, path: Path, content: str, old: str, new: str) -> str:
         line_ending = detect_line_ending(path)
@@ -117,9 +149,10 @@ class EditTool(BaseTool):
             additions, deletions = count_diff(old, new)
             strategy = "exact" if matched_text == old else name
             logger.info(f"Edit: {strategy} match in {path}")
-            return (
+            result = (
                 f"Edited {path} ({strategy} match): "
                 f"replaced 1 occurrence (+{additions} lines, -{deletions} lines)"
             )
+            return self._append_diff(result, path, content, new_content)
 
         return f"old_string not found in {path}"

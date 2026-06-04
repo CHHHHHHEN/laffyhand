@@ -220,3 +220,64 @@ class TestEditTool(unittest.TestCase):
             import os
 
             os.chdir(orig_cwd)
+
+    # ─── diff output ───────────────────────────────────────
+
+    def test_edit_contains_diff_in_result(self):
+        f = self.root / "test.txt"
+        f.write_text("foo\nbar\nbaz\n")
+        tool = EditTool()
+        result = asyncio.run(
+            tool.run({"file_path": str(f), "old_string": "bar", "new_string": "qux"})
+        )
+        self.assertIn("--- ", result)
+        self.assertIn("+++ ", result)
+        self.assertIn("@@", result)
+        self.assertIn("-bar", result)
+        self.assertIn("+qux", result)
+
+    def test_edit_replace_all_contains_diff(self):
+        f = self.root / "test.txt"
+        f.write_text("foo\nfoo\nfoo\n")
+        tool = EditTool()
+        result = asyncio.run(
+            tool.run({
+                "file_path": str(f),
+                "old_string": "foo",
+                "new_string": "bar",
+                "replaceAll": True,
+            })
+        )
+        self.assertIn("--- ", result)
+        self.assertIn("+bar", result)
+
+    def test_edit_prepend_contains_diff(self):
+        f = self.root / "existing.txt"
+        f.write_text("original\n")
+        tool = EditTool()
+        result = asyncio.run(
+            tool.run({
+                "file_path": str(f),
+                "old_string": "",
+                "new_string": "prefix",
+            })
+        )
+        self.assertIn("--- ", result)
+        self.assertIn("+prefix", result)
+
+    def test_edit_create_has_no_diff(self):
+        f = self.root / "new.txt"
+        tool = EditTool()
+        result = asyncio.run(
+            tool.run({"file_path": str(f), "old_string": "", "new_string": "hello"})
+        )
+        self.assertNotIn("--- ", result)
+
+    def test_edit_not_found_has_no_diff(self):
+        f = self.root / "test.txt"
+        f.write_text("hello")
+        tool = EditTool()
+        result = asyncio.run(
+            tool.run({"file_path": str(f), "old_string": "zzz", "new_string": "xxx"})
+        )
+        self.assertNotIn("--- ", result)

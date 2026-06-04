@@ -1,5 +1,6 @@
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, useMemo } from "react"
 import type { ToolCall } from "@/types/session"
+import { DiffView } from "./DiffView"
 
 export function AiAvatar() {
   return (
@@ -91,6 +92,20 @@ function StatusDot({ status }: { status: ToolCall["status"] }) {
   }
 }
 
+export function splitDiff(result: string): { summary: string; diff: string | null } {
+  const idx = result.search(/\n--- /)
+  if (idx === -1) return { summary: result, diff: null }
+  const nextNewline = result.indexOf("\n", idx + 1)
+  if (nextNewline === -1) return { summary: result, diff: null }
+  // Verify there's a +++ line following the --- line
+  const afterHeader = result.slice(nextNewline + 1)
+  if (!afterHeader.startsWith("+++ ")) return { summary: result, diff: null }
+  return {
+    summary: result.slice(0, idx).trimEnd(),
+    diff: result.slice(idx + 1),
+  }
+}
+
 export function ToolCallCard({ toolCall }: { toolCall: ToolCall }) {
   const argStr = JSON.stringify(toolCall.arguments, null, 2)
   const displayInput = argStr
@@ -99,7 +114,8 @@ export function ToolCallCard({ toolCall }: { toolCall: ToolCall }) {
 
   const hasResult = toolCall.status === "completed" || toolCall.status === "error"
   const [resultExpanded, setResultExpanded] = useState(false)
-  const [resultShowAll, setResultShowAll] = useState(false)
+
+  const resultParts = useMemo(() => toolCall.result ? splitDiff(toolCall.result) : { summary: "", diff: null }, [toolCall.result])
 
   const borderColor = toolCall.status === "error"
     ? "border-red-200 dark:border-red-700/50"
@@ -160,10 +176,7 @@ export function ToolCallCard({ toolCall }: { toolCall: ToolCall }) {
       {hasResult && toolCall.result && (
         <div className="mt-2 pt-2 border-t border-dashed border-[var(--border-muted)]">
           <button
-            onClick={() => {
-              setResultExpanded(!resultExpanded)
-              setResultShowAll(false)
-            }}
+            onClick={() => setResultExpanded(!resultExpanded)}
             className="flex items-center gap-1 text-[10px] text-[var(--text-muted)] hover:text-[var(--text-base)] transition-colors cursor-pointer font-sans"
           >
             <svg
@@ -177,37 +190,17 @@ export function ToolCallCard({ toolCall }: { toolCall: ToolCall }) {
             </span>
             {!resultExpanded && (
               <span className="text-[var(--text-faint)] truncate max-w-[200px]">
-                — {toolCall.result.length > 60 ? toolCall.result.slice(0, 60) + "..." : toolCall.result}
+                — {resultParts.summary.length > 60 ? resultParts.summary.slice(0, 60) + "..." : resultParts.summary}
               </span>
             )}
           </button>
           {resultExpanded && (
-            <div className="relative mt-1">
-              <pre
-                className={`text-[11px] text-[var(--text-muted)] whitespace-pre-wrap break-all leading-relaxed rounded px-2 py-1.5 border border-[var(--border-muted)] ${
-                  !resultShowAll ? "max-h-40 overflow-hidden" : ""
-                }`}
-              >
-                {toolCall.result}
-              </pre>
-              {!resultShowAll && toolCall.result.length > 1000 && (
-                <>
-                  <div className="absolute bottom-0 left-0 right-0 h-6 bg-gradient-to-t from-[var(--bg-base)] to-transparent pointer-events-none" />
-                  <button
-                    onClick={() => setResultShowAll(true)}
-                    className="w-full text-[10px] py-0.5 text-[var(--accent)] hover:opacity-80 transition-opacity cursor-pointer font-sans"
-                  >
-                    Show full result ({toolCall.result.length} chars)
-                  </button>
-                </>
-              )}
-              {resultShowAll && toolCall.result.length > 1000 && (
-                <button
-                  onClick={() => setResultShowAll(false)}
-                  className="w-full text-[10px] py-0.5 text-[var(--accent)] hover:opacity-80 transition-opacity cursor-pointer font-sans"
-                >
-                  Show less
-                </button>
+            <div className="mt-1 space-y-1">
+              <div className="text-[11px] text-[var(--text-muted)] leading-relaxed">
+                {resultParts.summary}
+              </div>
+              {resultParts.diff && (
+                <DiffView diff={resultParts.diff} />
               )}
             </div>
           )}
