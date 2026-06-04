@@ -180,7 +180,7 @@ export function MessageList({ sessionId, onRetry }: MessageListProps) {
       {showScrollBtn && (
         <button
           onClick={scrollToBottom}
-          className="absolute bottom-4 right-8 w-8 h-8 rounded-md bg-[var(--bg-base)] border border-[var(--border-base)] shadow-lg flex items-center justify-center text-[var(--icon-muted)] hover:text-[var(--icon-base)] transition-all duration-200 cursor-pointer z-10"
+          className="absolute bottom-4 right-8 w-8 h-8 rounded-lg bg-[var(--bg-base)] border border-[var(--border-base)] shadow-lg flex items-center justify-center text-[var(--icon-muted)] hover:text-[var(--accent)] hover:border-[var(--accent)] transition-all duration-200 cursor-pointer z-10"
           title="Scroll to bottom"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

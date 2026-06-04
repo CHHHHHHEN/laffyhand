@@ -81,13 +81,13 @@ export function ChatPage() {
   return (
     <div className="flex-1 flex flex-col min-h-0">
       {session?.is_streaming && !isStreaming && (
-        <div className="flex items-center gap-2 px-4 py-1.5 text-xs text-[var(--state-warning-fg)] bg-[var(--state-warning-bg)] border-b border-[var(--border-muted)] shrink-0">
+        <div className="flex items-center gap-2 px-4 py-1.5 text-xs text-amber-700 dark:text-amber-400 bg-amber-50/80 dark:bg-amber-900/20 border-b border-amber-200/50 dark:border-amber-700/30 shrink-0 backdrop-blur-sm">
           <span className="relative flex h-2 w-2">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-yellow-400 opacity-75" />
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-yellow-500" />
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500" />
           </span>
           <span className="font-medium" style={{ fontWeight: 500 }}>Reconnecting</span>
-          <span className="text-[var(--state-warning-fg)]">— session is still processing on the server</span>
+          <span className="text-amber-600/70 dark:text-amber-400/70">— session is still processing on the server</span>
         </div>
       )}
       <MessageList sessionId={sessionId} onRetry={retryLastMessage} />
