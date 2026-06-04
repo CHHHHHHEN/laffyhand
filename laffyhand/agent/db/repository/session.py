@@ -202,24 +202,45 @@ class SessionRepo:
         return [self._row_to_session(r) for r in rows]
 
     def get_compression_tip(self, session_id: str) -> str:
-        current = session_id
         max_depth = 1000
-        for _ in range(max_depth):
-            row = self._conn.execute(
-                "SELECT id FROM session WHERE parent_id=? AND status='active' LIMIT 1",
-                (current,),
+        row = self._conn.execute(
+            """WITH RECURSIVE tip(id, depth) AS (
+                SELECT id, 0 FROM session WHERE id = ?
+                UNION ALL
+                SELECT s.id, t.depth + 1
+                FROM session s
+                JOIN tip t ON s.parent_id = t.id
+                WHERE s.status = 'active' AND t.depth < ?
+            )
+            SELECT id, depth FROM tip ORDER BY depth DESC LIMIT 1""",
+            (session_id, max_depth),
+        ).fetchone()
+        if row is None:
+            return session_id
+        result = cast(str, row["id"])
+        depth = cast(int, row["depth"])
+        if depth >= max_depth:
+            # Hit the recursion limit — check if there are deeper active children
+            further = self._conn.execute(
+                "SELECT 1 FROM session WHERE parent_id=? AND status='active' LIMIT 1",
+                (result,),
             ).fetchone()
-            if row is None:
-                return current
-            current = cast(str, row["id"])
-        logger.warning(f"Compression chain too deep (>{max_depth}) for {session_id}, stopping")
-        return current
+            if further is not None:
+                logger.warning(
+                    f"Compression chain too deep (>{max_depth}) for {session_id}, stopping"
+                )
+        return result
 
     def chain(self, session_id: str) -> list[str]:
-        ids: list[str] = []
-        current: Optional[str] = session_id
-        while current:
-            ids.append(current)
-            row = self._conn.execute("SELECT parent_id FROM session WHERE id=?", (current,)).fetchone()
-            current = row["parent_id"] if row else None
-        return ids
+        rows = self._conn.execute(
+            """WITH RECURSIVE chain_cte(id, parent_id) AS (
+                SELECT id, parent_id FROM session WHERE id = ?
+                UNION ALL
+                SELECT s.id, s.parent_id
+                FROM session s
+                JOIN chain_cte c ON s.id = c.parent_id
+            )
+            SELECT id FROM chain_cte""",
+            (session_id,),
+        ).fetchall()
+        return [cast(str, r["id"]) for r in rows]

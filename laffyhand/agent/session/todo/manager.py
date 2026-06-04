@@ -12,6 +12,7 @@ from laffyhand.agent.session.todo.models import (
     TodoStatus,
 )
 from laffyhand.agent.session.models import _generate_id, _utcnow
+from laffyhand.agent.db.repository.common import _ts
 
 if TYPE_CHECKING:
     from laffyhand.agent.db.repository import TodoRepo
@@ -179,12 +180,12 @@ class TodoManager:
             and updates.status is not None
             and updates.status != "completed"
         ):
-            all_tasks = self._repo.get_by_session(session_id)
             now = _utcnow()
             try:
-                for t in all_tasks:
-                    t.updated_at = now
-                    self._repo.update(t)
+                self._repo.connection.execute(
+                    "UPDATE todo SET updated_at=? WHERE session_id=?",
+                    (_ts(now), session_id),
+                )
                 self._repo.commit()
             except Exception:
                 self._repo.rollback()
