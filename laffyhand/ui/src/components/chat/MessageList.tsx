@@ -1,8 +1,8 @@
 import { useRef, useEffect, useCallback, useState } from "react"
-import DOMPurify from "dompurify"
 import { useChatStore } from "@/stores/chat-store"
 import { Spinner } from "@/components/ui/Spinner"
 import { MessageBubble } from "./MessageBubble"
+import { MarkdownContent } from "./MarkdownContent"
 import { AiAvatar, ToolCallCard, ReasoningBlock } from "./ChatComponents"
 import { SubagentCard } from "./SubagentCard"
 
@@ -115,12 +115,7 @@ export function MessageList({ sessionId, onRetry }: MessageListProps) {
                 {streamReasoning && <ReasoningBlock text={streamReasoning} defaultExpanded />}
 
                 {streamContent ? (
-                  <div
-                    className="prose prose-sm dark:prose-invert max-w-none"
-                    dangerouslySetInnerHTML={{
-                      __html: DOMPurify.sanitize(streamContent.replace(/\n/g, "<br>")),
-                    }}
-                  />
+                  <MarkdownContent content={streamContent} />
                 ) : (
                   <div className="flex items-center gap-2 py-1">
                     <Spinner size="sm" />

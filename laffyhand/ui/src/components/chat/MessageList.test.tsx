@@ -66,6 +66,20 @@ describe("MessageList", () => {
     expect(screen.getByText("partial response")).toBeInTheDocument()
   })
 
+  it("renders markdown in stream content", () => {
+    useChatStore.getState().startStreaming(SID)
+    useChatStore.getState().appendContent(SID, "hello **bold** world")
+    renderList()
+    expect(screen.getByText("bold").tagName).toBe("STRONG")
+  })
+
+  it("renders code fence in stream content", () => {
+    useChatStore.getState().startStreaming(SID)
+    useChatStore.getState().appendContent(SID, "```\ncode\n```")
+    renderList()
+    expect(document.querySelector("pre")).toBeTruthy()
+  })
+
   it("shows stream reasoning inside ReasoningBlock when streaming without content", () => {
     useChatStore.getState().startStreaming(SID)
     useChatStore.getState().setReasoning(SID, "thinking step by step")
