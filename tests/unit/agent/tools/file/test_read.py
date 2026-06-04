@@ -516,6 +516,31 @@ class TestReadTool(unittest.TestCase):
         )
         self.assertEqual(captured, ["test-claim"])
 
+    def test_read_resolver_dedup_same_claim_id(self):
+        """Same claim_id across multiple reads: resolver called each time but
+        only returns instructions on first call (simulating session-stable claim).
+        """
+        f = self.root / "test.py"
+        f.write_text("code = 1\n")
+
+        call_count = 0
+
+        def resolver(file_path, claim_id):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return [{"filepath": "/fake/AGENTS.md", "content": "Rules"}]
+            return []
+
+        tool = ReadTool(preference_resolver=resolver)
+        r1 = asyncio.run(tool.run({"file_path": str(f), "_claim_id": "sess-1:preferences"}))
+        self.assertIn("Rules", r1)
+        self.assertIn("1|code = 1", r1)
+
+        r2 = asyncio.run(tool.run({"file_path": str(f), "_claim_id": "sess-1:preferences"}))
+        self.assertNotIn("Rules", r2)
+        self.assertIn("1|code = 1", r2)
+
     def test_read_binary_skips_resolver(self):
         """Binary files skip the preference resolver."""
         f = self.root / "data.bin"

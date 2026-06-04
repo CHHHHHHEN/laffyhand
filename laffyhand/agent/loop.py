@@ -261,7 +261,7 @@ async def agent_loop(
             logger.debug(f"Executing {len(tool_calls)} tool call(s)")
             exec_context = {
                 "session_id": agent_state.session_id,
-                "_claim_id": f"{agent_state.session_id}:step-{step_index}",
+                "_claim_id": f"{agent_state.session_id}:preferences",
             }
             for tc in tool_calls:
                 exec_result = await ToolExecutor.execute(

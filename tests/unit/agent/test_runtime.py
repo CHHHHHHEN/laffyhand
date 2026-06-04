@@ -399,6 +399,34 @@ class TestPreferenceResolution:
         # After clear, same message can get instructions again
         second = runtime.resolve_preferences(str(src), "msg-1", root=str(tmp_path))
         assert len(second) == 1
+
+    def test_session_stable_claim_id_prevents_cross_step_reinjection(
+        self, runtime, tmp_path
+    ):
+        """Session-stable claim ID (e.g. '{session}:preferences') prevents
+        re-injecting the same AGENTS.md across different steps.
+        This validates the fix for repeated AGENTS.md injection.
+        """
+        outer = tmp_path / "outer"
+        inner = outer / "inner"
+        inner.mkdir(parents=True)
+        outer_md = outer / "AGENTS.md"
+        outer_md.write_text("stable project rules")
+        src = inner / "src.py"
+        src.write_text("code")
+
+        # Simulate step 1 — returns instruction
+        step1 = runtime.resolve_preferences(str(src), "sess-1:preferences", root=str(tmp_path))
+        assert len(step1) == 1
+
+        # Simulate step 2 — same claim_id, should NOT re-inject
+        step2 = runtime.resolve_preferences(str(src), "sess-1:preferences", root=str(tmp_path))
+        assert len(step2) == 0
+
+        # Different session still gets injection
+        other = runtime.resolve_preferences(str(src), "sess-2:preferences", root=str(tmp_path))
+        assert len(other) == 1
+
     def test_creates_agent_state(self, runtime):
         sys_msg = SystemMessage(content="You are a bot.")
         state = AgentState(
