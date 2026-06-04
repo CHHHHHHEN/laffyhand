@@ -184,6 +184,9 @@ class SessionManager:
             raise
         return len(messages)
 
+    def get_message_count(self, session_id: str) -> int:
+        return self._messages.count_by_session(session_id)
+
     def get_messages(self, session_id: str, offset: int = 0, limit: int | None = None) -> list[Message]:
         return [session_message_to_message(sm) for sm in self._messages.get_by_session(session_id, offset=offset, limit=limit)]
 
@@ -196,12 +199,19 @@ class SessionManager:
         began = self._begin()
         try:
             existing = self._messages.count_by_session(session_id)
-            if len(state.messages) > existing:
-                for msg in state.messages[existing:]:
+            state_count = len(state.messages)
+
+            if state_count > existing:
+                to_store = state.messages[existing:]
+                for msg in to_store:
                     self._messages.insert(message_to_session_message(msg, session_id))
-            elif len(state.messages) < existing:
+                logger.debug(
+                    f"save_state: stored {len(to_store)} message(s) for {session_id} "
+                    f"(state_count={state_count}, existing={existing})"
+                )
+            elif state_count < existing:
                 logger.warning(
-                    f"save_state: state has fewer messages ({len(state.messages)}) "
+                    f"save_state: state has fewer messages ({state_count}) "
                     f"than DB ({existing}). Appending nothing — DB is source of truth."
                 )
 
@@ -215,7 +225,7 @@ class SessionManager:
                 cache_read_tokens=state.usage.total_cache_read,
                 cache_write_tokens=state.usage.total_cache_write,
                 cost=state.usage.cost,
-                message_count=max(len(state.messages), existing),
+                message_count=max(state_count, existing),
             )
             self._end(began)
         except Exception:

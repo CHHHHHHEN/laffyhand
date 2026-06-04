@@ -293,7 +293,17 @@ async def _prepare_chat(
     user_message = UserMessage(content=message)
     async with runtime.get_session_lock(session_id):
         state.messages.append(user_message)
-    runtime.session_manager.store_messages(session_id, [user_message])
+
+    # If this is the first time this session is persisted to DB,
+    # include the SystemMessage (at state.messages[0]) so that
+    # len(state.messages) stays in sync with the DB count.
+    # This prevents save_state() from re-storing the last message
+    # on shutdown (which would cause a duplicate after restart).
+    existing_session = runtime.session_manager.get(session_id)
+    if existing_session is None and len(state.messages) >= 2 and isinstance(state.messages[0], SystemMessage):
+        runtime.session_manager.store_messages(session_id, [state.messages[0], user_message])
+    else:
+        runtime.session_manager.store_messages(session_id, [user_message])
     return session_id
 
 

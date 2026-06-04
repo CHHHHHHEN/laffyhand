@@ -214,6 +214,107 @@ class TestStatePersistence:
     def test_load_nonexistent(self, session_manager: SessionManager) -> None:
         assert session_manager.load_state("nonexistent") is None
 
+    def test_save_state_does_not_duplicate_last_message(self, session_manager: SessionManager) -> None:
+        """save_state() must not re-store messages already in DB.
+
+        Regression test: when state.messages contains a SystemMessage at [0]
+        that was stored via store_messages(), save_state() should correctly
+        compare counts and avoid inserting the last message a second time.
+        """
+        # Simulate the flow:
+        # 1. _prepare_chat stores [SystemMessage, UserMessage] (first persist)
+        session = session_manager.create()
+        sys_msg = SystemMessage(content="You are a helpful assistant.")
+        user_msg1 = UserMessage(content="Hello!")
+        session_manager.store_messages(session.id, [sys_msg, user_msg1])
+
+        # 2. Agent loop stores AssistantMessage
+        assist_msg = AssistantMessage(content="Hi there!")
+        session_manager.store_messages(session.id, [assist_msg])
+
+        # 3. Now simulate shutdown: state.messages has the same 3 messages
+        state = AgentState(
+            messages=[sys_msg, user_msg1, assist_msg],
+            turn_count=1,
+            step=1,
+            session_id=session.id,
+        )
+        # Before the fix, save_state would insert AssistantMessage again here
+        session_manager.save_state(session.id, state)
+
+        # 4. Verify: DB should still have exactly 3 messages (no duplicates)
+        loaded = session_manager.get_messages(session.id)
+        assert len(loaded) == 3, f"Expected 3 messages, got {len(loaded)}"
+        assert isinstance(loaded[0], SystemMessage)
+        assert loaded[0].content == "You are a helpful assistant."
+        assert isinstance(loaded[1], UserMessage)
+        assert loaded[1].content == "Hello!"
+        assert isinstance(loaded[2], AssistantMessage)
+        assert loaded[2].content == "Hi there!"
+
+    def test_save_state_shutdown_does_not_duplicate(self, session_manager: SessionManager) -> None:
+        """Simulate the full shutdown scenario that caused the duplication bug.
+
+        After a session's messages are all stored via store_messages(),
+        calling save_state() during shutdown must NOT insert any duplicates
+        even if state.messages has the same content.
+        """
+        session = session_manager.create()
+        msgs = [
+            SystemMessage(content="system"),
+            UserMessage(content="first"),
+            AssistantMessage(content="response"),
+        ]
+        # Store all messages via store_messages (as the agent loop does)
+        session_manager.store_messages(session.id, msgs)
+
+        # Verify initial state
+        assert session_manager.get_message_count(session.id) == 3
+
+        # Shutdown: save the exact same state
+        state = AgentState(
+            messages=list(msgs),
+            turn_count=1,
+            step=1,
+            session_id=session.id,
+            usage=SessionUsage(
+                total_input=100,
+                total_output=50,
+            ),
+        )
+        session_manager.save_state(session.id, state)
+
+        # Verify no duplicates
+        loaded = session_manager.get_messages(session.id)
+        assert len(loaded) == 3, f"Expected 3 messages, got {len(loaded)}"
+        contents = [m.content for m in loaded]
+        assert contents == ["system", "first", "response"]
+
+    def test_save_state_with_partial_new_messages(self, session_manager: SessionManager) -> None:
+        """save_state() should persist messages that were added in memory
+        but not yet in DB (e.g., mid-turn shutdown)."""
+        session = session_manager.create()
+        # Only store first two messages in DB
+        session_manager.store_messages(session.id, [
+            SystemMessage(content="system"),
+            UserMessage(content="Hello!"),
+        ])
+        # State has an additional AssistantMessage not yet in DB
+        state = AgentState(
+            messages=[
+                SystemMessage(content="system"),
+                UserMessage(content="Hello!"),
+                AssistantMessage(content="Hi there!"),
+            ],
+            turn_count=1,
+            step=1,
+            session_id=session.id,
+        )
+        session_manager.save_state(session.id, state)
+        loaded = session_manager.get_messages(session.id)
+        assert len(loaded) == 3, f"Expected 3 messages, got {len(loaded)}"
+        assert loaded[2].content == "Hi there!"
+
 
 class TestCompactionChain:
     def test_chain_from_root(self, session_manager: SessionManager) -> None:
