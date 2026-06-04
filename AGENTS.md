@@ -29,7 +29,7 @@
 
 ```bash
 uv run mypy laffyhand/          # 静态类型检查
-uv run ruff                     # 代码风格检查
+uv run ruff check                    # 代码风格检查
 uv run vulture --min-confidence 70  # 死代码检测
 uv run pytest tests/            # 运行测试
 ```
