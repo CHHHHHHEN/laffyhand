@@ -63,7 +63,7 @@ class ReadTool(BaseTool):
                 },
                 "depth": {
                     "type": "integer",
-                    "description": "Directory listing depth. 1 = flat (default), 2 = one level deep, etc. Only applies when file_path is a directory",
+                    "description": "Directory listing depth. 1 = flat, 2 = one level deep (default), etc. Only applies when file_path is a directory",
                 },
             },
             "anyOf": [
@@ -93,15 +93,20 @@ class ReadTool(BaseTool):
         prefix = "  " * indent
         lines: list[str] = []
 
-        if entry.is_file() and not looks_binary(entry):
-            try:
-                text = entry.read_text(encoding="utf-8", errors="replace")
-                count = len(text.splitlines())
-                lines.append(f"{prefix}{entry.name} ({count} lines)")
-            except Exception:
-                lines.append(f"{prefix}{entry.name}")
-        else:
+        if entry.is_dir():
             lines.append(f"{prefix}{entry.name}/")
+        elif entry.is_file():
+            if not looks_binary(entry):
+                try:
+                    text = entry.read_text(encoding="utf-8", errors="replace")
+                    count = len(text.splitlines())
+                    lines.append(f"{prefix}{entry.name} ({count} lines)")
+                except Exception:
+                    lines.append(f"{prefix}{entry.name}")
+            else:
+                lines.append(f"{prefix}{entry.name} (binary)")
+        else:
+            lines.append(f"{prefix}{entry.name}")
 
         if depth > 1 and entry.is_dir():
             try:
@@ -118,7 +123,7 @@ class ReadTool(BaseTool):
         return lines
 
     def _list_directory(
-        self, path: Path, offset: int | None, limit: int | None, depth: int = 1
+        self, path: Path, offset: int | None, limit: int | None, depth: int = 2
     ) -> str:
         if depth <= 0:
             return ""
@@ -137,26 +142,10 @@ class ReadTool(BaseTool):
         selected = entries[start:end]
 
         lines: list[str] = []
-        show_recursive = depth > 1
-        if show_recursive:
-            lines.append(f"Contents of {path} (depth={depth}):")
-        else:
-            lines.append(f"Contents of {path} (total {total} entries):")
+        lines.append(f"Contents of {path} (depth={depth}):")
 
         for entry in selected:
-            if show_recursive:
-                lines.extend(self._format_entry(entry, 1, depth))
-            else:
-                suffix = "/" if entry.is_dir() else ""
-                if entry.is_file() and not looks_binary(entry):
-                    try:
-                        text = entry.read_text(encoding="utf-8", errors="replace")
-                        count = len(text.splitlines())
-                        lines.append(f"  {entry.name}{suffix} ({count} lines)")
-                    except Exception:
-                        lines.append(f"  {entry.name}{suffix}")
-                else:
-                    lines.append(f"  {entry.name}{suffix}")
+            lines.extend(self._format_entry(entry, 1, depth))
 
         return "\n".join(lines)
 
@@ -255,7 +244,7 @@ class ReadTool(BaseTool):
 
         if path.is_dir():
             result = self._list_directory(
-                path, params.get("offset"), params.get("limit"), params.get("depth", 1)
+                path, params.get("offset"), params.get("limit"), params.get("depth", 2)
             )
             logger.info(f"Read: listed directory {path}")
             return result
@@ -376,7 +365,7 @@ class ReadTool(BaseTool):
                     path,
                     params.get("offset"),
                     params.get("limit"),
-                    params.get("depth", 1),
+                    params.get("depth", 2),
                 )
                 parts.append(f"{head}\n{dir_content}")
                 total_size += len(dir_content) + len(head) + 2

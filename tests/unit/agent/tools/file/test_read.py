@@ -174,14 +174,14 @@ class TestReadTool(unittest.TestCase):
         result = asyncio.run(tool.run({"file_path": str(self.root), "depth": 0}))
         self.assertEqual(result, "")
 
-    def test_read_directory_depth_defaults_to_1(self):
+    def test_read_directory_depth_defaults_to_2(self):
         sub = self.root / "sub"
         sub.mkdir()
         (sub / "inner.txt").write_text("content\n")
         tool = ReadTool()
         result = asyncio.run(tool.run({"file_path": str(self.root)}))
         self.assertIn("sub/", result)
-        self.assertNotIn("inner.txt", result)
+        self.assertIn("inner.txt", result)
 
     def test_read_directory_depth_shows_line_count_in_nested_files(self):
         sub = self.root / "sub"
@@ -210,6 +210,40 @@ class TestReadTool(unittest.TestCase):
         for line in result.splitlines():
             if "inner.txt" in line:
                 self.assertTrue(line.startswith("    "), f"Expected indentation: {line!r}")
+
+    # ─── directory listing binary/file format ─────────────
+
+    def test_read_directory_shows_binary_files_without_trailing_slash(self):
+        """Binary files in directory listing show as (binary), not as dirs with /."""
+        (self.root / "data.zip").write_text("fake zip")
+        (self.root / "lib.so").write_text("fake so")
+        tool = ReadTool()
+        result = asyncio.run(tool.run({"file_path": str(self.root), "depth": 1}))
+        self.assertIn("data.zip (binary)", result)
+        self.assertIn("lib.so (binary)", result)
+        self.assertNotIn("data.zip/", result)
+        self.assertNotIn("lib.so/", result)
+
+    def test_read_directory_binary_files_in_subdir(self):
+        """Binary files nested in subdirectories show as (binary)."""
+        sub = self.root / "sub"
+        sub.mkdir()
+        (sub / "data.zip").write_text("fake")
+        tool = ReadTool()
+        result = asyncio.run(tool.run({"file_path": str(self.root), "depth": 2}))
+        self.assertIn("data.zip (binary)", result)
+        self.assertIn("sub/", result)
+
+    def test_read_directory_conflit_file_and_dir_separated(self):
+        """Directories get / suffix, text files get line count, binary files get (binary)."""
+        (self.root / "readme.txt").write_text("hello")
+        (self.root / "data.zip").write_text("fake")
+        (self.root / "sub").mkdir()
+        tool = ReadTool()
+        result = asyncio.run(tool.run({"file_path": str(self.root), "depth": 1}))
+        self.assertIn("readme.txt (", result)   # text file has line count
+        self.assertIn("data.zip (binary)", result)  # binary file marked
+        self.assertIn("sub/", result)              # dir has trailing /
 
     # ─── binary detection ───────────────────────────────────
 

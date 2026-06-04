@@ -52,6 +52,18 @@ class TestLooksBinary(unittest.TestCase):
         f.write_text("")
         self.assertFalse(looks_binary(f))
 
+    def test_utf8_multibyte_text_not_binary(self):
+        """UTF-8 with multi-byte chars (Chinese, Japanese, etc.) is text, not binary."""
+        f = self.root / "readme.md"
+        f.write_text("你好世界\n这是中文\n" * 20)
+        self.assertFalse(looks_binary(f))
+
+    def test_utf8_mixed_ascii_multibyte_not_binary(self):
+        """Mixed ASCII + multi-byte UTF-8 is still text."""
+        f = self.root / "mixed.txt"
+        f.write_text("Hello 世界\nTest 测试\n" * 30)
+        self.assertFalse(looks_binary(f))
+
     def test_file_not_found(self):
         f = self.root / "nonexistent.txt"
         self.assertTrue(looks_binary(f))
