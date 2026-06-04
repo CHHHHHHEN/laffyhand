@@ -15,7 +15,6 @@ echo.
 echo === Building laffyhand binary ===
 cd /d "%PROJECT_DIR%"
 uv run nuitka --onefile ^
-    --enable-plugin=upx ^
     --noinclude-pytest-mode=nofollow ^
     --noinclude-setuptools-mode=nofollow ^
     --nofollow-import-to=mypy,pytest,ruff,vulture,types_pyyaml,nuitka ^

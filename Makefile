@@ -7,7 +7,6 @@ ui:
 
 dist/laffyhand: laffyhand/__main__.py $(shell find laffyhand -name '*.py') $(shell find laffyhand/ui/dist -type f 2>/dev/null)
 	uv run nuitka --onefile \
-		--enable-plugin=upx \
 		--noinclude-pytest-mode=nofollow \
 		--noinclude-setuptools-mode=nofollow \
 		--nofollow-import-to=mypy,pytest,ruff,vulture,types_pyyaml,nuitka \
