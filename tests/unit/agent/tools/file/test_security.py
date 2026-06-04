@@ -55,13 +55,13 @@ class TestLooksBinary(unittest.TestCase):
     def test_utf8_multibyte_text_not_binary(self):
         """UTF-8 with multi-byte chars (Chinese, Japanese, etc.) is text, not binary."""
         f = self.root / "readme.md"
-        f.write_text("你好世界\n这是中文\n" * 20)
+        f.write_text("你好世界\n这是中文\n" * 20, encoding="utf-8")
         self.assertFalse(looks_binary(f))
 
     def test_utf8_mixed_ascii_multibyte_not_binary(self):
         """Mixed ASCII + multi-byte UTF-8 is still text."""
         f = self.root / "mixed.txt"
-        f.write_text("Hello 世界\nTest 测试\n" * 30)
+        f.write_text("Hello 世界\nTest 测试\n" * 30, encoding="utf-8")
         self.assertFalse(looks_binary(f))
 
     def test_file_not_found(self):
@@ -194,4 +194,4 @@ class TestAtomicWrite(unittest.TestCase):
         f = self.root / "unicode.txt"
         content = "你好世界 🎉"
         atomic_write(f, content)
-        self.assertEqual(f.read_text(), content)
+        self.assertEqual(f.read_text(encoding="utf-8"), content)

@@ -1,4 +1,5 @@
 import asyncio
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -6,6 +7,7 @@ from pathlib import Path
 from laffyhand.agent.tools.bash import BashTool
 
 
+@unittest.skipIf(sys.platform == "win32", "Bash tool is Unix-specific")
 class TestBashTool(unittest.TestCase):
     def setUp(self):
         self.tool = BashTool()
@@ -41,6 +43,7 @@ class TestBashTool(unittest.TestCase):
             self.assertIn("marker.txt", result)
 
 
+@unittest.skipIf(sys.platform == "win32", "Bash tool (inline Python checks) uses python3, not available on Windows")
 class TestInlinePythonSecurity(unittest.TestCase):
     """Test the inline Python script security scanner."""
 

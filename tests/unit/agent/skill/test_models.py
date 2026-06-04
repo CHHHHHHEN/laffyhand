@@ -24,10 +24,11 @@ class TestSkillInfo(unittest.TestCase):
         self.assertEqual(info.description, "A test skill")
 
     def test_serialization(self):
+        from pathlib import Path as P
         info = SkillInfo(name="s", base_dir=Path("/a"), filepath=Path("/a/SKILL.md"))
         d = info.model_dump()
         self.assertEqual(d["name"], "s")
-        self.assertEqual(str(d["base_dir"]), "/a")
+        self.assertEqual(P(d["base_dir"]), P("/a"))
 
 
 class TestSkillNotFoundError(unittest.TestCase):

@@ -410,8 +410,9 @@ class GrepTool(BaseTool):
         include_glob = include or "*"
 
         def _scan() -> list[tuple[Path, list[int]]]:
+            glob_pattern = "**/" + include_glob
             matched_files = sorted(
-                glob_module.glob(include_glob, root_dir=root, recursive=True)
+                glob_module.glob(glob_pattern, root_dir=root, recursive=True)
             )
             result: list[tuple[Path, list[int]]] = []
             for rel_path in matched_files:

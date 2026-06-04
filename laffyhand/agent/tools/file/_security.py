@@ -98,7 +98,7 @@ BLOCKED_WRITE_PATTERNS: list[tuple[re.Pattern[str], str]] = [
 
 def blocked_write_path(path: Path) -> str | None:
     resolved = path.resolve()
-    spath = str(resolved)
+    spath = str(resolved).replace("\\", "/")
     for pattern, msg in BLOCKED_WRITE_PATTERNS:
         if pattern.search(spath):
             return msg
@@ -110,8 +110,8 @@ def atomic_write(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            f.write(content)
+        with os.fdopen(fd, "wb") as f:
+            f.write(content.encode("utf-8"))
             os.fsync(fd)
         Path(tmp).replace(path)
     except Exception:

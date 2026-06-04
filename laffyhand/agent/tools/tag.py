@@ -425,7 +425,7 @@ class TagTool(BaseTool):
                 tag = self._repo.get(real)
                 tags = [tag] if tag else []
             else:
-                prefix = real + "/" if not real.endswith("/") else real
+                prefix = os.path.join(real, "") if not real.endswith(os.sep) else real
                 tags = self._repo.list_by_prefix(prefix)
         elif status_filter:
             tags = self._repo.list_by_status(status_filter)
