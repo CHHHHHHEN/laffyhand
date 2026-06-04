@@ -283,14 +283,14 @@ class TestReadTool(unittest.TestCase):
 
     # ─── dedup / consecutive read guard ────────────────────
 
-    def test_identical_read_returns_unchanged(self):
+    def test_identical_read_returns_cached_content(self):
         f = self.root / "dedup.txt"
         f.write_text("hello")
         tool = ReadTool()
         r1 = asyncio.run(tool.run({"file_path": str(f)}))
         self.assertIn("1|hello", r1)
         r2 = asyncio.run(tool.run({"file_path": str(f)}))
-        self.assertIn("unchanged", r2.lower())
+        self.assertIn("1|hello", r2)
 
     def test_consecutive_count_resets_on_interleaved_read(self):
         f = self.root / "a.txt"
@@ -301,7 +301,7 @@ class TestReadTool(unittest.TestCase):
         asyncio.run(tool.run({"file_path": str(f)}))
         asyncio.run(tool.run({"file_path": str(f2)}))
         r = asyncio.run(tool.run({"file_path": str(f)}))
-        self.assertIn("unchanged", r.lower())
+        self.assertIn("1|AAA", r)
 
     def test_file_change_returns_new_content(self):
         f = self.root / "dedup.txt"

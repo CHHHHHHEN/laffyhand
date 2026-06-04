@@ -61,10 +61,9 @@ class TodoManager:
         id: Optional[str] = None,
     ) -> TodoItem:
         self._ensure_session(session_id)
-        # Validate custom ID uniqueness upfront
         if id is not None:
-            if self._repo.get(id) is not None:
-                raise ValueError(f"Task with id '{id}' already exists")
+            if self._repo.get_by_session_and_id(session_id, id) is not None:
+                raise ValueError(f"Task with id '{id}' already exists in this session")
         item_id = id if id is not None else _generate_id()
         item = TodoItem(
             id=item_id,
@@ -103,9 +102,9 @@ class TodoManager:
         for t in tasks:
             # If custom ID is provided, use it as-is; validate uniqueness.
             if t.id is not None:
-                if t.id in existing_ids or t.id in ids or self._repo.get(t.id) is not None:
+                if t.id in existing_ids or t.id in ids:
                     raise ValueError(
-                        f"Task id '{t.id}' conflicts with an existing task"
+                        f"Task id '{t.id}' conflicts with an existing task in this session"
                     )
                 item_id = t.id
             else:

@@ -140,8 +140,19 @@ class TestTodoManagerCustomID:
 
     def test_add_task_custom_id_conflict_raises_error(self, mgr):
         mgr.add_task("sess-1", "first", id="step1")
-        with pytest.raises(ValueError, match="already exists"):
+        with pytest.raises(ValueError, match="already exists in this session"):
             mgr.add_task("sess-1", "second", id="step1")
+
+    def test_add_task_same_id_different_session_ok(self, mgr, db):
+        db.execute(
+            "INSERT INTO session (id, provider, model, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+            ("sess-2", "", "", "2025-01-01T00:00:00", "2025-01-01T00:00:00"),
+        )
+        db.commit()
+        mgr.add_task("sess-1", "first session", id="step1")
+        item = mgr.add_task("sess-2", "second session", id="step1")
+        assert item.id == "step1"
+        assert item.session_id == "sess-2"
 
     def test_add_task_with_custom_id_and_depends_on(self, mgr):
         mgr.add_task("sess-1", "parent", id="parent1")
@@ -191,6 +202,18 @@ class TestTodoManagerCustomID:
                     TodoCreate(id="dup", content="second"),
                 ],
             )
+
+    def test_add_tasks_same_id_different_session_ok(self, mgr, db):
+        db.execute(
+            "INSERT INTO session (id, provider, model, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+            ("sess-2", "", "", "2025-01-01T00:00:00", "2025-01-01T00:00:00"),
+        )
+        db.commit()
+        mgr.add_tasks("sess-1", [TodoCreate(id="step1", content="sess1 task")])
+        items = mgr.add_tasks("sess-2", [TodoCreate(id="step1", content="sess2 task")])
+        assert len(items) == 1
+        assert items[0].id == "step1"
+        assert items[0].session_id == "sess-2"
 
     def test_add_tasks_with_missing_dependency_reference(self, mgr):
         """Using references to custom IDs as depends_on should work by referencing the actual ID."""

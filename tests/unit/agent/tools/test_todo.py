@@ -231,7 +231,7 @@ class TestTodoTool:
             )
         )
         assert "Error" in result
-        assert "already exists" in result
+        assert "already exists in this session" in result
 
     def test_read_with_status_filter(self, tool, session_id):
         asyncio.run(

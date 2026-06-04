@@ -4,9 +4,33 @@ import sqlite3
 
 from loguru import logger
 
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = 11
 
 _MIGRATIONS: dict[int, str] = {
+    11: """
+        CREATE TABLE IF NOT EXISTS todo_v2 (
+            id              TEXT NOT NULL,
+            session_id      TEXT NOT NULL REFERENCES session(id) ON DELETE CASCADE,
+            content         TEXT NOT NULL,
+            status          TEXT NOT NULL DEFAULT 'pending'
+                CHECK (status IN ('pending','in_progress','completed','cancelled','blocked')),
+            priority        TEXT NOT NULL DEFAULT 'medium'
+                CHECK (priority IN ('high','medium','low')),
+            depends_on      TEXT NOT NULL DEFAULT '[]',
+            created_at      TEXT NOT NULL,
+            updated_at      TEXT NOT NULL,
+            completed_at    TEXT,
+            task_tool_id    TEXT,
+            metadata        TEXT NOT NULL DEFAULT '{}'
+                CHECK (JSON_VALID(metadata)),
+            PRIMARY KEY (session_id, id)
+        );
+        INSERT INTO todo_v2 SELECT * FROM todo;
+        DROP TABLE todo;
+        ALTER TABLE todo_v2 RENAME TO todo;
+        CREATE INDEX IF NOT EXISTS idx_todo_session ON todo(session_id, status);
+        CREATE INDEX IF NOT EXISTS idx_todo_task_tool ON todo(task_tool_id);
+    """,
     10: """
         ALTER TABLE file_tag ADD COLUMN exports TEXT NOT NULL DEFAULT '{}' CHECK (JSON_VALID(exports));
         ALTER TABLE file_tag ADD COLUMN side_effects TEXT NOT NULL DEFAULT '';
@@ -124,7 +148,7 @@ CREATE INDEX IF NOT EXISTS idx_session_status ON session(status, updated_at);
 CREATE INDEX IF NOT EXISTS idx_session_created ON session(created_at DESC);
 
 CREATE TABLE IF NOT EXISTS todo (
-    id              TEXT PRIMARY KEY,
+    id              TEXT NOT NULL,
     session_id      TEXT NOT NULL REFERENCES session(id) ON DELETE CASCADE,
     content         TEXT NOT NULL,
     status          TEXT NOT NULL DEFAULT 'pending'
@@ -137,7 +161,8 @@ CREATE TABLE IF NOT EXISTS todo (
     completed_at    TEXT,
     task_tool_id    TEXT,
     metadata        TEXT NOT NULL DEFAULT '{}'
-        CHECK (JSON_VALID(metadata))
+        CHECK (JSON_VALID(metadata)),
+    PRIMARY KEY (session_id, id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_todo_session ON todo(session_id, status);

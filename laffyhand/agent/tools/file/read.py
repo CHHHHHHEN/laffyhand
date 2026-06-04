@@ -233,7 +233,7 @@ class ReadTool(BaseTool):
         return await self._run_multi(paths, params)
 
     async def _run_single(self, file_path: str, params: dict[str, Any]) -> str:
-        path = Path(file_path)
+        path = Path(file_path.strip())
 
         if not path.exists():
             msg = f"File not found: {path}"
@@ -273,7 +273,7 @@ class ReadTool(BaseTool):
             current_mtime = 0.0
 
         if key in self._read_cache:
-            cached_mtime, _ = self._read_cache[key]
+            cached_mtime, cached_result = self._read_cache[key]
             if cached_mtime == current_mtime:
                 self._consecutive[key] = self._consecutive.get(key, 0) + 1
                 count = self._consecutive[key]
@@ -282,10 +282,7 @@ class ReadTool(BaseTool):
                         f"File `{path}` has been read {count} times consecutively "
                         "without changes. Try a different approach."
                     )
-                msg = "File unchanged since last read."
-                if count > 1:
-                    msg += f" (consecutive read #{count})"
-                return msg
+                return cached_result
 
         self._consecutive.pop(key, None)
 
