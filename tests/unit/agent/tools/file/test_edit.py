@@ -387,3 +387,207 @@ class TestEditTool(unittest.TestCase):
         self.assertNotIn("fuzzy", result)
         self.assertIn("replaced 3", result)
         self.assertEqual(f.read_text(), "baz bar baz bar baz")
+
+    # ─── multi-edit (changes array) ────────────────────────────
+
+    def test_multi_edit_basic(self):
+        f = self.root / "test.txt"
+        f.write_text("foo\nbar\nbaz\n")
+        tool = EditTool()
+        result = asyncio.run(
+            tool.run({
+                "file_path": str(f),
+                "changes": [
+                    {"old_string": "foo", "new_string": "qux"},
+                    {"old_string": "baz", "new_string": "quux"},
+                ],
+            })
+        )
+        self.assertIn("applied 2 change(s)", result)
+        self.assertIn("--- ", result)
+        self.assertEqual(f.read_text(), "qux\nbar\nquux\n")
+
+    def test_multi_edit_single_change(self):
+        f = self.root / "test.txt"
+        f.write_text("hello world")
+        tool = EditTool()
+        result = asyncio.run(
+            tool.run({
+                "file_path": str(f),
+                "changes": [
+                    {"old_string": "hello", "new_string": "hi"},
+                ],
+            })
+        )
+        self.assertIn("applied 1 change(s)", result)
+        self.assertEqual(f.read_text(), "hi world")
+
+    def test_multi_edit_replace_all(self):
+        f = self.root / "test.txt"
+        f.write_text("x x x\ny y y\n")
+        tool = EditTool()
+        result = asyncio.run(
+            tool.run({
+                "file_path": str(f),
+                "changes": [
+                    {"old_string": "x", "new_string": "a", "replaceAll": True},
+                    {"old_string": "y", "new_string": "b", "replaceAll": True},
+                ],
+            })
+        )
+        self.assertIn("applied 2 change(s)", result)
+        self.assertEqual(f.read_text(), "a a a\nb b b\n")
+
+    def test_multi_edit_regex_and_literal(self):
+        f = self.root / "test.txt"
+        f.write_text("foo123 bar456")
+        tool = EditTool()
+        result = asyncio.run(
+            tool.run({
+                "file_path": str(f),
+                "changes": [
+                    {"old_pattern": r"\d+", "new_string": "NUM"},
+                    {"old_string": "bar", "new_string": "baz"},
+                ],
+            })
+        )
+        self.assertIn("applied 2 change(s)", result)
+        self.assertEqual(f.read_text(), "fooNUM baz456")
+
+    def test_multi_edit_chain_dependent(self):
+        f = self.root / "test.txt"
+        f.write_text("a")
+        tool = EditTool()
+        result = asyncio.run(
+            tool.run({
+                "file_path": str(f),
+                "changes": [
+                    {"old_string": "a", "new_string": "b"},
+                    {"old_string": "b", "new_string": "c"},
+                ],
+            })
+        )
+        self.assertIn("applied 2 change(s)", result)
+        self.assertEqual(f.read_text(), "c")
+
+    def test_multi_edit_first_change_fails(self):
+        f = self.root / "test.txt"
+        f.write_text("hello world")
+        tool = EditTool()
+        result = asyncio.run(
+            tool.run({
+                "file_path": str(f),
+                "changes": [
+                    {"old_string": "zzz", "new_string": "xxx"},
+                    {"old_string": "hello", "new_string": "hi"},
+                ],
+            })
+        )
+        self.assertIn("Change 1", result)
+        self.assertIn("not found", result)
+        # File should be unchanged (all-or-nothing)
+        self.assertEqual(f.read_text(), "hello world")
+
+    def test_multi_edit_second_change_fails(self):
+        f = self.root / "test.txt"
+        f.write_text("hello world foo")
+        tool = EditTool()
+        result = asyncio.run(
+            tool.run({
+                "file_path": str(f),
+                "changes": [
+                    {"old_string": "hello", "new_string": "hi"},
+                    {"old_string": "zzz", "new_string": "xxx"},
+                ],
+            })
+        )
+        self.assertIn("Change 2", result)
+        self.assertIn("not found", result)
+        # File should be unchanged (all-or-nothing)
+        self.assertEqual(f.read_text(), "hello world foo")
+
+    def test_multi_edit_missing_new_string(self):
+        f = self.root / "test.txt"
+        f.write_text("hello")
+        tool = EditTool()
+        result = asyncio.run(
+            tool.run({
+                "file_path": str(f),
+                "changes": [
+                    {"old_string": "hello"},
+                ],
+            })
+        )
+        self.assertIn("Change 1", result)
+        self.assertIn("new_string", result)
+
+    def test_multi_edit_missing_both_old(self):
+        f = self.root / "test.txt"
+        f.write_text("hello")
+        tool = EditTool()
+        result = asyncio.run(
+            tool.run({
+                "file_path": str(f),
+                "changes": [
+                    {"new_string": "hi"},
+                ],
+            })
+        )
+        self.assertIn("Change 1", result)
+        self.assertIn("old_string", result)
+
+    def test_multi_edit_empty_changes(self):
+        f = self.root / "test.txt"
+        f.write_text("hello")
+        tool = EditTool()
+        result = asyncio.run(
+            tool.run({
+                "file_path": str(f),
+                "changes": [],
+            })
+        )
+        self.assertIn("No changes", result)
+
+    def test_multi_edit_invalid_regex(self):
+        f = self.root / "test.txt"
+        f.write_text("hello")
+        tool = EditTool()
+        result = asyncio.run(
+            tool.run({
+                "file_path": str(f),
+                "changes": [
+                    {"old_pattern": r"[invalid", "new_string": "x"},
+                ],
+            })
+        )
+        self.assertIn("Change 1", result)
+        self.assertIn("invalid regex", result)
+
+    def test_multi_edit_file_not_found(self):
+        tool = EditTool()
+        result = asyncio.run(
+            tool.run({
+                "file_path": str(self.root / "nope.txt"),
+                "changes": [
+                    {"old_string": "a", "new_string": "b"},
+                ],
+            })
+        )
+        self.assertIn("not found", result.lower())
+
+    def test_multi_edit_contains_diff(self):
+        f = self.root / "test.txt"
+        f.write_text("foo\nbar\nbaz\n")
+        tool = EditTool()
+        result = asyncio.run(
+            tool.run({
+                "file_path": str(f),
+                "changes": [
+                    {"old_string": "foo", "new_string": "qux"},
+                    {"old_string": "baz", "new_string": "quux"},
+                ],
+            })
+        )
+        self.assertIn("--- ", result)
+        self.assertIn("+qux", result)
+        self.assertIn("+quux", result)

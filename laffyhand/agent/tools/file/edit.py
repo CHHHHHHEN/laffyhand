@@ -30,7 +30,10 @@ class EditTool(BaseTool):
         "Use **old_string** for literal text replacement (with fuzzy fallback). "
         "Use **old_pattern** for regex-based replacement. "
         "When **replaceAll** is true, all matching occurrences are replaced "
-        "(supports both exact and fuzzy matching)."
+        "(supports both exact and fuzzy matching).\n\n"
+        "Use **changes** to apply multiple edits in a single tool call. "
+        "Each entry in the array supports the same fields (old_string, "
+        "old_pattern, new_string, replaceAll) and is applied sequentially."
     )
 
     def _input_schema(self) -> dict[str, Any]:
@@ -57,10 +60,40 @@ class EditTool(BaseTool):
                     "type": "boolean",
                     "description": "Replace all occurrences (default false). Works with both old_string and old_pattern.",
                 },
+                "changes": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "old_string": {
+                                "type": "string",
+                                "description": "The exact text to find and replace for this change",
+                            },
+                            "old_pattern": {
+                                "type": "string",
+                                "description": "Regex pattern for this change (alternative to old_string)",
+                            },
+                            "new_string": {
+                                "type": "string",
+                                "description": "The replacement text for this change",
+                            },
+                            "replaceAll": {
+                                "type": "boolean",
+                                "description": "Replace all occurrences for this change (default false)",
+                            },
+                        },
+                        "anyOf": [
+                            {"required": ["new_string", "old_string"]},
+                            {"required": ["new_string", "old_pattern"]},
+                        ],
+                    },
+                    "description": "Array of sequential edits to apply to the same file",
+                },
             },
             "anyOf": [
                 {"required": ["file_path", "old_string", "new_string"]},
                 {"required": ["file_path", "old_pattern", "new_string"]},
+                {"required": ["file_path", "changes"]},
             ],
         }
 
@@ -70,14 +103,19 @@ class EditTool(BaseTool):
         if not path.is_absolute():
             path = Path.cwd() / path
         path = path.resolve()
-        old = params.get("old_string", "")
-        new = params["new_string"]
-        replace_all = params.get("replaceAll", False)
-        old_pattern = params.get("old_pattern")
 
         block_reason = blocked_write_path(path)
         if block_reason:
             return f"Blocked: {block_reason}: {path}"
+
+        changes = params.get("changes")
+        if changes is not None:
+            return await self._apply_multi(path, changes)
+
+        old = params.get("old_string", "")
+        new = params["new_string"]
+        replace_all = params.get("replaceAll", False)
+        old_pattern = params.get("old_pattern")
 
         if not path.exists():
             if not old and not old_pattern:
@@ -100,6 +138,74 @@ class EditTool(BaseTool):
             return await self._replace_all(path, content, old, new)
 
         return await self._replace_one(path, content, old, new)
+
+    async def _apply_multi(self, path: Path, changes: list[dict[str, Any]]) -> str:
+        if not changes:
+            return f"No changes provided for {path}"
+
+        if not path.exists():
+            return f"File not found: {path}"
+        if path.is_dir():
+            return f"Cannot edit a directory: {path}"
+
+        content = path.read_text(encoding="utf-8")
+        original = content
+
+        for i, change in enumerate(changes):
+            old = change.get("old_string")
+            pattern = change.get("old_pattern")
+            new = change.get("new_string")
+            replace_all = change.get("replaceAll", False)
+
+            if not new:
+                return f"Change {i + 1}: 'new_string' is required"
+            if not old and not pattern:
+                return f"Change {i + 1}: 'old_string' or 'old_pattern' is required"
+
+            if pattern:
+                try:
+                    compiled = re.compile(pattern)
+                except re.error as e:
+                    return f"Change {i + 1}: invalid regex: {e}"
+                matches = list(compiled.finditer(content))
+                if not matches:
+                    return f"Change {i + 1}: pattern not found: {pattern}"
+                if replace_all:
+                    content = compiled.sub(new, content)
+                else:
+                    content = compiled.sub(new, content, count=1)
+            elif not old:
+                content = new + "\n" + content
+            elif replace_all:
+                exact_count = content.count(old)
+                fuzzy_matches = find_all_fuzzy(content, old)
+                if not fuzzy_matches:
+                    return f"Change {i + 1}: old_string not found: {old}"
+                if exact_count > 0 and len(fuzzy_matches) == exact_count:
+                    content = content.replace(old, new)
+                else:
+                    for start, end in reversed(fuzzy_matches):
+                        content = content[:start] + new + content[end:]
+            else:
+                matched = False
+                for _name, match_fn in STRATEGIES:
+                    match = match_fn(content, old)
+                    if match is not None:
+                        start, end = match
+                        content = content[:start] + new + content[end:]
+                        matched = True
+                        break
+                if not matched:
+                    return f"Change {i + 1}: old_string not found: {old}"
+
+        line_ending = detect_line_ending(path)
+        content = normalize_newlines(content, line_ending)
+        atomic_write(path, content)
+
+        additions, deletions = count_diff(original, content)
+        logger.info(f"Edit: applied {len(changes)} change(s) to {path}")
+        result = f"Edited {path}: applied {len(changes)} change(s) (+{additions} lines, -{deletions} lines)"
+        return self._append_diff(result, path, original, content)
 
     def _append_diff(self, result: str, path: Path, old_content: str, new_content: str) -> str:
         diff_display = format_diff(path, old_content, new_content)
