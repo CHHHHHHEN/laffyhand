@@ -106,6 +106,111 @@ class TestReadTool(unittest.TestCase):
         # header + 2 entries
         self.assertEqual(len(lines), 3)
 
+    # ─── directory depth control ────────────────────────────
+
+    def test_read_directory_depth_1_is_flat(self):
+        sub = self.root / "sub"
+        sub.mkdir()
+        (sub / "deep.txt").write_text("content\n")
+        tool = ReadTool()
+        result = asyncio.run(tool.run({"file_path": str(self.root), "depth": 1}))
+        self.assertIn("sub/", result)
+        self.assertNotIn("deep.txt", result)
+
+    def test_read_directory_depth_2_shows_nested_files(self):
+        sub = self.root / "sub"
+        sub.mkdir()
+        (sub / "deep.txt").write_text("content\n")
+        tool = ReadTool()
+        result = asyncio.run(tool.run({"file_path": str(self.root), "depth": 2}))
+        self.assertIn("sub/", result)
+        self.assertIn("deep.txt", result)
+
+    def test_read_directory_depth_2_stops_after_2_levels(self):
+        a = self.root / "a"
+        b = a / "b"
+        c = b / "c"
+        a.mkdir()
+        b.mkdir()
+        c.mkdir()
+        (c / "leaf.txt").write_text("deep\n")
+        tool = ReadTool()
+        result = asyncio.run(tool.run({"file_path": str(self.root), "depth": 2}))
+        self.assertIn("a/", result)
+        self.assertIn("b/", result)
+        self.assertNotIn("c/", result)
+        self.assertNotIn("leaf.txt", result)
+
+    def test_read_directory_depth_3_reaches_third_level(self):
+        a = self.root / "a"
+        b = a / "b"
+        c = b / "c"
+        a.mkdir()
+        b.mkdir()
+        c.mkdir()
+        (c / "leaf.txt").write_text("deep\n")
+        tool = ReadTool()
+        result = asyncio.run(tool.run({"file_path": str(self.root), "depth": 3}))
+        self.assertIn("a/", result)
+        self.assertIn("b/", result)
+        self.assertIn("c/", result)
+        self.assertNotIn("leaf.txt", result)
+
+    def test_read_directory_depth_4_reaches_files(self):
+        a = self.root / "a"
+        b = a / "b"
+        c = b / "c"
+        a.mkdir()
+        b.mkdir()
+        c.mkdir()
+        (c / "leaf.txt").write_text("deep\n")
+        tool = ReadTool()
+        result = asyncio.run(tool.run({"file_path": str(self.root), "depth": 4}))
+        self.assertIn("leaf.txt", result)
+
+    def test_read_directory_depth_0_returns_empty(self):
+        (self.root / "x.py").touch()
+        tool = ReadTool()
+        result = asyncio.run(tool.run({"file_path": str(self.root), "depth": 0}))
+        self.assertEqual(result, "")
+
+    def test_read_directory_depth_defaults_to_1(self):
+        sub = self.root / "sub"
+        sub.mkdir()
+        (sub / "inner.txt").write_text("content\n")
+        tool = ReadTool()
+        result = asyncio.run(tool.run({"file_path": str(self.root)}))
+        self.assertIn("sub/", result)
+        self.assertNotIn("inner.txt", result)
+
+    def test_read_directory_depth_shows_line_count_in_nested_files(self):
+        sub = self.root / "sub"
+        sub.mkdir()
+        (sub / "code.py").write_text("a\nb\nc\n")
+        tool = ReadTool()
+        result = asyncio.run(tool.run({"file_path": str(self.root), "depth": 2}))
+        self.assertIn("code.py (3 lines)", result)
+
+    def test_read_batch_with_depth(self):
+        sub = self.root / "sub"
+        sub.mkdir()
+        (sub / "nested.txt").write_text("data\n")
+        tool = ReadTool()
+        result = asyncio.run(tool.run({"paths": [str(self.root)], "depth": 2}))
+        self.assertIn("sub/", result)
+        self.assertIn("nested.txt", result)
+
+    def test_read_directory_depth_uses_indentation(self):
+        sub = self.root / "sub"
+        sub.mkdir()
+        (sub / "inner.txt").write_text("data\n")
+        tool = ReadTool()
+        result = asyncio.run(tool.run({"file_path": str(self.root), "depth": 2}))
+        # nested file should be preceded by whitespace
+        for line in result.splitlines():
+            if "inner.txt" in line:
+                self.assertTrue(line.startswith("    "), f"Expected indentation: {line!r}")
+
     # ─── binary detection ───────────────────────────────────
 
     def test_read_binary_by_extension(self):
