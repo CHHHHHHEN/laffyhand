@@ -121,14 +121,22 @@ export function useChat() {
                 case "step-finish":
                   if (event.reason === "tool_calls") {
                     const stepUsage = event.usage
-                      ? { inputTokens: event.usage.input_tokens, outputTokens: event.usage.output_tokens }
+                      ? {
+                          inputTokens: event.usage.input_tokens,
+                          outputTokens: event.usage.output_tokens,
+                          reasoningTokens: event.usage.reasoning_tokens,
+                        }
                       : undefined
                     store.finalizeMessage(sessionId, stepUsage)
                   }
                   break
                 case "finish": {
                   const usage = event.usage
-                    ? { inputTokens: event.usage.input_tokens, outputTokens: event.usage.output_tokens }
+                    ? {
+                        inputTokens: event.usage.input_tokens,
+                        outputTokens: event.usage.output_tokens,
+                        reasoningTokens: event.usage.reasoning_tokens,
+                      }
                     : undefined
                   store.finalizeMessage(sessionId, usage, event.session_usage ?? null)
 

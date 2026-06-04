@@ -41,7 +41,7 @@ export interface Message {
   reasoning?: string
   toolCalls?: ToolCall[]
   finishReason?: string
-  usage?: { inputTokens: number; outputTokens: number }
+  usage?: { inputTokens: number; outputTokens: number; reasoningTokens?: number }
   permissionInfo?: PermissionInfo
   createdAt: number
 }
@@ -85,6 +85,6 @@ export interface StreamChunk {
   type: "reasoning" | "content" | "tool_calls" | "finish" | "error"
   text: string
   finishReason?: string
-  usage?: { inputTokens: number; outputTokens: number }
+  usage?: { inputTokens: number; outputTokens: number; reasoningTokens?: number }
   toolCalls?: ToolCall[]
 }

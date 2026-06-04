@@ -37,7 +37,7 @@ export interface ChatStore {
   setReasoning: (sessionId: string, text: string) => void
   addToolCall: (sessionId: string, toolCall: ToolCall) => void
   updateToolCallStatus: (sessionId: string, id: string, status: ToolCallStatus, result?: string, isError?: boolean) => void
-  finalizeMessage: (sessionId: string, usage?: { inputTokens: number; outputTokens: number }, sessionUsage?: SessionUsage | null) => void
+  finalizeMessage: (sessionId: string, usage?: { inputTokens: number; outputTokens: number; reasoningTokens?: number }, sessionUsage?: SessionUsage | null) => void
   setError: (sessionId: string, error: string) => void
   clearMessages: (sessionId: string) => void
   loadMessages: (sessionId: string, messages: Message[]) => void

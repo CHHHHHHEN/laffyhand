@@ -117,10 +117,13 @@ def _serialize_messages(messages: list[Message]) -> list[dict[str, Any]]:
                         tool_entry["status"] = "pending"
                     entry["toolCalls"].append(tool_entry)
             if msg.tokens:
-                entry["usage"] = {
+                usage = {
                     "inputTokens": msg.tokens.input_tokens,
                     "outputTokens": msg.tokens.output_tokens,
                 }
+                if msg.tokens.reasoning_tokens is not None:
+                    usage["reasoningTokens"] = msg.tokens.reasoning_tokens
+                entry["usage"] = usage
             result.append(entry)
         elif isinstance(msg, ToolMessage):
             # Skip — content is embedded in the corresponding AssistantMessage toolCalls

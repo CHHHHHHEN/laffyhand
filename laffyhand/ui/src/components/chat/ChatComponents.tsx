@@ -230,7 +230,7 @@ export function ToolCallCard({ toolCall }: { toolCall: ToolCall }) {
 }
 
 /** Token 消耗标签 */
-export function UsageBadge({ usage }: { usage: { inputTokens: number; outputTokens: number } }) {
+export function UsageBadge({ usage }: { usage: { inputTokens: number; outputTokens: number; reasoningTokens?: number } }) {
   return (
     <div className="flex items-center gap-2 text-[10px] text-gray-400 dark:text-gray-500 bg-gray-50 dark:bg-gray-800/50 rounded-md px-2 py-1 w-fit">
       <span className="flex items-center gap-0.5" title="Input tokens">
@@ -246,6 +246,17 @@ export function UsageBadge({ usage }: { usage: { inputTokens: number; outputToke
         </svg>
         {usage.outputTokens}
       </span>
+      {usage.reasoningTokens !== undefined && (
+        <>
+          <span className="text-gray-300 dark:text-gray-600">·</span>
+          <span className="flex items-center gap-0.5" title="Reasoning tokens">
+            <svg className="w-2.5 h-2.5 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+            </svg>
+            {usage.reasoningTokens}
+          </span>
+        </>
+      )}
     </div>
   )
 }
