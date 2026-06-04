@@ -36,8 +36,16 @@ _DANGEROUS_COMMANDS: list[tuple[re.Pattern[str], str]] = [
         "network download tool is blocked (data exfiltration risk)",
     ),
     (
-        re.compile(r"\b(python|python3|perl|ruby|node)\s+-(c|e)\b"),
-        "inline script execution is blocked",
+        re.compile(r"\bperl\s+-e\b"),
+        "inline perl execution is blocked",
+    ),
+    (
+        re.compile(r"\bruby\s+-e\b"),
+        "inline ruby execution is blocked",
+    ),
+    (
+        re.compile(r"\bnode\s+-e\b"),
+        "inline node execution is blocked",
     ),
     (re.compile(r"\bdeno\s+eval\b"), "deno eval is blocked (arbitrary code execution)"),
     (re.compile(r"\bsudo\b"), "sudo is blocked (privilege escalation)"),
@@ -55,6 +63,64 @@ _DANGEROUS_COMMANDS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"\bsu\b"), "su is blocked (switch user)"),
     (re.compile(r"\|\s*(sh|bash|zsh)\b"), "pipe to shell is blocked"),
 ]
+
+# Regex to detect inline Python execution (python -c or python3 -c)
+_INLINE_PYTHON_RE = re.compile(r"\bpython[23]?\s+-c\b")
+
+# Dangerous Python operations to scan for in inline scripts
+# Matches write operations, code execution, subprocess, and network access
+_DANGEROUS_PYTHON_PATTERNS: list[tuple[re.Pattern[str], str]] = [
+    (re.compile(r"\beval\s*\("), "eval() in inline Python is blocked"),
+    (re.compile(r"\bexec\s*\("), "exec() in inline Python is blocked"),
+    (re.compile(r"\bcompile\s*\("), "compile() in inline Python is blocked"),
+    (re.compile(r"\bos\.system\s*\("), "os.system() in inline Python is blocked"),
+    (re.compile(r"\bos\.popen\s*\("), "os.popen() in inline Python is blocked"),
+    (re.compile(r"\bsubprocess\.\w+\s*\("), "subprocess.*() in inline Python is blocked"),
+    (re.compile(r"\bshutil\.\w+\s*\("), "shutil.*() in inline Python is blocked"),
+    (re.compile(r"\bopen\s*\([^)]*['\"][waxb+]"), "file write mode in inline Python is blocked; use the file tools"),
+    (re.compile(r"\bPath\s*\([^)]*\)\s*\.\s*(write_text|write_bytes|unlink|rmdir|mkdir)\s*\("), "Path write operations in inline Python are blocked; use the file tools"),
+    (re.compile(r"\bsocket\.\w+\s*\("), "socket operations in inline Python are blocked (network egress)"),
+    (re.compile(r"\b__import__\s*\("), "dynamic imports in inline Python are blocked"),
+    (re.compile(r"\bimportlib\."), "importlib in inline Python is blocked"),
+    (re.compile(r"\bbase64\s*\.\s*(b64decode|decode)\s*\("), "base64 decode in inline Python is blocked (encoded payload)"),
+]
+
+
+def _extract_inline_code(command: str) -> str | None:
+    """Extract the Python code from a `python[3] -c "..."` command.
+
+    Returns the code string if found, or None if this isn't an inline Python command.
+    """
+    m = _INLINE_PYTHON_RE.search(command)
+    if not m:
+        return None
+    # Find the quoted string after -c
+    rest = command[m.end():].lstrip()
+    if not rest:
+        return None
+    # Handle single or double quotes
+    quote_char = rest[0]
+    if quote_char not in ('"', "'"):
+        return None
+    # Find the closing quote
+    end = rest.find(quote_char, 1)
+    if end == -1:
+        return None
+    return rest[1:end]
+
+
+def _check_inline_python(command: str) -> str | None:
+    """Check inline Python code for dangerous patterns.
+
+    Returns None if safe, or an error message if blocked.
+    """
+    code = _extract_inline_code(command)
+    if code is None:
+        return None
+    for pattern, msg in _DANGEROUS_PYTHON_PATTERNS:
+        if pattern.search(code):
+            return f"Blocked: {msg}"
+    return None
 
 
 def _redact_command(command: str) -> str:
@@ -102,6 +168,12 @@ class BashTool(BaseTool):
         timeout = timeout_ms / 1000
         workdir = params.get("workdir")
         logger.info(f"Bash: {_redact_command(command)}")
+
+        # Check for dangerous patterns in inline Python scripts
+        python_blocked = _check_inline_python(command)
+        if python_blocked is not None:
+            logger.warning(f"Bash blocked: {python_blocked}: {_redact_command(command)}")
+            return python_blocked
 
         for pattern, msg in _DANGEROUS_COMMANDS:
             if pattern.search(command):
