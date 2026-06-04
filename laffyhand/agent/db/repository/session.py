@@ -131,6 +131,8 @@ class SessionRepo:
         )
 
     def delete(self, session_id: str) -> None:
+        self._conn.execute("UPDATE session SET parent_id=NULL WHERE parent_id=?", (session_id,))
+        self._conn.execute("UPDATE session SET fork_id=NULL WHERE fork_id=?", (session_id,))
         self._conn.execute("DELETE FROM session WHERE id=?", (session_id,))
 
     def set_title(self, session_id: str, title: str) -> None:

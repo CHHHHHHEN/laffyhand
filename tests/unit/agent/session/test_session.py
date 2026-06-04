@@ -81,6 +81,28 @@ class TestSessionCRUD:
         session_manager.delete(session.id)
         assert session_manager.get(session.id) is None
 
+    def test_delete_with_child_sessions(self, session_manager: SessionManager) -> None:
+        parent = session_manager.create()
+        child1 = session_manager.create(parent_id=parent.id)
+        child2 = session_manager.create(parent_id=parent.id)
+        session_manager.delete(parent.id)
+        assert session_manager.get(parent.id) is None
+        c1 = session_manager.get(child1.id)
+        assert c1 is not None
+        assert c1.parent_id is None
+        c2 = session_manager.get(child2.id)
+        assert c2 is not None
+        assert c2.parent_id is None
+
+    def test_delete_with_forked_sessions(self, session_manager: SessionManager) -> None:
+        orig = session_manager.create()
+        fork = session_manager.create(fork_id=orig.id)
+        session_manager.delete(orig.id)
+        assert session_manager.get(orig.id) is None
+        f = session_manager.get(fork.id)
+        assert f is not None
+        assert f.fork_id is None
+
     def test_update(self, session_manager: SessionManager) -> None:
         session = session_manager.create(title="old")
         session.title = "new"
