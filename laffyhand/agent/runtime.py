@@ -880,6 +880,20 @@ class AgentRuntime:
         return True
 
     async def shutdown(self) -> None:
+        # Cancel in-flight background agent turns before saving state
+        for sid in list(self._session_tasks):
+            self.cancel_background_agent_turn(sid)
+        if self._session_tasks:
+            await asyncio.wait(
+                list(self._session_tasks.values()),
+                timeout=5.0,
+            )
+
+        # Cancel in-flight subagent tasks
+        if self.subagent_manager is not None:
+            self.subagent_manager.cancel_all()
+
+        # Now save state — no more in-flight tasks modifying state
         for sid, state in list(self._states.items()):
             save_id = state.session_id or sid
             if self.session_manager.get(save_id):

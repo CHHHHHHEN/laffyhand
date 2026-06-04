@@ -377,6 +377,15 @@ class SubagentManager:
                 logger.info(f"Cancelled subagent {task_id} for session {session_id}")
             self._cleanup_task(task_id, session_id)
 
+    def cancel_all(self) -> None:
+        """Cancel all running subagent tasks across all sessions."""
+        for task_id in list(self._running):
+            running = self._running.get(task_id)
+            if running is not None:
+                running.task.cancel()
+                logger.info(f"Cancelled subagent {task_id} (cancel_all)")
+            self._cleanup_task(task_id, running.parent_session_id if running else "")
+
     async def drain_events(self, session_id: str) -> list[Any]:
         """Drain buffered background subagent events for a parent session."""
         events: list[Any] = []

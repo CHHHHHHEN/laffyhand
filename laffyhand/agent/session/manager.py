@@ -39,6 +39,10 @@ class SessionManager:
         return self._conn
 
     def close(self) -> None:
+        try:
+            self._conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        except Exception:
+            pass
         self._conn.close()
 
     def __enter__(self) -> SessionManager:

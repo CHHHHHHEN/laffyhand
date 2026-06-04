@@ -106,6 +106,12 @@ async def _run_gateway_serve(args: argparse.Namespace, config: LaffyConfig) -> N
             gateway = GatewayServer(runtime, transport)
             await gateway.serve()
     finally:
+        # Close transport first so in-flight SSE/WS streaming tasks are
+        # cancelled, THEN save state and close the database.
+        if listen.startswith("ws://"):
+            await ws_mgr.close()
+        elif listen.startswith("http://"):
+            await http_mgr.close()
         await runtime.shutdown()
         for sig in (signal.SIGTERM, signal.SIGINT):
             try:

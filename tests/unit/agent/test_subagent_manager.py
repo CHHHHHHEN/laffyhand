@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import MagicMock, AsyncMock, patch
 
 import pytest
@@ -322,6 +323,43 @@ class TestSubagentManager:
     async def test_cancel_session_noop_for_empty_session(self, subagent_manager):
         subagent_manager.cancel_session("empty")
         assert subagent_manager.active_count() == 0
+
+    @pytest.mark.anyio
+    async def test_cancel_all_cleans_up_all_tasks(self, subagent_manager, session_manager, agent_info, tool_registry, parent_permission):
+        parent = session_manager.create()
+
+        def _make_task(name: str):
+            async def _fake():
+                try:
+                    await asyncio.Event().wait()
+                except asyncio.CancelledError:
+                    pass
+            t = asyncio.create_task(_fake())
+            task_id = f"{name}-task"
+            from laffyhand.agent.subagent.manager import _RunningSubagent
+            running = _RunningSubagent(
+                task_id=task_id,
+                session_id="child",
+                parent_session_id=parent.id,
+                agent_type="test",
+                task=t,
+                status="running",
+            )
+            subagent_manager._running[task_id] = running
+            subagent_manager._session_tasks.setdefault(parent.id, set()).add(task_id)
+            return task_id
+
+        t1 = _make_task("t1")
+        t2 = _make_task("t2")
+
+        assert subagent_manager.active_count(parent.id) == 2
+
+        subagent_manager.cancel_all()
+
+        assert subagent_manager.active_count() == 0
+        assert subagent_manager.active_count(parent.id) == 0
+        assert t1 not in subagent_manager._running
+        assert t2 not in subagent_manager._running
 
     @pytest.mark.anyio
     async def test_poll_results_filters_by_session(self, subagent_manager):
