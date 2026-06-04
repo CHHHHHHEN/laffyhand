@@ -15,6 +15,8 @@ if TYPE_CHECKING:
 _TAG_DISPLAY_LEN = 60
 _STALE_NOTE = (
     "Note: Tags are maintained by AI agents. "
+    "Each file can have only one tag — "
+    "use 'tag update' to modify it or 'tag add' to overwrite it. "
     "If this information is stale, run "
     "'tag update --file_path <path> --message <updated description>' to update it."
 )
@@ -95,21 +97,40 @@ class TagTool(BaseTool):
     description = (
         "Manage file tags — persistent semantic annotations for files that persist across sessions. "
         "Tags help you remember what a file does without re-reading it.\n\n"
+        "IMPORTANT: Each file path can have exactly ONE tag. "
+        "A tag should be a holistic (macro-level) description of the file's overall purpose, "
+        "not just what was changed in the most recent edit. "
+        "For example, if a file implements authentication middleware, "
+        "the tag should say 'Authentication middleware — validates JWTs and enforces RBAC', "
+        "not 'Added JWT validation'.\n\n"
+        "Choosing the right operation:\n"
+        "- Use 'tag add' to create the first tag for a file, or to COMPLETELY OVERWRITE "
+        "an existing tag with a new macro-level description.\n"
+        "- Use 'tag update' to incrementally modify an existing tag (e.g. update the message, "
+        "or add/change key-value metadata) without losing the rest.\n"
+        "- If you are unsure whether a file already has a tag, "
+        "call 'tag list --path <path>' first.\n\n"
         "Best practice — always tag files you create or modify:\n"
         "After you use write/edit to create or modify a file, call 'tag add' or 'tag batch' "
-        "to annotate the file with a brief semantic description "
-        "(e.g. what the file does or what was changed). "
+        "to annotate the file with a holistic description "
+        "(what the file does overall, not just what was changed in this step). "
         "Similarly, after reading a file that lacks a tag or has a stale tag, "
         "update it so the knowledge persists across sessions. "
         "This maintains persistent context so you (and other agents) "
         "can understand the codebase without re-reading every file.\n\n"
         "Operations:\n"
-        "- add --file_path <path> --message <description>: Tag a file with a semantic description.\n"
-        "- update --file_path <path> --message <description>: Update the description.\n"
-        "- update --file_path <path> --key <k> --value <v>: Add or update a custom key-value field.\n"
+        "- add --file_path <path> --message <description>: "
+        "Tag a file with a macro-level semantic description. "
+        "If the file already has a tag, this COMPLETELY OVERWRITES it. "
+        "Use for first-time tagging or when the file's purpose has fundamentally changed.\n"
+        "- update --file_path <path> --message <description>: "
+        "Update the description of an existing tag without losing key-value metadata.\n"
+        "- update --file_path <path> --key <k> --value <v>: "
+        "Add or update a custom key-value field on an existing tag.\n"
         "- batch --tags <list>: Batch add/update multiple tags at once.\n"
-        "- list [path]: List all tags (optionally under a directory).\n"
-        "- prune [--delete]: Mark stale tags for missing files, or --delete to remove them entirely."
+        "- list [path]: List all tags (optionally under a directory). "
+        "Use 'tag list --path <file>' to check if a file already has a tag.\n"
+        "- prune [--delete]: Mark stale tags for missing files, or --delete to remove them permanently."
     )
     max_result_size = 50000
 
@@ -132,7 +153,7 @@ class TagTool(BaseTool):
                 },
                 "message": {
                     "type": "string",
-                    "description": "Semantic description of the file",
+                    "description": "Macro-level semantic description of the file's overall purpose, not just what was changed",
                 },
                 "key": {
                     "type": "string",
@@ -162,7 +183,7 @@ class TagTool(BaseTool):
                             },
                             "message": {
                                 "type": "string",
-                                "description": "Semantic description of the file",
+                                "description": "Macro-level semantic description of the file's overall purpose",
                             },
                         },
                         "required": ["file_path", "message"],
@@ -203,10 +224,19 @@ class TagTool(BaseTool):
         real = _normalize(file_path)
         if not os.path.exists(real):
             return f"Error: path does not exist: {file_path}"
+        # Check for existing tag before overwriting
+        existing = self._repo.get(real)
         # Reset stale status if re-tagging an existing file
         self._repo.upsert(real, message=message, status="active")
         self._repo.commit()
         date = _date_from_iso(datetime.now(timezone.utc).isoformat())
+        if existing:
+            return (
+                f"Tagged {real} (overwrote previous tag)\n"
+                f"  Previous: \U0001f516 {existing.message}\n"
+                f"  New:      \U0001f516 {message} ({date})\n"
+                f"{_STALE_NOTE}"
+            )
         return f"Tagged {real}\n\U0001f516 {message} ({date})\n{_STALE_NOTE}"
 
     def _update(self, params: dict[str, Any]) -> str:
@@ -216,6 +246,8 @@ class TagTool(BaseTool):
         real = _normalize(file_path)
         if not os.path.exists(real):
             return f"Error: path does not exist: {file_path}"
+        # Fetch existing to show diff
+        existing = self._repo.get(real)
         message = params.get("message")
         key = params.get("key")
         value = params.get("value")
@@ -228,7 +260,14 @@ class TagTool(BaseTool):
         self._repo.commit()
         tag = self._repo.get(real)
         assert tag is not None
-        return f"Updated tag for {real}\n{_format_tag_detail(tag)}\n{_STALE_NOTE}"
+        changes = []
+        if existing:
+            if message is not None and existing.message != message:
+                changes.append(f"  message: {existing.message} → {message}")
+            if key is not None:
+                old_val = existing.tags.get(key, "(none)")
+                changes.append(f"  {key}: {old_val} → {value or ''}")
+        return f"Updated tag for {real}\n" + "\n".join(changes) + "\n" + _format_tag_detail(tag) + "\n" + _STALE_NOTE
 
     def _batch(self, params: dict[str, Any]) -> str:
         tags = params.get("tags", [])

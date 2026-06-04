@@ -275,11 +275,14 @@ class TestTagTool:
         # Manually mark stale
         tool._repo.mark_stale(temp_file)
         tool._repo.commit()
-        # Re-add
+        # Re-add — should show "overwrote" since a tag already exists (stale)
         result = asyncio.run(
             tool.run({"operation": "add", "file_path": temp_file, "message": "re-tagged"})
         )
-        assert "Tagged" in result
+        assert "overwrote previous tag" in result
+        assert "Previous:" in result
+        assert "first" in result
+        assert "re-tagged" in result
         tag = tool._repo.get(temp_file)
         assert tag is not None
         assert tag.status == "active"
@@ -291,6 +294,8 @@ class TestTagTool:
             tool.run({"operation": "update", "file_path": temp_file, "message": "new desc"})
         )
         assert "Updated tag" in result
+        assert "message:" in result
+        assert "old desc → new desc" in result
         assert "new desc" in result
 
     def test_update_key_value(self, tool, temp_file):
@@ -306,7 +311,8 @@ class TestTagTool:
             )
         )
         assert "Updated tag" in result
-        assert "review_status" in result
+        assert "review_status:" in result
+        assert "(none) → needs refactor" in result
         assert "needs refactor" in result
 
     def test_update_key_value_preserves_message(self, tool, temp_file):
@@ -461,6 +467,7 @@ class TestTagTool:
         result = asyncio.run(
             tool.run({"operation": "add", "file_path": temp_file, "message": "test"})
         )
+        assert "Each file can have only one tag" in result
         assert "Tags are maintained by AI agents" in result
 
 
