@@ -41,6 +41,7 @@ export interface ChatStore {
   setError: (sessionId: string, error: string) => void
   clearMessages: (sessionId: string) => void
   loadMessages: (sessionId: string, messages: Message[]) => void
+  setStreaming: (sessionId: string, streaming: boolean) => void
   setSessionInfo: (sessionId: string, model: string, usage: SessionUsage | null) => void
   enqueueMessage: (sessionId: string, content: string) => void
   dequeueMessage: (sessionId: string) => string | undefined
@@ -96,6 +97,18 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     set((state) => {
       const { [sessionId]: _, ...rest } = state.sessions
       return { sessions: rest }
+    }),
+
+  setStreaming: (sessionId, streaming) =>
+    set((state) => {
+      const sess = state.sessions[sessionId]
+      if (!sess || sess.isStreaming === streaming) return state
+      return {
+        sessions: {
+          ...state.sessions,
+          [sessionId]: { ...sess, isStreaming: streaming },
+        },
+      }
     }),
 
   addPermissionRequest: (sessionId, req) =>

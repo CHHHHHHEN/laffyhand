@@ -476,10 +476,12 @@ class HTTPTransport:
                     "http",
                 )
             else:
+                null_transport = _NullTransport()
+                null_transport.dispatcher = self._dispatcher
                 result = await entry.func(
                     runtime,
                     message.params or {},
-                    _NullTransport(),
+                    null_transport,
                     message.id,
                     "http",
                 )

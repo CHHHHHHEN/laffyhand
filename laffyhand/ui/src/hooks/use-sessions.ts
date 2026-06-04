@@ -140,6 +140,14 @@ export function useCurrentSession(sessionId: string | undefined) {
     },
     enabled: !!sessionId,
     refetchOnWindowFocus: false,
+    // Auto-refresh every 2s while the session is streaming on the server
+    // (covers the page-refresh / reconnect scenario where the SSE stream
+    // was lost but the server continues processing).
+    refetchInterval: (query) => {
+      const data = query.state.data
+      if (data?.is_streaming) return 2000
+      return false
+    },
   })
 
   useEffect(() => {
@@ -171,34 +179,6 @@ export function useCurrentSession(sessionId: string | undefined) {
       }).catch(() => {})
     }
   }, [session, sessionId, addSession, loadMessages, setSessionInfoAction])
-
-  // Poll for reconnection when the server is still processing an agent turn
-  // after a page refresh (SSE was lost, but server continues running).
-  useEffect(() => {
-    if (!session?.is_streaming || !sessionId) return
-
-    // Don't poll if we already have an active SSE stream on the frontend
-    const sess = useChatStore.getState().sessions[sessionId]
-    if (sess?.isStreaming) return
-
-    const interval = setInterval(async () => {
-      try {
-        const result = await rpcClient.sessionLoad(sessionId)
-        addSession(sessionId)
-        setSessionInfoAction(sessionId, result.model ?? "", result.usage ?? null)
-        if (result.messages) {
-          loadMessages(sessionId, result.messages.map(toStoreMessage))
-        }
-        if (!result.is_streaming) {
-          clearInterval(interval)
-        }
-      } catch {
-        clearInterval(interval)
-      }
-    }, 2000)
-
-    return () => clearInterval(interval)
-  }, [session?.is_streaming, sessionId, addSession, loadMessages, setSessionInfoAction])
 
   return { session, isLoading, isError }
 }
