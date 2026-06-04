@@ -87,6 +87,7 @@ class TestBuildSystemPrompt:
         assert prompt.startswith("<soul>\nBase prompt.")
         assert "<tools>" in prompt
         assert "<env>" in prompt
+        assert "Current time:" in prompt
 
     @pytest.mark.anyio
     async def test_includes_skills_when_available(self, runtime):

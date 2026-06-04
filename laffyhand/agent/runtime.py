@@ -5,6 +5,7 @@ import copy
 import os
 import sys
 import uuid
+from datetime import datetime, timezone
 from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -296,9 +297,11 @@ class AgentRuntime:
         parts: list[str] = []
         parts.append(f"<soul>\n{base_prompt.strip()}\n</soul>")
 
+        now = datetime.now(timezone.utc)
         env_parts = [
             f"Working directory: {os.getcwd()}",
             f"Platform: {sys.platform}",
+            f"Current time: {now.isoformat()}",
         ]
         parts.append("<env>\n" + "\n".join(env_parts) + "\n</env>")
 
