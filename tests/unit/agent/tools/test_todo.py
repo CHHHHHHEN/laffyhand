@@ -168,6 +168,71 @@ class TestTodoTool:
         )
         assert "Unknown operation" in result
 
+    def test_add_with_custom_id(self, tool, session_id):
+        result = asyncio.run(
+            tool.run(
+                {
+                    "operation": "add",
+                    "id": "step1",
+                    "content": "custom id task",
+                    "session_id": session_id,
+                }
+            )
+        )
+        assert "step1" in result
+        assert "custom id task" in result
+
+    def test_add_with_custom_id_and_depends_on(self, tool, session_id):
+        asyncio.run(
+            tool.run(
+                {
+                    "operation": "add",
+                    "id": "parent1",
+                    "content": "parent task",
+                    "session_id": session_id,
+                }
+            )
+        )
+        result = asyncio.run(
+            tool.run(
+                {
+                    "operation": "add",
+                    "id": "child1",
+                    "content": "child task",
+                    "depends_on": ["parent1"],
+                    "session_id": session_id,
+                }
+            )
+        )
+        assert "child1" in result
+        # Read should show child as blocked
+        read = asyncio.run(tool.run({"operation": "read", "session_id": session_id}))
+        assert "blocked" in read
+
+    def test_add_with_custom_id_conflict(self, tool, session_id):
+        asyncio.run(
+            tool.run(
+                {
+                    "operation": "add",
+                    "id": "dup",
+                    "content": "first",
+                    "session_id": session_id,
+                }
+            )
+        )
+        result = asyncio.run(
+            tool.run(
+                {
+                    "operation": "add",
+                    "id": "dup",
+                    "content": "second",
+                    "session_id": session_id,
+                }
+            )
+        )
+        assert "Error" in result
+        assert "already exists" in result
+
     def test_read_with_status_filter(self, tool, session_id):
         asyncio.run(
             tool.run(

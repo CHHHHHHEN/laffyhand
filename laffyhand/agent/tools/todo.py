@@ -11,8 +11,12 @@ if TYPE_CHECKING:
 
 class TodoTool(BaseTool):
     name = "todowrite"
-    description = "Manage a session-level task list with DAG dependency tracking. "
-    "Task IDs: auto-generated (YYYYMMDD_HHMMSS_xxxxxxxx) or custom short IDs. "
+    description = (
+        "Manage a session-level task list with DAG dependency tracking. "
+        "Use 'add' with an optional 'id' field to specify a custom short ID "
+        "(e.g. \"step1\") instead of an auto-generated long ID. "
+        "Custom IDs make depends_on references human-readable."
+    )
 
     def __init__(self, todo_manager: TodoManager) -> None:
         super().__init__()
@@ -35,7 +39,8 @@ class TodoTool(BaseTool):
                 },
                 "id": {
                     "type": "string",
-                    "description": "Single task ID (required for update/delete single task)",
+                    "description": "Task ID: required for update/delete single task; "
+                    "optional for add to specify a custom short ID",
                 },
                 "ids": {
                     "type": "array",
@@ -139,6 +144,7 @@ class TodoTool(BaseTool):
                     content=content,
                     priority=params.get("priority", "medium"),
                     depends_on=params.get("depends_on"),
+                    id=params.get("id"),
                 )
             except ValueError as e:
                 return f"Error: {e}"

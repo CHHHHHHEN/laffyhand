@@ -58,9 +58,16 @@ class TodoManager:
         priority: TodoPriority = "medium",
         depends_on: Optional[list[str]] = None,
         metadata: Optional[dict[str, Any]] = None,
+        id: Optional[str] = None,
     ) -> TodoItem:
         self._ensure_session(session_id)
+        # Validate custom ID uniqueness upfront
+        if id is not None:
+            if self._repo.get(id) is not None:
+                raise ValueError(f"Task with id '{id}' already exists")
+        item_id = id if id is not None else _generate_id()
         item = TodoItem(
+            id=item_id,
             session_id=session_id,
             content=content,
             priority=priority,
@@ -93,22 +100,23 @@ class TodoManager:
         existing = self.get_tasks(session_id)
         existing_ids = {t.id for t in existing}
         ids: list[str] = []
-        id_map: dict[str, str] = {}
         for t in tasks:
-            custom_id = t.id
-            item_id = _generate_id() if (custom_id is not None and (custom_id in existing_ids or custom_id in ids or self._repo.get(custom_id) is not None)) else (custom_id or _generate_id())
-
-            if custom_id is not None and custom_id != item_id:
-                id_map[custom_id] = item_id
-
-            depends_on = [id_map.get(d, d) for d in t.depends_on]
+            # If custom ID is provided, use it as-is; validate uniqueness.
+            if t.id is not None:
+                if t.id in existing_ids or t.id in ids or self._repo.get(t.id) is not None:
+                    raise ValueError(
+                        f"Task id '{t.id}' conflicts with an existing task"
+                    )
+                item_id = t.id
+            else:
+                item_id = _generate_id()
 
             item = TodoItem(
                 id=item_id,
                 session_id=session_id,
                 content=t.content,
                 priority=t.priority,
-                depends_on=depends_on,
+                depends_on=t.depends_on,
             )
             if item.depends_on:
                 for dep_id in item.depends_on:

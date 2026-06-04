@@ -119,6 +119,90 @@ class TestTodoManagerCRUD:
         assert result is None
 
 
+class TestTodoManagerCustomID:
+    """Tests for custom short ID support in add_task and add_tasks."""
+
+    def test_add_task_with_custom_id(self, mgr):
+        item = mgr.add_task("sess-1", "custom id task", id="step1")
+        assert item.id == "step1"
+        assert item.content == "custom id task"
+
+        # Verify it persists
+        got = mgr.get_task("step1")
+        assert got is not None
+        assert got.content == "custom id task"
+
+    def test_add_task_auto_generates_id_when_not_provided(self, mgr):
+        item = mgr.add_task("sess-1", "auto id task")
+        # Should be a long auto-generated ID like YYYYMMDD_HHMMSS_xxxxxxxx
+        assert "_" in item.id
+        assert item.id != "step1"
+
+    def test_add_task_custom_id_conflict_raises_error(self, mgr):
+        mgr.add_task("sess-1", "first", id="step1")
+        with pytest.raises(ValueError, match="already exists"):
+            mgr.add_task("sess-1", "second", id="step1")
+
+    def test_add_task_with_custom_id_and_depends_on(self, mgr):
+        mgr.add_task("sess-1", "parent", id="parent1")
+        child = mgr.add_task(
+            "sess-1", "child", depends_on=["parent1"], id="child1"
+        )
+        assert child.id == "child1"
+        assert child.depends_on == ["parent1"]
+
+        tasks = mgr.get_tasks("sess-1")
+        child_task = next(t for t in tasks if t.id == "child1")
+        assert child_task.status == "blocked"
+        assert "parent1" in child_task.metadata.get("blocked_by", [])
+
+    def test_add_tasks_with_custom_ids(self, mgr):
+        items = mgr.add_tasks(
+            "sess-1",
+            [
+                TodoCreate(id="t1", content="Task 1", priority="high"),
+                TodoCreate(id="t2", content="Task 2", priority="low", depends_on=["t1"]),
+            ],
+        )
+        assert len(items) == 2
+        t1 = next(t for t in items if t.id == "t1")
+        assert t1.content == "Task 1"
+        t2 = next(t for t in items if t.id == "t2")
+        assert t2.content == "Task 2"
+        assert t2.depends_on == ["t1"]
+        # t2 should be blocked by t1
+        assert t2.status == "blocked"
+
+    def test_add_tasks_with_conflicting_custom_id_raises_error(self, mgr):
+        # Pre-create a task with id "t1"
+        mgr.add_task("sess-1", "existing", id="t1")
+        with pytest.raises(ValueError, match="conflicts"):
+            mgr.add_tasks(
+                "sess-1",
+                [TodoCreate(id="t1", content="duplicate")],
+            )
+
+    def test_add_tasks_with_duplicate_custom_id_in_batch_raises_error(self, mgr):
+        with pytest.raises(ValueError, match="conflicts"):
+            mgr.add_tasks(
+                "sess-1",
+                [
+                    TodoCreate(id="dup", content="first"),
+                    TodoCreate(id="dup", content="second"),
+                ],
+            )
+
+    def test_add_tasks_with_missing_dependency_reference(self, mgr):
+        """Using references to custom IDs as depends_on should work by referencing the actual ID."""
+        with pytest.raises(ValueError, match="does not exist"):
+            mgr.add_tasks(
+                "sess-1",
+                [
+                    TodoCreate(id="orphan", content="orphan", depends_on=["nonexistent"]),
+                ],
+            )
+
+
 class TestTodoManagerDAG:
     def test_depends_on_creates_blocked_status(self, mgr):
         parent = mgr.add_task("sess-1", "parent")
