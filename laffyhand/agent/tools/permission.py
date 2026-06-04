@@ -92,6 +92,19 @@ class PermissionManager:
                 return (False, None)
         return (True, None)
 
+    def _check_parent_rules(self, permission: str, path: str) -> str | None:
+        """Walk up parent directories of *path* and return the nearest ancestor
+        that has an explicit rule in *self._rules* (``"allow"`` or ``"deny"``).
+
+        Returns ``None`` when no ancestor has a rule.
+        """
+        needle = f"{permission}:"
+        for parent in Path(path).parents:
+            rule = self._rules.get(f"{needle}{parent}")
+            if rule is not None:
+                return rule
+        return None
+
     async def require_path(self, tool_name: str, path: str | Path, workspace: str | Path | None) -> tuple[bool, str | None]:
         """Check if a path is within the workspace. Returns (ok, reason)."""
         from laffyhand.agent.tools.file._path_boundary import is_within
@@ -102,7 +115,21 @@ class PermissionManager:
         if is_within(resolved, workspace):
             return (True, None)
         logger.info(f"Path {resolved} is outside workspace {workspace}")
-        return await self.ask(f"{tool_name}_outside_workspace", [resolved])
+
+        permission = f"{tool_name}_outside_workspace"
+        parent_rule = self._check_parent_rules(permission, resolved)
+        if parent_rule == "allow":
+            logger.info(
+                f"Path {resolved} allowed by parent-rule {permission}"
+            )
+            return (True, None)
+        if parent_rule == "deny":
+            logger.info(
+                f"Path {resolved} denied by parent-rule {permission}"
+            )
+            return (False, None)
+
+        return await self.ask(permission, [resolved])
 
 
 _SUBAGENT_EXCLUDED_TOOLS: frozenset[str] = frozenset({"task"})
