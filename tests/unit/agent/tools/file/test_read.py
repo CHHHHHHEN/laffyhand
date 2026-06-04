@@ -430,3 +430,71 @@ class TestReadTool(unittest.TestCase):
         tool = ReadTool()
         result = asyncio.run(tool.run({}))
         self.assertIn("required", result.lower())
+
+    # ─── preference resolver integration ──────────────────
+
+    def test_read_with_preference_resolver(self):
+        """resolve_preferences instructions are prepended to the result."""
+        f = self.root / "test.py"
+        f.write_text("code = 1\n")
+
+        def resolver(file_path, claim_id):
+            return [
+                {
+                    "filepath": "/fake/AGENTS.md",
+                    "content": "Instructions from: /fake/AGENTS.md\nUse Python",
+                }
+            ]
+
+        tool = ReadTool(preference_resolver=resolver)
+        result = asyncio.run(tool.run({"file_path": str(f)}))
+        self.assertIn("Instructions from: /fake/AGENTS.md", result)
+        self.assertIn("Use Python", result)
+        self.assertIn("1|code = 1", result)
+
+    def test_read_with_resolver_no_instructions(self):
+        """When resolver returns empty list, no injection occurs."""
+        f = self.root / "test.py"
+        f.write_text("code = 1\n")
+
+        def resolver(file_path, claim_id):
+            return []
+
+        tool = ReadTool(preference_resolver=resolver)
+        result = asyncio.run(tool.run({"file_path": str(f)}))
+        self.assertIn("1|code = 1", result)
+        self.assertNotIn("<preference>", result)
+
+    def test_read_with_resolver_passes_claim_id(self):
+        """The claim_id (from _claim_id or session_id param) is passed to resolver."""
+        f = self.root / "test.py"
+        f.write_text("code = 1\n")
+
+        captured = []
+
+        def resolver(file_path, claim_id):
+            captured.append(claim_id)
+            return []
+
+        tool = ReadTool(preference_resolver=resolver)
+        asyncio.run(
+            tool.run({"file_path": str(f), "_claim_id": "test-claim"})
+        )
+        self.assertEqual(captured, ["test-claim"])
+
+    def test_read_binary_skips_resolver(self):
+        """Binary files skip the preference resolver."""
+        f = self.root / "data.bin"
+        f.write_bytes(b"\x00\x01\x02\x03")
+
+        resolver_called = False
+
+        def resolver(file_path, claim_id):
+            nonlocal resolver_called
+            resolver_called = True
+            return []
+
+        tool = ReadTool(preference_resolver=resolver)
+        result = asyncio.run(tool.run({"file_path": str(f)}))
+        self.assertIn("binary", result.lower())
+        self.assertFalse(resolver_called)

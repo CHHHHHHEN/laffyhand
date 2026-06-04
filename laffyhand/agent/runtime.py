@@ -124,6 +124,7 @@ class AgentRuntime:
         self._preference_files: dict[str, str] = {}
         self._pref_lock = asyncio.Lock()
         self._prefs_initialized: bool = False
+        self._pref_claims: dict[str, set[str]] = {}
 
         # Background session tasks (decoupled from HTTP connections)
         self._session_tasks: dict[str, asyncio.Task[None]] = {}
@@ -144,7 +145,7 @@ class AgentRuntime:
     async def init_tools(self) -> None:
         for mcp_tool in await self.mcp_service.get_wrapped_tools():
             self.tool_registry.register_tool(mcp_tool)
-        self.tool_registry.register_tool(ReadTool())
+        self.tool_registry.register_tool(ReadTool(preference_resolver=self.resolve_preferences))
         self.tool_registry.register_tool(
             WriteTool(permission_manager=self.tool_registry.permission)
         )
@@ -234,15 +235,75 @@ class AgentRuntime:
         self.skill_registry.discover(list(skill_dirs))
 
     @staticmethod
-    def _preference_roots() -> list[Path]:
-        return [Path(os.getcwd()), Path(os.path.expanduser("~"))]
+    def _find_up(
+        target: str,
+        start: Path | None = None,
+        stop: Path | None = None,
+    ) -> Path | None:
+        """Walk upward from *start* toward *stop*, returning the first *target* file found.
+
+        This implements the "first-match-wins" strategy used by opencode:
+        the closest ancestor containing *target* wins, and we stop searching
+        so that AGENTS.md files from multiple ancestor directories never stack.
+        """
+        if start is None:
+            start = Path(os.getcwd()).resolve()
+        if stop is None:
+            stop = Path(os.path.expanduser("~")).resolve()
+        current = start.resolve()
+        while True:
+            candidate = current / target
+            if candidate.is_file():
+                return candidate
+            if current == stop or current.parent == current:
+                break
+            current = current.parent
+        return None
+
+    @staticmethod
+    def _find_up_all(
+        target: str,
+        start: Path | None = None,
+        stop: Path | None = None,
+    ) -> list[Path]:
+        """Walk upward from *start* toward *stop*, collecting *all* matching files.
+
+        Used for dynamic resolution (walking upward from a read file path).
+        """
+        if start is None:
+            start = Path(os.getcwd()).resolve()
+        if stop is None:
+            stop = Path(os.path.expanduser("~")).resolve()
+        result: list[Path] = []
+        current = start.resolve()
+        while True:
+            candidate = current / target
+            if candidate.is_file():
+                result.append(candidate)
+            if current == stop or current.parent == current:
+                break
+            current = current.parent
+        return result
 
     def _read_preference_files(self) -> dict[str, str]:
+        """Read AGENTS.md with first-match-wins strategy.
+
+        1. Search upward from CWD — the closest project-level AGENTS.md wins.
+        2. If no project-level AGENTS.md found, fall back to home directory.
+        """
         result: dict[str, str] = {}
-        for root in self._preference_roots():
-            path = root / "AGENTS.md"
-            if path.is_file():
-                result[str(path)] = path.read_text(encoding="utf-8").strip()
+
+        # Phase 1: project-level — closest ancestor AGENTS.md wins
+        project_md = self._find_up("AGENTS.md")
+        if project_md is not None:
+            result[str(project_md)] = project_md.read_text(encoding="utf-8").strip()
+            return result  # first match wins — don't also load home
+
+        # Phase 2: fallback — home directory AGENTS.md as global config
+        home_md = Path(os.path.expanduser("~")) / "AGENTS.md"
+        if home_md.is_file():
+            result[str(home_md)] = home_md.read_text(encoding="utf-8").strip()
+
         return result
 
     async def _load_preferences(self) -> str:
@@ -292,6 +353,50 @@ class AgentRuntime:
                     None  # invalidate cache so next _load_preferences re-reads
                 )
         return "\n".join(sections) if sections else ""
+
+    def resolve_preferences(
+        self,
+        file_path: str,
+        message_id: str,
+        *,
+        root: str | None = None,
+    ) -> list[dict[str, str]]:
+        """Walk upward from *file_path* and return newly-found AGENTS.md contents.
+
+        This mirrors opencode's ``Instruction.resolve()``: when a file is read,
+        we walk upward from its directory to discover nearby instruction files
+        and attach their content once per message.
+
+        Returns a list of ``{"filepath": …, "content": …}`` dicts for files
+        that haven't been claimed for *message_id* yet.
+        """
+        start = Path(file_path).resolve().parent
+        stop = Path(root).resolve() if root else Path(os.getcwd()).resolve()
+        results: list[dict[str, str]] = []
+
+        # Collect all AGENTS.md files walking upward from the file's directory
+        found = self._find_up_all("AGENTS.md", start=start, stop=stop)
+
+        # Ensure claims set exists for this message
+        claims = self._pref_claims.setdefault(message_id, set())
+
+        for md_path in found:
+            sp = str(md_path)
+            if sp in claims:
+                continue  # already injected for this message
+            claims.add(sp)
+            content = md_path.read_text(encoding="utf-8").strip()
+            if content:
+                results.append({
+                    "filepath": sp,
+                    "content": f"Instructions from: {sp}\n{content}",
+                })
+
+        return results
+
+    def clear_preference_claims(self, message_id: str) -> None:
+        """Release claims for a finished message."""
+        self._pref_claims.pop(message_id, None)
 
     async def build_system_prompt(self, base_prompt: str, disabled_tools: set[str] | None = None) -> str:
         parts: list[str] = []

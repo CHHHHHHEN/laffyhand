@@ -204,7 +204,10 @@ async def agent_loop(
 
         if finish_reason == "tool_calls" and tool_calls:
             logger.debug(f"Executing {len(tool_calls)} tool call(s)")
-            exec_context = {"session_id": agent_state.session_id}
+            exec_context = {
+                "session_id": agent_state.session_id,
+                "_claim_id": f"{agent_state.session_id}:step-{step_index}",
+            }
             for tc in tool_calls:
                 exec_result = await ToolExecutor.execute(
                     tool_registry,

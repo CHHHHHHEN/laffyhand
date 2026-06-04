@@ -27,9 +27,10 @@ class ReadTool(BaseTool):
     )
     max_result_size = 50000
 
-    def __init__(self) -> None:
+    def __init__(self, preference_resolver=None) -> None:
         self._read_cache: dict[str, tuple[float, str]] = {}
         self._consecutive: dict[str, int] = {}
+        self._preference_resolver = preference_resolver
 
     def _input_schema(self) -> dict[str, Any]:
         return {
@@ -337,6 +338,19 @@ class ReadTool(BaseTool):
         if len(self._read_cache) > MAX_CACHE_SIZE:
             oldest = next(iter(self._read_cache))
             del self._read_cache[oldest]
+
+        # ── Preference injection: walk upward from the read file ──
+        if self._preference_resolver is not None:
+            claim_id = params.get("_claim_id") or params.get("session_id") or ""
+            instructions = self._preference_resolver(
+                str(path.resolve()), claim_id
+            )
+            if instructions:
+                pref_block = "\n".join(
+                    f"<preference>\n{item['content']}\n</preference>"
+                    for item in instructions
+                )
+                result = f"{pref_block}\n\n{result}"
 
         return result
 
