@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll } from "vitest"
-import { render, screen, fireEvent } from "@testing-library/react"
+import { render, screen, fireEvent, within } from "@testing-library/react"
 import { ToolCallCard } from "./ChatComponents"
 import type { ToolCall } from "@/types/session"
 
@@ -109,6 +109,68 @@ describe("ToolCallCard", () => {
 
       // Click to expand again
       fireEvent.click(screen.getByText(/Result/))
+      expect(screen.getByText("bar")).toBeInTheDocument()
+    })
+  })
+
+  describe("result markdown formatting", () => {
+    function expandResult(toolCall: ToolCall) {
+      const utils = render(<ToolCallCard toolCall={toolCall} />)
+      // Result is collapsed by default for non-diff results — click to expand
+      const resultBtn = screen.getByText(/^Result$/)
+      fireEvent.click(resultBtn)
+      return utils
+    }
+
+    it("renders bold text in result", () => {
+      expandResult(makeToolCall({ result: "File **updated** successfully" }))
+      expect(screen.getByText("updated").tagName).toBe("STRONG")
+    })
+
+    it("renders inline code in result", () => {
+      expandResult(makeToolCall({ result: "Use `npx tsc` to check" }))
+      expect(screen.getByText("npx tsc")).toBeInTheDocument()
+    })
+
+    it("renders code fence as <pre> in result", () => {
+      const { container } = expandResult(makeToolCall({ result: "```\nhello()\n```" }))
+      expect(container.querySelector("pre")).toBeTruthy()
+    })
+
+    it("renders lists in result", () => {
+      expandResult(makeToolCall({ result: "- item 1\n- item 2" }))
+      expect(screen.getByText("item 1")).toBeInTheDocument()
+      expect(screen.getByText("item 2")).toBeInTheDocument()
+    })
+
+    it("renders links in result", () => {
+      expandResult(makeToolCall({ result: "[open file](file:///test)" }))
+      const link = screen.getByText("open file")
+      expect(link.tagName).toBe("A")
+    })
+
+    it("sanitizes dangerous HTML in result", () => {
+      expandResult(makeToolCall({ result: '<script>alert("xss")</script>clean result' }))
+      expect(screen.queryByText(/alert/i)).not.toBeInTheDocument()
+      expect(screen.getByText("clean result")).toBeInTheDocument()
+    })
+
+    it("renders markdown alongside diff when result has both", () => {
+      const toolCall = makeToolCall({
+        result: [
+          "File **edited** successfully",
+          "",
+          "--- /path/to/file",
+          "+++ /path/to/file",
+          "@@ -1 +1 @@",
+          "-foo",
+          "+bar",
+        ].join("\n"),
+      })
+      render(<ToolCallCard toolCall={toolCall} />)
+      // Auto-expanded due to diff — bold text should be rendered
+      expect(screen.getByText("edited").tagName).toBe("STRONG")
+      // Diff content still visible
       expect(screen.getByText("bar")).toBeInTheDocument()
     })
   })

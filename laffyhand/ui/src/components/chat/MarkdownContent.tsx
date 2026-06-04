@@ -4,8 +4,10 @@ import DOMPurify from "dompurify"
 
 export const MarkdownContent = memo(function MarkdownContent({
   content,
+  className = "",
 }: {
   content: string
+  className?: string
 }) {
   const html = useMemo(() => {
     try {
@@ -72,7 +74,7 @@ export const MarkdownContent = memo(function MarkdownContent({
   return (
     <div
       ref={containerRef}
-      className="prose prose-sm dark:prose-invert max-w-none break-words"
+      className={"prose prose-sm dark:prose-invert max-w-none break-words" + (className ? ` ${className}` : "")}
       dangerouslySetInnerHTML={{ __html: html }}
     />
   )

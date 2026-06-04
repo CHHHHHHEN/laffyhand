@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from "react"
 import type { ToolCall } from "@/types/session"
 import { DiffView } from "./DiffView"
+import { MarkdownContent } from "./MarkdownContent"
 
 export function AiAvatar() {
   return (
@@ -196,9 +197,7 @@ export function ToolCallCard({ toolCall }: { toolCall: ToolCall }) {
           </button>
           {resultExpanded && (
             <div className="mt-1 space-y-1">
-              <div className="text-[11px] text-[var(--text-muted)] leading-relaxed">
-                {resultParts.summary}
-              </div>
+              <MarkdownContent content={resultParts.summary} />
               {resultParts.diff && (
                 <DiffView diff={resultParts.diff} />
               )}
