@@ -113,9 +113,9 @@ export function ToolCallCard({ toolCall }: { toolCall: ToolCall }) {
   const [showAllArgs, setShowAllArgs] = useState(argLines <= 6)
 
   const hasResult = toolCall.status === "completed" || toolCall.status === "error"
-  const [resultExpanded, setResultExpanded] = useState(false)
 
   const resultParts = useMemo(() => toolCall.result ? splitDiff(toolCall.result) : { summary: "", diff: null }, [toolCall.result])
+  const [resultExpanded, setResultExpanded] = useState(() => resultParts.diff !== null)
 
   const borderColor = toolCall.status === "error"
     ? "border-red-200 dark:border-red-700/50"

@@ -1,16 +1,33 @@
-import { describe, it, expect } from "vitest"
-import { render, screen } from "@testing-library/react"
-import { DiffView, parseDiff } from "./DiffView"
+import { describe, it, expect, vi, beforeAll, afterAll } from "vitest"
+import { render, screen, fireEvent } from "@testing-library/react"
+import { DiffView, parseDiff, buildSideBySideRows } from "./DiffView"
 import { splitDiff } from "./ChatComponents"
 
-const sampleDiff = `--- /path/to/file.txt
-+++ /path/to/file.txt
-@@ -1,3 +1,4 @@
- foo
--bar
- baz
-+qux
-+extra`
+// Mock ResizeObserver for jsdom (no layout measurements available)
+class MockResizeObserver {
+  observe = vi.fn()
+  unobserve = vi.fn()
+  disconnect = vi.fn()
+}
+
+beforeAll(() => {
+  vi.stubGlobal("ResizeObserver", MockResizeObserver)
+})
+
+afterAll(() => {
+  vi.unstubAllGlobals()
+})
+
+const sampleDiff = [
+  "--- /path/to/file.txt",
+  "+++ /path/to/file.txt",
+  "@@ -1,3 +1,4 @@",
+  " foo",
+  "-bar",
+  " baz",
+  "+qux",
+  "+extra",
+].join("\n")
 
 describe("parseDiff", () => {
   it("parses header lines", () => {
@@ -90,8 +107,71 @@ describe("parseDiff", () => {
   })
 })
 
+describe("buildSideBySideRows", () => {
+  it("pairs context lines on both sides", () => {
+    const lines = parseDiff(sampleDiff)
+    const rows = buildSideBySideRows(lines)
+    const fooRow = rows.find((r) => r.left?.text.includes("foo"))
+    expect(fooRow).toBeDefined()
+    expect(fooRow!.left).toBeTruthy()
+    expect(fooRow!.right).toBeTruthy()
+    expect(fooRow!.left!.kind).toBe("context")
+    expect(fooRow!.right!.kind).toBe("context")
+  })
+
+  it("puts deletions only on the left", () => {
+    const lines = parseDiff(sampleDiff)
+    const rows = buildSideBySideRows(lines)
+    const barRow = rows.find((r) => r.left?.text.includes("bar"))
+    expect(barRow).toBeDefined()
+    expect(barRow!.left).toBeTruthy()
+    expect(barRow!.left!.kind).toBe("del")
+    expect(barRow!.right).toBeNull()
+  })
+
+  it("puts additions only on the right", () => {
+    const lines = parseDiff(sampleDiff)
+    const rows = buildSideBySideRows(lines)
+    const quxRow = rows.find((r) => r.right?.text.includes("qux"))
+    expect(quxRow).toBeDefined()
+    expect(quxRow!.right).toBeTruthy()
+    expect(quxRow!.right!.kind).toBe("add")
+    expect(quxRow!.left).toBeNull()
+  })
+
+  it("maps header lines to left-only span rows", () => {
+    const lines = parseDiff(sampleDiff)
+    const rows = buildSideBySideRows(lines)
+    const header = rows.find((r) => r.left?.kind === "header")
+    expect(header).toBeDefined()
+    expect(header!.left).toBeTruthy()
+    expect(header!.right).toBeNull()
+  })
+
+  it("maps hunk headers to left-only span rows", () => {
+    const lines = parseDiff(sampleDiff)
+    const rows = buildSideBySideRows(lines)
+    const hunk = rows.find((r) => r.left?.kind === "hunk")
+    expect(hunk).toBeDefined()
+    expect(hunk!.left).toBeTruthy()
+    expect(hunk!.right).toBeNull()
+  })
+
+  it("preserves correct line numbers on both sides", () => {
+    const lines = parseDiff(sampleDiff)
+    const rows = buildSideBySideRows(lines)
+    const fooRow = rows.find((r) => r.left?.text.includes("foo"))
+    expect(fooRow!.left!.lineNum).toBe(1)
+    expect(fooRow!.right!.lineNum).toBe(1)
+  })
+
+  it("returns empty array for empty input", () => {
+    expect(buildSideBySideRows([])).toEqual([])
+  })
+})
+
 describe("DiffView", () => {
-  it("renders diff lines", () => {
+  it("renders diff lines in unified view by default", () => {
     render(<DiffView diff={sampleDiff} />)
     expect(screen.getByText("foo")).toBeInTheDocument()
     expect(screen.getByText("bar")).toBeInTheDocument()
@@ -106,9 +186,30 @@ describe("DiffView", () => {
     expect(screen.getByText(/Show diff/)).toBeInTheDocument()
   })
 
+  it("expands diff when clicking collapse button", () => {
+    const largeDiff = Array.from({ length: 250 }, (_, i) => `+line ${i}`).join("\n")
+    const fullDiff = `--- a/file\n+++ b/file\n@@ -1 +1,250 @@\n${largeDiff}`
+    render(<DiffView diff={fullDiff} />)
+    fireEvent.click(screen.getByText(/Show diff/))
+    expect(screen.getByText("line 0")).toBeInTheDocument()
+  })
+
   it("renders empty state for empty diff", () => {
     const { container } = render(<DiffView diff="" />)
     expect(container.innerHTML).toBe("")
+  })
+
+  it("does not collapse diffs under the maxLines threshold", () => {
+    render(<DiffView diff={sampleDiff} maxLines={10} />)
+    expect(screen.queryByText(/Show diff/)).not.toBeInTheDocument()
+    expect(screen.getByText("foo")).toBeInTheDocument()
+  })
+
+  it("shows diff header text (file path) in unified view", () => {
+    render(<DiffView diff={sampleDiff} />)
+    // Header text appears twice (--- and +++ both show the path)
+    const headers = screen.getAllByText("/path/to/file.txt")
+    expect(headers.length).toBeGreaterThanOrEqual(1)
   })
 })
 
@@ -120,7 +221,7 @@ describe("splitDiff", () => {
 +++ /path/to/file
 @@ -1,3 +1,4 @@
  foo
--bar
+ -bar
  baz
 +qux`
     const { summary, diff } = splitDiff(result)
