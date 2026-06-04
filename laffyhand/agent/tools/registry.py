@@ -73,6 +73,19 @@ class ToolRegistry:
 
     async def run_tool(self, name: str, params: dict[str, Any]) -> str:
         tool = self._tools.get(name)
+        if tool is None and " " in name:
+            # Some LLMs conflate tool name with operation (e.g. "tag update").
+            # Split on first space and try to extract the operation.
+            base, _, candidate_op = name.partition(" ")
+            tool = self._tools.get(base)
+            if tool is not None:
+                logger.info(
+                    f"Compound tool name '{name}' resolved as '{base}' "
+                    f"with operation '{candidate_op}'"
+                )
+                if "operation" not in params:
+                    params = dict(params, operation=candidate_op)
+                name = base
         if tool is None:
             logger.warning(f"Tool '{name}' is not registered")
             return f"Tool '{name}' is not registered."
