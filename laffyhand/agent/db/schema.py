@@ -124,6 +124,11 @@ CREATE TABLE IF NOT EXISTS todo (
 );
 
 CREATE INDEX IF NOT EXISTS idx_todo_session ON todo(session_id, status);
+
+CREATE INDEX IF NOT EXISTS idx_session_parent ON session(parent_id);
+CREATE INDEX IF NOT EXISTS idx_session_parent_status ON session(parent_id, status);
+CREATE INDEX IF NOT EXISTS idx_session_fork ON session(fork_id);
+CREATE INDEX IF NOT EXISTS idx_todo_task_tool ON todo(task_tool_id);
 """
 
 
