@@ -13,6 +13,11 @@ if TYPE_CHECKING:
 
 
 _TAG_DISPLAY_LEN = 60
+_STALE_NOTE = (
+    "Note: Tags are maintained by AI agents. "
+    "If this information is stale, run "
+    "'tag update --file_path <path> --message <updated description>' to update it."
+)
 
 
 def _normalize(path_str: str) -> str:
@@ -28,7 +33,8 @@ def format_tag_summary(tag: FileTag) -> str:
     if len(message) > _TAG_DISPLAY_LEN:
         message = message[:_TAG_DISPLAY_LEN - 3] + "..."
     date = _date_from_iso(tag.updated_at)
-    return f"\U0001f516 {message} ({date})"
+    stale = " ⚠️ STALE" if tag.status == "stale" else ""
+    return f"\U0001f516 {message} ({date}){stale}"
 
 
 def annotate_result(
@@ -90,11 +96,12 @@ class TagTool(BaseTool):
         "Manage file tags — persistent semantic annotations for files that persist across sessions. "
         "Tags help you remember what a file does without re-reading it.\n\n"
         "Operations:\n"
-        "- add --file <path> --msg <description>: Tag a file with a semantic description.\n"
-        "- update --file <path> --msg <description>: Update the description.\n"
-        "- update --file <path> --key <k> --value <v>: Add or update a custom key-value field.\n"
+        "- add --file_path <path> --message <description>: Tag a file with a semantic description.\n"
+        "- update --file_path <path> --message <description>: Update the description.\n"
+        "- update --file_path <path> --key <k> --value <v>: Add or update a custom key-value field.\n"
+        "- batch --tags <list>: Batch add/update multiple tags at once.\n"
         "- list [path]: List all tags (optionally under a directory).\n"
-        "- prune: Remove tags for files that no longer exist."
+        "- prune [--delete]: Mark stale tags for missing files, or --delete to remove them entirely."
     )
     max_result_size = 50000
 
@@ -108,14 +115,14 @@ class TagTool(BaseTool):
             "properties": {
                 "operation": {
                     "type": "string",
-                    "enum": ["add", "update", "list", "prune"],
+                    "enum": ["add", "update", "batch", "list", "prune"],
                     "description": "Operation to perform",
                 },
-                "file": {
+                "file_path": {
                     "type": "string",
-                    "description": "File path to tag",
+                    "description": "File path to tag (for add/update)",
                 },
-                "msg": {
+                "message": {
                     "type": "string",
                     "description": "Semantic description of the file",
                 },
@@ -131,6 +138,34 @@ class TagTool(BaseTool):
                     "type": "string",
                     "description": "Directory path to list or filter by",
                 },
+                "status": {
+                    "type": "string",
+                    "enum": ["active", "stale"],
+                    "description": "Filter tags by status (for list operation)",
+                },
+                "tags": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "file_path": {
+                                "type": "string",
+                                "description": "Absolute path to the file",
+                            },
+                            "message": {
+                                "type": "string",
+                                "description": "Semantic description of the file",
+                            },
+                        },
+                        "required": ["file_path", "message"],
+                    },
+                    "description": "List of tags for batch operation",
+                },
+                "delete": {
+                    "type": "boolean",
+                    "description": "When pruning, set to true to permanently delete stale tags instead of marking them",
+                    "default": False,
+                },
             },
             "required": ["operation"],
         }
@@ -141,50 +176,77 @@ class TagTool(BaseTool):
             return self._add(params)
         if op == "update":
             return self._update(params)
+        if op == "batch":
+            return self._batch(params)
         if op == "list":
             return self._list(params)
         if op == "prune":
-            return self._prune()
+            delete_mode = params.get("delete", False)
+            return self._prune(delete_mode=delete_mode)
         return f"Unknown operation: {op}"
 
     def _add(self, params: dict[str, Any]) -> str:
-        file_path = params.get("file")
-        msg = params.get("msg")
+        file_path = params.get("file_path")
+        message = params.get("message")
         if not file_path:
-            return "Error: --file is required for add"
-        if not msg:
-            return "Error: --msg is required for add"
+            return "Error: --file_path is required for add"
+        if not message:
+            return "Error: --message is required for add"
         real = _normalize(file_path)
         if not os.path.exists(real):
             return f"Error: path does not exist: {file_path}"
-        self._repo.upsert(real, message=msg)
+        # Reset stale status if re-tagging an existing file
+        self._repo.upsert(real, message=message, status="active")
         self._repo.commit()
         date = _date_from_iso(datetime.now(timezone.utc).isoformat())
-        return f"Tagged {real}\n\U0001f516 {msg} ({date})"
+        return f"Tagged {real}\n\U0001f516 {message} ({date})\n{_STALE_NOTE}"
 
     def _update(self, params: dict[str, Any]) -> str:
-        file_path = params.get("file")
+        file_path = params.get("file_path")
         if not file_path:
-            return "Error: --file is required for update"
+            return "Error: --file_path is required for update"
         real = _normalize(file_path)
         if not os.path.exists(real):
             return f"Error: path does not exist: {file_path}"
-        msg = params.get("msg")
+        message = params.get("message")
         key = params.get("key")
         value = params.get("value")
-        if msg:
-            self._repo.upsert(real, message=msg)
+        if message:
+            self._repo.upsert(real, message=message)
         elif key is not None:
             self._repo.upsert(real, key=key, value=value)
         else:
-            return "Error: provide either --msg or --key/--value for update"
+            return "Error: provide either --message or --key/--value for update"
         self._repo.commit()
         tag = self._repo.get(real)
         assert tag is not None
-        return f"Updated tag for {real}\n{_format_tag_detail(tag)}"
+        return f"Updated tag for {real}\n{_format_tag_detail(tag)}\n{_STALE_NOTE}"
+
+    def _batch(self, params: dict[str, Any]) -> str:
+        tags = params.get("tags", [])
+        if not tags:
+            return "Error: --tags list is required for batch operation"
+        results: list[str] = []
+        for entry in tags:
+            file_path = entry.get("file_path")
+            message = entry.get("message", "")
+            if not file_path or not message:
+                results.append(f"Skipped entry {entry}: file_path and message are required")
+                continue
+            real = _normalize(file_path)
+            if os.path.exists(real):
+                self._repo.upsert(real, message=message, status="active")
+                self._repo.commit()
+                date = _date_from_iso(datetime.now(timezone.utc).isoformat())
+                results.append(f"  \U0001f516 {real}: {message} ({date})")
+            else:
+                results.append(f"  Skipped (path not found): {real}")
+        summary = f"Batch processed {len(results)} tag(s):\n" + "\n".join(results)
+        return f"{summary}\n{_STALE_NOTE}"
 
     def _list(self, params: dict[str, Any]) -> str:
         path_str = params.get("path")
+        status_filter = params.get("status")
         if path_str:
             real = _normalize(path_str)
             if os.path.isfile(real):
@@ -193,6 +255,8 @@ class TagTool(BaseTool):
             else:
                 prefix = real + "/" if not real.endswith("/") else real
                 tags = self._repo.list_by_prefix(prefix)
+        elif status_filter:
+            tags = self._repo.list_by_status(status_filter)
         else:
             tags = self._repo.list_all()
         if not tags:
@@ -201,19 +265,32 @@ class TagTool(BaseTool):
         for tag in tags:
             parts.append("")
             parts.append(_format_tag_detail(tag))
+        parts.append("")
+        parts.append(_STALE_NOTE)
         return "\n".join(parts)
 
-    def _prune(self) -> str:
-        deleted = self._repo.delete_missing()
-        self._repo.commit()
-        if deleted == 0:
-            return "No orphan tags to prune."
-        return f"Pruned {deleted} orphan tag(s) for files that no longer exist."
+    def _prune(self, delete_mode: bool = False) -> str:
+        if delete_mode:
+            deleted = self._repo.delete_missing()
+            self._repo.commit()
+            if deleted == 0:
+                return "No orphan tags to delete."
+            return f"Permanently deleted {deleted} orphan tag(s) for files that no longer exist.\n{_STALE_NOTE}"
+        else:
+            marked = self._repo.mark_stale_missing()
+            self._repo.commit()
+            if marked == 0:
+                return f"No tags to mark as stale.\n{_STALE_NOTE}"
+            return (
+                f"Marked {marked} tag(s) as stale (file no longer exists). "
+                f"Use 'tag prune --delete true' to permanently remove them.\n{_STALE_NOTE}"
+            )
 
 
 def _format_tag_detail(tag: FileTag) -> str:
     lines = [f"  {tag.path}"]
-    lines.append(f"    \U0001f516 {tag.message} ({_date_from_iso(tag.updated_at)})")
+    stale = " ⚠️ STALE (file no longer exists)" if tag.status == "stale" else ""
+    lines.append(f"    \U0001f516 {tag.message} ({_date_from_iso(tag.updated_at)}){stale}")
     for k, v in tag.tags.items():
         lines.append(f"    {k}: {v}")
     return "\n".join(lines)

@@ -73,6 +73,7 @@ class TestFileTagRepo:
         assert tag.message == "test file"
         assert tag.path == "/tmp/test.py"
         assert tag.updated_at != ""
+        assert tag.status == "active"
 
     def test_upsert_updates_existing(self, repo):
         repo.upsert("/tmp/test.py", message="old")
@@ -110,6 +111,23 @@ class TestFileTagRepo:
         assert tag is not None
         assert tag.tags == {"status": "new"}
 
+    def test_upsert_with_status(self, repo):
+        repo.upsert("/tmp/test.py", message="test", status="stale")
+        repo.commit()
+        tag = repo.get("/tmp/test.py")
+        assert tag is not None
+        assert tag.status == "stale"
+
+    def test_upsert_preserves_status_when_not_given(self, repo):
+        repo.upsert("/tmp/test.py", message="first", status="stale")
+        repo.commit()
+        repo.upsert("/tmp/test.py", message="second")
+        repo.commit()
+        tag = repo.get("/tmp/test.py")
+        assert tag is not None
+        assert tag.message == "second"
+        assert tag.status == "stale"
+
     def test_get_nonexistent(self, repo):
         assert repo.get("/tmp/nope.py") is None
 
@@ -136,6 +154,47 @@ class TestFileTagRepo:
         repo.commit()
         tags = repo.list_all()
         assert len(tags) == 2
+
+    def test_list_by_status(self, repo):
+        repo.upsert("/tmp/a.py", message="active file")
+        repo.upsert("/tmp/b.py", message="stale file", status="stale")
+        repo.commit()
+        active = repo.list_by_status("active")
+        stale = repo.list_by_status("stale")
+        assert len(active) == 1
+        assert active[0].path == "/tmp/a.py"
+        assert len(stale) == 1
+        assert stale[0].path == "/tmp/b.py"
+
+    def test_mark_stale(self, repo):
+        repo.upsert("/tmp/test.py", message="test")
+        repo.commit()
+        assert repo.mark_stale("/tmp/test.py") is True
+        tag = repo.get("/tmp/test.py")
+        assert tag is not None
+        assert tag.status == "stale"
+
+    def test_mark_stale_nonexistent(self, repo):
+        assert repo.mark_stale("/tmp/nope.py") is False
+
+    def test_mark_stale_already_stale(self, repo):
+        repo.upsert("/tmp/test.py", message="test", status="stale")
+        repo.commit()
+        # mark_stale only affects active tags
+        assert repo.mark_stale("/tmp/test.py") is False
+
+    def test_mark_stale_missing(self, repo, temp_file):
+        repo.upsert(temp_file, message="exists")
+        repo.upsert("/tmp/ghost_tag.py", message="ghost")
+        repo.commit()
+        marked = repo.mark_stale_missing()
+        assert marked > 0
+        ghost = repo.get("/tmp/ghost_tag.py")
+        assert ghost is not None
+        assert ghost.status == "stale"
+        existing = repo.get(temp_file)
+        assert existing is not None
+        assert existing.status == "active"
 
     def test_delete(self, repo):
         repo.upsert("/tmp/test.py", message="bye")
@@ -175,6 +234,15 @@ class TestFileTagRepo:
         assert t2 is not None
         assert t2.updated_at > ts1
 
+    def test_status_in_all_listings(self, repo):
+        repo.upsert("/tmp/a.py", message="active", status="active")
+        repo.upsert("/tmp/b.py", message="stale", status="stale")
+        repo.commit()
+        for tag in repo.list_all():
+            assert tag.status in ("active", "stale")
+        for tag in repo.list_by_prefix("/tmp/"):
+            assert tag.status in ("active", "stale")
+
 
 # ── TagTool tests ──────────────────────────────────────────────
 
@@ -182,40 +250,56 @@ class TestFileTagRepo:
 class TestTagTool:
     def test_add(self, tool, temp_file):
         result = asyncio.run(
-            tool.run({"operation": "add", "file": temp_file, "msg": "test file for unit tests"})
+            tool.run({"operation": "add", "file_path": temp_file, "message": "test file for unit tests"})
         )
         assert "Tagged" in result
         assert "test file for unit tests" in result
 
     def test_add_requires_file(self, tool):
-        result = asyncio.run(tool.run({"operation": "add", "msg": "desc"}))
-        assert "--file is required" in result
+        result = asyncio.run(tool.run({"operation": "add", "message": "desc"}))
+        assert "--file_path is required" in result
 
     def test_add_requires_msg(self, tool, temp_file):
-        result = asyncio.run(tool.run({"operation": "add", "file": temp_file}))
-        assert "--msg is required" in result
+        result = asyncio.run(tool.run({"operation": "add", "file_path": temp_file}))
+        assert "--message is required" in result
 
     def test_add_nonexistent_path(self, tool):
         result = asyncio.run(
-            tool.run({"operation": "add", "file": "/tmp/nonexistent_file_xyz.py", "msg": "desc"})
+            tool.run({"operation": "add", "file_path": "/tmp/nonexistent_file_xyz.py", "message": "desc"})
         )
         assert "path does not exist" in result
 
-    def test_update_message(self, tool, temp_file):
-        asyncio.run(tool.run({"operation": "add", "file": temp_file, "msg": "old desc"}))
+    def test_add_resets_stale(self, tool, temp_file):
+        """Adding a tag to a file that was previously marked stale resets to active."""
+        asyncio.run(tool.run({"operation": "add", "file_path": temp_file, "message": "first"}))
+        # Manually mark stale
+        tool._repo.mark_stale(temp_file)
+        tool._repo.commit()
+        # Re-add
         result = asyncio.run(
-            tool.run({"operation": "update", "file": temp_file, "msg": "new desc"})
+            tool.run({"operation": "add", "file_path": temp_file, "message": "re-tagged"})
+        )
+        assert "Tagged" in result
+        tag = tool._repo.get(temp_file)
+        assert tag is not None
+        assert tag.status == "active"
+        assert tag.message == "re-tagged"
+
+    def test_update_message(self, tool, temp_file):
+        asyncio.run(tool.run({"operation": "add", "file_path": temp_file, "message": "old desc"}))
+        result = asyncio.run(
+            tool.run({"operation": "update", "file_path": temp_file, "message": "new desc"})
         )
         assert "Updated tag" in result
         assert "new desc" in result
 
     def test_update_key_value(self, tool, temp_file):
-        asyncio.run(tool.run({"operation": "add", "file": temp_file, "msg": "desc"}))
+        asyncio.run(tool.run({"operation": "add", "file_path": temp_file, "message": "desc"}))
         result = asyncio.run(
             tool.run(
                 {
                     "operation": "update",
-                    "file": temp_file,
+                    "file_path": temp_file,
                     "key": "review_status",
                     "value": "needs refactor",
                 }
@@ -226,12 +310,12 @@ class TestTagTool:
         assert "needs refactor" in result
 
     def test_update_key_value_preserves_message(self, tool, temp_file):
-        asyncio.run(tool.run({"operation": "add", "file": temp_file, "msg": "original msg"}))
+        asyncio.run(tool.run({"operation": "add", "file_path": temp_file, "message": "original msg"}))
         asyncio.run(
             tool.run(
                 {
                     "operation": "update",
-                    "file": temp_file,
+                    "file_path": temp_file,
                     "key": "owner",
                     "value": "alice",
                 }
@@ -241,25 +325,25 @@ class TestTagTool:
         assert "original msg" in result
 
     def test_update_requires_file(self, tool):
-        result = asyncio.run(tool.run({"operation": "update", "msg": "desc"}))
-        assert "--file is required" in result
+        result = asyncio.run(tool.run({"operation": "update", "message": "desc"}))
+        assert "--file_path is required" in result
 
     def test_update_requires_msg_or_key(self, tool, temp_file):
         result = asyncio.run(
-            tool.run({"operation": "update", "file": temp_file})
+            tool.run({"operation": "update", "file_path": temp_file})
         )
-        assert "provide either --msg or --key/--value" in result
+        assert "provide either --message or --key/--value" in result
 
     def test_update_nonexistent_path(self, tool):
         result = asyncio.run(
             tool.run(
-                {"operation": "update", "file": "/tmp/nonexistent_xyz.py", "msg": "desc"}
+                {"operation": "update", "file_path": "/tmp/nonexistent_xyz.py", "message": "desc"}
             )
         )
         assert "path does not exist" in result
 
     def test_list_all(self, tool, temp_file, temp_dir):
-        asyncio.run(tool.run({"operation": "add", "file": temp_file, "msg": "a file"}))
+        asyncio.run(tool.run({"operation": "add", "file_path": temp_file, "message": "a file"}))
         result = asyncio.run(tool.run({"operation": "list"}))
         assert "Found 1 tag(s)" in result
         assert "a file" in result
@@ -267,27 +351,88 @@ class TestTagTool:
     def test_list_by_directory(self, tool, temp_dir):
         api_py = Path(temp_dir) / "api.py"
         db_py = Path(temp_dir) / "db.py"
-        asyncio.run(tool.run({"operation": "add", "file": str(api_py), "msg": "API handler"}))
-        asyncio.run(tool.run({"operation": "add", "file": str(db_py), "msg": "DB layer"}))
+        asyncio.run(tool.run({"operation": "add", "file_path": str(api_py), "message": "API handler"}))
+        asyncio.run(tool.run({"operation": "add", "file_path": str(db_py), "message": "DB layer"}))
         result = asyncio.run(tool.run({"operation": "list", "path": temp_dir}))
         assert "Found 2 tag(s)" in result
         assert "API handler" in result
         assert "DB layer" in result
 
+    def test_list_by_status(self, tool, temp_file):
+        asyncio.run(tool.run({"operation": "add", "file_path": temp_file, "message": "test file"}))
+        # Mark stale manually
+        tool._repo.mark_stale(temp_file)
+        tool._repo.commit()
+        result = asyncio.run(tool.run({"operation": "list", "status": "stale"}))
+        assert "Found 1 tag(s)" in result
+        assert "STALE" in result
+
     def test_list_empty(self, tool):
         result = asyncio.run(tool.run({"operation": "list"}))
         assert "No tags found" in result
 
-    def test_prune_orphans(self, tool, temp_file):
-        asyncio.run(tool.run({"operation": "add", "file": temp_file, "msg": "will be removed"}))
+    def test_batch_add(self, tool, temp_dir):
+        api_py = Path(temp_dir) / "api.py"
+        db_py = Path(temp_dir) / "db.py"
+        result = asyncio.run(
+            tool.run(
+                {
+                    "operation": "batch",
+                    "tags": [
+                        {"file_path": str(api_py), "message": "API handler"},
+                        {"file_path": str(db_py), "message": "DB layer"},
+                    ],
+                }
+            )
+        )
+        assert "Batch processed 2 tag(s)" in result
+        assert "API handler" in result
+        assert "DB layer" in result
+        # Verify persisted
+        assert tool._repo.get(str(api_py)) is not None
+        assert tool._repo.get(str(db_py)) is not None
+
+    def test_batch_skip_nonexistent(self, tool):
+        result = asyncio.run(
+            tool.run(
+                {
+                    "operation": "batch",
+                    "tags": [
+                        {"file_path": "/tmp/nonexistent_xyz.py", "message": "ghost"},
+                    ],
+                }
+            )
+        )
+        assert "Skipped" in result
+        assert "path not found" in result
+
+    def test_batch_empty(self, tool):
+        result = asyncio.run(tool.run({"operation": "batch"}))
+        assert "--tags list is required" in result
+
+    def test_prune_marks_stale(self, tool, temp_file):
+        asyncio.run(tool.run({"operation": "add", "file_path": temp_file, "message": "will be stale"}))
+        assert os.path.exists(temp_file)
         os.unlink(temp_file)
         result = asyncio.run(tool.run({"operation": "prune"}))
-        assert "Pruned" in result
-        # The file no longer exists, so prune should clean it
+        assert "Marked" in result
+        assert "stale" in result
+        # Tag should still exist but marked stale
+        tag = tool._repo.get(os.path.realpath(temp_file))
+        assert tag is not None
+        assert tag.status == "stale"
+
+    def test_prune_delete_mode(self, tool, temp_file):
+        asyncio.run(tool.run({"operation": "add", "file_path": temp_file, "message": "will be deleted"}))
+        os.unlink(temp_file)
+        result = asyncio.run(tool.run({"operation": "prune", "delete": True}))
+        assert "deleted" in result
+        # Tag should be gone
+        assert tool._repo.get(os.path.realpath(temp_file)) is None
 
     def test_prune_no_orphans(self, tool):
         result = asyncio.run(tool.run({"operation": "prune"}))
-        assert "No orphan tags" in result
+        assert "No tags to mark as stale" in result
 
     def test_path_normalization(self, tool, temp_file):
         """Relative paths and absolute paths should map to same tag."""
@@ -299,7 +444,7 @@ class TestTagTool:
         try:
             os.chdir(cwd)
             asyncio.run(
-                tool.run({"operation": "add", "file": rel, "msg": "via relative path"})
+                tool.run({"operation": "add", "file_path": rel, "message": "via relative path"})
             )
         finally:
             os.chdir(old_cwd)
@@ -310,6 +455,13 @@ class TestTagTool:
     def test_unknown_operation(self, tool):
         result = asyncio.run(tool.run({"operation": "unknown"}))
         assert "Unknown operation" in result
+
+    def test_stale_note_in_output(self, tool, temp_file):
+        """Verify that the agent maintenance note appears in output."""
+        result = asyncio.run(
+            tool.run({"operation": "add", "file_path": temp_file, "message": "test"})
+        )
+        assert "Tags are maintained by AI agents" in result
 
 
 # ── Annotation tests ───────────────────────────────────────────
@@ -396,6 +548,18 @@ class TestAnnotation:
         params = {"path": "."}
         annotated = annotate_result("glob", result, params, repo)
         assert "[Results limited" in annotated
+
+    def test_annotate_glob_stale_tag(self, repo, temp_dir):
+        """Stale tags should show the STALE marker in annotation."""
+        api_py = Path(temp_dir) / "api.py"
+        repo.upsert(str(api_py), message="API handler", status="stale")
+        repo.commit()
+
+        glob_result = "api.py"
+        params = {"path": temp_dir}
+        annotated = annotate_result("glob", glob_result, params, repo)
+        assert "STALE" in annotated
+        assert "\U0001f516" in annotated
 
 
 # ── Utility tests ──────────────────────────────────────────────
