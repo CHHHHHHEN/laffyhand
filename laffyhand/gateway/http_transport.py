@@ -173,6 +173,7 @@ class _HTTPStreamTransport(Transport):
         self.connection_id = conn_id
         self._closed = False
         self._dispatcher = dispatcher
+        self.dispatcher = dispatcher
 
     async def send(self, data: str) -> None:
         if self._closed:

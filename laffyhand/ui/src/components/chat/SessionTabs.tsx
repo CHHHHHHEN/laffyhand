@@ -42,7 +42,7 @@ export function SessionTabs() {
               <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-green-500" />
             </span>
           )}
-          <span className="truncate">{tab.title ?? tab.id.slice(0, 8)}</span>
+          <span className="truncate">{tab.title || "Untitled"}</span>
           <button
             onClick={(e) => {
               e.stopPropagation()

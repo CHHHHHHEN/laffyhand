@@ -670,6 +670,9 @@ class AgentRuntime:
         if self.title_config.mode != trigger:
             return False
         session = self.session_manager.get(session_id)
+        if session is None:
+            # Session not yet persisted — create it now (lazy persistence)
+            session = self.session_manager.ensure_exists(session_id)
         return session is not None and not session.title
 
     def _schedule_title_generation(self, session_id: str, trigger: str) -> None:
@@ -691,15 +694,20 @@ class AgentRuntime:
             from laffyhand.agent.title import generate_title
 
             llm = self._llm_for_session(session_id)
-            title = await generate_title(
-                self.session_manager,
-                session_id,
-                llm,
-                self.title_config,
+            title = await asyncio.wait_for(
+                generate_title(self.session_manager, session_id, llm, self.title_config),
+                timeout=30,
             )
             if title:
                 logger.info(f"Auto-generated title for session {session_id}: {title}")
+            else:
+                logger.warning(
+                    f"Title generator returned empty for session {session_id}"
+                )
             return title
+        except asyncio.TimeoutError:
+            logger.warning(f"Title generation timed out for session {session_id}")
+            return None
         except Exception:
             logger.exception(f"Title generation failed for session {session_id}")
             return None

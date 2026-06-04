@@ -1,7 +1,9 @@
-import { useState, useMemo, useRef, useEffect } from "react"
+import { useState, useMemo, useRef, useEffect, useCallback } from "react"
 import { useNavigate, useParams } from "react-router-dom"
+import { useQueryClient } from "@tanstack/react-query"
 import { useSessions, useAgents } from "@/hooks/use-sessions"
 import { useSessionStore } from "@/stores/session-store"
+import { rpcClient } from "@/lib/rpc"
 import { Button } from "@/components/ui/Button"
 import { Spinner } from "@/components/ui/Spinner"
 
@@ -17,6 +19,45 @@ export function Sidebar() {
   const [selectedAgent, setSelectedAgent] = useState("build")
   const [searchQuery, setSearchQuery] = useState("")
   const searchRef = useRef<HTMLInputElement>(null)
+  const renameRef = useRef<HTMLInputElement>(null)
+  const queryClient = useQueryClient()
+  const [renamingId, setRenamingId] = useState<string | null>(null)
+  const [renameValue, setRenameValue] = useState("")
+
+  const startRename = useCallback((e: React.MouseEvent, id: string, currentTitle: string | null) => {
+    e.stopPropagation()
+    setRenamingId(id)
+    setRenameValue(currentTitle || "")
+    // Focus the input on next tick after render
+    requestAnimationFrame(() => renameRef.current?.focus())
+  }, [])
+
+  const commitRename = useCallback(async (id: string) => {
+    const title = renameValue.trim()
+    if (title) {
+      try {
+        await rpcClient.sessionSetTitle(id, title)
+        queryClient.invalidateQueries({ queryKey: ["sessions"] })
+      } catch {
+        // ignore
+      }
+    }
+    setRenamingId(null)
+    setRenameValue("")
+  }, [renameValue, queryClient])
+
+  const handleRenameKeyDown = useCallback(
+    (e: React.KeyboardEvent, id: string) => {
+      if (e.key === "Enter") {
+        e.preventDefault()
+        commitRename(id)
+      } else if (e.key === "Escape") {
+        setRenamingId(null)
+        setRenameValue("")
+      }
+    },
+    [commitRename],
+  )
 
   // 键盘快捷键: Ctrl+K / Cmd+K 聚焦搜索
   useEffect(() => {
@@ -180,45 +221,76 @@ export function Sidebar() {
 
         {filteredSessions.map((s) => {
           const isActive = (sessionId ?? activeSessionId) === s.id
+          const isRenaming = renamingId === s.id
           return (
             <div
               key={s.id}
               className="group relative"
             >
-              <button
-                onClick={() => navigate(`/chat/${s.id}`)}
-                className={`w-full text-left px-3 py-2.5 rounded-lg text-sm transition-all duration-150 cursor-pointer ${
-                  isActive
-                    ? "bg-blue-100 dark:bg-blue-900/35 text-blue-700 dark:text-blue-300 shadow-sm"
-                    : "text-gray-600 dark:text-gray-400 hover:bg-gray-200/60 dark:hover:bg-gray-800/60"
-                }`}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <div className="truncate font-medium text-sm">
-                    {s.title || "Untitled"}
+              {isRenaming ? (
+                <div className="w-full px-3 py-2.5 rounded-lg bg-blue-100 dark:bg-blue-900/35">
+                  <input
+                    ref={renameRef}
+                    type="text"
+                    value={renameValue}
+                    onChange={(e) => setRenameValue(e.target.value)}
+                    onBlur={() => commitRename(s.id)}
+                    onKeyDown={(e) => handleRenameKeyDown(e, s.id)}
+                    onClick={(e) => e.stopPropagation()}
+                    className="w-full bg-transparent text-sm font-medium text-blue-700 dark:text-blue-300 outline-none"
+                  />
+                </div>
+              ) : (
+                <button
+                  onClick={() => navigate(`/chat/${s.id}`)}
+                  className={`w-full text-left px-3 py-2.5 rounded-lg text-sm transition-all duration-150 cursor-pointer ${
+                    isActive
+                      ? "bg-blue-100 dark:bg-blue-900/35 text-blue-700 dark:text-blue-300 shadow-sm"
+                      : "text-gray-600 dark:text-gray-400 hover:bg-gray-200/60 dark:hover:bg-gray-800/60"
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="truncate font-medium text-sm">
+                      {s.title || "Untitled"}
+                    </div>
+                    {s.updatedAt && (
+                      <span className="shrink-0 text-[10px] text-gray-400 dark:text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                        {formatRelativeTime(s.updatedAt)}
+                      </span>
+                    )}
                   </div>
-                  {s.updatedAt && (
-                    <span className="shrink-0 text-[10px] text-gray-400 dark:text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity">
-                      {formatRelativeTime(s.updatedAt)}
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <span className="text-[11px] text-gray-400 dark:text-gray-500">
+                      {s.messageCount} {s.messageCount === 1 ? "msg" : "msgs"}
                     </span>
-                  )}
-                </div>
-                <div className="flex items-center gap-2 mt-0.5">
-                  <span className="text-[11px] text-gray-400 dark:text-gray-500">
-                    {s.messageCount} {s.messageCount === 1 ? "msg" : "msgs"}
-                  </span>
-                </div>
-              </button>
-              {/* 删除按钮 */}
-              <button
-                onClick={(e) => handleDelete(e, s.id)}
-                className={`absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-md transition-all duration-150 cursor-pointer opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/25`}
-                title="Delete session"
-              >
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                </svg>
-              </button>
+                  </div>
+                </button>
+              )}
+              {/* 操作按钮 */}
+              <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-0.5">
+                {!isRenaming && (
+                  <button
+                    onClick={(e) => startRename(e, s.id, s.title)}
+                    className="p-1 rounded-md transition-all duration-150 cursor-pointer opacity-0 group-hover:opacity-100 text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/25"
+                    title="Rename session"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
+                  </button>
+                )}
+                {!isRenaming && (
+                  <button
+                    onClick={(e) => handleDelete(e, s.id)}
+                    className="p-1 rounded-md transition-all duration-150 cursor-pointer opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/25"
+                    title="Delete session"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </button>
+                )}
+              </div>
             </div>
           )
         })}

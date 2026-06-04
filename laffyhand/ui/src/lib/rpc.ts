@@ -239,6 +239,10 @@ export const rpcClient = {
     return call<SessionForkResult>("session/fork")
   },
 
+  sessionSetTitle(sessionId: string, title: string): Promise<{ status: string; session_id: string; title: string }> {
+    return call("session/set_title", { session_id: sessionId, title })
+  },
+
   toolsList(): Promise<ToolsListResult> {
     return call<ToolsListResult>("tools/list")
   },

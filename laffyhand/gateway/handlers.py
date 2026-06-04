@@ -441,6 +441,13 @@ async def handle_chat_stream(
         actual_sid = state.session_id if (state and state.session_id) else session_id
         await runtime._generate_title(actual_sid, "auto")
 
+        # Unregister session from stream registry BEFORE sending finish event,
+        # so the frontend can immediately send a new message without hitting
+        # SESSION_ALREADY_STREAMING (HTTP 409).
+        session_dispatcher = getattr(transport, "dispatcher", None)
+        if session_dispatcher is not None:
+            session_dispatcher.unregister_session_stream(session_id)
+
         # Check for leftover steer that wasn't consumed by tool batch
         leftover_steer: str | None = None
         state = runtime.get_state(session_id)
