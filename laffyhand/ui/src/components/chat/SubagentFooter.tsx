@@ -2,7 +2,7 @@ import { useMemo, useRef } from "react"
 import { useChatStore } from "@/stores/chat-store"
 import { useSessionStore } from "@/stores/session-store"
 import { buildSubagentTree } from "@/lib/subagentTree"
-import { SubagentCard } from "./SubagentCard"
+import { SubagentTreeCard } from "./SubagentCard"
 
 export function SubagentFooter() {
   const activeSessionId = useSessionStore((s) => s.activeSessionId)
@@ -44,9 +44,9 @@ export function SubagentFooter() {
       </div>
 
       {tree.length > 0 && (
-        <div className="px-3 pb-2 space-y-1.5 max-h-48 overflow-y-auto">
+        <div className="px-3 pb-2 space-y-1 max-h-48 overflow-y-auto">
           {tree.map((node) => (
-            <SubagentCard key={node.item.id} subagent={node.item} />
+            <SubagentTreeCard key={node.item.id} subagent={node.item} tree={tree} />
           ))}
         </div>
       )}

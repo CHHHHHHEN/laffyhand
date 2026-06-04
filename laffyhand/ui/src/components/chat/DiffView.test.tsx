@@ -21,40 +21,40 @@ describe("parseDiff", () => {
 
   it("parses hunk header", () => {
     const lines = parseDiff(sampleDiff)
-    const hunk = lines.find((l) => l.kind === "hunk")
+    const hunk = lines.find((l) => l.kind === "hunk")!
     expect(hunk).toBeDefined()
-    expect(hunk!.text).toContain("@@")
+    expect(hunk.text).toContain("@@")
   })
 
   it("assigns correct line numbers", () => {
     const lines = parseDiff(sampleDiff)
     // lines[0] = --- header, lines[1] = +++ header, lines[2] = @@ hunk
     // foo (context) → old=1, new=1
-    const foo = lines[3]
+    const foo = lines[3]!
     expect(foo.kind).toBe("context")
     expect(foo.oldLine).toBe(1)
     expect(foo.newLine).toBe(1)
 
     // -bar (deletion) → old=2, new=null
-    const bar = lines[4]
+    const bar = lines[4]!
     expect(bar.kind).toBe("del")
     expect(bar.oldLine).toBe(2)
     expect(bar.newLine).toBeNull()
 
     // baz (context) → old=3, new=2
-    const baz = lines[5]
+    const baz = lines[5]!
     expect(baz.kind).toBe("context")
     expect(baz.oldLine).toBe(3)
     expect(baz.newLine).toBe(2)
 
     // +qux (addition) → old=null, new=3
-    const qux = lines[6]
+    const qux = lines[6]!
     expect(qux.kind).toBe("add")
     expect(qux.oldLine).toBeNull()
     expect(qux.newLine).toBe(3)
 
     // +extra (addition) → old=null, new=4
-    const extra = lines[7]
+    const extra = lines[7]!
     expect(extra.kind).toBe("add")
     expect(extra.oldLine).toBeNull()
     expect(extra.newLine).toBe(4)
@@ -63,18 +63,18 @@ describe("parseDiff", () => {
   it("strips content prefix characters correctly", () => {
     const lines = parseDiff(sampleDiff)
     // context line with space prefix → content after stripping space
-    const foo = lines.find((l) => l.kind === "context" && l.text.includes("foo"))
+    const foo = lines.find((l) => l.kind === "context" && l.text.includes("foo"))!
     expect(foo).toBeDefined()
 
     // deletion line with - prefix
-    const bar = lines.find((l) => l.text.includes("bar"))
+    const bar = lines.find((l) => l.text.includes("bar"))!
     expect(bar).toBeDefined()
-    expect(bar!.kind).toBe("del")
+    expect(bar.kind).toBe("del")
 
     // addition line with + prefix
-    const qux = lines.find((l) => l.text.includes("qux"))
+    const qux = lines.find((l) => l.text.includes("qux"))!
     expect(qux).toBeDefined()
-    expect(qux!.kind).toBe("add")
+    expect(qux.kind).toBe("add")
   })
 
   it("returns empty array for empty input", () => {
@@ -85,8 +85,8 @@ describe("parseDiff", () => {
   it("handles single-file diff with no changes", () => {
     const lines = parseDiff("--- a/file\n+++ b/file")
     expect(lines).toHaveLength(2)
-    expect(lines[0].kind).toBe("header")
-    expect(lines[1].kind).toBe("header")
+    expect(lines[0]!.kind).toBe("header")
+    expect(lines[1]!.kind).toBe("header")
   })
 })
 

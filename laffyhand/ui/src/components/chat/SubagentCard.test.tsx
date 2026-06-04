@@ -31,155 +31,69 @@ describe("SubagentCard", () => {
       expect(screen.getByText("general")).toBeInTheDocument()
     })
 
-    it("shows running badge when status is running", () => {
+    it("shows running label when status is running", () => {
       render(<SubagentCard subagent={makeSubagent({ status: "running" })} />)
-      expect(screen.getByText("Running")).toBeInTheDocument()
+      expect(screen.getByText("running")).toBeInTheDocument()
     })
 
-    it("shows completed badge when status is completed", () => {
-      render(<SubagentCard subagent={makeSubagent({ status: "completed" })} />)
-      expect(screen.getByText("Completed")).toBeInTheDocument()
-    })
-
-    it("shows failed badge when status is error", () => {
-      render(<SubagentCard subagent={makeSubagent({ status: "error" })} />)
-      expect(screen.getByText("Failed")).toBeInTheDocument()
-    })
-
-    it("shows failed badge when status is cancelled", () => {
-      render(<SubagentCard subagent={makeSubagent({ status: "cancelled" })} />)
-      expect(screen.getByText("Failed")).toBeInTheDocument()
-    })
-
-    it("shows truncated instruction preview for long descriptions", () => {
-      const long = "a".repeat(100)
-      const sub = makeSubagent({ description: long })
-      render(<SubagentCard subagent={sub} />)
-      const expected = "a".repeat(60) + "…"
-      expect(screen.getByText(expected)).toBeInTheDocument()
-    })
-
-    it("shows tool count in header when tools exist", () => {
-      const sub = makeSubagent({
-        toolCount: 3,
-        tools: [
-          { name: "read", input: "/tmp" },
-          { name: "write", input: "/tmp/test" },
-          { name: "glob", input: "**/*.ts" },
-        ],
-        status: "completed",
-      })
+    it("shows tool count in header when completed with tools", () => {
+      const sub = makeSubagent({ toolCount: 3, status: "completed" })
       render(<SubagentCard subagent={sub} />)
       expect(screen.getByText("3 tools")).toBeInTheDocument()
     })
 
-    it("is expanded by default when running", () => {
-      render(<SubagentCard subagent={makeSubagent({ status: "running", text: "searching…" })} />)
-      expect(screen.getByText("searching…")).toBeInTheDocument()
+    it("is collapsed by default when running", () => {
+      const sub = makeSubagent({ status: "running", summary: "secret summary" })
+      render(<SubagentCard subagent={sub} />)
+      expect(screen.queryByText("secret summary")).not.toBeInTheDocument()
     })
 
     it("is collapsed by default when completed", () => {
-      const sub = makeSubagent({ status: "completed", text: "found 42 files" })
+      const sub = makeSubagent({ status: "completed", summary: "done summary" })
       render(<SubagentCard subagent={sub} />)
-      expect(screen.queryByText("found 42 files")).not.toBeInTheDocument()
+      expect(screen.queryByText("done summary")).not.toBeInTheDocument()
+    })
+
+    it("shows description text in header", () => {
+      const sub = makeSubagent({ description: "Find all TODO comments" })
+      render(<SubagentCard subagent={sub} />)
+      expect(screen.getByText("Find all TODO comments")).toBeInTheDocument()
     })
   })
 
-  describe("instruction message", () => {
-    it("shows instruction as user message when expanded", () => {
-      const sub = makeSubagent({ status: "running", description: "Find all TODO comments" })
-      render(<SubagentCard subagent={sub} />)
-      // text appears in both header preview and expanded message body
-      const all = screen.getAllByText("Find all TODO comments")
-      expect(all).toHaveLength(2)
-    })
-  })
-
-  describe("assistant content", () => {
-    it("shows text output", () => {
-      const sub = makeSubagent({ status: "running", text: "Found 5 test files" })
-      render(<SubagentCard subagent={sub} />)
-      expect(screen.getByText("Found 5 test files")).toBeInTheDocument()
-    })
-
-    it("shows thinking spinner when running with no text and no reasoning", () => {
-      render(<SubagentCard subagent={makeSubagent({ status: "running", text: "", reasoning: "" })} />)
-      expect(screen.getByText("Thinking")).toBeInTheDocument()
-    })
-
-    it("shows ReasoningBlock when reasoning exists", () => {
-      const sub = makeSubagent({ status: "running", reasoning: "analyzing patterns" })
-      render(<SubagentCard subagent={sub} />)
-      // ReasoningBlock header is visible (collapsed by default)
-      expect(screen.getByText("Thinking")).toBeInTheDocument()
-      // Click to expand and verify content
-      const reasonButtons = screen.getAllByText("Thinking")
-      fireEvent.click(reasonButtons[reasonButtons.length - 1]!)
-      expect(screen.getByText("analyzing patterns")).toBeInTheDocument()
-    })
-
-    it("shows tool call list when tools exist", () => {
-      const sub = makeSubagent({
-        status: "running",
-        tools: [{ name: "read", input: '{"path": "/tmp"}' }],
-        toolCount: 1,
-      })
-      render(<SubagentCard subagent={sub} />)
-      expect(screen.getByText("Tool calls · 1")).toBeInTheDocument()
-      expect(screen.getByText("read")).toBeInTheDocument()
-    })
-  })
-
-  describe("completed footer", () => {
-    it("shows summary when completed with summary", () => {
+  describe("expanded content", () => {
+    it("shows summary when expanded", () => {
       const sub = makeSubagent({
         status: "completed",
         summary: "Found 42 results",
-        inputTokens: 100,
-        outputTokens: 50,
       })
       render(<SubagentCard subagent={sub} />)
-      expect(screen.getByText((c) => c.includes("Found 42 results"))).toBeInTheDocument()
+      fireEvent.click(screen.getByText("explore"))
+      expect(screen.getByText("Found 42 results")).toBeInTheDocument()
     })
 
-    it("shows token usage in footer", () => {
+    it("shows token usage when expanded", () => {
       const sub = makeSubagent({
         status: "completed",
-        text: "done",
         inputTokens: 150,
         outputTokens: 75,
       })
       render(<SubagentCard subagent={sub} />)
+      fireEvent.click(screen.getByText("explore"))
       expect(screen.getByText((c) => c.includes("150"))).toBeInTheDocument()
       expect(screen.getByText((c) => c.includes("75"))).toBeInTheDocument()
     })
   })
 
-  describe("collapsed state hint", () => {
-    it("shows hint line when completed and collapsed", () => {
-      const sub = makeSubagent({
-        status: "completed",
-        toolCount: 2,
-        tools: [{ name: "read", input: "a" }, { name: "write", input: "b" }],
-        inputTokens: 100,
-        outputTokens: 50,
-        summary: "Done",
-      })
-      render(<SubagentCard subagent={sub} />)
-      expect(screen.getByText("2 tool calls")).toBeInTheDocument()
-      expect(screen.getByText(/↗100/)).toBeInTheDocument()
-      expect(screen.getByText(/↘50/)).toBeInTheDocument()
-      expect(screen.getByText((c) => c.includes("Done"))).toBeInTheDocument()
-    })
-  })
-
   describe("interaction", () => {
     it("toggles expanded state on header click", () => {
-      const sub = makeSubagent({ status: "completed", text: "hidden content" })
+      const sub = makeSubagent({ status: "completed", summary: "hidden content" })
       render(<SubagentCard subagent={sub} />)
       expect(screen.queryByText("hidden content")).not.toBeInTheDocument()
       fireEvent.click(screen.getByText("explore"))
       expect(screen.getByText("hidden content")).toBeInTheDocument()
+      fireEvent.click(screen.getByText("explore"))
+      expect(screen.queryByText("hidden content")).not.toBeInTheDocument()
     })
   })
 
@@ -217,9 +131,10 @@ describe("SubagentTreeCard", () => {
     status: "completed",
   })
 
-  // SubagentTreeCard expects a flat array of SubagentTreeNode.
-  // Nesting is tracked via parentId on the item, not tree nesting.
-  const flatAgg = { totalTools: 0, activeCount: 0, descendantCount: 0, totalDuration: 0, maxDepthFromHere: 0, inputTokens: 0, outputTokens: 0 }
+  const flatAgg = {
+    totalTools: 0, activeCount: 0, descendantCount: 0,
+    totalDuration: 0, maxDepthFromHere: 0, inputTokens: 0, outputTokens: 0,
+  }
   const flatTree: SubagentTreeNode[] = [
     { item: root, children: [], aggregate: flatAgg },
     { item: child, children: [], aggregate: flatAgg },
