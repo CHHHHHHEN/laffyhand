@@ -723,6 +723,84 @@ class TestAnnotation:
         assert "models.py" in annotated
         assert "subdir/" in annotated
 
+    def test_annotate_read_nested_directory(self, repo, temp_dir):
+        """Nested files should resolve against their parent directory, not the root."""
+        nested_py = Path(temp_dir) / "subdir" / "helper.py"
+        api_py = Path(temp_dir) / "api.py"
+        repo.upsert(str(nested_py), message="Helper module")
+        repo.upsert(str(api_py), message="API handler")
+        repo.commit()
+
+        read_result = (
+            f"Contents of {temp_dir} (depth=2):\n"
+            f"  api.py (1 lines)\n"
+            f"  subdir/\n"
+            f"    helper.py (1 lines)\n"
+        )
+        params = {"file_path": temp_dir}
+        annotated = annotate_result("read", read_result, params, repo)
+
+        assert "\U0001f516 API handler" in annotated
+        assert "\U0001f516 Helper module" in annotated
+
+    def test_annotate_read_deeply_nested(self, repo, temp_dir):
+        """Files at depth >= 3 should resolve against their actual directory."""
+        deep_py = Path(temp_dir) / "subdir" / "deep" / "deep.py"
+        repo.upsert(str(deep_py), message="Deeply nested module")
+        repo.commit()
+
+        read_result = (
+            f"Contents of {temp_dir} (depth=3):\n"
+            f"  subdir/\n"
+            f"    deep/\n"
+            f"      deep.py (1 lines)\n"
+        )
+        params = {"file_path": temp_dir}
+        annotated = annotate_result("read", read_result, params, repo)
+
+        assert "\U0001f516 Deeply nested module" in annotated
+
+    def test_annotate_read_same_filename_in_subdir(self, repo, temp_dir):
+        """A file named __init__.py in a subdir must NOT resolve to root __init__.py."""
+        nested_init = Path(temp_dir) / "subdir" / "__init__.py"
+        root_init = Path(temp_dir) / "__init__.py"
+        repo.upsert(str(nested_init), message="Subpackage init")
+        repo.upsert(str(root_init), message="Root package init")
+        repo.commit()
+
+        read_result = (
+            f"Contents of {temp_dir} (depth=2):\n"
+            f"  __init__.py (1 lines)\n"
+            f"  subdir/\n"
+            f"    __init__.py (1 lines)\n"
+        )
+        params = {"file_path": temp_dir}
+        annotated = annotate_result("read", read_result, params, repo)
+
+        assert "\U0001f516 Root package init" in annotated
+        assert "\U0001f516 Subpackage init" in annotated
+
+    def test_annotate_read_multiple_subdirs(self, repo, temp_dir):
+        """Sibling subdirectories with same-named files should each resolve correctly."""
+        lib_init = Path(temp_dir) / "lib" / "__init__.py"
+        cli_init = Path(temp_dir) / "cli" / "__init__.py"
+        repo.upsert(str(lib_init), message="Lib package init")
+        repo.upsert(str(cli_init), message="CLI package init")
+        repo.commit()
+
+        read_result = (
+            f"Contents of {temp_dir} (depth=2):\n"
+            f"  cli/\n"
+            f"    __init__.py (1 lines)\n"
+            f"  lib/\n"
+            f"    __init__.py (1 lines)\n"
+        )
+        params = {"file_path": temp_dir}
+        annotated = annotate_result("read", read_result, params, repo)
+
+        assert "\U0001f516 CLI package init" in annotated
+        assert "\U0001f516 Lib package init" in annotated
+
     def test_annotate_read_no_tags(self, repo, temp_dir):
         read_result = f"Contents of {temp_dir} (total 1 entries):\n  api.py (1 lines)"
         params = {"file_path": temp_dir}

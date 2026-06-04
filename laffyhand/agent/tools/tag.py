@@ -82,16 +82,36 @@ def _annotate_read(result: str, params: dict[str, Any], repo: FileTagRepo) -> st
         return result
     dir_path = Path(file_path).resolve()
     lines = result.splitlines(keepends=False)
+
+    # Track current directory based on indentation (2 spaces per level)
+    # Each entry: (indent_level, path)
+    path_stack: list[tuple[int, Path]] = [(0, dir_path)]
+
     annotated: list[str] = []
     for line in lines:
         if line.startswith("  "):
-            name = line.lstrip().split(" ")[0].rstrip("/")
-            full_path = dir_path / name
-            tag = repo.get(str(full_path))
-            if tag:
-                annotated.append(f"{line} {format_tag_summary(tag)}")
-            else:
+            stripped = line.lstrip()
+            indent = (len(line) - len(stripped)) // 2
+
+            # Pop back to correct nesting parent
+            while len(path_stack) > 1 and path_stack[-1][0] >= indent:
+                path_stack.pop()
+
+            entry_name = stripped.split(" ")[0]
+            clean_name = entry_name.rstrip("/")
+
+            if entry_name.endswith("/"):
+                # Directory entry — push onto stack for subsequent children
+                path_stack.append((indent, path_stack[-1][1] / clean_name))
                 annotated.append(line)
+            else:
+                # File entry — resolve against the current directory path
+                full_path = path_stack[-1][1] / clean_name
+                tag = repo.get(str(full_path))
+                if tag:
+                    annotated.append(f"{line} {format_tag_summary(tag)}")
+                else:
+                    annotated.append(line)
         else:
             annotated.append(line)
     return "\n".join(annotated)
