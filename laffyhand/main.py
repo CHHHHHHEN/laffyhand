@@ -120,9 +120,60 @@ async def _run_gateway_serve(args: argparse.Namespace, config: LaffyConfig) -> N
                 pass
 
 
+_DEFAULT_CONFIG = """\
+# Laffyhand Configuration
+# Auto-generated on first run. Edit this file to configure your LLM provider.
+
+llm:
+  default_provider: ""
+  providers: {}
+
+db:
+  path: "./laffyhand.db"
+
+logging:
+  dir: "logs"
+  level: "INFO"
+  retention_days: 10
+  console: true
+
+agent:
+  title_mode: "on_compact"
+  compaction_tail_turns: 2
+  max_steps: 50
+  max_concurrent_subagents: 2
+
+paths:
+  skills: []
+  agents: []
+
+mcp:
+  servers: {}
+"""
+
+
+def _create_default_config(path: str) -> None:
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(_DEFAULT_CONFIG)
+    logger.info("Default configuration created at '{}'", path)
+
+
 async def main() -> None:
     args = parse_args()
-    config = load_config(args.config)
+
+    if args.command is None:
+        args.command = "ui"
+        args.host = "127.0.0.1"
+        args.port = 9090
+
+    try:
+        config = load_config(args.config)
+    except FileNotFoundError:
+        default_path = args.config or "laffyhand.yml"
+        logger.info("No config file found, creating default at '{}'", default_path)
+        _create_default_config(default_path)
+        config = load_config(default_path)
+
     setup_logging(
         log_dir=config.logging.dir,
         level=config.logging.level,

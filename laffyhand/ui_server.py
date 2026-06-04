@@ -22,10 +22,21 @@ _SECURITY_HEADERS = {
 
 
 def _get_ui_dir() -> str:
+    candidates: list[str] = []
+
     meipass = getattr(sys, "_MEIPASS", None)
     if meipass is not None:
-        return os.path.join(meipass, "ui")
-    return str(Path(__file__).resolve().parent / "ui" / "dist")
+        candidates.append(os.path.join(meipass, "ui"))
+
+    here = Path(__file__).resolve().parent
+    candidates.append(str(here / "ui" / "dist"))   # development
+    candidates.append(str(here.parent / "ui"))       # Nuitka onefile
+
+    for candidate in candidates:
+        if os.path.isdir(candidate):
+            return candidate
+
+    return candidates[-1]
 
 
 async def _fallback_handler(request: Request) -> Response:
