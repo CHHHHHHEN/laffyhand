@@ -1,5 +1,12 @@
 ## Laffyhand -- A General Purpose AI Agent
 
+<div align="center">
+
+![Python](https://img.shields.io/badge/Python_3.14-3776AB?style=for-the-badge&logo=python&logoColor=white)
+![React](https://img.shields.io/badge/React_19-61DAFB?style=for-the-badge&logo=react&logoColor=black)
+
+</div>
+
 Laffyhand is a general purpose AI agent. It can complete programming tasks, search the internet for information, make plans and follow them to achieve goals, parse documents and store them in a vector knowledge base, and have personal memory.
 
 ## Quick Start
@@ -53,14 +60,6 @@ build.bat
 ```
 
 On first launch the binary auto-creates a default `laffyhand.yml` in the current directory. Edit it to add your LLM provider configuration before use.
-
-<div align="center">
-
-![Python](https://img.shields.io/badge/Python_3.14-3776AB?style=for-the-badge&logo=python&logoColor=white)
-![React](https://img.shields.io/badge/React_19-61DAFB?style=for-the-badge&logo=react&logoColor=black)
-
-</div>
-
 
 
 # Main Points
