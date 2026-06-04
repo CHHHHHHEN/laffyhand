@@ -100,7 +100,7 @@ export function Sidebar() {
       <div className="p-2 border-b border-[var(--border-muted)] space-y-1.5">
         <button
           onClick={handleNew}
-          className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs rounded-md bg-[var(--accent)] text-white hover:opacity-90 transition-opacity cursor-pointer select-none"
+          className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs rounded-md bg-[var(--accent)] text-white hover:opacity-90 hover:shadow-sm transition-all cursor-pointer select-none"
           style={{ fontWeight: 500 }}
         >
           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -113,7 +113,7 @@ export function Sidebar() {
           <button
             onClick={handleFork}
             disabled={!sessionId}
-            className="flex-1 px-2 py-1 text-xs rounded-md border border-[var(--border-base)] text-[var(--text-muted)] hover:text-[var(--text-base)] hover:bg-[var(--overlay-hover)] disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer select-none"
+            className="flex-1 px-2 py-1 text-xs rounded-md bg-[var(--bg-deep)] border border-[var(--border-base)] text-[var(--text-muted)] hover:text-[var(--text-base)] hover:bg-[var(--overlay-hover)] disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer select-none"
           >
             Fork
           </button>

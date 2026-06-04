@@ -137,7 +137,7 @@ export function MessageBubble({ message, onResolvePermission }: MessageBubblePro
 
       <div className="flex-1 min-w-0">
         {isUser ? (
-          <div className="bg-[var(--bg-layer-1)] rounded-lg px-4 py-2.5 border border-[var(--border-muted)] group relative">
+          <div className="bg-[var(--accent-muted)] rounded-lg px-4 py-2.5 border border-[var(--border-muted)] group relative transition-colors">
             <CopyButton content={message.content} />
             <p className="whitespace-pre-wrap text-sm text-[var(--text-base)] leading-relaxed">{message.content}</p>
             {message.createdAt && (
