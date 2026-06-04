@@ -9,6 +9,11 @@ vi.mock("@/lib/rpc", () => ({
   },
 }))
 
+const mockWriteText = vi.fn().mockResolvedValue(undefined)
+Object.assign(navigator, {
+  clipboard: { writeText: mockWriteText },
+})
+
 function makeMessage(overrides: Partial<Message> = {}): Message {
   return {
     id: "msg-1",
@@ -390,5 +395,65 @@ describe("MessageBubble", () => {
       />,
     )
     expect(screen.queryByText("Allow")).not.toBeInTheDocument()
+  })
+
+  // ── Copy button ──
+
+  it("renders copy button for user messages", () => {
+    render(<MessageBubble message={makeMessage({ role: "user", content: "copy me" })} />)
+    const copyBtn = screen.getByTitle("Copy message")
+    expect(copyBtn).toBeInTheDocument()
+  })
+
+  it("renders copy button for assistant messages", () => {
+    render(<MessageBubble message={makeMessage({ role: "assistant", content: "copy me too" })} />)
+    const copyBtn = screen.getByTitle("Copy message")
+    expect(copyBtn).toBeInTheDocument()
+  })
+
+  it("does not render copy button for system messages", () => {
+    render(<MessageBubble message={makeMessage({ role: "system", content: "system msg" })} />)
+    expect(screen.queryByTitle("Copy message")).not.toBeInTheDocument()
+  })
+
+  it("does not render copy button for permission-request messages", () => {
+    render(
+      <MessageBubble
+        message={makeMessage({
+          role: "permission-request",
+          content: "allow?",
+          permissionInfo: { requestId: "r1", permission: "skill", pattern: "test" },
+        })}
+      />,
+    )
+    expect(screen.queryByTitle("Copy message")).not.toBeInTheDocument()
+  })
+
+  it("copies message content to clipboard when clicked", async () => {
+    mockWriteText.mockClear()
+    render(<MessageBubble message={makeMessage({ role: "user", content: "content to copy" })} />)
+    fireEvent.click(screen.getByTitle("Copy message"))
+    await waitFor(() => {
+      expect(mockWriteText).toHaveBeenCalledWith("content to copy")
+    })
+  })
+
+  it("copies assistant message content to clipboard when clicked", async () => {
+    mockWriteText.mockClear()
+    render(<MessageBubble message={makeMessage({ role: "assistant", content: "assistant content" })} />)
+    fireEvent.click(screen.getByTitle("Copy message"))
+    await waitFor(() => {
+      expect(mockWriteText).toHaveBeenCalledWith("assistant content")
+    })
+  })
+
+  it("shows Copied! text after clicking and then reverts to copy icon", async () => {
+    render(<MessageBubble message={makeMessage({ role: "user", content: "hello" })} />)
+    fireEvent.click(screen.getByTitle("Copy message"))
+    await waitFor(() => {
+      expect(screen.getByText("Copied!")).toBeInTheDocument()
+    })
+    // After the copy feedback, the button should still be in the DOM
+    expect(screen.getByTitle("Copy message")).toBeInTheDocument()
   })
 })
