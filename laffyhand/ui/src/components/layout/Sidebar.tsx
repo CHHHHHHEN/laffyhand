@@ -1,6 +1,5 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from "react"
 import { useNavigate, useParams } from "react-router-dom"
-import { useQueryClient } from "@tanstack/react-query"
 import { useSessions, useAgents } from "@/hooks/use-sessions"
 import { useSessionStore } from "@/stores/session-store"
 import { rpcClient } from "@/lib/rpc"
@@ -11,7 +10,7 @@ export function Sidebar() {
   const navigate = useNavigate()
   const { sessionId } = useParams()
   const {
-    sessions, isLoading, createSession, isCreating,
+    sessions, isLoading, refetch, createSession, isCreating,
     deleteSession, forkSession, isForking,
   } = useSessions()
   const { agents } = useAgents()
@@ -20,7 +19,6 @@ export function Sidebar() {
   const [searchQuery, setSearchQuery] = useState("")
   const searchRef = useRef<HTMLInputElement>(null)
   const renameRef = useRef<HTMLInputElement>(null)
-  const queryClient = useQueryClient()
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState("")
 
@@ -32,25 +30,28 @@ export function Sidebar() {
     requestAnimationFrame(() => renameRef.current?.focus())
   }, [])
 
-  const commitRename = useCallback(async (id: string) => {
-    const title = renameValue.trim()
-    if (title) {
-      try {
-        await rpcClient.sessionSetTitle(id, title)
-        queryClient.invalidateQueries({ queryKey: ["sessions"] })
-      } catch {
-        // ignore
+  const commitRename = useCallback(
+    async (id: string, refetchSessions: () => void) => {
+      const title = renameValue.trim()
+      if (title) {
+        try {
+          await rpcClient.sessionSetTitle(id, title)
+          refetchSessions()
+        } catch {
+          // ignore
+        }
       }
-    }
-    setRenamingId(null)
-    setRenameValue("")
-  }, [renameValue, queryClient])
+      setRenamingId(null)
+      setRenameValue("")
+    },
+    [renameValue],
+  )
 
   const handleRenameKeyDown = useCallback(
-    (e: React.KeyboardEvent, id: string) => {
+    (e: React.KeyboardEvent, id: string, refetchSessions: () => void) => {
       if (e.key === "Enter") {
         e.preventDefault()
-        commitRename(id)
+        commitRename(id, refetchSessions)
       } else if (e.key === "Escape") {
         setRenamingId(null)
         setRenameValue("")
@@ -234,8 +235,8 @@ export function Sidebar() {
                     type="text"
                     value={renameValue}
                     onChange={(e) => setRenameValue(e.target.value)}
-                    onBlur={() => commitRename(s.id)}
-                    onKeyDown={(e) => handleRenameKeyDown(e, s.id)}
+                    onBlur={() => commitRename(s.id, refetch)}
+                    onKeyDown={(e) => handleRenameKeyDown(e, s.id, refetch)}
                     onClick={(e) => e.stopPropagation()}
                     className="w-full bg-transparent text-sm font-medium text-blue-700 dark:text-blue-300 outline-none"
                   />

@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useRef, useEffect } from "react"
 import type { ToolCall } from "@/types/session"
 
 /** AI 头像：蓝-靛渐变，带机器人图标 */
@@ -23,11 +23,18 @@ export function UserAvatar() {
   )
 }
 
-/** 推理过程折叠面板 — 更精致的 UI */
+/** 推理过程折叠面板 — 带固定最大高度 + 自动滚动 */
 export function ReasoningBlock({ text, defaultExpanded = false }: { text: string; defaultExpanded?: boolean }) {
   const [expanded, setExpanded] = useState(defaultExpanded)
-  const [showAll, setShowAll] = useState(false)
+  const scrollRef = useRef<HTMLDivElement>(null)
   const lineCount = text.split('\n').length
+
+  // Auto-scroll to bottom when new thinking content arrives
+  useEffect(() => {
+    if (expanded && scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+    }
+  }, [text, expanded])
 
   return (
     <div className="mb-2 rounded-lg border border-amber-200/60 dark:border-amber-700/40 overflow-hidden bg-amber-50/30 dark:bg-amber-900/10">
@@ -47,33 +54,11 @@ export function ReasoningBlock({ text, defaultExpanded = false }: { text: string
         </span>
       </button>
       {expanded && (
-        <div className="relative">
-          <div
-            className={`px-3 py-2 text-xs text-amber-800 dark:text-amber-200/80 bg-white/50 dark:bg-gray-900/30 whitespace-pre-wrap leading-relaxed border-t border-amber-200/40 dark:border-amber-700/30 animate-[fade-in_0.15s_ease-out] ${
-              !showAll ? "max-h-60 overflow-hidden" : ""
-            }`}
-          >
-            {text}
-          </div>
-          {!showAll && lineCount > 20 && (
-            <>
-              <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-white/50 dark:from-gray-900/50 to-transparent pointer-events-none" />
-              <button
-                onClick={() => setShowAll(true)}
-                className="w-full text-[10px] py-1 text-amber-600 dark:text-amber-400 bg-white/50 dark:bg-gray-900/30 hover:bg-amber-50/50 dark:hover:bg-amber-900/20 transition-colors cursor-pointer font-sans border-t border-amber-200/30 dark:border-amber-700/20"
-              >
-                Show all ({lineCount} lines)
-              </button>
-            </>
-          )}
-          {showAll && lineCount > 20 && (
-            <button
-              onClick={() => setShowAll(false)}
-              className="w-full text-[10px] py-1 text-amber-600 dark:text-amber-400 bg-white/50 dark:bg-gray-900/30 hover:bg-amber-50/50 dark:hover:bg-amber-900/20 transition-colors cursor-pointer font-sans border-t border-amber-200/30 dark:border-amber-700/20"
-            >
-              Show less
-            </button>
-          )}
+        <div
+          ref={scrollRef}
+          className="px-3 py-2 text-xs text-amber-800 dark:text-amber-200/80 bg-white/50 dark:bg-gray-900/30 whitespace-pre-wrap leading-relaxed border-t border-amber-200/40 dark:border-amber-700/30 animate-[fade-in_0.15s_ease-out] max-h-60 overflow-y-auto"
+        >
+          {text}
         </div>
       )}
     </div>
