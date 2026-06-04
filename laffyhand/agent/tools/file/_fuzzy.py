@@ -78,10 +78,136 @@ def escape_normalized_match(content: str, old: str) -> tuple[int, int] | None:
     return exact_match(content, unescaped)
 
 
+def _text_similarity(a: str, b: str) -> float:
+    """Levenshtein-based similarity between 0 and 1."""
+    max_len = max(len(a), len(b))
+    if max_len == 0:
+        return 1.0
+    distance = _levenshtein(a, b)
+    return 1.0 - distance / max_len
+
+
+def _levenshtein(s: str, t: str) -> int:
+    """Classic Levenshtein distance."""
+    if len(s) < len(t):
+        s, t = t, s
+    prev: list[int] = list(range(len(t) + 1))
+    for sc in s:
+        curr = [prev[0] + 1]
+        for j, tc in enumerate(t):
+            cost = 0 if sc == tc else 1
+            curr.append(min(curr[-1] + 1, prev[j + 1] + 1, prev[j] + cost))
+        prev = curr
+    return prev[-1]
+
+
+SINGLE_CANDIDATE_THRESHOLD = 0.3
+MULTIPLE_CANDIDATES_THRESHOLD = 0.3
+
+
+def block_anchor_match(content: str, old: str) -> tuple[int, int] | None:
+    """Match multi-line blocks (>=3 lines) using first/last line anchors and
+    Levenshtein similarity on middle lines.  Handles whitespace differences
+    in anchor lines and moderate edits in middle lines."""
+    lines = content.splitlines(keepends=True)
+    old_lines_keeps = old.splitlines(keepends=True)
+    old_lines = [ln.rstrip("\n\r") for ln in old_lines_keeps]
+
+    if len(old_lines) < 3:
+        return None
+
+    first_raw = old_lines[0].strip()
+    last_raw = old_lines[-1].strip()
+
+    candidates: list[tuple[int, int]] = []
+    i = 0
+    while i < len(lines):
+        if lines[i].strip() != first_raw:
+            i += 1
+            continue
+        for j in range(i + 2, len(lines)):
+            if lines[j].strip() == last_raw:
+                candidates.append((i, j))
+                break
+        i += 1
+
+    if not candidates:
+        return None
+
+    def _eval_candidate(start: int, end: int) -> float:
+        middle = min(len(old_lines) - 2, end - start - 1)
+        if middle <= 0:
+            return 1.0
+        total = 0.0
+        for k in range(1, min(len(old_lines) - 1, end - start)):
+            orig = lines[start + k].strip()
+            search = old_lines[k].strip()
+            total += _text_similarity(orig, search)
+        return total / middle
+
+    def _match_span(start: int, end: int) -> tuple[int, int]:
+        """Compute character span without trailing newline of last line."""
+        match_start = sum(len(lines[k]) for k in range(start))
+        match_end = match_start + sum(
+            len(lines[k]) for k in range(start, end)
+        ) + len(lines[end].rstrip("\n\r"))
+        return (match_start, match_end)
+
+    # Single candidate — relaxed
+    if len(candidates) == 1:
+        start, end = candidates[0]
+        sim = _eval_candidate(start, end)
+        if sim >= SINGLE_CANDIDATE_THRESHOLD:
+            return _match_span(start, end)
+        return None
+
+    # Multiple candidates — pick best
+    best = max(candidates, key=lambda c: _eval_candidate(c[0], c[1]))
+    start, end = best
+    sim = _eval_candidate(start, end)
+    if sim >= MULTIPLE_CANDIDATES_THRESHOLD:
+        return _match_span(start, end)
+    return None
+
+
+def find_all_fuzzy(content: str, old: str) -> list[tuple[int, int]]:
+    """Find all non-overlapping occurrences using fuzzy strategies.
+
+    Returns the result from the strategy that finds the **most** matches
+    (ties broken by strategy order = specificity).
+    """
+    best: list[tuple[int, int]] = []
+    for _, match_fn in STRATEGIES:
+        results: list[tuple[int, int]] = []
+        seen: set[tuple[int, int]] = set()
+        pos = 0
+        while pos < len(content):
+            m = match_fn(content[pos:], old)
+            if m is None:
+                break
+            start, end = pos + m[0], pos + m[1]
+            key = (start, end)
+            if key not in seen and end > start:
+                seen.add(key)
+                results.append(key)
+                pos = end if end > pos else pos + 1
+            elif key in seen:
+                pos = end
+            else:
+                pos += 1
+        if results and len(results) >= len(best):
+            if len(results) == len(best):
+                continue  # first strategy wins ties (more specific)
+            results.sort(key=lambda x: x[0])
+            best = results
+    return best
+
+
 STRATEGIES: list[tuple[str, MatchFn]] = [
     ("exact", exact_match),
     ("whitespace normalized", whitespace_normalized_match),
     ("line trimmed", line_trimmed_match),
+    ("block anchor", block_anchor_match),
     ("trimmed boundary", trimmed_boundary_match),
     ("escape normalized", escape_normalized_match),
 ]

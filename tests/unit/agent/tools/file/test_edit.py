@@ -281,3 +281,109 @@ class TestEditTool(unittest.TestCase):
             tool.run({"file_path": str(f), "old_string": "zzz", "new_string": "xxx"})
         )
         self.assertNotIn("--- ", result)
+
+    # ─── regex old_pattern ───────────────────────────────────────
+
+    def test_edit_regex_pattern(self):
+        f = self.root / "test.txt"
+        f.write_text("foo123 bar456 baz789")
+        tool = EditTool()
+        result = asyncio.run(
+            tool.run({
+                "file_path": str(f),
+                "old_pattern": r"\d+",
+                "new_string": "NUM",
+            })
+        )
+        self.assertIn("regex", result)
+        self.assertIn("replaced 1", result)
+        self.assertEqual(f.read_text(), "fooNUM bar456 baz789")
+
+    def test_edit_regex_replace_all(self):
+        f = self.root / "test.txt"
+        f.write_text("foo123 bar456 baz789")
+        tool = EditTool()
+        result = asyncio.run(
+            tool.run({
+                "file_path": str(f),
+                "old_pattern": r"\d+",
+                "new_string": "NUM",
+                "replaceAll": True,
+            })
+        )
+        self.assertIn("replaced 3", result)
+        self.assertEqual(f.read_text(), "fooNUM barNUM bazNUM")
+
+    def test_edit_regex_backreference(self):
+        f = self.root / "test.txt"
+        f.write_text("hello world")
+        tool = EditTool()
+        result = asyncio.run(
+            tool.run({
+                "file_path": str(f),
+                "old_pattern": r"(hello) (world)",
+                "new_string": r"\2 \1",
+            })
+        )
+        self.assertIn("Edited", result)
+        self.assertEqual(f.read_text(), "world hello")
+
+    def test_edit_regex_invalid_pattern(self):
+        f = self.root / "test.txt"
+        f.write_text("hello")
+        tool = EditTool()
+        result = asyncio.run(
+            tool.run({
+                "file_path": str(f),
+                "old_pattern": r"[invalid",
+                "new_string": "x",
+            })
+        )
+        self.assertIn("Invalid regex", result)
+
+    def test_edit_regex_no_match(self):
+        f = self.root / "test.txt"
+        f.write_text("hello world")
+        tool = EditTool()
+        result = asyncio.run(
+            tool.run({
+                "file_path": str(f),
+                "old_pattern": r"\d+",
+                "new_string": "x",
+            })
+        )
+        self.assertIn("Pattern not found", result)
+
+    # ─── fuzzy replaceAll ────────────────────────────────────────
+
+    def test_edit_replace_all_fuzzy_whitespace(self):
+        f = self.root / "test.txt"
+        f.write_text("x y x    y")
+        tool = EditTool()
+        result = asyncio.run(
+            tool.run({
+                "file_path": str(f),
+                "old_string": "x y",
+                "new_string": "a b",
+                "replaceAll": True,
+            })
+        )
+        self.assertIn("replaced 2", result)
+        # Both occurrences should be replaced: "x y" and "x    y"
+        self.assertEqual(f.read_text(), "a b a b")
+
+    def test_edit_replace_all_exact_still_works(self):
+        f = self.root / "test.txt"
+        f.write_text("foo bar foo bar foo")
+        tool = EditTool()
+        result = asyncio.run(
+            tool.run({
+                "file_path": str(f),
+                "old_string": "foo",
+                "new_string": "baz",
+                "replaceAll": True,
+            })
+        )
+        self.assertNotIn("fuzzy", result)
+        self.assertIn("replaced 3", result)
+        self.assertEqual(f.read_text(), "baz bar baz bar baz")

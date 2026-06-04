@@ -7,6 +7,8 @@ from laffyhand.agent.tools.file._fuzzy import (
     trimmed_boundary_match,
     line_trimmed_match,
     escape_normalized_match,
+    block_anchor_match,
+    find_all_fuzzy,
     STRATEGIES,
 )
 
@@ -134,6 +136,41 @@ class TestEscapeNormalizedMatch(unittest.TestCase):
         self.assertIsNotNone(result)
 
 
+class TestBlockAnchorMatch(unittest.TestCase):
+    def test_requires_three_lines(self):
+        result = block_anchor_match("line1\nline2", "line1\nline2")
+        self.assertIsNone(result)
+
+    def test_exact_three_line_block(self):
+        content = "a\nb\nc\nd\ne"
+        result = block_anchor_match(content, "b\nc\nd")
+        self.assertIsNotNone(result)
+        self.assertEqual(content[result[0]:result[1]], "b\nc\nd")
+
+    def test_whitespace_difference_in_middle_lines(self):
+        content = "a\n  hello\n  world\n  foo\nb"
+        result = block_anchor_match(content, "a\nhello\nworld\nfoo\nb")
+        self.assertIsNotNone(result)
+        self.assertEqual(content[result[0]:result[1]], "a\n  hello\n  world\n  foo\nb")
+
+    def test_no_match(self):
+        content = "x\ny\nz"
+        result = block_anchor_match(content, "a\nb\nc")
+        self.assertIsNone(result)
+
+    def test_similar_but_not_exact_middle_lines(self):
+        content = "a\nhello_world\nfoo_bar\nb"
+        result = block_anchor_match(content, "a\nhelloWorld\nfooBar\nb")
+        self.assertIsNotNone(result)
+
+    def test_multiple_candidates_pick_best(self):
+        content = "a\nxxx\nyyy\nb\na\nppp\nqqq\nb"
+        result = block_anchor_match(content, "a\nppp\nqqq\nb")
+        self.assertIsNotNone(result)
+        matched = content[result[0]:result[1]]
+        self.assertEqual(matched, "a\nppp\nqqq\nb")
+
+
 class TestStrategiesOrder(unittest.TestCase):
     def test_exact_match_first_in_strategies(self):
         self.assertEqual(STRATEGIES[0][0], "exact")
@@ -144,6 +181,7 @@ class TestStrategiesOrder(unittest.TestCase):
             "exact",
             "whitespace normalized",
             "line trimmed",
+            "block anchor",
             "trimmed boundary",
             "escape normalized",
         ]
@@ -156,3 +194,17 @@ class TestStrategiesOrder(unittest.TestCase):
             if name == "exact":
                 self.assertIsNotNone(result)
             break
+
+
+class TestFindAllFuzzy(unittest.TestCase):
+    def test_find_all_exact_matches(self):
+        results = find_all_fuzzy("foo bar foo bar foo", "foo")
+        self.assertEqual(len(results), 3)
+
+    def test_find_all_fuzzy_whitespace(self):
+        results = find_all_fuzzy("x y x    y", "x y")
+        self.assertEqual(len(results), 2)
+
+    def test_find_all_no_match(self):
+        results = find_all_fuzzy("hello world", "zzz")
+        self.assertEqual(results, [])

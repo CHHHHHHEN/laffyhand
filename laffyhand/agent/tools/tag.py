@@ -15,8 +15,8 @@ if TYPE_CHECKING:
 
 _STALE_NOTE = (
     "Note: Tags are maintained by AI agents. "
-    "Each file can have only one tag — "
-    "use 'tag update' to modify it or 'tag add' to overwrite it. "
+    "Each file can have only one tag. "
+    "Use 'tag add' (first-time or major update) or 'tag update' (incremental). "
     "If this information is stale, run "
     "'tag update --file_path <path> --message <updated description>' to update it."
 )
@@ -180,10 +180,11 @@ class TagTool(BaseTool):
         "the tag should say 'Authentication middleware — validates JWTs and enforces RBAC', "
         "not 'Added JWT validation'.\n\n"
         "Choosing the right operation:\n"
-        "- Use 'tag add' to create the first tag for a file, or to COMPLETELY OVERWRITE "
-        "an existing tag with a new macro-level description.\n"
-        "- Use 'tag update' to incrementally modify an existing tag (e.g. update the message, "
-        "or add/change key-value metadata) without losing the rest.\n"
+        "- Use 'tag add' to create the first tag, or to update an existing tag's description while "
+        "**preserving** any existing structured metadata (exports, side_effects, depends_on). "
+        "If you provide new values for those fields, they replace the previous values.\n"
+        "- Use 'tag update' for incremental changes — update message, add custom key-value pairs, "
+        "or change specific structured fields without affecting the rest.\n"
         "- If you are unsure whether a file already has a tag, "
         "call 'tag list --path <path>' first.\n\n"
         "Best practice — always tag files you create or modify:\n"
@@ -197,8 +198,9 @@ class TagTool(BaseTool):
         "Operations:\n"
         "- add --file_path <path> --message <description>: "
         "Tag a file with a macro-level semantic description. "
-        "If the file already has a tag, this COMPLETELY OVERWRITES it. "
-        "Use for first-time tagging or when the file's purpose has fundamentally changed.\n"
+        "If the file already has a tag, the message is updated while "
+        "existing exports/side_effects/depends_on are preserved unless explicitly overridden. "
+        "Use for first-time tagging or to update a tag's summary.\n"
         "- update --file_path <path> --message <description>: "
         "Update the description of an existing tag without losing key-value metadata.\n"
         "- update --file_path <path> --key <k> --value <v>: "
@@ -329,22 +331,51 @@ class TagTool(BaseTool):
         if not os.path.exists(real):
             return f"Error: path does not exist: {file_path}"
         existing = self._repo.get(real)
+        new_exports = _coerce_dict(params.get("exports"))
+        new_side_effects = params.get("side_effects")
+        new_depends_on = _coerce_list(params.get("depends_on"))
         self._repo.upsert(
             real,
             message=message,
             status="active",
-            exports=_coerce_dict(params.get("exports")),
-            side_effects=params.get("side_effects"),
-            depends_on=_coerce_list(params.get("depends_on")),
+            exports=new_exports,
+            side_effects=new_side_effects,
+            depends_on=new_depends_on,
         )
         self._repo.commit()
         date = _date_from_iso(datetime.now(timezone.utc).isoformat())
         if existing:
+            changes: list[str] = []
+            changes.append(f"  message: {existing.message} → {message}")
+            # Structured fields — show preserved vs replaced
+            if new_exports is None:
+                if existing.exports:
+                    keys = ", ".join(sorted(existing.exports.keys()))
+                    changes.append(f"  exports: preserved ({len(existing.exports)} symbols: {keys})")
+                else:
+                    changes.append("  exports: (none)")
+            elif existing.exports != new_exports:
+                changes.append(f"  exports: updated ({len(new_exports)} symbols)")
+            else:
+                changes.append("  exports: unchanged")
+            if new_side_effects is None:
+                if existing.side_effects:
+                    changes.append("  side_effects: preserved")
+            elif existing.side_effects != new_side_effects:
+                changes.append("  side_effects: updated")
+            else:
+                changes.append("  side_effects: unchanged")
+            if new_depends_on is None:
+                if existing.depends_on:
+                    changes.append(f"  depends_on: preserved ({len(existing.depends_on)} deps)")
+            elif existing.depends_on != new_depends_on:
+                changes.append(f"  depends_on: updated ({len(new_depends_on)} deps)")
+            else:
+                changes.append("  depends_on: unchanged")
             return (
-                f"Tagged {real} (overwrote previous tag)\n"
-                f"  Previous: \U0001f516 {existing.message}\n"
-                f"  New:      \U0001f516 {message} ({date})\n"
-                f"{_STALE_NOTE}"
+                f"Tagged {real} (updated existing tag)\n"
+                + "\n".join(changes)
+                + f"\n{_STALE_NOTE}"
             )
         return f"Tagged {real}\n\U0001f516 {message} ({date})\n{_STALE_NOTE}"
 

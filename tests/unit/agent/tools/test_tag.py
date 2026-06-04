@@ -344,13 +344,12 @@ class TestTagTool:
         # Manually mark stale
         tool._repo.mark_stale(temp_file)
         tool._repo.commit()
-        # Re-add — should show "overwrote" since a tag already exists (stale)
+        # Re-add — should show diff since a tag already exists (stale)
         result = asyncio.run(
             tool.run({"operation": "add", "file_path": temp_file, "message": "re-tagged"})
         )
-        assert "overwrote previous tag" in result
-        assert "Previous:" in result
-        assert "first" in result
+        assert "updated existing tag" in result
+        assert "first → re-tagged" in result
         assert "re-tagged" in result
         tag = tool._repo.get(temp_file)
         assert tag is not None
