@@ -113,7 +113,7 @@ describe("ToolCallCard", () => {
     })
   })
 
-  describe("result markdown formatting", () => {
+  describe("result formatting", () => {
     function expandResult(toolCall: ToolCall) {
       const utils = render(<ToolCallCard toolCall={toolCall} />)
       // Result is collapsed by default for non-diff results — click to expand
@@ -122,43 +122,66 @@ describe("ToolCallCard", () => {
       return utils
     }
 
-    it("renders bold text in result", () => {
-      expandResult(makeToolCall({ result: "File **updated** successfully" }))
-      expect(screen.getByText("updated").tagName).toBe("STRONG")
-    })
-
-    it("renders inline code in result", () => {
-      expandResult(makeToolCall({ result: "Use `npx tsc` to check" }))
-      expect(screen.getByText("npx tsc")).toBeInTheDocument()
-    })
-
-    it("renders code fence as <pre> in result", () => {
-      const { container } = expandResult(makeToolCall({ result: "```\nhello()\n```" }))
+    it("renders result as plain pre-formatted text, not Markdown", () => {
+      const { container } = expandResult(makeToolCall({ result: "File **updated** successfully" }))
+      // No Markdown rendering: bold syntax appears as literal text
+      expect(screen.getByText("File **updated** successfully")).toBeInTheDocument()
+      // The result is wrapped in a <pre> element
       expect(container.querySelector("pre")).toBeTruthy()
     })
 
-    it("renders lists in result", () => {
+    it("preserves whitespace and newlines in result", () => {
+      const { container } = expandResult(makeToolCall({
+        result: "Contents of /path (depth=2):\n  dir/\n  file.txt (42 lines)",
+      }))
+      const pres = container.querySelectorAll("pre")
+      // First <pre> is arguments, second <pre> is the result
+      const resultPre = pres[1]
+      expect(resultPre).toBeTruthy()
+      expect(resultPre?.textContent).toContain("Contents of /path (depth=2):")
+      expect(resultPre?.textContent).toContain("  dir/")
+      expect(resultPre?.textContent).toContain("  file.txt (42 lines)")
+    })
+
+    it("renders inline code as literal text in result", () => {
+      expandResult(makeToolCall({ result: "Use `npx tsc` to check" }))
+      // Backticks are literal, not code syntax
+      expect(screen.getByText(/`npx tsc`/)).toBeInTheDocument()
+    })
+
+    it("renders code fence as literal text in result", () => {
+      const { container } = expandResult(makeToolCall({ result: "```\nhello()\n```" }))
+      const pres = container.querySelectorAll("pre")
+      // Second <pre> is the result
+      const resultPre = pres[1]
+      expect(resultPre).toBeTruthy()
+      expect(resultPre?.textContent).toContain("```")
+      expect(resultPre?.textContent).toContain("hello()")
+    })
+
+    it("renders list markers as literal text in result", () => {
       expandResult(makeToolCall({ result: "- item 1\n- item 2" }))
-      expect(screen.getByText("item 1")).toBeInTheDocument()
-      expect(screen.getByText("item 2")).toBeInTheDocument()
+      expect(screen.getByText(/- item 1/)).toBeInTheDocument()
+      expect(screen.getByText(/- item 2/)).toBeInTheDocument()
     })
 
-    it("renders links in result", () => {
+    it("renders links as literal text in result", () => {
       expandResult(makeToolCall({ result: "[open file](file:///test)" }))
-      const link = screen.getByText("open file")
-      expect(link.tagName).toBe("A")
+      // Literal Markdown link syntax, not an <a> tag
+      expect(screen.getByText(/\[open file\]/)).toBeInTheDocument()
     })
 
-    it("sanitizes dangerous HTML in result", () => {
+    it("renders HTML tags as literal text (safe, no XSS vector)", () => {
       expandResult(makeToolCall({ result: '<script>alert("xss")</script>clean result' }))
-      expect(screen.queryByText(/alert/i)).not.toBeInTheDocument()
-      expect(screen.getByText("clean result")).toBeInTheDocument()
+      // Inside <pre>, React escapes HTML — script tag is literal text
+      expect(screen.getByText(/<script>alert/)).toBeInTheDocument()
+      expect(screen.getByText(/clean result/)).toBeInTheDocument()
     })
 
-    it("renders markdown alongside diff when result has both", () => {
+    it("preserves whitespace alongside diff when result has both", () => {
       const toolCall = makeToolCall({
         result: [
-          "File **edited** successfully",
+          "File edited — replaced 1 occurrence",
           "",
           "--- /path/to/file",
           "+++ /path/to/file",
@@ -168,8 +191,8 @@ describe("ToolCallCard", () => {
         ].join("\n"),
       })
       render(<ToolCallCard toolCall={toolCall} />)
-      // Auto-expanded due to diff — bold text should be rendered
-      expect(screen.getByText("edited").tagName).toBe("STRONG")
+      // Auto-expanded due to diff — summary text is literal in <pre>
+      expect(screen.getByText(/File edited — replaced 1 occurrence/)).toBeInTheDocument()
       // Diff content still visible
       expect(screen.getByText("bar")).toBeInTheDocument()
     })
