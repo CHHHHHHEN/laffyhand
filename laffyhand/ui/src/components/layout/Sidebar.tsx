@@ -100,7 +100,7 @@ export function Sidebar() {
       <div className="p-2 border-b border-[var(--border-muted)] space-y-1.5">
         <button
           onClick={handleNew}
-          className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs rounded-md bg-[var(--accent)] text-white hover:opacity-90 hover:shadow-sm transition-all cursor-pointer select-none"
+          className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 text-sm rounded-md bg-[var(--accent)] text-white hover:opacity-90 hover:shadow-sm transition-all cursor-pointer select-none"
           style={{ fontWeight: 500 }}
         >
           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -113,7 +113,7 @@ export function Sidebar() {
           <button
             onClick={handleFork}
             disabled={!sessionId}
-            className="flex-1 px-2 py-1 text-xs rounded-md bg-[var(--bg-deep)] border border-[var(--border-base)] text-[var(--text-muted)] hover:text-[var(--text-base)] hover:bg-[var(--overlay-hover)] disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer select-none"
+            className="flex-1 px-2 py-1 text-sm rounded-md bg-[var(--bg-deep)] border border-[var(--border-base)] text-[var(--text-muted)] hover:text-[var(--text-base)] hover:bg-[var(--overlay-hover)] disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer select-none"
           >
             Fork
           </button>
@@ -135,7 +135,7 @@ export function Sidebar() {
                     <button
                       key={agent.name}
                       onClick={() => { setDefaultAgent(agent.name); setShowAgentSelect(false) }}
-                      className={`w-full text-left px-2.5 py-1.5 text-xs hover:bg-[var(--overlay-hover)] transition-colors cursor-pointer ${
+                      className={`w-full text-left px-2.5 py-1.5 text-sm hover:bg-[var(--overlay-hover)] transition-colors cursor-pointer ${
                         defaultAgent === agent.name ? "text-[var(--accent)]" : "text-[var(--text-muted)]"
                       }`}
                     >
@@ -158,7 +158,7 @@ export function Sidebar() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search sessions..."
-            className="w-full pl-6 pr-2 py-1.5 text-xs rounded-md border border-[var(--border-base)] bg-[var(--bg-deep)] text-[var(--text-base)] outline-none focus:border-[var(--accent)] transition-colors placeholder:text-[var(--text-faint)]"
+            className="w-full pl-6 pr-2 py-1.5 text-sm rounded-md border border-[var(--border-base)] bg-[var(--bg-deep)] text-[var(--text-base)] outline-none focus:border-[var(--accent)] transition-colors placeholder:text-[var(--text-faint)]"
             style={{ fontWeight: 440 }}
           />
         </div>
@@ -172,7 +172,7 @@ export function Sidebar() {
           </div>
         ) : filteredSessions.length === 0 ? (
           <div className="px-3 py-6 text-center">
-            <p className="text-xs text-[var(--text-faint)]">
+            <p className="text-sm text-[var(--text-faint)]">
               {search ? "No sessions match your search" : "No sessions yet"}
             </p>
           </div>
@@ -213,17 +213,17 @@ export function Sidebar() {
                       }}
                       onBlur={() => handleSaveRename(s.id)}
                       autoFocus
-                      className="w-full px-1 py-0.5 text-xs rounded border border-[var(--accent)] bg-[var(--bg-base)] text-[var(--text-base)] outline-none"
+                      className="w-full px-1 py-0.5 text-sm rounded border border-[var(--accent)] bg-[var(--bg-base)] text-[var(--text-base)] outline-none"
                       style={{ fontWeight: 440 }}
                     />
                   </div>
                 ) : (
                   <>
                     <div className="flex-1 min-w-0">
-                      <div className={`text-xs truncate ${isActive ? "text-[var(--accent)]" : "text-[var(--text-base)]"}`} style={{ fontWeight: 440 }}>
+                      <div className={`text-sm truncate ${isActive ? "text-[var(--accent)]" : "text-[var(--text-base)]"}`} style={{ fontWeight: 450 }}>
                         {displayTitle}
                       </div>
-                      <div className="text-[10px] text-[var(--text-muted)]">{timeAgo}</div>
+                      <div className="text-xs text-[var(--text-muted)]">{timeAgo}</div>
                     </div>
                     <div className="hidden group-hover:flex items-center gap-0.5">
                       <button

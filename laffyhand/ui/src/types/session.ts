@@ -41,6 +41,7 @@ export interface Message {
   content: string
   reasoning?: string
   toolCalls?: ToolCall[]
+  subagents?: ActiveSubagent[]
   finishReason?: string
   usage?: { inputTokens: number; outputTokens: number; reasoningTokens?: number }
   permissionInfo?: PermissionInfo
@@ -65,17 +66,25 @@ export interface SubagentEvent {
   toolInput?: string
 }
 
+export interface SubagentTool {
+  name: string
+  input: string
+  result?: string
+  isError?: boolean
+}
+
 export interface ActiveSubagent {
   id: string
   parentId: string | null
   agentType: string
   description: string
+  prompt?: string
   mode: "foreground" | "background"
   depth: number
   status: "running" | "completed" | "error" | "cancelled"
   text: string
   reasoning: string
-  tools: { name: string; input: string }[]
+  tools: SubagentTool[]
   toolCount: number
   summary?: string
   inputTokens: number

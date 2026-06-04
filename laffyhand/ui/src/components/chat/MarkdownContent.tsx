@@ -74,7 +74,7 @@ export const MarkdownContent = memo(function MarkdownContent({
   return (
     <div
       ref={containerRef}
-      className={"prose prose-sm dark:prose-invert max-w-none break-words" + (className ? ` ${className}` : "")}
+      className={"prose prose-base dark:prose-invert max-w-none break-words" + (className ? ` ${className}` : "")}
       dangerouslySetInnerHTML={{ __html: html }}
     />
   )

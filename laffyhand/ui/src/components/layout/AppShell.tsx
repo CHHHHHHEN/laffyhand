@@ -64,7 +64,7 @@ export function AppShell() {
               )}
             </svg>
           </button>
-          <span className="text-xs font-semibold text-[var(--text-faint)] tracking-wide select-none shrink-0">
+          <span className="text-sm font-semibold text-[var(--text-faint)] tracking-wide select-none shrink-0">
             LAFFYHAND
           </span>
 

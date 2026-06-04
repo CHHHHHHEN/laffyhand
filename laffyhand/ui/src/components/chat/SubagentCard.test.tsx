@@ -1,8 +1,12 @@
 import { describe, it, expect } from "vitest"
 import { render, screen, fireEvent } from "@testing-library/react"
 import { SubagentCard, SubagentTreeCard } from "./SubagentCard"
-import type { ActiveSubagent } from "@/types/session"
+import type { ActiveSubagent, SubagentTool } from "@/types/session"
 import type { SubagentTreeNode } from "@/lib/subagentTree"
+
+function makeTool(overrides: Partial<SubagentTool> = {}): SubagentTool {
+  return { name: "grep", input: "search pattern", ...overrides }
+}
 
 function makeSubagent(overrides: Partial<ActiveSubagent> = {}): ActiveSubagent {
   return {
@@ -80,13 +84,37 @@ describe("SubagentCard", () => {
 
     it("shows tool calls when present", () => {
       const sub = makeSubagent({
-        tools: [{ name: "grep", input: "TODO" }],
+        tools: [makeTool({ name: "grep", input: "TODO" })],
         toolCount: 1,
       })
       render(<SubagentCard subagent={sub} />)
       fireEvent.click(screen.getByText("explore"))
       expect(screen.getByText("grep")).toBeInTheDocument()
       expect(screen.getByText("TODO")).toBeInTheDocument()
+    })
+
+    it("shows tool result when tool has result and result is expanded", () => {
+      const sub = makeSubagent({
+        tools: [makeTool({ name: "grep", input: "TODO", result: "file1.ts:42" })],
+        toolCount: 1,
+      })
+      render(<SubagentCard subagent={sub} />)
+      fireEvent.click(screen.getByText("explore"))
+      fireEvent.click(screen.getByText("Result"))
+      expect(screen.getByText("file1.ts:42")).toBeInTheDocument()
+    })
+
+    it("marks error tool results with error styling", () => {
+      const sub = makeSubagent({
+        tools: [makeTool({ name: "bash", input: "invalid cmd", result: "command not found", isError: true })],
+        toolCount: 1,
+      })
+      render(<SubagentCard subagent={sub} />)
+      fireEvent.click(screen.getByText("explore"))
+      fireEvent.click(screen.getByText("Result"))
+      const errorText = screen.getByText("command not found")
+      expect(errorText).toBeInTheDocument()
+      expect(errorText.className).toContain("text-red-500")
     })
 
     it("shows summary when present", () => {
@@ -108,6 +136,75 @@ describe("SubagentCard", () => {
       const sub = makeSubagent({ status: "running", text: "", reasoning: "" })
       render(<SubagentCard subagent={sub} />)
       expect(screen.getByText("Thinking")).toBeInTheDocument()
+    })
+  })
+
+  describe("prompt", () => {
+    it("shows prompt toggle when prompt is present", () => {
+      const sub = makeSubagent({ prompt: "Find all bugs in the codebase" })
+      render(<SubagentCard subagent={sub} />)
+      fireEvent.click(screen.getByText("explore"))
+      expect(screen.getByText("Prompt")).toBeInTheDocument()
+    })
+
+    it("shows prompt content when toggled", () => {
+      const sub = makeSubagent({ prompt: "Find all bugs in the codebase" })
+      render(<SubagentCard subagent={sub} />)
+      fireEvent.click(screen.getByText("explore"))
+      fireEvent.click(screen.getByText("Prompt"))
+      expect(screen.getByText("Find all bugs in the codebase")).toBeInTheDocument()
+    })
+
+    it("hides prompt content when toggled again", () => {
+      const sub = makeSubagent({ prompt: "Find all bugs in the codebase" })
+      render(<SubagentCard subagent={sub} />)
+      fireEvent.click(screen.getByText("explore"))
+      fireEvent.click(screen.getByText("Prompt"))
+      expect(screen.getByText("Find all bugs in the codebase")).toBeInTheDocument()
+      fireEvent.click(screen.getByText("Prompt"))
+      expect(screen.queryByText("Find all bugs in the codebase")).not.toBeInTheDocument()
+    })
+
+    it("does not show prompt toggle when prompt is absent", () => {
+      const sub = makeSubagent({ prompt: undefined })
+      render(<SubagentCard subagent={sub} />)
+      fireEvent.click(screen.getByText("explore"))
+      expect(screen.queryByText("Prompt")).not.toBeInTheDocument()
+    })
+  })
+
+  describe("tool results", () => {
+    it("shows result toggle button when tool has result", () => {
+      const sub = makeSubagent({
+        tools: [makeTool({ result: "output here" })],
+        toolCount: 1,
+      })
+      render(<SubagentCard subagent={sub} />)
+      fireEvent.click(screen.getByText("explore"))
+      expect(screen.getByText("Result")).toBeInTheDocument()
+    })
+
+    it("hides result toggle button when tool has no result", () => {
+      const sub = makeSubagent({
+        tools: [makeTool({ result: undefined })],
+        toolCount: 1,
+      })
+      render(<SubagentCard subagent={sub} />)
+      fireEvent.click(screen.getByText("explore"))
+      expect(screen.queryByText("Result")).not.toBeInTheDocument()
+    })
+
+    it("toggles result visibility on click", () => {
+      const sub = makeSubagent({
+        tools: [makeTool({ result: "detailed output" })],
+        toolCount: 1,
+      })
+      render(<SubagentCard subagent={sub} />)
+      fireEvent.click(screen.getByText("explore"))
+      fireEvent.click(screen.getByText("Result"))
+      expect(screen.getByText("detailed output")).toBeInTheDocument()
+      fireEvent.click(screen.getByText("Hide"))
+      expect(screen.queryByText("detailed output")).not.toBeInTheDocument()
     })
   })
 

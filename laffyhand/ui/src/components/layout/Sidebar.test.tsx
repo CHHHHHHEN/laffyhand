@@ -89,7 +89,7 @@ describe("Sidebar", () => {
 
   it("shows session metadata for each session", () => {
     renderSidebar()
-    const timeLabels = document.querySelectorAll(".text-\\[10px\\]")
+    const timeLabels = document.querySelectorAll("div.text-xs.text-\\[var\\(--text-muted\\)\\]")
     expect(timeLabels.length).toBe(mockSessions.length)
   })
 

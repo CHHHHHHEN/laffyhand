@@ -153,6 +153,7 @@ class SubAgentStart(BaseModel):
     parent_id: str | None = None
     agent_type: str
     description: str
+    prompt: str = ""
     mode: Literal["foreground", "background"]
     depth: int = 0
 

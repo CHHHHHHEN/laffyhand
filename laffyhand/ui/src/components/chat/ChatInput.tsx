@@ -95,7 +95,7 @@ export function ChatInput({ onSend, onInterrupt, onSteer, onQueue, onCancel, isS
                   type="button"
                   onClick={() => setBusyMode(mode)}
                   title={config.description}
-                  className={`flex items-center gap-1 px-2.5 py-1 text-xs rounded-md transition-all duration-150 cursor-pointer select-none ${
+                  className={`flex items-center gap-1 px-2.5 py-1 text-sm rounded-md transition-all duration-150 cursor-pointer select-none ${
                     isActive
                       ? `${config.color} shadow-sm font-medium`
                       : "text-[var(--text-muted)] hover:text-[var(--text-base)] hover:bg-[var(--overlay-hover)]"
@@ -151,7 +151,7 @@ export function ChatInput({ onSend, onInterrupt, onSteer, onQueue, onCancel, isS
       </div>
 
       <div className="mt-1 px-1">
-        <span className="text-[10px] text-[var(--text-faint)]">Shift+Enter for new line</span>
+        <span className="text-xs text-[var(--text-faint)]">Shift+Enter for new line</span>
       </div>
     </div>
   )

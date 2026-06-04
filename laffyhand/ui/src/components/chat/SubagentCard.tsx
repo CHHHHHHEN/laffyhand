@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react"
-import type { ActiveSubagent } from "@/types/session"
+import type { ActiveSubagent, SubagentTool } from "@/types/session"
 import type { SubagentTreeNode } from "@/lib/subagentTree"
 import { Spinner } from "@/components/ui/Spinner"
 import { ReasoningBlock } from "./ChatComponents"
@@ -19,9 +19,41 @@ function agentColor(agentType: string): string {
   return AGENT_PALETTE[hash % AGENT_PALETTE.length]!
 }
 
-function toolPreview(tool: ActiveSubagent["tools"][number]): string {
-  const input = typeof tool.input === "string" ? tool.input : JSON.stringify(tool.input)
-  return input.length > 80 ? input.slice(0, 80) + "…" : input
+function ToolResultBlock({ tool }: { tool: SubagentTool }) {
+  const [showResult, setShowResult] = useState(false)
+  const hasResult = tool.result !== undefined
+  const inputStr = tool.input.length > 120 ? tool.input.slice(0, 120) + "…" : tool.input
+
+  return (
+    <div className="rounded border border-[var(--border-muted)] bg-[var(--bg-deep)]">
+      <div className="flex items-start gap-1.5 px-2 py-1.5 font-mono text-xs">
+        <span className={`${tool.isError ? "text-red-500" : "text-blue-500"} shrink-0 mt-0.5`}>
+          {tool.isError ? "✗" : "⚙"}
+        </span>
+        <div className="min-w-0 flex-1">
+          <span className="font-medium text-[var(--text-base)]">{tool.name}</span>
+          <span className="text-[var(--text-faint)] ml-1.5 truncate block sm:inline">
+            {inputStr}
+          </span>
+        </div>
+        {hasResult && (
+          <button
+            onClick={() => setShowResult(!showResult)}
+            className="shrink-0 text-[10px] text-[var(--accent)] hover:opacity-80 transition-opacity cursor-pointer font-sans"
+          >
+            {showResult ? "Hide" : "Result"}
+          </button>
+        )}
+      </div>
+      {hasResult && showResult && (
+        <div className="border-t border-dashed border-[var(--border-muted)] px-2 py-1.5">
+          <pre className={`whitespace-pre-wrap break-all text-xs leading-relaxed font-mono ${tool.isError ? "text-red-500" : "text-[var(--text-muted)]"}`}>
+            {tool.result}
+          </pre>
+        </div>
+      )}
+    </div>
+  )
 }
 
 export function SubagentCard({
@@ -34,6 +66,7 @@ export function SubagentCard({
   depth?: number
 }) {
   const [expanded, setExpanded] = useState(subagent.status === "running")
+  const [showPrompt, setShowPrompt] = useState(false)
   const isRunning = subagent.status === "running"
   const isDone = subagent.status === "completed"
   const color = useMemo(() => agentColor(subagent.agentType), [subagent.agentType])
@@ -42,7 +75,7 @@ export function SubagentCard({
     <div style={{ marginLeft: depth * 16 }}>
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center gap-2 px-3 py-1.5 text-xs rounded-lg border border-[var(--border-muted)] bg-[var(--bg-base)] hover:bg-[var(--overlay-hover)] transition-colors cursor-pointer text-left"
+        className="w-full flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg border border-[var(--border-muted)] bg-[var(--bg-base)] hover:bg-[var(--overlay-hover)] transition-colors cursor-pointer text-left"
       >
         <span className="shrink-0 flex items-center justify-center" style={{ color }}>
           {isRunning ? (
@@ -54,22 +87,22 @@ export function SubagentCard({
           )}
         </span>
 
-        <span className="font-semibold shrink-0 capitalize" style={{ color }}>
+        <span className="font-semibold shrink-0 capitalize text-sm" style={{ color }}>
           {subagent.agentType}
         </span>
 
-        <span className="text-[var(--text-muted)] truncate min-w-0">
+        <span className="text-[var(--text-muted)] truncate min-w-0 text-sm">
           {subagent.description}
         </span>
 
         <span className="ml-auto flex items-center gap-1.5 shrink-0">
           {isRunning && (
-            <span className="text-[10px] text-blue-500 dark:text-blue-400 font-medium">
+            <span className="text-[11px] text-blue-500 dark:text-blue-400 font-medium">
               running
             </span>
           )}
           {isDone && subagent.toolCount > 0 && (
-            <span className="text-[10px] text-[var(--text-faint)]">
+            <span className="text-[11px] text-[var(--text-faint)]">
               {subagent.toolCount} tools
             </span>
           )}
@@ -83,11 +116,35 @@ export function SubagentCard({
       </button>
 
       {expanded && (
-        <div className="ml-3 pl-3 border-l border-[var(--border-muted)] mt-1 space-y-2 pb-1 text-xs">
+        <div className="ml-3 pl-3 border-l border-[var(--border-muted)] mt-1 space-y-2 pb-1">
+          {subagent.prompt && (
+            <div>
+              <button
+                onClick={() => setShowPrompt(!showPrompt)}
+                className="flex items-center gap-1 text-[11px] text-[var(--text-muted)] hover:text-[var(--text-base)] transition-colors cursor-pointer font-sans"
+              >
+                <svg
+                  className={`w-2.5 h-2.5 transition-transform duration-150 ${showPrompt ? "rotate-90" : ""}`}
+                  fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+                <span className="font-medium">Prompt</span>
+              </button>
+              {showPrompt && (
+                <div className="mt-1 bg-[var(--bg-deep)] rounded border border-[var(--border-muted)] px-2.5 py-2">
+                  <pre className="text-xs text-[var(--text-muted)] whitespace-pre-wrap font-sans leading-relaxed">
+                    {subagent.prompt}
+                  </pre>
+                </div>
+              )}
+            </div>
+          )}
+
           {subagent.reasoning && <ReasoningBlock text={subagent.reasoning} defaultExpanded />}
 
           {subagent.text && (
-            <div className="leading-relaxed whitespace-pre-wrap text-xs text-[var(--text-base)]">
+            <div className="leading-relaxed whitespace-pre-wrap text-sm text-[var(--text-base)]">
               {subagent.text}
             </div>
           )}
@@ -95,29 +152,18 @@ export function SubagentCard({
           {isRunning && !subagent.text && !subagent.reasoning && (
             <div className="flex items-center gap-2 py-1">
               <Spinner size="sm" />
-              <span className="text-[var(--text-muted)]">Thinking</span>
+              <span className="text-sm text-[var(--text-muted)]">Thinking</span>
             </div>
           )}
 
           {subagent.tools.length > 0 && (
             <div>
-              <div className="text-[10px] uppercase tracking-wider text-[var(--text-faint)] font-medium mb-1">
+              <div className="text-[11px] uppercase tracking-wider text-[var(--text-faint)] font-medium mb-1.5">
                 Tool calls · {subagent.tools.length}
               </div>
               <div className="space-y-1">
                 {subagent.tools.map((tool, i) => (
-                  <div
-                    key={i}
-                    className="flex items-start gap-1.5 font-mono text-[var(--text-muted)]"
-                  >
-                    <span className="text-blue-500 shrink-0">⚙</span>
-                    <span className="font-medium text-blue-600 dark:text-blue-400 shrink-0">
-                      {tool.name}
-                    </span>
-                    <span className="truncate text-[var(--text-faint)]">
-                      {toolPreview(tool)}
-                    </span>
-                  </div>
+                  <ToolResultBlock key={i} tool={tool} />
                 ))}
               </div>
             </div>
@@ -126,7 +172,7 @@ export function SubagentCard({
           {children}
 
           {(subagent.summary || subagent.inputTokens > 0 || subagent.outputTokens > 0) && (
-            <div className="flex items-center gap-3 text-[10px] text-[var(--text-muted)] pt-1">
+            <div className="flex items-center gap-3 text-[11px] text-[var(--text-muted)] pt-1">
               {subagent.summary && (
                 <span className="truncate">{subagent.summary}</span>
               )}

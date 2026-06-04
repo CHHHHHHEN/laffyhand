@@ -4,7 +4,8 @@ import { Spinner } from "@/components/ui/Spinner"
 import { MessageBubble } from "./MessageBubble"
 import { MarkdownContent } from "./MarkdownContent"
 import { AiAvatar, ToolCallCard, ReasoningBlock } from "./ChatComponents"
-import { SubagentCard } from "./SubagentCard"
+import { SubagentTreeCard } from "./SubagentCard"
+import { buildSubagentTree } from "@/lib/subagentTree"
 
 function formatDateSeparator(date: Date): string {
   const now = new Date()
@@ -74,7 +75,7 @@ export function MessageList({ sessionId, onRetry }: MessageListProps) {
           </div>
           <div className="space-y-1">
             <p className="text-sm text-[var(--text-muted)]" style={{ fontWeight: 500 }}>Start a conversation</p>
-            <p className="text-xs text-[var(--text-faint)] leading-relaxed">Send a message to begin chatting with your AI agent</p>
+            <p className="text-sm text-[var(--text-faint)] leading-relaxed">Send a message to begin chatting with your AI agent</p>
           </div>
         </div>
       </div>
@@ -125,13 +126,16 @@ export function MessageList({ sessionId, onRetry }: MessageListProps) {
                   </div>
                 )}
 
-                {foregroundSubagents.length > 0 && (
-                  <div className="space-y-2">
-                    {foregroundSubagents.map((sa) => (
-                      <SubagentCard key={sa.id} subagent={sa} />
-                    ))}
-                  </div>
-                )}
+                {foregroundSubagents.length > 0 && (() => {
+                  const tree = buildSubagentTree(foregroundSubagents)
+                  return (
+                    <div className="space-y-1.5">
+                      {tree.map((node) => (
+                        <SubagentTreeCard key={node.item.id} subagent={node.item} tree={tree} />
+                      ))}
+                    </div>
+                  )
+                })()}
 
                 {streamToolCalls.length > 0 && (
                   <div className="space-y-1.5">

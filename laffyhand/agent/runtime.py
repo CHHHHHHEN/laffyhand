@@ -32,6 +32,8 @@ from laffyhand.agent.schemas import (
     ReasoningEnd,
     ReasoningStart,
     ToolCall as StreamToolCall,
+    ToolResult as StreamToolResult,
+    ToolError as StreamToolError,
 )
 from laffyhand.agent.agent import AgentRegistry
 from laffyhand.agent.skill import SkillRegistry
@@ -733,6 +735,7 @@ class AgentRuntime:
                     parent_id=parent_subagent_id,
                     agent_type=agent_info.name,
                     description=description or prompt[:80],
+                    prompt=prompt,
                     mode="foreground",
                     depth=subagent_depth,
                 )
@@ -775,6 +778,24 @@ class AgentRuntime:
                             kind="tool",
                             tool_name=event.name,
                             tool_input=event.input,
+                        )
+                    )
+                elif isinstance(event, StreamToolResult):
+                    await event_sink(
+                        SubAgentDelta(
+                            id=task_id,
+                            kind="tool_result",
+                            tool_name=event.name,
+                            content=event.result,
+                        )
+                    )
+                elif isinstance(event, StreamToolError):
+                    await event_sink(
+                        SubAgentDelta(
+                            id=task_id,
+                            kind="tool_result",
+                            tool_name=event.name,
+                            content=event.message,
                         )
                     )
                 elif isinstance(event, (StepStart, TextStart, TextEnd, ReasoningStart, ReasoningEnd, Compacting)):

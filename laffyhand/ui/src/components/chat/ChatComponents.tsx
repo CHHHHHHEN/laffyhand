@@ -37,7 +37,7 @@ export function ReasoningBlock({ text, defaultExpanded = false }: { text: string
     <div className="rounded-lg border border-[var(--border-muted)] overflow-hidden bg-[var(--bg-deep)]">
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center gap-1.5 px-3 py-1.5 text-xs text-[var(--text-muted)] hover:bg-[var(--overlay-hover)] transition-colors cursor-pointer select-none"
+        className="w-full flex items-center gap-1.5 px-3 py-1.5 text-sm text-[var(--text-muted)] hover:bg-[var(--overlay-hover)] transition-colors cursor-pointer select-none"
       >
         <svg
           className={`w-3 h-3 transition-transform duration-200 ${expanded ? "rotate-90" : ""}`}
@@ -53,7 +53,7 @@ export function ReasoningBlock({ text, defaultExpanded = false }: { text: string
       {expanded && (
         <div
           ref={scrollRef}
-          className="px-3 py-2 text-xs text-[var(--text-base)] whitespace-pre-wrap leading-relaxed border-t border-[var(--border-muted)] max-h-60 overflow-y-auto"
+          className="px-3 py-2 text-sm text-[var(--text-base)] whitespace-pre-wrap leading-relaxed border-t border-[var(--border-muted)] max-h-60 overflow-y-auto"
         >
           {text}
         </div>
@@ -134,7 +134,7 @@ export function ToolCallCard({ toolCall }: { toolCall: ToolCall }) {
         : "bg-[var(--bg-deep)]"
 
   return (
-    <div className={`rounded-lg px-3 py-2 text-xs font-mono border transition-all duration-150 ${borderColor} ${bgColor}`}>
+    <div className={`rounded-lg px-3 py-2 text-sm font-mono border transition-all duration-150 ${borderColor} ${bgColor}`}>
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
           <StatusDot status={toolCall.status || "pending"} />
@@ -212,7 +212,7 @@ export function ToolCallCard({ toolCall }: { toolCall: ToolCall }) {
 
 export function UsageBadge({ usage }: { usage: { inputTokens: number; outputTokens: number; reasoningTokens?: number } }) {
   return (
-    <div className="flex items-center gap-2 text-[10px] text-[var(--text-muted)] bg-[var(--bg-deep)] rounded-md px-2 py-1 w-fit border border-[var(--border-muted)]">
+    <div className="flex items-center gap-2 text-xs text-[var(--text-muted)] bg-[var(--bg-deep)] rounded-md px-2 py-1 w-fit border border-[var(--border-muted)]">
       <span className="flex items-center gap-0.5" title="Input tokens">
         <svg className="w-2.5 h-2.5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 11l5-5m0 0l5 5m-5-5v12" />

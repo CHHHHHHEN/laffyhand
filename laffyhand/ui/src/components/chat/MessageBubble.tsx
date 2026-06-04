@@ -1,8 +1,10 @@
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import type { Message } from "@/types/session"
 import { AiAvatar, UserAvatar, ReasoningBlock, ToolCallCard, UsageBadge } from "./ChatComponents"
 import { MarkdownContent } from "./MarkdownContent"
 import { rpcClient } from "@/lib/rpc"
+import { buildSubagentTree } from "@/lib/subagentTree"
+import { SubagentTreeCard } from "./SubagentCard"
 
 function CopyButton({ content }: { content: string }) {
   const [copied, setCopied] = useState(false)
@@ -67,6 +69,23 @@ function SystemMessageBlock({ content }: { content: string }) {
           )}
         </div>
       </div>
+    </div>
+  )
+}
+
+function SubagentTreeSection({ subagents }: { subagents: Message["subagents"] }) {
+  const tree = useMemo(() => buildSubagentTree(subagents ?? []), [subagents])
+  if (tree.length === 0) return null
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-[var(--text-faint)] font-medium">
+        <span>Sub-agents</span>
+        <span className="text-[var(--border-strong)]">·</span>
+        <span>{subagents?.length}</span>
+      </div>
+      {tree.map((node) => (
+        <SubagentTreeCard key={node.item.id} subagent={node.item} tree={tree} />
+      ))}
     </div>
   )
 }
@@ -199,7 +218,7 @@ export function MessageBubble({ message, onResolvePermission }: MessageBubblePro
 
             {message.toolCalls && message.toolCalls.length > 0 && (
               <div className="space-y-1.5">
-                <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-[var(--text-faint)] font-medium">
+                <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-[var(--text-faint)] font-medium">
                   <span>Tool calls</span>
                   <span className="text-[var(--border-strong)]">·</span>
                   <span>{message.toolCalls.length}</span>
@@ -208,6 +227,10 @@ export function MessageBubble({ message, onResolvePermission }: MessageBubblePro
                   <ToolCallCard key={tc.id} toolCall={tc} />
                 ))}
               </div>
+            )}
+
+            {message.subagents && message.subagents.length > 0 && (
+              <SubagentTreeSection subagents={message.subagents} />
             )}
 
             {(message.usage || message.createdAt) && (

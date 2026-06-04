@@ -141,7 +141,8 @@
 
   body {
     font-family: var(--font-sans);
-    font-weight: 440;
+    font-weight: 450;
+    font-size: 14px;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }

@@ -31,6 +31,8 @@ from laffyhand.agent.schemas import (
     TextDelta,
     ReasoningDelta,
     ToolCall as StreamToolCall,
+    ToolResult as StreamToolResult,
+    ToolError as StreamToolError,
 )
 from laffyhand.agent.tools.permission import SubagentPermissions
 
@@ -185,6 +187,7 @@ class SubagentManager:
                             parent_id=parent_subagent_id,
                             agent_type=agent_info.name,
                             description=description or prompt[:80],
+                            prompt=prompt,
                             mode="background",
                             depth=subagent_depth,
                         )
@@ -225,6 +228,24 @@ class SubagentManager:
                                     kind="tool",
                                     tool_name=event.name,
                                     tool_input=event.input,
+                                )
+                            )
+                        elif isinstance(event, StreamToolResult):
+                            await _relay_event(
+                                SubAgentDelta(
+                                    id=task_id,
+                                    kind="tool_result",
+                                    tool_name=event.name,
+                                    content=event.result,
+                                )
+                            )
+                        elif isinstance(event, StreamToolError):
+                            await _relay_event(
+                                SubAgentDelta(
+                                    id=task_id,
+                                    kind="tool_result",
+                                    tool_name=event.name,
+                                    content=event.message,
                                 )
                             )
                         elif isinstance(event, (StepStart, TextStart, TextEnd, ReasoningStart, ReasoningEnd, Compacting)):

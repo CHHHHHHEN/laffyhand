@@ -26,7 +26,7 @@ export function SubagentFooter() {
 
   return (
     <div className="border-t border-[var(--border-muted)] bg-[var(--bg-base)] shrink-0">
-      <div className="flex items-center gap-2 px-3 py-1.5 text-xs text-[var(--text-muted)] overflow-x-auto">
+      <div className="flex items-center gap-2 px-3 py-1.5 text-sm text-[var(--text-muted)] overflow-x-auto">
         <span className="text-[var(--text-base)] shrink-0" style={{ fontWeight: 500 }}>
           Background Tasks
         </span>

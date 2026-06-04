@@ -49,7 +49,7 @@ export interface ChatStore {
   hasPendingMessages: (sessionId: string) => boolean
   addPermissionRequest: (sessionId: string, req: PermissionInfo) => void
   resolvePermissionRequest: (sessionId: string, messageId: string, denyReason?: string) => void
-  startSubagent: (sessionId: string, event: { id: string; parent_id?: string; agent_type: string; description: string; mode: "foreground" | "background"; depth: number }) => void
+  startSubagent: (sessionId: string, event: { id: string; parent_id?: string; agent_type: string; description: string; prompt?: string; mode: "foreground" | "background"; depth: number }) => void
   updateSubagent: (sessionId: string, id: string, event: { kind: string; content?: string; tool_name?: string; tool_input?: string }) => void
   endSubagent: (sessionId: string, id: string, event: { status: string; summary?: string; tool_count?: number; input_tokens?: number; output_tokens?: number }) => void
   clearForegroundSubagents: (sessionId: string) => void
@@ -315,6 +315,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         content,
         reasoning,
         toolCalls: finalizedToolCalls as Message["toolCalls"],
+        subagents: sess.foregroundSubagents.length > 0 ? sess.foregroundSubagents : undefined,
         finishReason: "stop",
         usage,
         createdAt: Date.now(),
@@ -466,6 +467,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         parentId: event.parent_id ?? null,
         agentType: event.agent_type,
         description: event.description,
+        prompt: event.prompt,
         mode: event.mode,
         depth: event.depth,
         status: "running",
@@ -509,6 +511,17 @@ export const useChatStore = create<ChatStore>((set, get) => ({
               tools: [...sa.tools, { name: event.tool_name ?? "", input: event.tool_input ?? "" }],
               toolCount: sa.toolCount + 1,
             }
+          case "tool_result": {
+            const tools = [...sa.tools]
+            // Attach result to the last tool with matching name, or last tool
+            for (let i = tools.length - 1; i >= 0; i--) {
+              if (!tools[i]!.result && tools[i]!.name === (event.tool_name ?? "")) {
+                tools[i] = { ...tools[i]!, result: event.content, isError: false }
+                break
+              }
+            }
+            return { ...sa, tools }
+          }
           case "error":
             return { ...sa, status: "error", text: sa.text + (event.content ?? "") }
           default:
