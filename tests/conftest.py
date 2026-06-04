@@ -28,7 +28,9 @@ _SAMPLE_PROVIDERS = {
 
 @pytest.fixture
 def session_manager(db_path: str) -> SessionManager:
-    return SessionManager(db_path)
+    mgr = SessionManager(db_path)
+    yield mgr
+    mgr.close()
 
 
 @pytest.fixture

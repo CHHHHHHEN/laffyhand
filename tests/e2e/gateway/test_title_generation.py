@@ -39,7 +39,10 @@ def runtime(runtime_config, fake_llm) -> AgentRuntime:
     )
     rt.title_config.mode = "auto"
     rt._llm_for_session = MagicMock(return_value=fake_llm)
-    return rt
+    yield rt
+    # Close the internal SessionManager so db_path can unlink the temp file
+    # on Windows (open SQLite files cannot be deleted).
+    rt.session_manager.close()
 
 
 @pytest.mark.anyio
