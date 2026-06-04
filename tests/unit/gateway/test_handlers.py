@@ -971,6 +971,7 @@ class TestHandlePermissionRespond:
             "skill",
             "test-tool",
             None,
+            None,
         )
         result = await handle_permission_respond(
             runtime_with_pending,
@@ -981,10 +982,11 @@ class TestHandlePermissionRespond:
         )
         assert result["status"] == "ok"
         assert event.is_set()
-        _, _, _, stored_result = runtime_with_pending.pending_permissions.get(
-            "req-1", (None, None, None, None)
+        _, _, _, stored_result, stored_reason = runtime_with_pending.pending_permissions.get(
+            "req-1", (None, None, None, None, None)
         )
         assert stored_result is True
+        assert stored_reason is None
 
     @pytest.mark.anyio
     async def test_deny_resolves_false(self, runtime_with_pending, transport):
@@ -993,6 +995,7 @@ class TestHandlePermissionRespond:
             event,
             "skill",
             "test-tool",
+            None,
             None,
         )
         result = await handle_permission_respond(
@@ -1004,10 +1007,36 @@ class TestHandlePermissionRespond:
         )
         assert result["status"] == "ok"
         assert event.is_set()
-        _, _, _, stored_result = runtime_with_pending.pending_permissions.get(
-            "req-1", (None, None, None, None)
+        _, _, _, stored_result, stored_reason = runtime_with_pending.pending_permissions.get(
+            "req-1", (None, None, None, None, None)
         )
         assert stored_result is False
+        assert stored_reason is None
+
+    @pytest.mark.anyio
+    async def test_deny_with_reason(self, runtime_with_pending, transport):
+        event = asyncio.Event()
+        runtime_with_pending.pending_permissions["req-1"] = (
+            event,
+            "skill",
+            "test-tool",
+            None,
+            None,
+        )
+        result = await handle_permission_respond(
+            runtime_with_pending,
+            {"request_id": "req-1", "action": "deny", "reason": "not needed"},
+            transport,
+            1,
+            "c1",
+        )
+        assert result["status"] == "ok"
+        assert event.is_set()
+        _, _, _, stored_result, stored_reason = runtime_with_pending.pending_permissions.get(
+            "req-1", (None, None, None, None, None)
+        )
+        assert stored_result is False
+        assert stored_reason == "not needed"
 
     @pytest.mark.anyio
     async def test_always_sets_rule_and_resolves_true(
@@ -1018,6 +1047,7 @@ class TestHandlePermissionRespond:
             event,
             "skill",
             "test-tool",
+            None,
             None,
         )
         result = await handle_permission_respond(
@@ -1032,10 +1062,11 @@ class TestHandlePermissionRespond:
         runtime_with_pending.tool_registry.permission.add_rule.assert_called_with(
             "skill:test-tool", "allow"
         )
-        _, _, _, stored_result = runtime_with_pending.pending_permissions.get(
-            "req-1", (None, None, None, None)
+        _, _, _, stored_result, stored_reason = runtime_with_pending.pending_permissions.get(
+            "req-1", (None, None, None, None, None)
         )
         assert stored_result is True
+        assert stored_reason is None
 
     @pytest.mark.anyio
     async def test_unknown_request_id_raises(self, runtime_with_pending, transport):
@@ -1056,6 +1087,7 @@ class TestHandlePermissionRespond:
             event,
             "skill",
             "test-tool",
+            None,
             None,
         )
         with pytest.raises(ValueError, match="Invalid permission action"):

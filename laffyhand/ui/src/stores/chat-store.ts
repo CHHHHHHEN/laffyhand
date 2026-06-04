@@ -48,7 +48,7 @@ export interface ChatStore {
   dequeueMessage: (sessionId: string) => string | undefined
   hasPendingMessages: (sessionId: string) => boolean
   addPermissionRequest: (sessionId: string, req: PermissionInfo) => void
-  resolvePermissionRequest: (sessionId: string, messageId: string) => void
+  resolvePermissionRequest: (sessionId: string, messageId: string, denyReason?: string) => void
   startSubagent: (sessionId: string, event: { id: string; parent_id?: string; agent_type: string; description: string; mode: "foreground" | "background"; depth: number }) => void
   updateSubagent: (sessionId: string, id: string, event: { kind: string; content?: string; tool_name?: string; tool_input?: string }) => void
   endSubagent: (sessionId: string, id: string, event: { status: string; summary?: string; tool_count?: number; input_tokens?: number; output_tokens?: number }) => void
@@ -131,7 +131,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       }
     }),
 
-  resolvePermissionRequest: (sessionId, messageId) =>
+  resolvePermissionRequest: (sessionId, messageId, denyReason?: string) =>
     set((state) => {
       const sess = state.sessions[sessionId]
       if (!sess) return state
@@ -142,7 +142,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             ...sess,
             messages: sess.messages.map((msg) =>
               msg.id === messageId && msg.permissionInfo
-                ? { ...msg, permissionInfo: { ...msg.permissionInfo, resolved: true } }
+                ? { ...msg, permissionInfo: { ...msg.permissionInfo, resolved: true, denyReason: denyReason ?? msg.permissionInfo.denyReason } }
                 : msg,
             ),
           },

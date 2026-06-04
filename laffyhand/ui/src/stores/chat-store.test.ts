@@ -293,6 +293,17 @@ describe("chat-store", () => {
     store.resolvePermissionRequest(SID, msgId)
     const msg = useChatStore.getState().sessions[SID]!.messages[0]!
     expect(msg.permissionInfo?.resolved).toBe(true)
+    expect(msg.permissionInfo?.denyReason).toBeUndefined()
+  })
+
+  it("resolvePermissionRequest stores denyReason", () => {
+    const store = useChatStore.getState()
+    store.addPermissionRequest(SID, { requestId: "req-1", permission: "skill", pattern: "test" })
+    const msgId = useChatStore.getState().sessions[SID]!.messages[0]!.id
+    store.resolvePermissionRequest(SID, msgId, "not needed")
+    const msg = useChatStore.getState().sessions[SID]!.messages[0]!
+    expect(msg.permissionInfo?.resolved).toBe(true)
+    expect(msg.permissionInfo?.denyReason).toBe("not needed")
   })
 
   it("resolvePermissionRequest does nothing for unknown id", () => {

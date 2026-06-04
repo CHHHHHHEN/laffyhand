@@ -39,7 +39,7 @@ export function MessageList({ sessionId, onRetry }: MessageListProps) {
   const [showScrollBtn, setShowScrollBtn] = useState(false)
 
   const handleResolvePermission = useCallback(
-    (messageId: string) => resolvePermissionRequest(sessionId, messageId),
+    (messageId: string, denyReason?: string) => resolvePermissionRequest(sessionId, messageId, denyReason),
     [resolvePermissionRequest, sessionId],
   )
 

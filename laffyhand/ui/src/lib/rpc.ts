@@ -287,8 +287,10 @@ export const rpcClient = {
     return call<{ status: string; session_id: string }>("chat/steer", params)
   },
 
-  permissionRespond(requestId: string, action: "allow" | "always" | "deny"): Promise<{ status: string }> {
-    return call<{ status: string }>("permission/respond", { request_id: requestId, action })
+  permissionRespond(requestId: string, action: "allow" | "always" | "deny", reason?: string): Promise<{ status: string }> {
+    const params: Record<string, unknown> = { request_id: requestId, action }
+    if (reason !== undefined) params.reason = reason
+    return call<{ status: string }>("permission/respond", params)
   },
 
   todoList(sessionId?: string): Promise<TodoListResult> {

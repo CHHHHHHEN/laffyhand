@@ -34,7 +34,7 @@ class TestSkillTool(unittest.TestCase):
         )
         self.registry.require.return_value = info
         # Mock the permission manager to deny
-        self.tool._permission.ask = AsyncMock(return_value=False)  # type: ignore[method-assign]
+        self.tool._permission.ask = AsyncMock(return_value=(False, None))  # type: ignore[method-assign]
         result = asyncio.run(self.tool.run({"name": "test"}))
         self.assertIn("denied", result.lower())
 
@@ -45,7 +45,7 @@ class TestSkillTool(unittest.TestCase):
         skill_file.write_text("---\nname: my\n---\n# Skill Body\n", encoding="utf-8")
         info = SkillInfo(name="my", base_dir=tmpdir, filepath=skill_file)
         self.registry.require.return_value = info
-        self.tool._permission.ask = AsyncMock(return_value=True)  # type: ignore[method-assign]
+        self.tool._permission.ask = AsyncMock(return_value=(True, None))  # type: ignore[method-assign]
         result = asyncio.run(self.tool.run({"name": "my"}))
         self.assertIn("Skill Body", result)
         self.assertIn("skill_content", result)
@@ -59,7 +59,7 @@ class TestSkillTool(unittest.TestCase):
         (tmpdir / "sub").mkdir()
         info = SkillInfo(name="s", base_dir=tmpdir, filepath=tmpdir / "SKILL.md")
         self.registry.require.return_value = info
-        self.tool._permission.ask = AsyncMock(return_value=True)  # type: ignore[method-assign]
+        self.tool._permission.ask = AsyncMock(return_value=(True, None))  # type: ignore[method-assign]
         result = asyncio.run(self.tool.run({"name": "s"}))
         self.assertIn("skill_files", result)
         self.assertIn("ref.txt", result)
@@ -71,7 +71,7 @@ class TestSkillTool(unittest.TestCase):
         (tmpdir / "other.md").write_text("other", encoding="utf-8")
         info = SkillInfo(name="s", base_dir=tmpdir, filepath=tmpdir / "SKILL.md")
         self.registry.require.return_value = info
-        self.tool._permission.ask = AsyncMock(return_value=True)  # type: ignore[method-assign]
+        self.tool._permission.ask = AsyncMock(return_value=(True, None))  # type: ignore[method-assign]
         result = asyncio.run(self.tool.run({"name": "s"}))
         self.assertNotIn(
             "SKILL.md",

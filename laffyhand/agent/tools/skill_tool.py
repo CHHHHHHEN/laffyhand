@@ -46,9 +46,9 @@ class SkillTool(BaseTool):
             return str(e)
 
         try:
-            allowed = await self._permission.ask("skill", [name])
+            allowed, reason = await self._permission.ask("skill", [name])
             if not allowed:
-                return f"Skill '{name}' denied."
+                return reason or f"Skill '{name}' denied."
         except RuntimeError as e:
             logger.warning(f"Permission check failed for skill '{name}': {e}")
             return f"Skill '{name}' cannot be loaded: {e}"

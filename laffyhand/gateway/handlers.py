@@ -356,10 +356,10 @@ async def handle_chat_stream(
     finish_reason = ""
     usage_info = None
 
-    async def _permission_callback(permission: str, pattern: str) -> bool:
+    async def _permission_callback(permission: str, pattern: str) -> tuple[bool, str | None]:
         request_id = str(uuid.uuid4())
         event = asyncio.Event()
-        runtime.pending_permissions[request_id] = (event, permission, pattern, None)
+        runtime.pending_permissions[request_id] = (event, permission, pattern, None, None)
         try:
             pr = PermissionRequest(
                 request_id=request_id, permission=permission, pattern=pattern
@@ -370,11 +370,11 @@ async def handle_chat_stream(
                 await asyncio.wait_for(event.wait(), timeout=300.0)
             except asyncio.TimeoutError:
                 logger.warning(f"Permission request {request_id} timed out")
-                return False
-            _, _, _, result = runtime.pending_permissions.get(
-                request_id, (None, None, None, False)
+                return (False, None)
+            _, _, _, result, reason = runtime.pending_permissions.get(
+                request_id, (None, None, None, False, None)
             )
-            return bool(result)
+            return (bool(result), reason)
         finally:
             runtime.pending_permissions.pop(request_id, None)
 
@@ -861,7 +861,8 @@ async def handle_permission_respond(
     action: str = params.get("action", "")
     if action not in ("allow", "always", "deny"):
         raise ValueError(f"Invalid permission action: {action}")
-    event, permission, pattern, _ = runtime.pending_permissions[req_id]
+    reason: str | None = params.get("reason")
+    event, permission, pattern, _, _ = runtime.pending_permissions[req_id]
     if action == "always":
         runtime.tool_registry.permission.add_rule(f"{permission}:{pattern}", "allow")
         result = True
@@ -869,7 +870,7 @@ async def handle_permission_respond(
         result = True
     else:
         result = False
-    runtime.pending_permissions[req_id] = (event, permission, pattern, result)
+    runtime.pending_permissions[req_id] = (event, permission, pattern, result, reason)
     event.set()
     logger.info(
         f"Permission '{permission}:{pattern}' resolved: {action} (conn={conn_id})"

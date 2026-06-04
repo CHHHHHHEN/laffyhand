@@ -36,7 +36,7 @@ function CopyButton({ content }: { content: string }) {
 
 interface MessageBubbleProps {
   message: Message
-  onResolvePermission?: (messageId: string) => void
+  onResolvePermission?: (messageId: string, denyReason?: string) => void
 }
 
 function SystemMessageBlock({ content }: { content: string }) {
@@ -73,6 +73,8 @@ function SystemMessageBlock({ content }: { content: string }) {
 
 export function MessageBubble({ message, onResolvePermission }: MessageBubbleProps) {
   const isUser = message.role === "user"
+  const [denying, setDenying] = useState(false)
+  const [denyReasonInput, setDenyReasonInput] = useState("")
 
   if (message.role === "system") {
     return <SystemMessageBlock content={message.content} />
@@ -91,16 +93,56 @@ export function MessageBubble({ message, onResolvePermission }: MessageBubblePro
               <span>Allow <span className="font-semibold">{info.permission}</span> '<span className="font-mono text-xs">{info.pattern}</span>'?</span>
             </div>
             {info.resolved ? (
-              <div className="text-xs text-[var(--state-warning-fg)] italic">
-                Resolved
+              <div className="text-xs text-[var(--state-warning-fg)]">
+                {info.denyReason ? (
+                  <span><span className="font-semibold">Denied</span> &mdash; {info.denyReason}</span>
+                ) : (
+                  <span className="italic">Resolved</span>
+                )}
+              </div>
+            ) : denying ? (
+              <div className="flex flex-col gap-2">
+                <input
+                  type="text"
+                  value={denyReasonInput}
+                  onChange={(e) => setDenyReasonInput(e.target.value)}
+                  placeholder="Why are you denying? (optional)"
+                  className="w-full px-3 py-1.5 text-xs rounded-lg border border-[var(--border-strong)] bg-[var(--bg-base)] text-[var(--text-base)] placeholder-[var(--text-faint)] outline-none focus:border-[var(--accent)] transition-colors"
+                  autoFocus
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      const reason = denyReasonInput.trim() || undefined
+                      rpcClient.permissionRespond(info.requestId, "deny", reason)
+                      onResolvePermission?.(message.id, reason)
+                    }
+                  }}
+                />
+                <div className="flex gap-2 justify-end">
+                  <button
+                    onClick={async () => {
+                      await rpcClient.permissionRespond(info.requestId, "deny")
+                      onResolvePermission?.(message.id)
+                    }}
+                    className="px-3 py-1.5 text-xs rounded-lg border border-[var(--border-strong)] text-[var(--text-muted)] hover:bg-[var(--overlay-hover)] transition-colors cursor-pointer"
+                  >
+                    Skip
+                  </button>
+                  <button
+                    onClick={async () => {
+                      const reason = denyReasonInput.trim() || undefined
+                      await rpcClient.permissionRespond(info.requestId, "deny", reason)
+                      onResolvePermission?.(message.id, reason)
+                    }}
+                    className="px-3 py-1.5 text-xs rounded-lg bg-[var(--state-error-fg)] text-white hover:opacity-90 transition-opacity cursor-pointer"
+                  >
+                    Send Feedback
+                  </button>
+                </div>
               </div>
             ) : (
               <div className="flex gap-2 justify-end">
                 <button
-                  onClick={async () => {
-                    await rpcClient.permissionRespond(info.requestId, "deny")
-                    onResolvePermission?.(message.id)
-                  }}
+                  onClick={() => setDenying(true)}
                   className="px-3 py-1.5 text-xs rounded-lg border border-[var(--border-strong)] text-[var(--text-muted)] hover:bg-[var(--overlay-hover)] transition-colors cursor-pointer"
                 >
                   Deny

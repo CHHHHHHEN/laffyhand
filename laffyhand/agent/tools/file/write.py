@@ -79,12 +79,12 @@ class WriteTool(BaseTool):
                     "confirm=True skipped for new file (no previous content to diff)"
                 )
             else:
-                allowed = await self._permission.ask(
+                allowed, reason = await self._permission.ask(
                     "write",
                     [str(path)],
                 )
                 if not allowed:
-                    return f"Write cancelled by user: {path}"
+                    return reason or f"Write cancelled by user: {path}"
 
         try:
             atomic_write(path, content)

@@ -103,8 +103,9 @@ class ToolRegistry:
                     continue
                 values: list[str] = [raw] if isinstance(raw, str) else (raw if isinstance(raw, list) else [])
                 for p in values:
-                    if not await self.permission.require_path(name, p, self.workspace):
-                        return f"Error: Access to '{p}' outside workspace was denied."
+                    ok, reason = await self.permission.require_path(name, p, self.workspace)
+                    if not ok:
+                        return reason or f"Error: Access to '{p}' outside workspace was denied."
 
         timeout = getattr(tool, "timeout", 120)
         try:

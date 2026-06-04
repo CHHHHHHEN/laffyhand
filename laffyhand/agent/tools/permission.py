@@ -15,14 +15,14 @@ if TYPE_CHECKING:
 Rule = Literal["allow", "deny"]
 
 request_callback: contextvars.ContextVar[
-    Callable[[str, str], Awaitable[bool]] | None
+    Callable[[str, str], Awaitable[tuple[bool, str | None]]] | None
 ] = contextvars.ContextVar("request_callback", default=None)
 
 
 class PermissionManager:
     def __init__(self) -> None:
         self._rules: dict[str, Rule] = {}
-        self.request_callback: Callable[[str, str], Awaitable[bool]] | None = None
+        self.request_callback: Callable[[str, str], Awaitable[tuple[bool, str | None]]] | None = None
 
     def allow(self, tool_name: str) -> None:
         self._rules[tool_name] = "allow"
@@ -43,26 +43,26 @@ class PermissionManager:
         )
         return result
 
-    async def ask(self, permission: str, patterns: list[str]) -> bool:
-        """Interactive permission prompt. Returns True if allowed, False if denied."""
+    async def ask(self, permission: str, patterns: list[str]) -> tuple[bool, str | None]:
+        """Interactive permission prompt. Returns (allowed, reason) where reason is populated on denial."""
         blanket = self._rules.get(permission)
         if blanket == "deny":
             logger.info(f"Permission '{permission}' denied by tool-level rule")
-            return False
+            return (False, None)
         if blanket == "allow":
             logger.info(f"Permission '{permission}' allowed by tool-level rule")
-            return True
+            return (True, None)
         for pattern in patterns:
             rule = self._rules.get(f"{permission}:{pattern}")
             if rule == "deny":
                 logger.info(f"Permission '{permission}:{pattern}' denied by rule")
-                return False
+                return (False, None)
             if rule == "allow":
                 logger.info(f"Permission '{permission}:{pattern}' allowed by rule")
                 continue
             callback = request_callback.get() or self.request_callback
             if callback is not None:
-                allowed = await callback(permission, pattern)
+                allowed, reason = await callback(permission, pattern)
                 if allowed:
                     logger.info(
                         f"Permission '{permission}:{pattern}' allowed via callback"
@@ -71,7 +71,7 @@ class PermissionManager:
                     logger.info(
                         f"Permission '{permission}:{pattern}' denied via callback"
                     )
-                    return False
+                    return (False, reason)
                 continue
             prompt = f"\nAllow {permission} '{pattern}'? [y/N/a] "
             try:
@@ -89,18 +89,18 @@ class PermissionManager:
                 logger.info(f"Permission '{permission}:{pattern}' allowed once")
             else:
                 logger.info(f"Permission '{permission}:{pattern}' denied")
-                return False
-        return True
+                return (False, None)
+        return (True, None)
 
-    async def require_path(self, tool_name: str, path: str | Path, workspace: str | Path | None) -> bool:
-        """Check if a path is within the workspace. If outside, prompts user."""
+    async def require_path(self, tool_name: str, path: str | Path, workspace: str | Path | None) -> tuple[bool, str | None]:
+        """Check if a path is within the workspace. Returns (ok, reason)."""
         from laffyhand.agent.tools.file._path_boundary import is_within
 
         if workspace is None:
-            return True
+            return (True, None)
         resolved = str(Path(path).resolve())
         if is_within(resolved, workspace):
-            return True
+            return (True, None)
         logger.info(f"Path {resolved} is outside workspace {workspace}")
         return await self.ask(f"{tool_name}_outside_workspace", [resolved])
 

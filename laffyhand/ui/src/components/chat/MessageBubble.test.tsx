@@ -340,7 +340,39 @@ describe("MessageBubble", () => {
     expect(screen.queryByText("Deny")).not.toBeInTheDocument()
   })
 
-  it("calls onResolvePermission after clicking Deny", async () => {
+  it("shows deny reason when resolved with reason", () => {
+    render(
+      <MessageBubble
+        message={makeMessage({
+          role: "permission-request",
+          content: "Allow skill 'test'?",
+          permissionInfo: { requestId: "r1", permission: "skill", pattern: "test", resolved: true, denyReason: "not needed" },
+        })}
+      />,
+    )
+    expect(screen.getByText(/Denied/)).toBeInTheDocument()
+    expect(screen.getByText((c) => c.includes("not needed"))).toBeInTheDocument()
+  })
+
+  it("shows reason input after clicking Deny", async () => {
+    render(
+      <MessageBubble
+        message={makeMessage({
+          role: "permission-request",
+          content: "Allow skill 'test'?",
+          permissionInfo: { requestId: "r1", permission: "skill", pattern: "test" },
+        })}
+      />,
+    )
+    fireEvent.click(screen.getByText("Deny"))
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(/Why are you denying/)).toBeInTheDocument()
+      expect(screen.getByText("Skip")).toBeInTheDocument()
+      expect(screen.getByText("Send Feedback")).toBeInTheDocument()
+    })
+  })
+
+  it("calls onResolvePermission without reason after Skip", async () => {
     const onResolve = vi.fn()
     render(
       <MessageBubble
@@ -353,7 +385,30 @@ describe("MessageBubble", () => {
       />,
     )
     fireEvent.click(screen.getByText("Deny"))
-    await waitFor(() => expect(onResolve).toHaveBeenCalledWith("msg-1"))
+    fireEvent.click(await screen.findByText("Skip"))
+    await waitFor(() => {
+      expect(onResolve).toHaveBeenCalledTimes(1)
+      expect(onResolve.mock.calls[0]![0]).toBe("msg-1")
+    })
+  })
+
+  it("calls onResolvePermission with reason after Send Feedback", async () => {
+    const onResolve = vi.fn()
+    render(
+      <MessageBubble
+        message={makeMessage({
+          role: "permission-request",
+          content: "Allow skill 'test'?",
+          permissionInfo: { requestId: "r1", permission: "skill", pattern: "test" },
+        })}
+        onResolvePermission={onResolve}
+      />,
+    )
+    fireEvent.click(screen.getByText("Deny"))
+    const input = await screen.findByPlaceholderText(/Why are you denying/)
+    fireEvent.change(input, { target: { value: "not needed" } })
+    fireEvent.click(screen.getByText("Send Feedback"))
+    await waitFor(() => expect(onResolve).toHaveBeenCalledWith("msg-1", "not needed"))
   })
 
   it("calls onResolvePermission after clicking Allow Once", async () => {

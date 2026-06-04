@@ -122,7 +122,7 @@ class AgentRuntime:
         self._session_locks: dict[str, asyncio.Lock] = {}
         self._session_contexts: dict[str, SessionContext] = {}
         self._pending_permissions: dict[
-            str, tuple[asyncio.Event, str, str, bool | None]
+            str, tuple[asyncio.Event, str, str, bool | None, str | None]
         ] = {}
         self._task_tool: TaskTool | None = None
         self._preferences: str | None = None
@@ -239,7 +239,7 @@ class AgentRuntime:
     @property
     def pending_permissions(
         self,
-    ) -> dict[str, tuple[asyncio.Event, str, str, bool | None]]:
+    ) -> dict[str, tuple[asyncio.Event, str, str, bool | None, str | None]]:
         return self._pending_permissions
 
     @property

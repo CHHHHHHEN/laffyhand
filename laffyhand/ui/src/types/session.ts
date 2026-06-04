@@ -32,6 +32,7 @@ export interface PermissionInfo {
   permission: string
   pattern: string
   resolved?: boolean
+  denyReason?: string
 }
 
 export interface Message {
