@@ -143,4 +143,6 @@ class SubagentPermissions:
                 continue
             if permission.check(name):
                 filtered.register_tool(tool)
+        filtered.result_post_processor = registry.result_post_processor
+        filtered.workspace = registry.workspace
         return filtered

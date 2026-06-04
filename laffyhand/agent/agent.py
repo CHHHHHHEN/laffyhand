@@ -118,6 +118,8 @@ BUILTIN_AGENTS: dict[str, AgentInfo] = {
         "- **Glob** — broad file pattern matching (e.g. \"src/**/*.tsx\")\n"
         "- **Grep** — content search with regex\n"
         "- **Read** — when you know the exact path\n"
+        "- **Tag** — annotate files with persistent semantic descriptions "
+        "(--message required, plus --exports/--side_effects/--depends_on)\n"
         "- Adapt search depth to the caller's thoroughness requirement\n\n"
         "# Output\n"
         "- Return file paths as absolute paths\n"
