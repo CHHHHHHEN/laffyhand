@@ -110,7 +110,7 @@ export function ChatInput({ onSend, onInterrupt, onSteer, onQueue, onCancel, isS
       )}
 
       {/* Input area */}
-      <div className="flex items-end gap-2">
+      <div className="flex items-center gap-2">
         <div className="flex-1 relative">
           <textarea
             ref={textareaRef}
