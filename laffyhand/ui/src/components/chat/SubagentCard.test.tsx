@@ -12,7 +12,7 @@ function makeSubagent(overrides: Partial<ActiveSubagent> = {}): ActiveSubagent {
     description: "Search the codebase for test files",
     mode: "foreground",
     depth: 0,
-    status: "running",
+    status: "completed",
     text: "",
     reasoning: "",
     tools: [],
@@ -42,18 +42,6 @@ describe("SubagentCard", () => {
       expect(screen.getByText("3 tools")).toBeInTheDocument()
     })
 
-    it("is collapsed by default when running", () => {
-      const sub = makeSubagent({ status: "running", summary: "secret summary" })
-      render(<SubagentCard subagent={sub} />)
-      expect(screen.queryByText("secret summary")).not.toBeInTheDocument()
-    })
-
-    it("is collapsed by default when completed", () => {
-      const sub = makeSubagent({ status: "completed", summary: "done summary" })
-      render(<SubagentCard subagent={sub} />)
-      expect(screen.queryByText("done summary")).not.toBeInTheDocument()
-    })
-
     it("shows description text in header", () => {
       const sub = makeSubagent({ description: "Find all TODO comments" })
       render(<SubagentCard subagent={sub} />)
@@ -61,33 +49,71 @@ describe("SubagentCard", () => {
     })
   })
 
+  describe("default expanded state", () => {
+    it("is expanded by default when running", () => {
+      const sub = makeSubagent({ status: "running", summary: "working on it" })
+      render(<SubagentCard subagent={sub} />)
+      expect(screen.getByText("working on it")).toBeInTheDocument()
+    })
+
+    it("is collapsed by default when completed", () => {
+      const sub = makeSubagent({ status: "completed", summary: "done" })
+      render(<SubagentCard subagent={sub} />)
+      expect(screen.queryByText("done")).not.toBeInTheDocument()
+    })
+  })
+
   describe("expanded content", () => {
-    it("shows summary when expanded", () => {
+    it("shows reasoning when present", () => {
+      const sub = makeSubagent({ reasoning: "Let me analyze this" })
+      render(<SubagentCard subagent={sub} />)
+      fireEvent.click(screen.getByText("explore"))
+      expect(screen.getByText("Let me analyze this")).toBeInTheDocument()
+    })
+
+    it("shows text output when present", () => {
+      const sub = makeSubagent({ text: "Found 42 matches" })
+      render(<SubagentCard subagent={sub} />)
+      fireEvent.click(screen.getByText("explore"))
+      expect(screen.getByText("Found 42 matches")).toBeInTheDocument()
+    })
+
+    it("shows tool calls when present", () => {
       const sub = makeSubagent({
-        status: "completed",
-        summary: "Found 42 results",
+        tools: [{ name: "grep", input: "TODO" }],
+        toolCount: 1,
       })
+      render(<SubagentCard subagent={sub} />)
+      fireEvent.click(screen.getByText("explore"))
+      expect(screen.getByText("grep")).toBeInTheDocument()
+      expect(screen.getByText("TODO")).toBeInTheDocument()
+    })
+
+    it("shows summary when present", () => {
+      const sub = makeSubagent({ summary: "Found 42 results" })
       render(<SubagentCard subagent={sub} />)
       fireEvent.click(screen.getByText("explore"))
       expect(screen.getByText("Found 42 results")).toBeInTheDocument()
     })
 
-    it("shows token usage when expanded", () => {
-      const sub = makeSubagent({
-        status: "completed",
-        inputTokens: 150,
-        outputTokens: 75,
-      })
+    it("shows token usage when present", () => {
+      const sub = makeSubagent({ inputTokens: 150, outputTokens: 75 })
       render(<SubagentCard subagent={sub} />)
       fireEvent.click(screen.getByText("explore"))
       expect(screen.getByText((c) => c.includes("150"))).toBeInTheDocument()
       expect(screen.getByText((c) => c.includes("75"))).toBeInTheDocument()
     })
+
+    it("shows thinking spinner when running without text or reasoning", () => {
+      const sub = makeSubagent({ status: "running", text: "", reasoning: "" })
+      render(<SubagentCard subagent={sub} />)
+      expect(screen.getByText("Thinking")).toBeInTheDocument()
+    })
   })
 
   describe("interaction", () => {
     it("toggles expanded state on header click", () => {
-      const sub = makeSubagent({ status: "completed", summary: "hidden content" })
+      const sub = makeSubagent({ summary: "hidden content" })
       render(<SubagentCard subagent={sub} />)
       expect(screen.queryByText("hidden content")).not.toBeInTheDocument()
       fireEvent.click(screen.getByText("explore"))

@@ -2,6 +2,7 @@ import { useState, useMemo } from "react"
 import type { ActiveSubagent } from "@/types/session"
 import type { SubagentTreeNode } from "@/lib/subagentTree"
 import { Spinner } from "@/components/ui/Spinner"
+import { ReasoningBlock } from "./ChatComponents"
 
 const AGENT_PALETTE = [
   "var(--accent)",
@@ -18,6 +19,11 @@ function agentColor(agentType: string): string {
   return AGENT_PALETTE[hash % AGENT_PALETTE.length]!
 }
 
+function toolPreview(tool: ActiveSubagent["tools"][number]): string {
+  const input = typeof tool.input === "string" ? tool.input : JSON.stringify(tool.input)
+  return input.length > 80 ? input.slice(0, 80) + "…" : input
+}
+
 export function SubagentCard({
   subagent,
   children,
@@ -27,7 +33,7 @@ export function SubagentCard({
   children?: React.ReactNode
   depth?: number
 }) {
-  const [expanded, setExpanded] = useState(false)
+  const [expanded, setExpanded] = useState(subagent.status === "running")
   const isRunning = subagent.status === "running"
   const isDone = subagent.status === "completed"
   const color = useMemo(() => agentColor(subagent.agentType), [subagent.agentType])
@@ -38,10 +44,7 @@ export function SubagentCard({
         onClick={() => setExpanded(!expanded)}
         className="w-full flex items-center gap-2 px-3 py-1.5 text-xs rounded-lg border border-[var(--border-muted)] bg-[var(--bg-base)] hover:bg-[var(--overlay-hover)] transition-colors cursor-pointer text-left"
       >
-        <span
-          className="shrink-0 flex items-center justify-center"
-          style={{ color }}
-        >
+        <span className="shrink-0 flex items-center justify-center" style={{ color }}>
           {isRunning ? (
             <Spinner size="sm" />
           ) : (
@@ -80,19 +83,61 @@ export function SubagentCard({
       </button>
 
       {expanded && (
-        <div className="ml-3 pl-3 border-l border-[var(--border-muted)] mt-1 space-y-1 pb-1">
-          {subagent.summary && (
-            <div className="text-[11px] text-[var(--text-muted)] leading-relaxed">
-              {subagent.summary}
+        <div className="ml-3 pl-3 border-l border-[var(--border-muted)] mt-1 space-y-2 pb-1 text-xs">
+          {subagent.reasoning && <ReasoningBlock text={subagent.reasoning} defaultExpanded />}
+
+          {subagent.text && (
+            <div className="leading-relaxed whitespace-pre-wrap text-xs text-[var(--text-base)]">
+              {subagent.text}
             </div>
           )}
-          {(subagent.inputTokens > 0 || subagent.outputTokens > 0) && (
-            <div className="flex items-center gap-2 text-[10px] text-[var(--text-faint)]">
-              <span title="Input tokens">↗ {subagent.inputTokens}</span>
-              <span title="Output tokens">↘ {subagent.outputTokens}</span>
+
+          {isRunning && !subagent.text && !subagent.reasoning && (
+            <div className="flex items-center gap-2 py-1">
+              <Spinner size="sm" />
+              <span className="text-[var(--text-muted)]">Thinking</span>
             </div>
           )}
+
+          {subagent.tools.length > 0 && (
+            <div>
+              <div className="text-[10px] uppercase tracking-wider text-[var(--text-faint)] font-medium mb-1">
+                Tool calls · {subagent.tools.length}
+              </div>
+              <div className="space-y-1">
+                {subagent.tools.map((tool, i) => (
+                  <div
+                    key={i}
+                    className="flex items-start gap-1.5 font-mono text-[var(--text-muted)]"
+                  >
+                    <span className="text-blue-500 shrink-0">⚙</span>
+                    <span className="font-medium text-blue-600 dark:text-blue-400 shrink-0">
+                      {tool.name}
+                    </span>
+                    <span className="truncate text-[var(--text-faint)]">
+                      {toolPreview(tool)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {children}
+
+          {(subagent.summary || subagent.inputTokens > 0 || subagent.outputTokens > 0) && (
+            <div className="flex items-center gap-3 text-[10px] text-[var(--text-muted)] pt-1">
+              {subagent.summary && (
+                <span className="truncate">{subagent.summary}</span>
+              )}
+              {(subagent.inputTokens > 0 || subagent.outputTokens > 0) && (
+                <span className="flex items-center gap-2 shrink-0">
+                  <span title="Input tokens">↗ {subagent.inputTokens}</span>
+                  <span title="Output tokens">↘ {subagent.outputTokens}</span>
+                </span>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>
