@@ -227,7 +227,7 @@ async def agent_loop(
                         name=tc.tool_name,
                         result=exec_result.event_data,
                     )
-                    if tc.tool_name == "todowrite":
+                    if tc.tool_name in ("todowrite", "task"):
                         yield TodoUpdate()
 
             # Inject pending steer as a separate UserMessage —

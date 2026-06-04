@@ -13,6 +13,8 @@ from laffyhand.agent.schemas import (
     SessionID,
     SessionUsage,
 )
+from typing import Any
+
 from laffyhand.agent.tools.registry import ToolRegistry
 
 
@@ -693,6 +695,196 @@ class TestCreateSubagent:
             _call_compaction = mock_spawn.call_args[1]["compaction_config"]
             assert _call_session is runtime.session_manager
             assert _call_compaction is runtime.compaction_config
+
+    @pytest.mark.anyio
+    async def test_foreground_with_todo_id_emits_update_events(
+        self, runtime, session_manager
+    ):
+        session = session_manager.create()
+        state = AgentState(
+            messages=[],
+            session_id=session.id,
+            usage=SessionUsage(context_size=0),
+        )
+        runtime._states[session.id] = state
+        agent_info = AgentInfo(name="test", system_prompt="You are test.")
+
+        # Create a todo item via the runtime's todo_manager
+        todo = runtime.todo_manager.add_task(session.id, "test task")
+
+        events: list[Any] = []
+
+        async def event_sink(event: Any) -> None:
+            events.append(event)
+
+        runtime._event_sinks[session.id] = event_sink
+
+        with patch("laffyhand.agent.runtime.agent_loop") as mock_loop:
+
+            async def mock_agent_loop(*args, **kwargs):
+                from laffyhand.agent.schemas import StepFinish
+
+                yield StepFinish(index=1, reason="stop")
+
+            mock_loop.side_effect = mock_agent_loop
+
+            await runtime.create_subagent(
+                session.id,
+                agent_info,
+                "Do it",
+                todo_id=todo.id,
+            )
+
+        # Should have two TodoUpdate events: in_progress + completed
+        from laffyhand.agent.schemas import TodoUpdate as TodoUpdateEvent
+
+        todo_events = [e for e in events if isinstance(e, TodoUpdateEvent)]
+        assert len(todo_events) == 2, f"Expected 2 TodoUpdate events, got {len(todo_events)}: {events}"
+
+        # Verify todo status in DB
+        updated = runtime.todo_manager.get_task(todo.id)
+        assert updated is not None
+        assert updated.status == "completed"
+
+    @pytest.mark.anyio
+    async def test_foreground_without_todo_id_does_not_emit_update(
+        self, runtime, session_manager
+    ):
+        session = session_manager.create()
+        state = AgentState(
+            messages=[],
+            session_id=session.id,
+            usage=SessionUsage(context_size=0),
+        )
+        runtime._states[session.id] = state
+        agent_info = AgentInfo(name="test", system_prompt="You are test.")
+
+        events: list[Any] = []
+
+        async def event_sink(event: Any) -> None:
+            events.append(event)
+
+        runtime._event_sinks[session.id] = event_sink
+
+        with patch("laffyhand.agent.runtime.agent_loop") as mock_loop:
+
+            async def mock_agent_loop(*args, **kwargs):
+                from laffyhand.agent.schemas import StepFinish
+
+                yield StepFinish(index=1, reason="stop")
+
+            mock_loop.side_effect = mock_agent_loop
+
+            await runtime.create_subagent(
+                session.id,
+                agent_info,
+                "Do it",
+                todo_id=None,
+            )
+
+        from laffyhand.agent.schemas import TodoUpdate as TodoUpdateEvent
+
+        todo_events = [e for e in events if isinstance(e, TodoUpdateEvent)]
+        assert len(todo_events) == 0, f"Expected 0 TodoUpdate events, got {len(todo_events)}"
+
+    @pytest.mark.anyio
+    async def test_background_with_todo_id_emits_in_progress_event(
+        self, runtime, session_manager
+    ):
+        session = session_manager.create()
+        state = AgentState(
+            messages=[],
+            session_id=session.id,
+            usage=SessionUsage(context_size=0),
+        )
+        runtime._states[session.id] = state
+        agent_info = AgentInfo(name="test", system_prompt="You are test.")
+
+        todo = runtime.todo_manager.add_task(session.id, "test task")
+
+        events: list[Any] = []
+
+        async def event_sink(event: Any) -> None:
+            events.append(event)
+
+        runtime._event_sinks[session.id] = event_sink
+
+        with patch.object(
+            runtime.subagent_manager, "spawn", new_callable=AsyncMock
+        ):
+            await runtime.create_subagent(
+                session.id,
+                agent_info,
+                "Do it",
+                background=True,
+                todo_id=todo.id,
+            )
+
+        from laffyhand.agent.schemas import TodoUpdate as TodoUpdateEvent
+
+        todo_events = [e for e in events if isinstance(e, TodoUpdateEvent)]
+        assert len(todo_events) == 1, f"Expected 1 TodoUpdate event (in_progress), got {len(todo_events)}: {events}"
+
+        # Verify todo status set to in_progress
+        updated = runtime.todo_manager.get_task(todo.id)
+        assert updated is not None
+        assert updated.status == "in_progress"
+
+    @pytest.mark.anyio
+    async def test_background_on_complete_emits_todo_update(
+        self, runtime, session_manager
+    ):
+        session = session_manager.create()
+        state = AgentState(
+            messages=[],
+            session_id=session.id,
+            usage=SessionUsage(context_size=0),
+        )
+        runtime._states[session.id] = state
+        agent_info = AgentInfo(name="test", system_prompt="You are test.")
+
+        todo = runtime.todo_manager.add_task(session.id, "test task")
+
+        events: list[Any] = []
+
+        async def event_sink(event: Any) -> None:
+            events.append(event)
+
+        runtime._event_sinks[session.id] = event_sink
+
+        with patch.object(
+            runtime.subagent_manager, "spawn", new_callable=AsyncMock
+        ) as mock_spawn:
+            await runtime.create_subagent(
+                session.id,
+                agent_info,
+                "Do it",
+                background=True,
+                todo_id=todo.id,
+            )
+
+        # Extract the on_complete callback passed to spawn
+        _call_on_complete = mock_spawn.call_args[1].get("on_complete")
+        assert _call_on_complete is not None, "on_complete not passed to spawn"
+
+        # Clear events from in_progress, then invoke on_complete
+        events.clear()
+
+        # Invoke on_complete with success=True
+        _call_on_complete("task-123", True)
+
+        # Give the fire-and-forget task time to execute
+        await asyncio.sleep(0)
+
+        from laffyhand.agent.schemas import TodoUpdate as TodoUpdateEvent
+
+        todo_events = [e for e in events if isinstance(e, TodoUpdateEvent)]
+        assert len(todo_events) == 1, f"Expected 1 TodoUpdate event from on_complete, got {len(todo_events)}: {events}"
+
+        # Verify todo status set to completed
+        updated = runtime.todo_manager.get_task(todo.id)
+        assert updated is not None
+        assert updated.status == "completed"
 
 
 class TestGenerateTitleForCurrent:

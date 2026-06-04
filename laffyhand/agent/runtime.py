@@ -594,6 +594,11 @@ class AgentRuntime:
                 parent_session_id,
                 TodoUpdate(status="in_progress"),
             )
+            _sink = self._event_sinks.get(parent_session_id)
+            if _sink:
+                from laffyhand.agent.schemas import TodoUpdate as TodoUpdateEvent
+
+                await _sink(TodoUpdateEvent())
 
         if background:
             assert self.subagent_manager is not None
@@ -610,6 +615,11 @@ class AgentRuntime:
                             status="completed" if success else "pending",
                         ),
                     )
+                    _sink = self._event_sinks.get(parent_session_id)
+                    if _sink:
+                        from laffyhand.agent.schemas import TodoUpdate as TodoUpdateEvent
+
+                        asyncio.ensure_future(_sink(TodoUpdateEvent()))
 
             await self.subagent_manager.spawn(
                 parent_session_id=parent_session_id,
@@ -661,6 +671,11 @@ class AgentRuntime:
                 parent_session_id,
                 TodoUpdate(status="completed"),
             )
+            _sink = self._event_sinks.get(parent_session_id)
+            if _sink:
+                from laffyhand.agent.schemas import TodoUpdate as TodoUpdateEvent
+
+                await _sink(TodoUpdateEvent())
 
         return result
 
