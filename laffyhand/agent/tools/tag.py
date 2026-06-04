@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 from datetime import datetime, timezone
 from pathlib import Path
@@ -27,6 +28,51 @@ def _normalize(path_str: str) -> str:
 
 def _date_from_iso(iso: str) -> str:
     return iso[:10]
+
+
+def _coerce_dict(value: Any) -> dict[str, str] | None:
+    """Coerce a value to dict[str, str], parsing a JSON string if needed.
+
+    LLMs sometimes send structured args like ``exports`` as a
+    double-encoded JSON string (e.g. ``'{"ChatInput": "function"}'``)
+    inside the outer JSON tool-call arguments.  This function
+    normalises such values so downstream code always receives a dict.
+
+    Returns ``None`` when *value* is ``None`` so callers can distinguish
+    between "not provided" and "empty dict".
+    """
+    if value is None:
+        return None
+    if isinstance(value, dict):
+        return {k: str(v) for k, v in value.items()}
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+            if isinstance(parsed, dict):
+                return {k: str(v) for k, v in parsed.items()}
+        except (json.JSONDecodeError, TypeError):
+            pass
+    return {}
+
+
+def _coerce_list(value: Any) -> list[str] | None:
+    """Coerce a value to list[str], parsing a JSON string if needed.
+
+    Returns ``None`` when *value* is ``None`` so callers can distinguish
+    between "not provided" and "empty list".
+    """
+    if value is None:
+        return None
+    if isinstance(value, list):
+        return [str(item) for item in value]
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+            if isinstance(parsed, list):
+                return [str(item) for item in parsed]
+        except (json.JSONDecodeError, TypeError):
+            pass
+    return []
 
 
 def format_tag_summary(tag: FileTag) -> str:
@@ -287,9 +333,9 @@ class TagTool(BaseTool):
             real,
             message=message,
             status="active",
-            exports=params.get("exports"),
+            exports=_coerce_dict(params.get("exports")),
             side_effects=params.get("side_effects"),
-            depends_on=params.get("depends_on"),
+            depends_on=_coerce_list(params.get("depends_on")),
         )
         self._repo.commit()
         date = _date_from_iso(datetime.now(timezone.utc).isoformat())
@@ -313,9 +359,9 @@ class TagTool(BaseTool):
         message = params.get("message")
         key = params.get("key")
         value = params.get("value")
-        exports = params.get("exports")
+        exports = _coerce_dict(params.get("exports"))
         side_effects = params.get("side_effects")
-        depends_on = params.get("depends_on")
+        depends_on = _coerce_list(params.get("depends_on"))
         has_structured = any(x is not None for x in (message, exports, side_effects, depends_on))
         if has_structured:
             self._repo.upsert(real, message=message, exports=exports, side_effects=side_effects, depends_on=depends_on)
@@ -358,9 +404,9 @@ class TagTool(BaseTool):
                     real,
                     message=message,
                     status="active",
-                    exports=entry.get("exports"),
+                    exports=_coerce_dict(entry.get("exports")),
                     side_effects=entry.get("side_effects"),
-                    depends_on=entry.get("depends_on"),
+                    depends_on=_coerce_list(entry.get("depends_on")),
                 )
                 self._repo.commit()
                 date = _date_from_iso(datetime.now(timezone.utc).isoformat())

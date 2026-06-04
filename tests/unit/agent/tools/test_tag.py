@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import sqlite3
 import tempfile
@@ -11,7 +12,8 @@ import pytest
 from laffyhand.agent.db.repository import FileTagRepo
 from laffyhand.agent.db.schema import create_tables
 from laffyhand.agent.db.repository.tag import FileTag
-from laffyhand.agent.tools.tag import TagTool, annotate_result, format_tag_summary, _normalize, _date_from_iso
+from laffyhand.agent.tools.tag import TagTool, annotate_result, format_tag_summary, _normalize, _date_from_iso, _coerce_dict, _coerce_list
+from laffyhand.agent.db.repository.tag import _parse_json_dict, _parse_json_list
 
 
 @pytest.fixture
@@ -906,3 +908,221 @@ class TestUtils:
         summary = format_tag_summary(tag)
         assert long_msg in summary
         assert "..." not in summary
+
+
+class TestCoercion:
+    """Tests for _coerce_dict, _coerce_list, _parse_json_dict, _parse_json_list."""
+
+    # ── _coerce_dict ──────────────────────────────────────────────
+
+    def test_coerce_dict_already_dict(self):
+        assert _coerce_dict({"a": "b"}) == {"a": "b"}
+
+    def test_coerce_dict_none(self):
+        assert _coerce_dict(None) is None
+
+    def test_coerce_dict_json_string(self):
+        result = _coerce_dict('{"ChatInput": "function"}')
+        assert result == {"ChatInput": "function"}
+
+    def test_coerce_dict_empty_dict(self):
+        assert _coerce_dict({}) == {}
+
+    def test_coerce_dict_empty_string(self):
+        assert _coerce_dict("") == {}
+
+    def test_coerce_dict_invalid_json(self):
+        assert _coerce_dict("not json") == {}
+
+    def test_coerce_dict_non_string_non_dict(self):
+        assert _coerce_dict(123) == {}
+
+    def test_coerce_dict_values_coerced_to_str(self):
+        result = _coerce_dict({"a": 1, "b": True})
+        assert result == {"a": "1", "b": "True"}
+
+    # ── _coerce_list ──────────────────────────────────────────────
+
+    def test_coerce_list_already_list(self):
+        assert _coerce_list(["a", "b"]) == ["a", "b"]
+
+    def test_coerce_list_none(self):
+        assert _coerce_list(None) is None
+
+    def test_coerce_list_json_string(self):
+        result = _coerce_list('["a", "b"]')
+        assert result == ["a", "b"]
+
+    def test_coerce_list_empty_list(self):
+        assert _coerce_list([]) == []
+
+    def test_coerce_list_empty_string(self):
+        assert _coerce_list("") == []
+
+    def test_coerce_list_invalid_json(self):
+        assert _coerce_list("not json") == []
+
+    def test_coerce_list_non_string_non_list(self):
+        assert _coerce_list(123) == []
+
+    def test_coerce_list_values_coerced_to_str(self):
+        result = _coerce_list([1, True])
+        assert result == ["1", "True"]
+
+    # ── _parse_json_dict ──────────────────────────────────────────
+
+    def test_parse_json_dict_none(self):
+        assert _parse_json_dict(None) == {}
+
+    def test_parse_json_dict_empty(self):
+        assert _parse_json_dict("") == {}
+
+    def test_parse_json_dict_normal(self):
+        assert _parse_json_dict('{"a": "b"}') == {"a": "b"}
+
+    def test_parse_json_dict_double_encoded(self):
+        """Handle the original bug: json.dumps of a JSON string → double encoding."""
+        assert _parse_json_dict('"{\\"ChatInput\\": \\"function\\"}"') == {"ChatInput": "function"}
+
+    def test_parse_json_dict_not_a_dict(self):
+        assert _parse_json_dict('"plain string"') == {}
+
+    def test_parse_json_dict_bare_string_that_looks_like_json(self):
+        """A string that happens to be parseable as JSON, but is not inside quotes."""
+        assert _parse_json_dict('{"a": "b"}') == {"a": "b"}
+
+    # ── _parse_json_list ──────────────────────────────────────────
+
+    def test_parse_json_list_none(self):
+        assert _parse_json_list(None) == []
+
+    def test_parse_json_list_empty(self):
+        assert _parse_json_list("") == []
+
+    def test_parse_json_list_normal(self):
+        assert _parse_json_list('["a", "b"]') == ["a", "b"]
+
+    def test_parse_json_list_double_encoded(self):
+        assert _parse_json_list('"[\\"a\\", \\"b\\"]"') == ["a", "b"]
+
+    def test_parse_json_list_not_a_list(self):
+        assert _parse_json_list('"plain string"') == []
+
+
+class TestEndpointCoercion:
+    """End-to-end: LLM sends string-encoded exports/depends_on, tool handles it."""
+
+    def test_add_string_exports(self, tool, temp_file):
+        """Simulate what the LLM sends: exports as a JSON-encoded string."""
+        result = asyncio.run(
+            tool.run({
+                "operation": "add",
+                "file_path": temp_file,
+                "message": "test file",
+                "exports": '{"MyClass": "class", "my_func": "function"}',
+            })
+        )
+        assert "Tagged" in result
+        tag = tool._repo.get(os.path.realpath(temp_file))
+        assert tag is not None
+        assert tag.exports == {"MyClass": "class", "my_func": "function"}
+
+    def test_add_string_depends_on(self, tool, temp_file):
+        """Simulate LLM sending depends_on as a JSON-encoded string."""
+        result = asyncio.run(
+            tool.run({
+                "operation": "add",
+                "file_path": temp_file,
+                "message": "test file",
+                "depends_on": '["redis", "database.session"]',
+            })
+        )
+        assert "Tagged" in result
+        tag = tool._repo.get(os.path.realpath(temp_file))
+        assert tag is not None
+        assert tag.depends_on == ["redis", "database.session"]
+
+    def test_add_string_exports_and_depends_on_together(self, tool, temp_file):
+        """Both string-encoded structured fields at once."""
+        asyncio.run(
+            tool.run({
+                "operation": "add",
+                "file_path": temp_file,
+                "message": "full test",
+                "exports": '{"Handler": "class"}',
+                "depends_on": '["os", "sys"]',
+            })
+        )
+        tag = tool._repo.get(os.path.realpath(temp_file))
+        assert tag is not None
+        assert tag.exports == {"Handler": "class"}
+        assert tag.depends_on == ["os", "sys"]
+
+    def test_update_string_exports(self, tool, temp_file):
+        """Update with exports as a string should also be coerced."""
+        asyncio.run(tool.run({"operation": "add", "file_path": temp_file, "message": "base"}))
+        result = asyncio.run(
+            tool.run({
+                "operation": "update",
+                "file_path": temp_file,
+                "exports": '{"NewClass": "class"}',
+            })
+        )
+        assert "Updated tag" in result
+        tag = tool._repo.get(os.path.realpath(temp_file))
+        assert tag is not None
+        assert tag.exports == {"NewClass": "class"}
+
+    def test_batch_string_exports(self, tool, temp_dir):
+        """Batch with exports as a string should work."""
+        api_py = Path(temp_dir) / "api.py"
+        result = asyncio.run(
+            tool.run({
+                "operation": "batch",
+                "tags": [{
+                    "file_path": str(api_py),
+                    "message": "API handler",
+                    "exports": '{"handle_request": "function"}',
+                }],
+            })
+        )
+        assert "Batch processed 1 tag(s)" in result
+        tag = tool._repo.get(str(api_py))
+        assert tag is not None
+        assert tag.exports == {"handle_request": "function"}
+
+    def test_update_string_depends_on(self, tool, temp_file):
+        """Update with depends_on as a string should be coerced."""
+        asyncio.run(tool.run({"operation": "add", "file_path": temp_file, "message": "base"}))
+        result = asyncio.run(
+            tool.run({
+                "operation": "update",
+                "file_path": temp_file,
+                "depends_on": '["libfoo", "libbar"]',
+            })
+        )
+        assert "Updated tag" in result
+        tag = tool._repo.get(os.path.realpath(temp_file))
+        assert tag is not None
+        assert tag.depends_on == ["libfoo", "libbar"]
+
+    def test_double_encoded_data_read_defensively(self, repo):
+        """Simulate the exact bug: double-encoded exports in the database.
+
+        If data was already corrupted by the bug, FileTagRepo.get must
+        still parse it correctly via _parse_json_dict.
+        """
+        repo.upsert("/tmp/double_encoded.py", message="buggy", exports='{"ChatInput": "function"}')
+        repo.commit()
+
+        # Manually double-encode in the DB (simulate the old bug)
+        repo.connection.execute(
+            "UPDATE file_tag SET exports=? WHERE path=?",
+            (json.dumps('{"ChatInput": "function"}'), "/tmp/double_encoded.py"),
+        )
+        repo.commit()
+
+        # Reading back must NOT crash with pydantic ValidationError
+        tag = repo.get("/tmp/double_encoded.py")
+        assert tag is not None
+        assert tag.exports == {"ChatInput": "function"}

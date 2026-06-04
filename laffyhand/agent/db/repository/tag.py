@@ -19,6 +19,48 @@ class FileTag(BaseModel):
     depends_on: list[str] = []
 
 
+def _parse_json_dict(raw: str | None) -> dict[str, str]:
+    """Parse a JSON column value into ``dict[str, str]``.
+
+    Handles the case where the stored value was double-encoded by
+    a previous bug: ``json.dumps(json_str)`` produces a JSON-encoded
+    string like ``'"{\\"ChatInput\\": \\"function\\"}"'``.  When such
+    a value is read back, the outer ``json.loads`` returns the inner
+    string ``'{"ChatInput": "function"}'`` rather than a dict.
+    """
+    if not raw:
+        return {}
+    parsed = json.loads(raw)
+    if isinstance(parsed, dict):
+        return {k: str(v) for k, v in parsed.items()}
+    if isinstance(parsed, str):
+        # Double-encoded — try one more level.
+        try:
+            inner = json.loads(parsed)
+            if isinstance(inner, dict):
+                return {k: str(v) for k, v in inner.items()}
+        except (json.JSONDecodeError, TypeError):
+            pass
+    return {}
+
+
+def _parse_json_list(raw: str | None) -> list[str]:
+    """Parse a JSON column value into ``list[str]``, unwrapping double-encoding."""
+    if not raw:
+        return []
+    parsed = json.loads(raw)
+    if isinstance(parsed, list):
+        return [str(item) for item in parsed]
+    if isinstance(parsed, str):
+        try:
+            inner = json.loads(parsed)
+            if isinstance(inner, list):
+                return [str(item) for item in inner]
+        except (json.JSONDecodeError, TypeError):
+            pass
+    return []
+
+
 class FileTagRepo:
     def __init__(self, conn: sqlite3.Connection) -> None:
         self._conn = conn
@@ -92,9 +134,9 @@ class FileTagRepo:
             tags=json.loads(row["tags"]),
             updated_at=row["updated_at"],
             status=row["status"],
-            exports=json.loads(row["exports"]) if row["exports"] else {},
+            exports=_parse_json_dict(row["exports"]),
             side_effects=row["side_effects"],
-            depends_on=json.loads(row["depends_on"]) if row["depends_on"] else [],
+            depends_on=_parse_json_list(row["depends_on"]),
         )
 
     def list_by_prefix(self, prefix: str) -> list[FileTag]:
@@ -109,9 +151,9 @@ class FileTagRepo:
                 tags=json.loads(r["tags"]),
                 updated_at=r["updated_at"],
                 status=r["status"],
-                exports=json.loads(r["exports"]) if r["exports"] else {},
+                exports=_parse_json_dict(r["exports"]),
                 side_effects=r["side_effects"],
-                depends_on=json.loads(r["depends_on"]) if r["depends_on"] else [],
+                depends_on=_parse_json_list(r["depends_on"]),
             )
             for r in rows
         ]
@@ -127,9 +169,9 @@ class FileTagRepo:
                 tags=json.loads(r["tags"]),
                 updated_at=r["updated_at"],
                 status=r["status"],
-                exports=json.loads(r["exports"]) if r["exports"] else {},
+                exports=_parse_json_dict(r["exports"]),
                 side_effects=r["side_effects"],
-                depends_on=json.loads(r["depends_on"]) if r["depends_on"] else [],
+                depends_on=_parse_json_list(r["depends_on"]),
             )
             for r in rows
         ]
@@ -189,9 +231,9 @@ class FileTagRepo:
                 tags=json.loads(r["tags"]),
                 updated_at=r["updated_at"],
                 status=r["status"],
-                exports=json.loads(r["exports"]) if r["exports"] else {},
+                exports=_parse_json_dict(r["exports"]),
                 side_effects=r["side_effects"],
-                depends_on=json.loads(r["depends_on"]) if r["depends_on"] else [],
+                depends_on=_parse_json_list(r["depends_on"]),
             )
             for r in rows
         ]
