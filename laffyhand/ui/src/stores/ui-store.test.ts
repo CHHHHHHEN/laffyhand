@@ -19,4 +19,16 @@ describe("ui-store", () => {
     useUiStore.getState().setSidebarOpen(true)
     expect(useUiStore.getState().sidebarOpen).toBe(true)
   })
+
+  it("defaultAgent is build by default", () => {
+    expect(useUiStore.getState().defaultAgent).toBe("build")
+  })
+
+  it("sets defaultAgent", () => {
+    useUiStore.getState().setDefaultAgent("general")
+    expect(useUiStore.getState().defaultAgent).toBe("general")
+    // Reset for other tests
+    useUiStore.getState().setDefaultAgent("build")
+    expect(useUiStore.getState().defaultAgent).toBe("build")
+  })
 })

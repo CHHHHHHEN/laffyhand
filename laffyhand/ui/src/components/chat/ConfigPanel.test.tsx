@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { render, screen, fireEvent, waitFor } from "@testing-library/react"
 import { ConfigPanel } from "./ConfigPanel"
+import { useUiStore } from "@/stores/ui-store"
 import { rpcClient } from "@/lib/rpc"
 
 vi.mock("@/lib/rpc", () => ({
@@ -13,6 +14,17 @@ vi.mock("@/lib/rpc", () => ({
     mcpAddServer: vi.fn(),
     mcpRemoveServer: vi.fn(),
   },
+}))
+
+vi.mock("@/hooks/use-sessions", () => ({
+  useAgents: () => ({
+    agents: [
+      { name: "build", description: "Main coding agent", mode: "primary", system_prompt: "", model: null },
+      { name: "general", description: "General purpose", mode: "subagent", system_prompt: "", model: null },
+    ],
+    isLoading: false,
+    error: null,
+  }),
 }))
 
 beforeEach(() => {
@@ -171,6 +183,50 @@ describe("ConfigPanel", () => {
     await waitFor(() => {
       expect(screen.getByText("No tools available")).toBeInTheDocument()
     })
+  })
+
+  it("shows default agent selector in Config tab", async () => {
+    vi.mocked(rpcClient.configProviders).mockResolvedValue({
+      default_provider: "test",
+      providers: {},
+    })
+    vi.mocked(rpcClient.mcpStatus).mockResolvedValue({ servers: [] })
+    vi.mocked(rpcClient.toolsList).mockResolvedValue({ tools: [] })
+
+    render(<ConfigPanel />)
+    fireEvent.click(screen.getByTitle("Config & Tools"))
+    fireEvent.click(screen.getByText("Config"))
+
+    await waitFor(() => {
+      expect(screen.getByText("Default Agent")).toBeInTheDocument()
+    })
+    expect(screen.getByText("build")).toBeInTheDocument()
+    expect(screen.getByText("general")).toBeInTheDocument()
+  })
+
+  it("changes default agent on click", async () => {
+    vi.mocked(rpcClient.configProviders).mockResolvedValue({
+      default_provider: "test",
+      providers: {},
+    })
+    vi.mocked(rpcClient.mcpStatus).mockResolvedValue({ servers: [] })
+    vi.mocked(rpcClient.toolsList).mockResolvedValue({ tools: [] })
+
+    render(<ConfigPanel />)
+    fireEvent.click(screen.getByTitle("Config & Tools"))
+    fireEvent.click(screen.getByText("Config"))
+
+    await waitFor(() => {
+      expect(screen.getByText("Default Agent")).toBeInTheDocument()
+    })
+
+    // Default should be "build"
+    expect(useUiStore.getState().defaultAgent).toBe("build")
+
+    // Click "general"
+    fireEvent.click(screen.getByText("general"))
+
+    expect(useUiStore.getState().defaultAgent).toBe("general")
   })
 
   it("shows empty state when no MCP servers", async () => {

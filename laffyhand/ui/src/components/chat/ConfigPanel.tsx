@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback } from "react"
 import { rpcClient, type ConfigProvidersResult, type MCPStatusResult } from "@/lib/rpc"
 import { useChatStore } from "@/stores/chat-store"
 import { useSessionStore } from "@/stores/session-store"
+import { useUiStore } from "@/stores/ui-store"
+import { useAgents } from "@/hooks/use-sessions"
 
 type Tab = "tools" | "mcp" | "config"
 
@@ -21,6 +23,9 @@ export function ConfigPanel() {
 
   const activeSessionId = useSessionStore((s) => s.activeSessionId)
   const model = useChatStore((s) => activeSessionId ? s.sessions[activeSessionId]?.model ?? "" : "")
+  const defaultAgent = useUiStore((s) => s.defaultAgent)
+  const setDefaultAgent = useUiStore((s) => s.setDefaultAgent)
+  const { agents } = useAgents()
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -196,6 +201,29 @@ export function ConfigPanel() {
               ) : (
                 <p className="text-xs text-[var(--text-muted)] text-center py-4">No provider config available</p>
               )}
+
+              {/* Default Agent selector */}
+              <div className="px-3 py-2.5 bg-[var(--bg-deep)] rounded-lg border border-[var(--border-muted)]">
+                <div className="text-xs text-[var(--text-base)] flex items-center gap-2 mb-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent)] shrink-0" />
+                  Default Agent
+                </div>
+                <div className="flex flex-wrap gap-1">
+                  {agents.map((agent) => (
+                    <button
+                      key={agent.name}
+                      onClick={() => setDefaultAgent(agent.name)}
+                      className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors cursor-pointer ${
+                        defaultAgent === agent.name
+                          ? "bg-[var(--accent)] text-white border-[var(--accent)]"
+                          : "bg-[var(--bg-base)] border-[var(--border-base)] text-[var(--text-muted)] hover:border-[var(--accent)]"
+                      }`}
+                    >
+                      {agent.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
           )}
         </div>

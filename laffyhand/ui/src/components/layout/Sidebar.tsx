@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router-dom"
 import { useSessions, useAgents } from "@/hooks/use-sessions"
 import { useSessionStore } from "@/stores/session-store"
 import { useChatStore } from "@/stores/chat-store"
+import { useUiStore } from "@/stores/ui-store"
 import { Spinner } from "@/components/ui/Spinner"
 import { rpcClient } from "@/lib/rpc"
 
@@ -23,7 +24,8 @@ export function Sidebar() {
   const [deleting, setDeleting] = useState(false)
 
   const { agents } = useAgents()
-  const [selectedAgent, setSelectedAgent] = useState(agents[0]?.name ?? "general")
+  const defaultAgent = useUiStore((s) => s.defaultAgent)
+  const setDefaultAgent = useUiStore((s) => s.setDefaultAgent)
 
   const filteredSessions = (sessions ?? []).filter((s) =>
     !search || (s.title ?? s.id).toLowerCase().includes(search.toLowerCase()),
@@ -37,7 +39,7 @@ export function Sidebar() {
 
   const handleNew = async () => {
     try {
-      const id = await createSession(undefined, selectedAgent)
+      const id = await createSession(undefined, defaultAgent)
       addActiveSession(id)
       addSession(id)
       navigate(`/chat/${id}`)
@@ -120,7 +122,7 @@ export function Sidebar() {
               onClick={() => setShowAgentSelect(!showAgentSelect)}
               className="px-2 py-1 text-xs rounded-md border border-[var(--border-base)] text-[var(--text-muted)] hover:text-[var(--text-base)] hover:bg-[var(--overlay-hover)] transition-colors cursor-pointer select-none flex items-center gap-1"
             >
-              <span className="truncate max-w-[60px]">{selectedAgent}</span>
+              <span className="truncate max-w-[60px]">{defaultAgent}</span>
               <svg className={`w-3 h-3 transition-transform ${showAgentSelect ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
               </svg>
@@ -132,9 +134,9 @@ export function Sidebar() {
                   {agents.map((agent) => (
                     <button
                       key={agent.name}
-                      onClick={() => { setSelectedAgent(agent.name); setShowAgentSelect(false) }}
+                      onClick={() => { setDefaultAgent(agent.name); setShowAgentSelect(false) }}
                       className={`w-full text-left px-2.5 py-1.5 text-xs hover:bg-[var(--overlay-hover)] transition-colors cursor-pointer ${
-                        selectedAgent === agent.name ? "text-[var(--accent)]" : "text-[var(--text-muted)]"
+                        defaultAgent === agent.name ? "text-[var(--accent)]" : "text-[var(--text-muted)]"
                       }`}
                     >
                       {agent.name}

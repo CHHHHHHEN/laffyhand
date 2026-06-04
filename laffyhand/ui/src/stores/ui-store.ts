@@ -7,6 +7,7 @@ export interface UiState {
   todoPanelOpen: boolean
   busyMode: BusyMode
   darkMode: boolean
+  defaultAgent: string
   toggleSidebar: () => void
   setSidebarOpen: (open: boolean) => void
   toggleTodoPanel: () => void
@@ -14,6 +15,7 @@ export interface UiState {
   setBusyMode: (mode: BusyMode) => void
   toggleDarkMode: () => void
   setDarkMode: (dark: boolean) => void
+  setDefaultAgent: (agent: string) => void
 }
 
 function getInitialDarkMode(): boolean {
@@ -31,11 +33,23 @@ function getInitialDarkMode(): boolean {
   }
 }
 
+function getInitialDefaultAgent(): string {
+  if (typeof window === "undefined") return "build"
+  try {
+    const stored = localStorage.getItem("laffyhand-default-agent")
+    if (stored !== null) return stored
+  } catch {
+    // localStorage may not be available in test environments
+  }
+  return "build"
+}
+
 export const useUiStore = create<UiState>((set) => ({
   sidebarOpen: true,
   todoPanelOpen: false,
   busyMode: "interrupt",
   darkMode: getInitialDarkMode(),
+  defaultAgent: getInitialDefaultAgent(),
 
   toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
 
@@ -56,6 +70,11 @@ export const useUiStore = create<UiState>((set) => ({
   setDarkMode: (darkMode) => {
     localStorage.setItem("laffyhand-dark-mode", String(darkMode))
     set({ darkMode })
+  },
+
+  setDefaultAgent: (agent) => {
+    localStorage.setItem("laffyhand-default-agent", agent)
+    set({ defaultAgent: agent })
   },
 }))
 
