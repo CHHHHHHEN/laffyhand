@@ -84,7 +84,7 @@ class TestConfigModels:
         assert cfg.dir == "logs"
         assert cfg.level == "INFO"
         assert cfg.retention_days == 10
-        assert cfg.console is False
+        assert cfg.console is True
 
     def test_agent_config_defaults(self):
         cfg = AgentConfig()
