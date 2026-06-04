@@ -176,6 +176,15 @@ class SubAgentEnd(BaseModel):
     output_tokens: int = 0
 
 
+class UsageUpdate(BaseModel):
+    type: str = "usage-update"
+    session_usage: dict[str, Any]
+
+
+class TodoUpdate(BaseModel):
+    type: str = "todo-update"
+
+
 AgentEvent = Union[
     StepStart,
     TextStart,
@@ -194,4 +203,6 @@ AgentEvent = Union[
     SubAgentStart,
     SubAgentDelta,
     SubAgentEnd,
+    UsageUpdate,
+    TodoUpdate,
 ]

@@ -4,7 +4,9 @@ import { useQueryClient } from "@tanstack/react-query"
 import { rpcClient } from "@/lib/rpc"
 import { useChatStore } from "@/stores/chat-store"
 import { useTodoStore } from "@/stores/todo-store"
+import { useUiStore } from "@/stores/ui-store"
 import type { TodoItem } from "@/types/session"
+import type { SessionUsage } from "@/types/rpc"
 
 function refreshTodo(sessionId: string) {
   rpcClient.todoList(sessionId).then((result) => {
@@ -148,6 +150,15 @@ export function useChat() {
                   refreshTodo(sessionId)
                   break
                 }
+                case "usage-update":
+                  store.updateSessionUsage(sessionId, event.session_usage as SessionUsage)
+                  break
+                case "todo-update":
+                  refreshTodo(sessionId)
+                  if (!useUiStore.getState().todoPanelOpen) {
+                    useUiStore.getState().setTodoPanelOpen(true)
+                  }
+                  break
                 case "permission-request":
                   store.addPermissionRequest(sessionId, {
                     requestId: event.request_id,

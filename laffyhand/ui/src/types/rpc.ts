@@ -161,6 +161,8 @@ export type StreamEvent =
   | { type: "subagent-start"; id: string; parent_id?: string; agent_type: string; description: string; mode: "foreground" | "background"; depth: number }
   | { type: "subagent-delta"; id: string; kind: "text" | "reasoning" | "tool" | "tool_result" | "error"; content?: string; tool_name?: string; tool_input?: string }
   | { type: "subagent-end"; id: string; status: "completed" | "error" | "cancelled"; summary?: string; tool_count?: number; input_tokens?: number; output_tokens?: number }
+  | { type: "usage-update"; session_usage: SessionUsage }
+  | { type: "todo-update" }
 
 export interface ToolDefinition {
   name: string

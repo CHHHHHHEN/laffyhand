@@ -31,6 +31,8 @@ from laffyhand.agent.schemas import (
     ToolError,
     StepFinish,
     Compacting,
+    UsageUpdate,
+    TodoUpdate,
     AgentEvent,
 )
 
@@ -198,6 +200,7 @@ async def agent_loop(
         agent_state.messages.append(assistant_msg)
         if usage is not None:
             agent_state.usage.add(usage)
+            yield UsageUpdate(session_usage=agent_state.usage.model_dump())
 
         if finish_reason == "tool_calls" and tool_calls:
             logger.debug(f"Executing {len(tool_calls)} tool call(s)")
@@ -221,6 +224,8 @@ async def agent_loop(
                         name=tc.tool_name,
                         result=exec_result.event_data,
                     )
+                    if tc.tool_name == "todowrite":
+                        yield TodoUpdate()
 
             # Inject pending steer as a separate UserMessage —
             # never mutate an existing ToolMessage (preserves original for replay)

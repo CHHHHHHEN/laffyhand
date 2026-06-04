@@ -10,6 +10,8 @@ from laffyhand.agent.schemas import (
     SessionUsage,
     AgentState,
     CompactionConfig,
+    UsageUpdate,
+    TodoUpdate,
 )
 from laffyhand.agent.token_utils import estimate_tokens
 
@@ -70,6 +72,29 @@ class TestUsage(unittest.TestCase):
         su.add(u)
         self.assertEqual(su.total_input, 10)
         self.assertEqual(su.total_output, 20)
+
+
+class TestUsageUpdateEvent(unittest.TestCase):
+    def test_usage_update_default_type(self):
+        event = UsageUpdate(session_usage={"total_input": 100})
+        self.assertEqual(event.type, "usage-update")
+        self.assertEqual(event.session_usage["total_input"], 100)
+
+    def test_usage_update_in_agent_event_union(self):
+        from laffyhand.agent.schemas import AgentEvent
+        event: AgentEvent = UsageUpdate(session_usage={"total_input": 50})
+        self.assertEqual(event.type, "usage-update")
+
+
+class TestTodoUpdateEvent(unittest.TestCase):
+    def test_todo_update_default_type(self):
+        event = TodoUpdate()
+        self.assertEqual(event.type, "todo-update")
+
+    def test_todo_update_in_agent_event_union(self):
+        from laffyhand.agent.schemas import AgentEvent
+        event: AgentEvent = TodoUpdate()
+        self.assertEqual(event.type, "todo-update")
 
 
 class TestCompactionConfig(unittest.TestCase):

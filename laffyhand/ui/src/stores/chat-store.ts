@@ -42,6 +42,7 @@ export interface ChatStore {
   clearMessages: (sessionId: string) => void
   loadMessages: (sessionId: string, messages: Message[]) => void
   setStreaming: (sessionId: string, streaming: boolean) => void
+  updateSessionUsage: (sessionId: string, usage: SessionUsage) => void
   setSessionInfo: (sessionId: string, model: string, usage: SessionUsage | null) => void
   enqueueMessage: (sessionId: string, content: string) => void
   dequeueMessage: (sessionId: string) => string | undefined
@@ -398,6 +399,18 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             turnUsage: null,
             _turnStartUsage: null,
           },
+        },
+      }
+    }),
+
+  updateSessionUsage: (sessionId, usage) =>
+    set((state) => {
+      const sess = state.sessions[sessionId]
+      if (!sess) return state
+      return {
+        sessions: {
+          ...state.sessions,
+          [sessionId]: { ...sess, sessionUsage: usage },
         },
       }
     }),

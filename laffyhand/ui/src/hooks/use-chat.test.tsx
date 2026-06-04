@@ -3,6 +3,8 @@ import { renderHook, act } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { useChat } from "./use-chat"
 import { useChatStore, resetMessageCounter } from "@/stores/chat-store"
+import { useTodoStore } from "@/stores/todo-store"
+import { useUiStore } from "@/stores/ui-store"
 import type { StreamEvent } from "@/types/rpc"
 import type { ReactNode } from "react"
 
@@ -118,6 +120,56 @@ describe("useChat", () => {
     const state = useChatStore.getState().sessions[SID]!
     expect(state.error).toBe("Network error")
     expect(state.isStreaming).toBe(false)
+  })
+
+  it("updates session usage on usage-update event", async () => {
+    const usage = { total_input: 100, total_output: 50, total_reasoning: 10, context_size: 8192, curr_context_usage: 80, cost: 0 }
+    mockChatStream.mockImplementation(
+      async (
+        _message: string,
+        callbacks: { onEvent: (event: StreamEvent) => void; onComplete: () => void },
+      ) => {
+        callbacks.onEvent({ type: "text-delta", id: "t1", text: "hello" })
+        callbacks.onEvent({ type: "usage-update", session_usage: usage })
+        callbacks.onEvent({ type: "finish", reason: "stop" })
+        callbacks.onComplete()
+      },
+    )
+
+    const { result } = renderHook(() => useChat(), { wrapper: createWrapper() })
+
+    await act(async () => {
+      await result.current.sendMessage("hi")
+    })
+
+    const state = useChatStore.getState().sessions[SID]!
+    expect(state.sessionUsage?.total_input).toBe(100)
+    expect(state.sessionUsage?.total_output).toBe(50)
+  })
+
+  it("refreshes tasks and opens panel on todo-update event", async () => {
+    mockChatStream.mockImplementation(
+      async (
+        _message: string,
+        callbacks: { onEvent: (event: StreamEvent) => void; onComplete: () => void },
+      ) => {
+        callbacks.onEvent({ type: "text-delta", id: "t1", text: "ok" })
+        callbacks.onEvent({ type: "todo-update" })
+        callbacks.onEvent({ type: "finish", reason: "stop" })
+        callbacks.onComplete()
+      },
+    )
+
+    useUiStore.getState().setTodoPanelOpen(false)
+    expect(useUiStore.getState().todoPanelOpen).toBe(false)
+
+    const { result } = renderHook(() => useChat(), { wrapper: createWrapper() })
+
+    await act(async () => {
+      await result.current.sendMessage("hi")
+    })
+
+    expect(useUiStore.getState().todoPanelOpen).toBe(true)
   })
 
   it("cancels stream and finalizes if content exists", async () => {
