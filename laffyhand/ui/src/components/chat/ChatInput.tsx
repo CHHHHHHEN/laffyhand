@@ -128,7 +128,7 @@ export function ChatInput({ onSend, onInterrupt, onSteer, onQueue, onCancel, isS
             type="button"
             onClick={onCancel}
             title="Cancel"
-            className="p-2.5 text-[var(--icon-muted)] hover:text-[var(--state-danger-fg)] hover:bg-[var(--state-danger-bg)] rounded-lg transition-colors cursor-pointer"
+            className="p-2.5 text-[var(--icon-muted)] hover:text-[var(--state-danger-fg)] hover:bg-[var(--state-danger-bg)] rounded-lg border border-transparent transition-colors cursor-pointer"
           >
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="size-4">
               <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
@@ -140,7 +140,7 @@ export function ChatInput({ onSend, onInterrupt, onSteer, onQueue, onCancel, isS
           type="button"
           onClick={handleSubmit}
           disabled={!inputValue.trim()}
-          className="flex items-center justify-center gap-1.5 px-3.5 py-2.5 text-sm rounded-lg bg-[var(--accent)] text-white hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer shrink-0"
+          className="flex items-center justify-center gap-1.5 px-3.5 py-2.5 text-sm rounded-lg bg-[var(--accent)] text-white hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all border border-transparent cursor-pointer shrink-0"
           style={{ fontWeight: 500, minWidth: 80 }}
         >
           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

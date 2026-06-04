@@ -188,6 +188,24 @@ describe("ChatInput", () => {
     expect(screen.getByText("Queue")).toBeInTheDocument()
   })
 
+  // ── 布局对齐 ──
+
+  it("has matching border-box for vertical alignment with textarea", () => {
+    render(<ChatInput onSend={vi.fn()} />)
+    const sendButton = screen.getByRole("button", { name: /send/i })
+    // Button and textarea both have `border` so their total heights
+    // (padding + border) match, ensuring vertical centering in the flex row
+    expect(sendButton.className).toContain("border")
+    expect(sendButton.className).toContain("border-transparent")
+  })
+
+  it("has matching border-box on cancel button for alignment", () => {
+    render(<ChatInput onSend={vi.fn()} onCancel={vi.fn()} isStreaming={true} />)
+    const cancelButton = screen.getByTitle("Cancel")
+    expect(cancelButton.className).toContain("border")
+    expect(cancelButton.className).toContain("border-transparent")
+  })
+
   // ── 边缘情况 ──
 
   it("handles missing callback handlers gracefully", () => {
