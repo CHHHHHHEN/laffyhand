@@ -1,3 +1,4 @@
+import asyncio
 import unittest
 from collections.abc import AsyncIterator
 
@@ -6,6 +7,7 @@ from laffyhand.agent.llm.specs.models import Usage
 from laffyhand.agent.schemas import (
     AgentState,
     CompactionConfig,
+    RetryConfig,
     SessionID,
     SessionUsage,
 )
@@ -17,15 +19,31 @@ from laffyhand.agent.tools.permission import PermissionManager
 
 
 class _MockLLM(LLM):
-    """A mock LLM that yields a fixed sequence of events."""
+    """Mock LLM that yields a fixed sequence of events on every stream() call."""
 
     def __init__(self, events: list | None = None):
         self.model = "test"
-        self.route = None  # type: ignore[assignment]
+        self.route = None
         self._events = events or []
 
     async def stream(self, messages, tools=None) -> AsyncIterator:
         for event in self._events:
+            yield event
+
+
+class _SeqMockLLM(LLM):
+    """Mock LLM that returns different event sequences per call index."""
+
+    def __init__(self, *event_lists: list):
+        self.model = "test"
+        self.route = None
+        self._event_lists = event_lists
+        self._call_count = 0
+
+    async def stream(self, messages, tools=None) -> AsyncIterator:
+        events = self._event_lists[self._call_count]
+        self._call_count += 1
+        for event in events:
             yield event
 
 
@@ -37,6 +55,10 @@ class _NoopTool(BaseTool):
         return "ok"
 
 
+_FAST_RETRY = RetryConfig(max_retries=1, base_delay=0.01)
+_ZERO_RETRY = RetryConfig(max_retries=0)
+
+
 class TestAgentLoopAssistantMessage(unittest.TestCase):
     """agent_loop must always produce valid AssistantMessage with content or tool_calls."""
 
@@ -44,8 +66,10 @@ class TestAgentLoopAssistantMessage(unittest.TestCase):
         self.tool_registry = ToolRegistry(PermissionManager())
         self.tool_registry.register_tool(_NoopTool())
 
-    def _run_loop(self, llm_events: list, user_text: str = "hello"):
-        """Run agent_loop with given LLM events and return the final state.messages."""
+    def _run_loop(self, llm_events: list, user_text: str = "hello",
+                  retry_config: RetryConfig = _FAST_RETRY,
+                  max_steps: int = 1):
+        """Run agent_loop with given LLM events and return state.messages + events."""
         llm = _MockLLM(llm_events)
         state = AgentState(
             messages=[
@@ -69,16 +93,14 @@ class TestAgentLoopAssistantMessage(unittest.TestCase):
                     auto_continue=False,
                     prune=False,
                 ),
-                max_steps=1,
+                retry_config=retry_config,
+                max_steps=max_steps,
             ):
                 events.append(event)
             return state
 
-        import asyncio
-
         result = asyncio.run(_collect())
 
-        # Find the assistant message
         assistant_msgs = [m for m in result.messages if isinstance(m, AssistantMessage)]
         return assistant_msgs, events
 
@@ -118,7 +140,6 @@ class TestAgentLoopAssistantMessage(unittest.TestCase):
         self.assertIsNotNone(
             asst.content, "AssistantMessage must have content even with empty response"
         )
-        # The placeholder for empty response when there's no reasoning
         self.assertEqual(asst.content, "[Empty response]")
 
     def test_content_with_tool_calls_unchanged(self):
@@ -157,3 +178,110 @@ class TestAgentLoopAssistantMessage(unittest.TestCase):
         self.assertEqual(len(msgs), 1)
         asst = msgs[0]
         self.assertEqual(asst.content, "Hello, I'm a test assistant.")
+
+    def test_error_retry_exhausted(self):
+        """After max_retries exhausted, error message is committed."""
+        from laffyhand.agent.llm.specs.models import StreamError, StreamFinish
+
+        msgs, events = self._run_loop(
+            [
+                StreamError(error="persistent failure"),
+                StreamFinish(finish_reason="error", usage=Usage(input_tokens=5, output_tokens=0)),
+            ],
+            retry_config=_FAST_RETRY,
+        )
+        self.assertEqual(len(msgs), 1)
+        asst = msgs[0]
+        self.assertIn("Error", asst.content)
+        self.assertIsNone(asst.tool_calls)
+
+    def test_error_retry_succeeds(self):
+        """If retry succeeds, use content from the successful attempt."""
+        from laffyhand.agent.llm.specs.models import StreamError, StreamFinish, StreamText
+
+        llm = _SeqMockLLM(
+            [StreamError(error="transient"), StreamFinish(finish_reason="error", usage=Usage(input_tokens=5, output_tokens=0))],
+            [StreamText(delta="Recovered response."), StreamFinish(finish_reason="stop", usage=Usage(input_tokens=10, output_tokens=20))],
+        )
+        state = AgentState(
+            messages=[
+                SystemMessage(content="You are a test assistant."),
+                UserMessage(content="hello"),
+            ],
+            session_id=SessionID("test"),
+            usage=SessionUsage(context_size=100_000),
+        )
+        events = []
+        async def _collect():
+            nonlocal events
+            async for event in agent_loop(
+                state, llm, self.tool_registry,
+                compaction_config=CompactionConfig(tail_turns=1, auto_continue=False, prune=False),
+                retry_config=_FAST_RETRY, max_steps=1,
+            ):
+                events.append(event)
+            return state
+        result = asyncio.run(_collect())
+        msgs = [m for m in result.messages if isinstance(m, AssistantMessage)]
+        self.assertEqual(len(msgs), 1)
+        self.assertEqual(msgs[0].content, "Recovered response.")
+
+    def test_error_partial_content_no_retry(self):
+        """When partial text was already streamed, do NOT retry — commit error."""
+        from laffyhand.agent.llm.specs.models import StreamError, StreamFinish, StreamText
+
+        msgs, events = self._run_loop(
+            [
+                StreamText(delta="Partial text "),
+                StreamError(error="mid-stream failure"),
+                StreamFinish(finish_reason="error", usage=Usage(input_tokens=10, output_tokens=5)),
+            ],
+            retry_config=RetryConfig(max_retries=3, base_delay=60.0),
+        )
+        self.assertEqual(len(msgs), 1)
+        asst = msgs[0]
+        self.assertEqual(asst.content, "Partial text ")
+        self.assertIsNone(asst.tool_calls)
+
+    def test_error_retry_zero_no_retry(self):
+        """max_retries=0 means no retry, immediate error commit."""
+        from laffyhand.agent.llm.specs.models import StreamError, StreamFinish
+
+        msgs, events = self._run_loop(
+            [
+                StreamError(error="no retry"),
+                StreamFinish(finish_reason="error", usage=Usage(input_tokens=5, output_tokens=0)),
+            ],
+            retry_config=_ZERO_RETRY,
+        )
+        self.assertEqual(len(msgs), 1)
+        asst = msgs[0]
+        self.assertIn("Error", asst.content)
+
+    def test_error_with_tool_calls_no_retry(self):
+        """When tool_calls were issued before error, do NOT retry — commit error."""
+        from laffyhand.agent.llm.specs.models import StreamError, StreamFinish, StreamToolCall
+
+        msgs, events = self._run_loop(
+            [
+                StreamToolCall(tool_call_id="c1", tool_name="noop", args="{}"),
+                StreamError(error="post-toolcall crash"),
+                StreamFinish(finish_reason="error", usage=Usage(input_tokens=10, output_tokens=5)),
+            ],
+            retry_config=RetryConfig(max_retries=3, base_delay=60.0),
+        )
+        self.assertEqual(len(msgs), 1)
+        asst = msgs[0]
+        self.assertIsNone(asst.content)
+        self.assertEqual(len(asst.tool_calls), 1)
+
+    def test_non_error_no_retry(self):
+        """finish_reason=stop does NOT trigger retry."""
+        from laffyhand.agent.llm.specs.models import StreamFinish
+
+        msgs, events = self._run_loop(
+            [StreamFinish(finish_reason="stop", usage=Usage(input_tokens=10, output_tokens=0))],
+            retry_config=RetryConfig(max_retries=3, base_delay=60.0),
+        )
+        self.assertEqual(len(msgs), 1)
+        self.assertEqual(msgs[0].content, "[Empty response]")

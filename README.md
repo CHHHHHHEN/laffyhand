@@ -71,7 +71,6 @@ ToolResult	tool-result	id, name, result
 ToolError	tool-error	id, name, message, error?
 StepFinish	step-finish	index, reason, usage?
 Finish	finish	reason, usage?
-ProviderError	provider-error	message, retryable?
 
 ## Agent Tools
 

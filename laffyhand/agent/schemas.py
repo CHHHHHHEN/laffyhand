@@ -129,10 +129,10 @@ class Finish(BaseModel):
     leftover_steer: str | None = None
 
 
-class ProviderError(BaseModel):
-    type: str = "provider-error"
-    message: str
-    retryable: bool = False
+class RetryConfig(BaseModel):
+    max_retries: int = 3
+    base_delay: float = 2.0
+    max_delay: float = 60.0
 
 
 class Compacting(BaseModel):

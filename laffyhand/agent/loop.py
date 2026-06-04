@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import TYPE_CHECKING
 
@@ -19,6 +20,7 @@ from laffyhand.agent.llm.specs.models import (
 from laffyhand.agent.schemas import (
     AgentState,
     CompactionConfig,
+    RetryConfig,
     StepStart,
     TextStart,
     TextDelta,
@@ -55,6 +57,8 @@ async def agent_loop(
     llm: LLM,
     tool_registry: ToolRegistry,
     compaction_config: CompactionConfig = CompactionConfig(),
+    *,
+    retry_config: RetryConfig = RetryConfig(),
     max_steps: int = 50,
     session_manager: SessionManager | None = None,
     subagent_manager: SubagentManager | None = None,
@@ -117,14 +121,7 @@ async def agent_loop(
                 agent_state.messages.append(UserMessage(content=wrapped))
                 logger.info("Injected new preferences via <system-reminder>")
 
-        reasoning_buf: list[str] = []
-        content_buf: list[str] = []
-        tool_calls: list[ToolCallContent] = []
-        finish_reason: FinishReason | None = None
-        usage: Usage | None = None
         step_index = agent_state.step
-        text_id: str | None = None
-        reasoning_id: str | None = None
         disabled_tools = agent_state.disabled_tools
         tool_definitions = await tool_registry.build_tool_definitions(exclude=disabled_tools)
         llm_context = build_llm_context(agent_state, compaction_config)
@@ -134,44 +131,102 @@ async def agent_loop(
 
         yield StepStart(index=step_index)
 
-        async for event in llm.stream(llm_context, tools=tool_definitions):
-            if isinstance(event, StreamReasoning):
-                reasoning_buf.append(event.delta)
-                if reasoning_id is None:
-                    reasoning_id = f"reasoning-{step_index}"
-                    yield ReasoningStart(id=reasoning_id)
-                yield ReasoningDelta(id=reasoning_id, text=event.delta)
-            elif isinstance(event, StreamText):
-                content_buf.append(event.delta)
-                if text_id is None:
-                    text_id = f"text-{step_index}"
-                    yield TextStart(id=text_id)
-                yield TextDelta(id=text_id, text=event.delta)
-            elif isinstance(event, StreamToolCall):
-                tool_calls.append(
-                    ToolCallContent(
-                        tool_call_id=event.tool_call_id,
-                        tool_name=event.tool_name,
-                        args=event.args,
-                    )
-                )
-                yield ToolCall(
-                    id=event.tool_call_id,
-                    name=event.tool_name,
-                    input=event.args,
-                )
-            elif isinstance(event, StreamFinish):
-                finish_reason = event.finish_reason
-                usage = event.usage
-            elif isinstance(event, StreamError):
-                logger.error(f"Stream error: {event.error}")
-                finish_reason = "error"
+        # ── Step-level retry loop ────────────────────────────────────
+        _retry_count = 0
+        _final_content: list[str] = []
+        _final_reasoning: list[str] = []
+        _final_tool_calls: list[ToolCallContent] = []
+        _final_finish_reason: FinishReason | None = None
+        _final_usage: Usage | None = None
 
-        # End in-flight content segments
-        if text_id is not None:
-            yield TextEnd(id=text_id)
-        if reasoning_id is not None:
-            yield ReasoningEnd(id=reasoning_id)
+        while True:
+            content_buf: list[str] = []
+            reasoning_buf: list[str] = []
+            tool_calls: list[ToolCallContent] = []
+            finish_reason: FinishReason | None = None
+            usage: Usage | None = None
+            text_id: str | None = None
+            reasoning_id: str | None = None
+
+            async for event in llm.stream(llm_context, tools=tool_definitions):
+                if isinstance(event, StreamReasoning):
+                    reasoning_buf.append(event.delta)
+                    if reasoning_id is None:
+                        reasoning_id = f"reasoning-{step_index}"
+                        yield ReasoningStart(id=reasoning_id)
+                    yield ReasoningDelta(id=reasoning_id, text=event.delta)
+                elif isinstance(event, StreamText):
+                    content_buf.append(event.delta)
+                    if text_id is None:
+                        text_id = f"text-{step_index}"
+                        yield TextStart(id=text_id)
+                    yield TextDelta(id=text_id, text=event.delta)
+                elif isinstance(event, StreamToolCall):
+                    tool_calls.append(
+                        ToolCallContent(
+                            tool_call_id=event.tool_call_id,
+                            tool_name=event.tool_name,
+                            args=event.args,
+                        )
+                    )
+                    yield ToolCall(
+                        id=event.tool_call_id,
+                        name=event.tool_name,
+                        input=event.args,
+                    )
+                elif isinstance(event, StreamFinish):
+                    finish_reason = event.finish_reason
+                    usage = event.usage
+                elif isinstance(event, StreamError):
+                    logger.error(f"Stream error: {event.error}")
+                    finish_reason = "error"
+
+            # End in-flight content segments
+            if text_id is not None:
+                yield TextEnd(id=text_id)
+            if reasoning_id is not None:
+                yield ReasoningEnd(id=reasoning_id)
+
+            # Decide whether to retry, commit partial, or commit error
+            if finish_reason != "error":
+                _final_content = content_buf
+                _final_reasoning = reasoning_buf
+                _final_tool_calls = tool_calls
+                _final_finish_reason = finish_reason
+                _final_usage = usage
+                break
+
+            if content_buf or tool_calls:
+                _final_content = content_buf
+                _final_reasoning = reasoning_buf
+                _final_tool_calls = tool_calls
+                _final_finish_reason = finish_reason
+                _final_usage = usage
+                break
+
+            if _retry_count >= retry_config.max_retries:
+                _final_content = content_buf
+                _final_reasoning = reasoning_buf
+                _final_finish_reason = finish_reason
+                _final_usage = usage
+                break
+
+            _retry_count += 1
+            delay = min(
+                retry_config.base_delay * (2 ** (_retry_count - 1)),
+                retry_config.max_delay,
+            )
+            logger.warning(
+                f"LLM stream error (attempt {_retry_count}/{retry_config.max_retries}), "
+                f"retrying in {delay:.1f}s"
+            )
+            await asyncio.sleep(delay)
+
+        content_buf = _final_content
+        reasoning_buf = _final_reasoning
+        tool_calls = _final_tool_calls
+        finish_reason = _final_finish_reason
+        usage = _final_usage
 
         agent_state.turn_count += 1
         logger.debug(
