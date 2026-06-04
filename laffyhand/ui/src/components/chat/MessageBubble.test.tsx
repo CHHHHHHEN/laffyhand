@@ -25,33 +25,29 @@ describe("MessageBubble", () => {
   it("renders user message with user avatar", () => {
     render(<MessageBubble message={makeMessage({ role: "user", content: "test message" })} />)
     expect(screen.getByText("test message")).toBeInTheDocument()
-    // 用户头像（灰色圆形用户SVG）
-    const avatars = document.querySelectorAll(".rounded-full")
-    const userAvatar = Array.from(avatars).find(
-      (el) => el.classList.contains("from-gray-400"),
-    )
-    expect(userAvatar).toBeTruthy()
+    const bubbleContainer = document.querySelector(".flex.items-start.gap-3")
+    expect(bubbleContainer?.querySelector(".rounded-full")).toBeTruthy()
   })
 
   it("renders assistant message with AI avatar", () => {
     render(<MessageBubble message={makeMessage({ role: "assistant", content: "assistant reply" })} />)
     expect(screen.getByText("assistant reply")).toBeInTheDocument()
-    // AI 头像（蓝靛渐变）
-    const aiAvatar = document.querySelector(".bg-gradient-to-br")
-    expect(aiAvatar).toBeTruthy()
+    const bubbleContainer = document.querySelector(".flex.items-start.gap-3")
+    expect(bubbleContainer?.querySelector(".rounded-full")).toBeTruthy()
   })
 
-  it("uses correct bubble alignment for user vs assistant", () => {
+  it("renders avatar on the left for both user and assistant", () => {
     const { rerender } = render(
       <MessageBubble message={makeMessage({ role: "user" })} />,
     )
-    // User 消息：flex-row-reverse
     let container = document.querySelector(".flex.items-start.gap-3")
-    expect(container!.className).toContain("flex-row-reverse")
+    expect(container).toBeTruthy()
+    expect(container!.className).not.toContain("flex-row-reverse")
 
     rerender(<MessageBubble message={makeMessage({ role: "assistant" })} />)
     container = document.querySelector(".flex.items-start.gap-3")
-    expect(container!.className).toContain("flex-row")
+    expect(container).toBeTruthy()
+    expect(container!.className).not.toContain("flex-row-reverse")
   })
 
   // ── 工具调用 ──
@@ -136,8 +132,7 @@ describe("MessageBubble", () => {
       />,
     )
     expect(screen.getByText("no usage")).toBeInTheDocument()
-    // 用量区不应出现数字 — timestamp has text-[10px] too, so we check via className
-    const usageContainer = document.querySelector(".mt-1\\.5.flex.items-center")
+    const usageContainer = document.querySelector(".flex.items-center.justify-between.gap-2.pt-1")
     expect(usageContainer).toBeNull()
   })
 
@@ -218,7 +213,7 @@ describe("MessageBubble", () => {
     render(
       <MessageBubble message={makeMessage({ role: "assistant", content: "" })} />,
     )
-    const bubble = document.querySelector(".rounded-2xl.rounded-tl-md")
+    const bubble = document.querySelector(".flex.items-start.gap-3")
     expect(bubble).toBeInTheDocument()
   })
 

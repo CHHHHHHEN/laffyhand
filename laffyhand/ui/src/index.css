@@ -1,37 +1,114 @@
 @import "tailwindcss";
 
-/* 启用 class-based dark mode（而非系统偏好） */
 @custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", "Fira Code", "SF Mono", Menlo, monospace;
+}
 
 @layer base {
   :root {
-    --color-accent: #3b82f6;
-    --color-accent-light: #dbeafe;
-    --color-surface: #ffffff;
-    --color-surface-secondary: #f9fafb;
-    --color-border: #e5e7eb;
-    --color-text-primary: #111827;
-    --color-text-secondary: #6b7280;
+    color-scheme: light;
 
-    /* 代码块主题色（亮色） */
+    --bg-base: #ffffff;
+    --bg-deep: #fafafa;
+    --bg-layer-1: #f5f5f5;
+    --bg-layer-2: #eeeeee;
+    --bg-inverse: #161616;
+    --bg-contrast: #242424;
+
+    --text-base: #161616;
+    --text-muted: #5c5c5c;
+    --text-faint: #808080;
+    --text-inverse: #ffffff;
+    --text-accent: #2563eb;
+    --text-accent-hover: #1d4ed8;
+
+    --icon-base: #3a3a3a;
+    --icon-muted: #808080;
+
+    --border-muted: rgba(0, 0, 0, 0.08);
+    --border-base: rgba(0, 0, 0, 0.10);
+    --border-strong: rgba(0, 0, 0, 0.20);
+
+    --overlay-hover: rgba(0, 0, 0, 0.04);
+    --overlay-pressed: rgba(0, 0, 0, 0.08);
+
+    --state-success-bg: #dcfce7;
+    --state-success-fg: #166534;
+    --state-warning-bg: #fef9c3;
+    --state-warning-fg: #854d0e;
+    --state-danger-bg: #fee2e2;
+    --state-danger-fg: #991b1b;
+    --state-info-bg: #dbeafe;
+    --state-info-fg: #1e40af;
+
     --code-bg: #f8f9fa;
     --code-border: #e9ecef;
     --code-header-bg: #f1f3f5;
     --code-lang-color: #6b7280;
+
+    --accent: #2563eb;
+    --accent-light: #dbeafe;
+
+    --tw-prose-body: #374151;
+    --tw-prose-headings: #111827;
+    --tw-prose-links: #2563eb;
+    --tw-prose-bold: #111827;
+    --tw-prose-code: #1f2937;
+    --tw-prose-pre-bg: var(--code-bg);
   }
 
   .dark {
-    --color-surface: #111827;
-    --color-surface-secondary: #1f2937;
-    --color-border: #374151;
-    --color-text-primary: #f3f4f6;
-    --color-text-secondary: #9ca3af;
+    color-scheme: dark;
 
-    /* 代码块主题色（暗色） */
+    --bg-base: #161616;
+    --bg-deep: #080808;
+    --bg-layer-1: #242424;
+    --bg-layer-2: #2e2e2e;
+    --bg-inverse: #ffffff;
+    --bg-contrast: #3a3a3a;
+
+    --text-base: #eeeeee;
+    --text-muted: #aeaeae;
+    --text-faint: #808080;
+    --text-inverse: #161616;
+    --text-accent: #60a5fa;
+    --text-accent-hover: #93c5fd;
+
+    --icon-base: #d4d4d4;
+    --icon-muted: #808080;
+
+    --border-muted: rgba(255, 255, 255, 0.08);
+    --border-base: rgba(255, 255, 255, 0.10);
+    --border-strong: rgba(255, 255, 255, 0.20);
+
+    --overlay-hover: rgba(255, 255, 255, 0.06);
+    --overlay-pressed: rgba(255, 255, 255, 0.10);
+
+    --state-success-bg: #052e16;
+    --state-success-fg: #86efac;
+    --state-warning-bg: #422006;
+    --state-warning-fg: #fde68a;
+    --state-danger-bg: #450a0a;
+    --state-danger-fg: #fca5a5;
+    --state-info-bg: #172554;
+    --state-info-fg: #93c5fd;
+
     --code-bg: #1a1d2e;
     --code-border: #2d3148;
     --code-header-bg: #1e2136;
     --code-lang-color: #6b7280;
+
+    --accent: #60a5fa;
+    --accent-light: #1e3a5f;
+
+    --tw-prose-body: #d1d5db;
+    --tw-prose-headings: #f3f4f6;
+    --tw-prose-links: #60a5fa;
+    --tw-prose-bold: #f3f4f6;
+    --tw-prose-code: #e5e7eb;
   }
 
   html, body, #root {
@@ -41,12 +118,12 @@
   }
 
   body {
-    transition: background-color 0.2s ease, color 0.2s ease;
+    font-family: var(--font-sans);
+    font-weight: 440;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
 
-  /* 自定义滚动条 — 更精致 */
   ::-webkit-scrollbar {
     width: 5px;
     height: 5px;
@@ -57,7 +134,6 @@
   ::-webkit-scrollbar-thumb {
     background: #d1d5db;
     border-radius: 4px;
-    transition: background 0.2s;
   }
   ::-webkit-scrollbar-thumb:hover {
     background: #9ca3af;
@@ -69,41 +145,22 @@
     background: #6b7280;
   }
 
-  /* 选中文字颜色 */
   ::selection {
-    background: #3b82f6;
+    background: var(--accent);
     color: white;
   }
 
-  /* 焦点环统一 */
   *:focus-visible {
-    outline: 2px solid var(--color-accent);
+    outline: 2px solid var(--accent);
     outline-offset: 2px;
   }
 }
 
-/* ============================================================
-   Prose（markdown 渲染）
-   ============================================================ */
 @layer base {
   .prose {
-    --tw-prose-body: #374151;
-    --tw-prose-headings: #111827;
-    --tw-prose-links: #3b82f6;
-    --tw-prose-bold: #111827;
-    --tw-prose-code: #1f2937;
-    --tw-prose-pre-bg: var(--code-bg);
     line-height: 1.65;
   }
-  .dark .prose {
-    --tw-prose-body: #d1d5db;
-    --tw-prose-headings: #f3f4f6;
-    --tw-prose-links: #60a5fa;
-    --tw-prose-bold: #f3f4f6;
-    --tw-prose-code: #e5e7eb;
-  }
 
-  /* 代码块 — 更精致 */
   .prose pre {
     background: var(--code-bg) !important;
     border: 1px solid var(--code-border);
@@ -118,7 +175,6 @@
     box-shadow: 0 1px 3px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.03);
   }
 
-  /* 代码块包装器 */
   .code-block-wrapper {
     position: relative;
     margin: 1em 0;
@@ -128,7 +184,6 @@
     margin: 0;
   }
 
-  /* 复制按钮 */
   .copy-code-btn {
     position: absolute;
     top: 8px;
@@ -157,7 +212,6 @@
     transform: scale(0.95);
   }
 
-  /* 代码展开按钮 */
   .code-expand-btn {
     width: 100%;
     font-size: 10px;
@@ -175,14 +229,13 @@
     background: rgba(156, 163, 175, 0.08);
   }
 
-  /* 行内代码 */
   .prose code {
     font-size: 12.5px;
     background: #f3f4f6;
     padding: 2px 5px;
     border-radius: 4px;
     font-weight: 450;
-    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'SF Mono', 'Menlo', monospace;
+    font-family: var(--font-mono);
   }
   .dark .prose code {
     background: #374151;
@@ -192,16 +245,13 @@
     background: none !important;
     padding: 0;
     border-radius: 0;
-    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'SF Mono', 'Menlo', monospace;
   }
 
-  /* 移除 code 在 p 中的前后缀 */
   .prose p > code::before,
   .prose p > code::after {
     content: none;
   }
 
-  /* 表格样式 — 更精致 */
   .prose table {
     font-size: 12px;
     border-collapse: separate;
@@ -238,23 +288,16 @@
     background: rgba(31, 41, 55, 0.5);
   }
 
-  /* 引用样式 */
   .prose blockquote {
-    border-left: 3px solid #3b82f6;
+    border-left: 3px solid var(--accent);
     padding: 6px 14px;
     margin: 10px 0;
-    background: #f8fafc;
+    background: var(--state-info-bg);
     border-radius: 0 6px 6px 0;
-    color: #6b7280;
+    color: var(--text-muted);
     font-style: normal;
   }
-  .dark .prose blockquote {
-    border-left-color: #60a5fa;
-    background: rgba(15, 23, 42, 0.5);
-    color: #9ca3af;
-  }
 
-  /* 列表间距 */
   .prose ul, .prose ol {
     padding-left: 1.25em;
   }
@@ -262,7 +305,6 @@
     margin: 3px 0;
   }
 
-  /* 标题间距 */
   .prose h1, .prose h2, .prose h3, .prose h4 {
     margin-top: 1.25em;
     margin-bottom: 0.5em;
@@ -274,47 +316,24 @@
   .prose h3 { font-size: 1em; }
   .prose h4 { font-size: 0.9em; }
 
-  /* 段落间距 */
   .prose p {
     margin: 0.6em 0;
   }
 
-  /* 水平线 */
   .prose hr {
     margin: 1.5em 0;
     border-color: var(--code-border);
   }
 
-  /* 图片 */
   .prose img {
     border-radius: 8px;
     margin: 1em 0;
   }
 }
 
-/* ============================================================
-   动画
-   ============================================================ */
 @keyframes message-in {
-  from {
-    opacity: 0;
-    transform: translateY(8px) scale(0.98);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-}
-
-@keyframes message-in-user {
-  from {
-    opacity: 0;
-    transform: translateX(12px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 @keyframes fade-in {
@@ -323,25 +342,8 @@
 }
 
 @keyframes slide-up {
-  from {
-    opacity: 0;
-    transform: translateY(12px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes slide-down {
-  from {
-    opacity: 0;
-    transform: translateY(-8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 @keyframes pulse-dot {
@@ -349,23 +351,6 @@
   40% { opacity: 1; transform: scale(1); }
 }
 
-@keyframes sidebar-in {
-  from { transform: translateX(-100%); opacity: 0; }
-  to { transform: translateX(0); opacity: 1; }
-}
-
-@keyframes scale-in {
-  from {
-    opacity: 0;
-    transform: scale(0.95);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
-/* 打字指示器 */
 .typing-dot {
   display: inline-block;
   width: 6px;
@@ -378,7 +363,6 @@
 .typing-dot:nth-child(2) { animation-delay: -0.16s; }
 .typing-dot:nth-child(3) { animation-delay: 0s; }
 
-/* 减少动效偏好 */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;

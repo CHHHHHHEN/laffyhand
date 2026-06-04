@@ -25,13 +25,12 @@ export function SubagentFooter() {
   const totalCount = backgroundSubagents.length
 
   return (
-    <div className="border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shrink-0">
-      {/* Tab bar */}
-      <div className="flex items-center gap-2 px-3 py-1.5 text-xs text-gray-500 dark:text-gray-400 overflow-x-auto">
-        <span className="font-medium text-gray-600 dark:text-gray-300 shrink-0">
+    <div className="border-t border-[var(--border-muted)] bg-[var(--bg-base)] shrink-0">
+      <div className="flex items-center gap-2 px-3 py-1.5 text-xs text-[var(--text-muted)] overflow-x-auto">
+        <span className="text-[var(--text-base)] shrink-0" style={{ fontWeight: 500 }}>
           Background Tasks
         </span>
-        <span className="text-gray-300 dark:text-gray-600 shrink-0">·</span>
+        <span className="text-[var(--border-strong)] shrink-0">·</span>
         <span className="shrink-0">
           {runningCount > 0 ? `${runningCount} running` : `${totalCount} total`}
         </span>
@@ -44,7 +43,6 @@ export function SubagentFooter() {
         )}
       </div>
 
-      {/* Content area */}
       {tree.length > 0 && (
         <div className="px-3 pb-2 space-y-1.5 max-h-48 overflow-y-auto">
           {tree.map((node) => (

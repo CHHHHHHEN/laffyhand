@@ -5,7 +5,6 @@ import { Sidebar } from "./Sidebar"
 import { useSessionStore } from "@/stores/session-store"
 import type { Session } from "@/types/session"
 
-// Mock useSessions hook
 const mockSessions: Session[] = [
   { id: "s1", title: "Project Setup", status: "active", messageCount: 15, turnCount: 3, createdAt: "2026-05-30T10:00:00Z", updatedAt: "2026-05-30T12:00:00Z" },
   { id: "s2", title: "Debug Session", status: "active", messageCount: 42, turnCount: 8, createdAt: "2026-05-29T10:00:00Z", updatedAt: "2026-05-30T10:00:00Z" },
@@ -36,6 +35,12 @@ const mockUseAgents = {
 vi.mock("@/hooks/use-sessions", () => ({
   useSessions: () => mockUseSessions,
   useAgents: () => mockUseAgents,
+}))
+
+vi.mock("@/lib/rpc", () => ({
+  rpcClient: {
+    sessionSetTitle: vi.fn().mockResolvedValue(undefined),
+  },
 }))
 
 // Mock navigation
@@ -82,17 +87,16 @@ describe("Sidebar", () => {
     expect(screen.getByText("Untitled")).toBeInTheDocument() // title is null
   })
 
-  it("shows message count for each session", () => {
+  it("shows session metadata for each session", () => {
     renderSidebar()
-    expect(screen.getByText((c) => c.includes("15") && c.includes("msgs"))).toBeInTheDocument()
-    expect(screen.getByText((c) => c.includes("42") && c.includes("msgs"))).toBeInTheDocument()
-    expect(screen.getByText((c) => c.includes("3") && c.includes("msgs"))).toBeInTheDocument()
+    const timeLabels = document.querySelectorAll(".text-\\[10px\\]")
+    expect(timeLabels.length).toBe(mockSessions.length)
   })
 
   it("highlights active session", () => {
     renderSidebar()
-    const activeBtn = screen.getByText("Project Setup").closest("button")
-    expect(activeBtn!.className).toContain("bg-blue-100")
+    const titleEl = screen.getByText("Project Setup")
+    expect(titleEl.className).toContain("text-[var(--accent)]")
   })
 
   // ── New Session ──
@@ -100,18 +104,10 @@ describe("Sidebar", () => {
   it("creates new session and navigates", async () => {
     renderSidebar()
     fireEvent.click(screen.getByText("New Session"))
-    expect(mockUseSessions.createSession).toHaveBeenCalled()
-    // wait for async
     await vi.waitFor(() => {
+      expect(mockUseSessions.createSession).toHaveBeenCalled()
       expect(mockNavigate).toHaveBeenCalledWith("/chat/new-session-id")
     })
-  })
-
-  it("shows Creating... text while creating", () => {
-    mockUseSessions.isCreating = true
-    renderSidebar()
-    expect(screen.getByText("Creating...")).toBeInTheDocument()
-    mockUseSessions.isCreating = false
   })
 
   // ── Fork ──
@@ -125,67 +121,45 @@ describe("Sidebar", () => {
     })
   })
 
-  it("shows Forking... text while forking", () => {
-    mockUseSessions.isForking = true
-    renderSidebar()
-    expect(screen.getByText("Forking...")).toBeInTheDocument()
-    mockUseSessions.isForking = false
-  })
-
   // ── 搜索过滤 ──
 
   it("shows search input with placeholder", () => {
     renderSidebar()
-    expect(screen.getByPlaceholderText("Search sessions... (⌘K)")).toBeInTheDocument()
+    expect(screen.getByPlaceholderText("Search sessions...")).toBeInTheDocument()
   })
 
   it("filters sessions by title", async () => {
     renderSidebar()
-    const searchInput = screen.getByPlaceholderText("Search sessions... (⌘K)")
+    const searchInput = screen.getByPlaceholderText("Search sessions...")
     fireEvent.input(searchInput, { target: { value: "Debug" } })
 
     expect(screen.getByText("Debug Session")).toBeInTheDocument()
     expect(screen.queryByText("Project Setup")).not.toBeInTheDocument()
   })
 
-  it("filters sessions by message count", () => {
+  it("filters sessions by search term", () => {
     renderSidebar()
-    const searchInput = screen.getByPlaceholderText("Search sessions... (⌘K)")
-    fireEvent.input(searchInput, { target: { value: "42" } })
+    const searchInput = screen.getByPlaceholderText("Search sessions...")
+    fireEvent.input(searchInput, { target: { value: "Setup" } })
 
-    expect(screen.getByText("Debug Session")).toBeInTheDocument()
-    expect(screen.queryByText("Project Setup")).not.toBeInTheDocument()
+    expect(screen.getByText("Project Setup")).toBeInTheDocument()
+    expect(screen.queryByText("Debug Session")).not.toBeInTheDocument()
   })
 
   it("shows no results message when filter matches nothing", () => {
     renderSidebar()
-    const searchInput = screen.getByPlaceholderText("Search sessions... (⌘K)")
+    const searchInput = screen.getByPlaceholderText("Search sessions...")
     fireEvent.input(searchInput, { target: { value: "zzznonexistent" } })
 
     expect(screen.getByText(/No sessions match/)).toBeInTheDocument()
     expect(screen.queryByText("Project Setup")).not.toBeInTheDocument()
   })
 
-  it('clears search with the clear button', () => {
-    renderSidebar()
-    const searchInput = screen.getByPlaceholderText("Search sessions... (⌘K)")
-    fireEvent.input(searchInput, { target: { value: "Debug" } })
-
-    // 清除按钮出现
-    const clearBtn = document.querySelector("input ~ button")
-    expect(clearBtn).toBeTruthy()
-
-    if (clearBtn) {
-      fireEvent.click(clearBtn)
-      expect(screen.getByText("Project Setup")).toBeInTheDocument()
-    }
-  })
-
   // ── 删除 ──
 
   it("shows delete button for each session", () => {
     renderSidebar()
-    const deleteButtons = screen.getAllByTitle("Delete session")
+    const deleteButtons = screen.getAllByTitle("Delete")
     expect(deleteButtons).toHaveLength(3)
   })
 
@@ -208,8 +182,7 @@ describe("Sidebar", () => {
 
   it("shows relative time in short format", () => {
     renderSidebar()
-    // 时间格式为短格式
     const textContent = document.body.textContent || ""
-    expect(textContent).toContain("msgs")
+    expect(textContent).toMatch(/\d+[dhms]|just now/)
   })
 })

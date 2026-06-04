@@ -1,21 +1,19 @@
 import { useState, useRef, useEffect } from "react"
 import type { ToolCall } from "@/types/session"
 
-/** AI 头像：蓝-靛渐变，带机器人图标 */
 export function AiAvatar() {
   return (
-    <div className="shrink-0 w-7 h-7 rounded-full bg-gradient-to-br from-blue-500 via-blue-600 to-indigo-700 flex items-center justify-center shadow-sm ring-1 ring-white/20 dark:ring-white/10">
-      <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <div className="shrink-0 w-7 h-7 rounded-full bg-[var(--bg-contrast)] flex items-center justify-center ring-1 ring-[var(--border-muted)]">
+      <svg className="w-3.5 h-3.5 text-[var(--text-inverse)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
       </svg>
     </div>
   )
 }
 
-/** 用户头像：优雅的灰色渐变圆形 */
 export function UserAvatar() {
   return (
-    <div className="shrink-0 w-7 h-7 rounded-full bg-gradient-to-br from-gray-400 to-gray-500 dark:from-gray-500 dark:to-gray-600 flex items-center justify-center shadow-sm ring-1 ring-white/20 dark:ring-white/10">
+    <div className="shrink-0 w-7 h-7 rounded-full bg-[var(--icon-muted)] flex items-center justify-center ring-1 ring-[var(--border-muted)]">
       <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
       </svg>
@@ -23,13 +21,11 @@ export function UserAvatar() {
   )
 }
 
-/** 推理过程折叠面板 — 带固定最大高度 + 自动滚动 */
 export function ReasoningBlock({ text, defaultExpanded = false }: { text: string; defaultExpanded?: boolean }) {
   const [expanded, setExpanded] = useState(defaultExpanded)
   const scrollRef = useRef<HTMLDivElement>(null)
   const lineCount = text.split('\n').length
 
-  // Auto-scroll to bottom when new thinking content arrives
   useEffect(() => {
     if (expanded && scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
@@ -37,10 +33,10 @@ export function ReasoningBlock({ text, defaultExpanded = false }: { text: string
   }, [text, expanded])
 
   return (
-    <div className="mb-2 rounded-lg border border-amber-200/60 dark:border-amber-700/40 overflow-hidden bg-amber-50/30 dark:bg-amber-900/10">
+    <div className="rounded-lg border border-[var(--border-muted)] overflow-hidden bg-[var(--bg-deep)]">
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center gap-1.5 px-3 py-1.5 text-xs text-amber-600 dark:text-amber-400 hover:bg-amber-100/50 dark:hover:bg-amber-900/20 transition-colors cursor-pointer select-none"
+        className="w-full flex items-center gap-1.5 px-3 py-1.5 text-xs text-[var(--text-muted)] hover:bg-[var(--overlay-hover)] transition-colors cursor-pointer select-none"
       >
         <svg
           className={`w-3 h-3 transition-transform duration-200 ${expanded ? "rotate-90" : ""}`}
@@ -48,15 +44,15 @@ export function ReasoningBlock({ text, defaultExpanded = false }: { text: string
         >
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
         </svg>
-        <span className="font-medium">Thinking</span>
-        <span className="ml-auto text-amber-500 dark:text-amber-500/70">
+        <span style={{ fontWeight: 500 }}>Thinking</span>
+        <span className="ml-auto text-[var(--text-faint)]">
           {expanded ? "Hide" : `Show (${lineCount} lines)`}
         </span>
       </button>
       {expanded && (
         <div
           ref={scrollRef}
-          className="px-3 py-2 text-xs text-amber-800 dark:text-amber-200/80 bg-white/50 dark:bg-gray-900/30 whitespace-pre-wrap leading-relaxed border-t border-amber-200/40 dark:border-amber-700/30 animate-[fade-in_0.15s_ease-out] max-h-60 overflow-y-auto"
+          className="px-3 py-2 text-xs text-[var(--text-base)] whitespace-pre-wrap leading-relaxed border-t border-[var(--border-muted)] max-h-60 overflow-y-auto"
         >
           {text}
         </div>
@@ -65,7 +61,6 @@ export function ReasoningBlock({ text, defaultExpanded = false }: { text: string
   )
 }
 
-/** 状态指示器圆点 */
 function StatusDot({ status }: { status: ToolCall["status"] }) {
   switch (status) {
     case "running":
@@ -77,7 +72,7 @@ function StatusDot({ status }: { status: ToolCall["status"] }) {
       )
     case "completed":
       return (
-        <span className="w-2.5 h-2.5 shrink-0 rounded-full bg-green-500 flex items-center justify-center ring-1 ring-green-300 dark:ring-green-700">
+        <span className="w-2.5 h-2.5 shrink-0 rounded-full bg-green-500 flex items-center justify-center">
           <svg className="w-1.5 h-1.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
           </svg>
@@ -85,37 +80,34 @@ function StatusDot({ status }: { status: ToolCall["status"] }) {
       )
     case "error":
       return (
-        <span className="w-2.5 h-2.5 shrink-0 rounded-full bg-red-500 flex items-center justify-center ring-1 ring-red-300 dark:ring-red-700">
+        <span className="w-2.5 h-2.5 shrink-0 rounded-full bg-red-500 flex items-center justify-center">
           <svg className="w-1.5 h-1.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" />
           </svg>
         </span>
       )
     default:
-      return <span className="w-2.5 h-2.5 shrink-0 rounded-full bg-gray-300 dark:bg-gray-600" />
+      return <span className="w-2.5 h-2.5 shrink-0 rounded-full bg-[var(--border-strong)]" />
   }
 }
 
-/** 工具调用卡片：精致卡片式设计，支持流式状态 + 可展开结果 */
 export function ToolCallCard({ toolCall }: { toolCall: ToolCall }) {
   const argStr = JSON.stringify(toolCall.arguments, null, 2)
   const displayInput = argStr
   const argLines = displayInput.split('\n').length
   const [showAllArgs, setShowAllArgs] = useState(argLines <= 6)
 
-  // Result expand/collapse
   const hasResult = toolCall.status === "completed" || toolCall.status === "error"
   const [resultExpanded, setResultExpanded] = useState(false)
   const [resultShowAll, setResultShowAll] = useState(false)
 
-  // Border color by status
   const borderColor = toolCall.status === "error"
     ? "border-red-200 dark:border-red-700/50"
     : toolCall.status === "completed"
       ? "border-green-200 dark:border-green-700/40"
       : toolCall.status === "running"
         ? "border-blue-200 dark:border-blue-600/50 animate-pulse"
-        : "border-gray-200 dark:border-gray-700"
+        : "border-[var(--border-muted)]"
 
   const bgColor = toolCall.status === "error"
     ? "bg-red-50/40 dark:bg-red-900/8"
@@ -123,44 +115,41 @@ export function ToolCallCard({ toolCall }: { toolCall: ToolCall }) {
       ? "bg-green-50/40 dark:bg-green-900/8"
       : toolCall.status === "running"
         ? "bg-blue-50/50 dark:bg-blue-900/12"
-        : "bg-gray-50 dark:bg-gray-800/60"
+        : "bg-[var(--bg-deep)]"
 
   return (
     <div className={`rounded-lg px-3 py-2 text-xs font-mono border transition-all duration-150 ${borderColor} ${bgColor}`}>
-      {/* Header: status + name + id */}
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
           <StatusDot status={toolCall.status || "pending"} />
-          <span className="font-semibold text-gray-700 dark:text-gray-200 truncate">
+          <span className="font-semibold text-[var(--text-base)] truncate">
             {toolCall.name}
           </span>
-          <span className="text-gray-400 dark:text-gray-500 text-[10px] font-mono">
+          <span className="text-[var(--text-faint)] text-[10px] font-mono">
             {toolCall.id?.slice(0, 6)}
           </span>
-          {/* Status label badge */}
           {toolCall.status === "error" && (
-            <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 font-semibold leading-none">
+            <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-[var(--state-danger-bg)] text-[var(--state-danger-fg)] font-semibold leading-none">
               failed
             </span>
           )}
           {toolCall.status === "completed" && (
-            <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 font-semibold leading-none">
+            <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-[var(--state-success-bg)] text-[var(--state-success-fg)] font-semibold leading-none">
               done
             </span>
           )}
         </div>
       </div>
 
-      {/* Arguments area */}
       {displayInput && (
         <>
-          <pre className={`mt-1.5 text-gray-500 dark:text-gray-400 whitespace-pre-wrap break-all leading-relaxed ${showAllArgs ? "" : "line-clamp-3"}`}>
+          <pre className={`mt-1.5 text-[var(--text-muted)] whitespace-pre-wrap break-all leading-relaxed ${showAllArgs ? "" : "line-clamp-3"}`}>
             {displayInput}
           </pre>
           {argLines > 6 && (
             <button
               onClick={() => setShowAllArgs(!showAllArgs)}
-              className="mt-1 text-[10px] text-blue-500 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors cursor-pointer font-sans"
+              className="mt-1 text-[10px] text-[var(--accent)] hover:opacity-80 transition-opacity cursor-pointer font-sans"
             >
               {showAllArgs ? "Show less" : `Show all (${argLines} lines)`}
             </button>
@@ -168,15 +157,14 @@ export function ToolCallCard({ toolCall }: { toolCall: ToolCall }) {
         </>
       )}
 
-      {/* Result area (only for completed/error tool calls) */}
       {hasResult && toolCall.result && (
-        <div className="mt-2 pt-2 border-t border-dashed border-gray-200 dark:border-gray-700">
+        <div className="mt-2 pt-2 border-t border-dashed border-[var(--border-muted)]">
           <button
             onClick={() => {
               setResultExpanded(!resultExpanded)
               setResultShowAll(false)
             }}
-            className="flex items-center gap-1 text-[10px] text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 transition-colors cursor-pointer font-sans"
+            className="flex items-center gap-1 text-[10px] text-[var(--text-muted)] hover:text-[var(--text-base)] transition-colors cursor-pointer font-sans"
           >
             <svg
               className={`w-2.5 h-2.5 transition-transform duration-150 ${resultExpanded ? "rotate-90" : ""}`}
@@ -188,7 +176,7 @@ export function ToolCallCard({ toolCall }: { toolCall: ToolCall }) {
               {toolCall.isError ? "Error" : "Result"}
             </span>
             {!resultExpanded && (
-              <span className="text-gray-400 dark:text-gray-500 truncate max-w-[200px]">
+              <span className="text-[var(--text-faint)] truncate max-w-[200px]">
                 — {toolCall.result.length > 60 ? toolCall.result.slice(0, 60) + "..." : toolCall.result}
               </span>
             )}
@@ -196,7 +184,7 @@ export function ToolCallCard({ toolCall }: { toolCall: ToolCall }) {
           {resultExpanded && (
             <div className="relative mt-1">
               <pre
-                className={`text-[11px] text-gray-600 dark:text-gray-300 whitespace-pre-wrap break-all leading-relaxed bg-white/50 dark:bg-gray-900/30 rounded px-2 py-1.5 border border-gray-100 dark:border-gray-700/50 ${
+                className={`text-[11px] text-[var(--text-muted)] whitespace-pre-wrap break-all leading-relaxed rounded px-2 py-1.5 border border-[var(--border-muted)] ${
                   !resultShowAll ? "max-h-40 overflow-hidden" : ""
                 }`}
               >
@@ -204,10 +192,10 @@ export function ToolCallCard({ toolCall }: { toolCall: ToolCall }) {
               </pre>
               {!resultShowAll && toolCall.result.length > 1000 && (
                 <>
-                  <div className="absolute bottom-0 left-0 right-0 h-6 bg-gradient-to-t from-white/80 dark:from-gray-900/80 to-transparent pointer-events-none" />
+                  <div className="absolute bottom-0 left-0 right-0 h-6 bg-gradient-to-t from-[var(--bg-base)] to-transparent pointer-events-none" />
                   <button
                     onClick={() => setResultShowAll(true)}
-                    className="w-full text-[10px] py-0.5 text-blue-500 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors cursor-pointer font-sans"
+                    className="w-full text-[10px] py-0.5 text-[var(--accent)] hover:opacity-80 transition-opacity cursor-pointer font-sans"
                   >
                     Show full result ({toolCall.result.length} chars)
                   </button>
@@ -216,7 +204,7 @@ export function ToolCallCard({ toolCall }: { toolCall: ToolCall }) {
               {resultShowAll && toolCall.result.length > 1000 && (
                 <button
                   onClick={() => setResultShowAll(false)}
-                  className="w-full text-[10px] py-0.5 text-blue-500 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors cursor-pointer font-sans"
+                  className="w-full text-[10px] py-0.5 text-[var(--accent)] hover:opacity-80 transition-opacity cursor-pointer font-sans"
                 >
                   Show less
                 </button>
@@ -229,17 +217,16 @@ export function ToolCallCard({ toolCall }: { toolCall: ToolCall }) {
   )
 }
 
-/** Token 消耗标签 */
 export function UsageBadge({ usage }: { usage: { inputTokens: number; outputTokens: number; reasoningTokens?: number } }) {
   return (
-    <div className="flex items-center gap-2 text-[10px] text-gray-400 dark:text-gray-500 bg-gray-50 dark:bg-gray-800/50 rounded-md px-2 py-1 w-fit">
+    <div className="flex items-center gap-2 text-[10px] text-[var(--text-muted)] bg-[var(--bg-deep)] rounded-md px-2 py-1 w-fit border border-[var(--border-muted)]">
       <span className="flex items-center gap-0.5" title="Input tokens">
         <svg className="w-2.5 h-2.5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 11l5-5m0 0l5 5m-5-5v12" />
         </svg>
         {usage.inputTokens}
       </span>
-      <span className="text-gray-300 dark:text-gray-600">·</span>
+      <span className="text-[var(--border-strong)]">·</span>
       <span className="flex items-center gap-0.5" title="Output tokens">
         <svg className="w-2.5 h-2.5 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 13l-5 5m0 0l-5-5m5 5V6" />
@@ -248,7 +235,7 @@ export function UsageBadge({ usage }: { usage: { inputTokens: number; outputToke
       </span>
       {usage.reasoningTokens !== undefined && (
         <>
-          <span className="text-gray-300 dark:text-gray-600">·</span>
+          <span className="text-[var(--border-strong)]">·</span>
           <span className="flex items-center gap-0.5" title="Reasoning tokens">
             <svg className="w-2.5 h-2.5 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />

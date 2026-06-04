@@ -53,17 +53,16 @@ export function SubagentCard({
           : isError
             ? "border-red-200 dark:border-red-800/40"
             : "border-green-200 dark:border-green-700/50"
-      } overflow-hidden bg-white dark:bg-gray-800`}
+      } overflow-hidden bg-[var(--bg-base)]`}
       style={{ marginLeft: depth * 16 }}
     >
-      {/* ── Collapsible header ── */}
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-black/5 dark:hover:bg-white/5 transition-colors cursor-pointer"
+        className="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-[var(--overlay-hover)] transition-colors cursor-pointer"
       >
         <AgentAvatar agentType={subagent.agentType} />
 
-        <span className="font-semibold text-gray-700 dark:text-gray-200 shrink-0">
+        <span className="font-semibold text-[var(--text-base)] shrink-0">
           {subagent.agentType}
         </span>
 
@@ -77,11 +76,11 @@ export function SubagentCard({
           {expandLabel}
         </span>
 
-        <span className="text-gray-400 dark:text-gray-500 truncate">
+        <span className="text-[var(--text-muted)] truncate">
           {instructionPreview}
         </span>
 
-        <span className="ml-auto flex items-center gap-2 text-gray-400 dark:text-gray-500 shrink-0">
+        <span className="ml-auto flex items-center gap-2 text-[var(--text-muted)] shrink-0">
           {subagent.toolCount > 0 && (
             <span title="Tool calls">{subagent.toolCount} tools</span>
           )}
@@ -94,29 +93,24 @@ export function SubagentCard({
         </span>
       </button>
 
-      {/* ── Expanded: embedded chat view ── */}
       {expanded && (
-        <div className="border-t border-gray-200/50 dark:border-gray-700/30 px-4 py-3 space-y-3 text-xs animate-[fade-in_0.15s_ease-out]">
-          {/* User message: the instruction */}
+        <div className="border-t border-[var(--border-muted)] px-4 py-3 space-y-3 text-xs">
           <div className="flex items-start gap-2 justify-end">
             <div className="bg-blue-50 dark:bg-blue-900/20 text-blue-800 dark:text-blue-200 rounded-xl rounded-tr-md px-3 py-2 max-w-[85%] leading-relaxed whitespace-pre-wrap">
               {subagent.description}
             </div>
-            <div className="shrink-0 w-5 h-5 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center text-white text-[9px] font-bold">
+            <div className="shrink-0 w-5 h-5 rounded-full bg-blue-500 flex items-center justify-center text-white text-[9px] font-bold">
               U
             </div>
           </div>
 
-          {/* Assistant response area */}
           <div className="flex items-start gap-2">
             <AgentAvatar agentType={subagent.agentType} />
-            <div className="bg-gray-100 dark:bg-gray-700/80 text-gray-900 dark:text-gray-100 rounded-xl rounded-tl-md px-3 py-2 max-w-[85%] space-y-2 min-w-0">
-              {/* Reasoning */}
+            <div className="text-[var(--text-base)] space-y-2 min-w-0">
               {subagent.reasoning && (
                 <ReasoningBlock text={subagent.reasoning} />
               )}
 
-              {/* Text output */}
               {subagent.text ? (
                 <div className="leading-relaxed whitespace-pre-wrap text-xs">
                   {subagent.text}
@@ -124,26 +118,25 @@ export function SubagentCard({
               ) : isRunning && !subagent.reasoning ? (
                 <div className="flex items-center gap-2 py-1">
                   <Spinner size="sm" />
-                  <span className="text-gray-400">Thinking</span>
+                  <span className="text-[var(--text-muted)]">Thinking</span>
                 </div>
               ) : null}
 
-              {/* Tool calls */}
               {subagent.tools.length > 0 && (
                 <div className="space-y-1">
-                  <div className="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500 font-medium">
+                  <div className="text-[10px] uppercase tracking-wider text-[var(--text-faint)] font-medium">
                     Tool calls · {subagent.tools.length}
                   </div>
                   {subagent.tools.map((tool, i) => (
                     <div
                       key={i}
-                      className="flex items-start gap-1.5 font-mono text-gray-500 dark:text-gray-400"
+                      className="flex items-start gap-1.5 font-mono text-[var(--text-muted)]"
                     >
                       <span className="text-blue-500 shrink-0">⚙</span>
                       <span className="font-medium text-blue-600 dark:text-blue-400 shrink-0">
                         {tool.name}
                       </span>
-                      <span className="truncate text-gray-400 dark:text-gray-500">
+                      <span className="truncate text-[var(--text-faint)]">
                         {tool.input.length > 80 ? tool.input.slice(0, 80) + "…" : tool.input}
                       </span>
                     </div>
@@ -151,14 +144,12 @@ export function SubagentCard({
                 </div>
               )}
 
-              {/* Children (nested subagents) */}
               {children}
             </div>
           </div>
 
-          {/* Footer: summary + token usage + nested children */}
           {(isDone || isError) && (
-            <div className="flex items-center justify-between text-[10px] text-gray-400 dark:text-gray-500 pt-1">
+            <div className="flex items-center justify-between text-[10px] text-[var(--text-muted)] pt-1">
               <div className="flex items-center gap-3">
                 {subagent.summary && (
                   <span className="truncate max-w-[300px]">{subagent.summary}</span>
@@ -175,9 +166,8 @@ export function SubagentCard({
         </div>
       )}
 
-      {/* ── Expand hint for completed subagents (when collapsed) ── */}
       {!expanded && isDone && (
-        <div className="px-3 pb-2 flex items-center gap-2 text-[10px] text-gray-400 dark:text-gray-500">
+        <div className="px-3 pb-2 flex items-center gap-2 text-[10px] text-[var(--text-muted)]">
           {subagent.toolCount > 0 && <span>{subagent.toolCount} tool calls</span>}
           {(subagent.inputTokens > 0 || subagent.outputTokens > 0) && (
             <span>· ↗{subagent.inputTokens} ↘{subagent.outputTokens}</span>

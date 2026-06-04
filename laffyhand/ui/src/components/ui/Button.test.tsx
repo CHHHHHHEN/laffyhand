@@ -29,7 +29,7 @@ describe("Button", () => {
 
   it("applies variant styles", () => {
     const { container } = render(<Button variant="danger">Delete</Button>)
-    expect(container.querySelector("button")!.className).toContain("bg-red-600")
+    expect(container.querySelector("button")!.className).toContain("bg-[var(--state-danger-fg)]")
   })
 
   it("applies size styles", () => {

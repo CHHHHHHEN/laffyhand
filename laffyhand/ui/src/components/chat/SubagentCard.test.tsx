@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest"
+import { describe, it, expect } from "vitest"
 import { render, screen, fireEvent } from "@testing-library/react"
 import { SubagentCard, SubagentTreeCard } from "./SubagentCard"
 import type { ActiveSubagent } from "@/types/session"
@@ -219,7 +219,7 @@ describe("SubagentTreeCard", () => {
 
   // SubagentTreeCard expects a flat array of SubagentTreeNode.
   // Nesting is tracked via parentId on the item, not tree nesting.
-  const flatAgg = { totalTools: 0, activeCount: 0, descendantCount: 0, maxDepthFromHere: 0, inputTokens: 0, outputTokens: 0 }
+  const flatAgg = { totalTools: 0, activeCount: 0, descendantCount: 0, totalDuration: 0, maxDepthFromHere: 0, inputTokens: 0, outputTokens: 0 }
   const flatTree: SubagentTreeNode[] = [
     { item: root, children: [], aggregate: flatAgg },
     { item: child, children: [], aggregate: flatAgg },

@@ -45,7 +45,6 @@ export function ChatPage() {
     }
   }, [sendMessage, sessionId])
 
-  // Update page title with session name
   useEffect(() => {
     const title = session?.title
       ? `${session.title} — Laffyhand`
@@ -55,15 +54,15 @@ export function ChatPage() {
 
   if (!sessionId) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center text-gray-500 dark:text-gray-400 space-y-4 animate-[fade-in_0.3s_ease-out]">
-        <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-blue-900/20 dark:to-indigo-900/20 flex items-center justify-center">
-          <svg className="w-8 h-8 text-blue-400 dark:text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <div className="flex-1 flex flex-col items-center justify-center text-[var(--text-muted)] space-y-4">
+        <div className="w-16 h-16 rounded-xl bg-[var(--bg-layer-1)] flex items-center justify-center border border-[var(--border-muted)]">
+          <svg className="w-8 h-8 text-[var(--icon-muted)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
           </svg>
         </div>
         <div className="text-center">
-          <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Select or create a session to start</p>
-          <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Use the sidebar or press Ctrl+K to search</p>
+          <p className="text-sm text-[var(--text-muted)]">Select or create a session to start</p>
+          <p className="text-xs text-[var(--text-faint)] mt-1">Use the sidebar or press Ctrl+K to search</p>
         </div>
       </div>
     )
@@ -80,13 +79,13 @@ export function ChatPage() {
   return (
     <div className="flex-1 flex flex-col min-h-0">
       {session?.is_streaming && !isStreaming && (
-        <div className="flex items-center gap-2 px-4 py-1.5 text-xs text-yellow-700 dark:text-yellow-400 bg-yellow-50 dark:bg-yellow-900/20 border-b border-yellow-200 dark:border-yellow-800/30 shrink-0">
+        <div className="flex items-center gap-2 px-4 py-1.5 text-xs text-[var(--state-warning-fg)] bg-[var(--state-warning-bg)] border-b border-[var(--border-muted)] shrink-0">
           <span className="relative flex h-2 w-2">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-yellow-400 opacity-75" />
             <span className="relative inline-flex rounded-full h-2 w-2 bg-yellow-500" />
           </span>
-          <span className="font-medium">Reconnecting</span>
-          <span className="text-yellow-600 dark:text-yellow-500">— session is still processing on the server</span>
+          <span className="font-medium" style={{ fontWeight: 500 }}>Reconnecting</span>
+          <span className="text-[var(--state-warning-fg)]">— session is still processing on the server</span>
         </div>
       )}
       <MessageList sessionId={sessionId} onRetry={retryLastMessage} />

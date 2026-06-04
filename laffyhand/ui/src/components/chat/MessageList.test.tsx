@@ -25,7 +25,7 @@ describe("MessageList", () => {
 
   it("shows empty state icon container", () => {
     renderList()
-    const iconContainer = document.querySelector(".bg-gradient-to-br")
+    const iconContainer = document.querySelector(".rounded-xl")
     expect(iconContainer).toBeTruthy()
   })
 
@@ -55,7 +55,7 @@ describe("MessageList", () => {
     useChatStore.getState().startStreaming(SID)
     renderList()
     expect(screen.getByText("Thinking")).toBeInTheDocument()
-    const aiAvatar = document.querySelector(".bg-gradient-to-br")
+    const aiAvatar = document.querySelector(".ring-1")
     expect(aiAvatar).toBeTruthy()
   })
 
