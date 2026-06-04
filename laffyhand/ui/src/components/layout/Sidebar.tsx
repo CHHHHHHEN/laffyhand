@@ -196,7 +196,9 @@ export function Sidebar() {
             return (
               <div
                 key={s.id}
-                className="group flex items-center gap-1 px-2 py-1.5 cursor-pointer select-none border-b border-[var(--border-muted)] last:border-b-0"
+                className={`group flex items-center gap-1 px-2 py-1.5 cursor-pointer select-none border-b border-[var(--border-muted)] last:border-b-0 transition-colors ${
+                  isActive ? "bg-[var(--accent-muted)]" : "hover:bg-[var(--overlay-hover)]"
+                }`}
                 onClick={() => !renamingId && handleSelect(s.id)}
               >
                 {renamingId === s.id ? (
@@ -221,7 +223,7 @@ export function Sidebar() {
                       <div className={`text-xs truncate ${isActive ? "text-[var(--accent)]" : "text-[var(--text-base)]"}`} style={{ fontWeight: 440 }}>
                         {displayTitle}
                       </div>
-                      <div className="text-[10px] text-[var(--text-faint)]">{timeAgo}</div>
+                      <div className="text-[10px] text-[var(--text-muted)]">{timeAgo}</div>
                     </div>
                     <div className="hidden group-hover:flex items-center gap-0.5">
                       <button

@@ -110,7 +110,7 @@ export function ChatInput({ onSend, onInterrupt, onSteer, onQueue, onCancel, isS
       )}
 
       {/* Input area */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-end gap-2">
         <div className="flex-1 relative">
           <textarea
             ref={textareaRef}
@@ -118,7 +118,7 @@ export function ChatInput({ onSend, onInterrupt, onSteer, onQueue, onCancel, isS
             onKeyDown={handleKeyDown}
             placeholder="Type a message..."
             rows={1}
-            className="w-full resize-none rounded-lg border border-[var(--border-base)] bg-[var(--bg-deep)] px-3 py-2.5 text-sm text-[var(--text-base)] outline-none focus:border-[var(--accent)] transition-colors placeholder:text-[var(--text-faint)]"
+            className="w-full resize-none rounded-lg border border-[var(--border-base)] bg-[var(--bg-deep)] px-3 py-2.5 text-sm text-[var(--text-base)] outline-none focus:border-[var(--accent)] focus:bg-[var(--bg-base)] transition-all placeholder:text-[var(--text-faint)]"
             style={{ fontFamily: "var(--font-sans)", fontWeight: 440 }}
           />
         </div>
@@ -140,8 +140,8 @@ export function ChatInput({ onSend, onInterrupt, onSteer, onQueue, onCancel, isS
           type="button"
           onClick={handleSubmit}
           disabled={!inputValue.trim()}
-          className="flex items-center gap-1.5 px-3 py-2.5 text-sm rounded-lg bg-[var(--accent)] text-white hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer"
-          style={{ fontWeight: 500 }}
+          className="flex items-center justify-center gap-1.5 px-3.5 py-2.5 text-sm rounded-lg bg-[var(--accent)] text-white hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer shrink-0"
+          style={{ fontWeight: 500, minWidth: 80 }}
         >
           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h14m0 0l-7-7m7 7l-7 7" />

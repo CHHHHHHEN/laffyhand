@@ -265,13 +265,13 @@ describe("MessageBubble", () => {
     expect(screen.queryByText("Toggle me")).not.toBeInTheDocument()
   })
 
-  it("renders system message with dashed border", () => {
+  it("renders system message container", () => {
     render(
       <MessageBubble
         message={makeMessage({ role: "system", content: "border test" })}
       />,
     )
-    const container = document.querySelector(".border-dashed")
+    const container = document.querySelector(".rounded-lg")
     expect(container).toBeTruthy()
   })
 

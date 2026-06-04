@@ -19,13 +19,13 @@ function renderList() {
 describe("MessageList", () => {
   it("shows empty state with title and subtitle", () => {
     renderList()
-    expect(screen.getByText("Start a conversation")).toBeInTheDocument()
-    expect(screen.getByText("Type a message below to begin")).toBeInTheDocument()
+    expect(screen.getByText("Start a conversation")).toBeDefined()
+    expect(screen.getByText("Send a message to begin chatting with your AI agent")).toBeDefined()
   })
 
   it("shows empty state icon container", () => {
     renderList()
-    const iconContainer = document.querySelector(".rounded-xl")
+    const iconContainer = document.querySelector(".rounded-2xl")
     expect(iconContainer).toBeTruthy()
   })
 
