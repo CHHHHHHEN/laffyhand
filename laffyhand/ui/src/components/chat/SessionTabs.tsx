@@ -24,14 +24,14 @@ export function SessionTabs() {
   if (tabs.length === 0) return null
 
   return (
-    <div className="flex items-center gap-0 px-1 pt-1 bg-[var(--bg-base)] border-b border-[var(--border-muted)] overflow-x-auto shrink-0">
+    <div className="flex items-center gap-0 px-1 pt-0.5 bg-[var(--bg-base)] border-b border-[var(--border-muted)] overflow-x-auto shrink-0">
       {tabs.map((tab) => (
         <div
           key={tab.id}
-          className={`group flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-t-md cursor-pointer select-none shrink-0 max-w-[160px] transition-colors ${
+          className={`group flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-t-md cursor-pointer select-none shrink-0 max-w-[160px] transition-all ${
             tab.id === activeSessionId
-              ? "bg-[var(--bg-deep)] text-[var(--text-base)] border border-[var(--border-muted)] border-b-transparent"
-              : "text-[var(--text-muted)] hover:text-[var(--text-base)] hover:bg-[var(--overlay-hover)]"
+              ? "bg-[var(--bg-base)] text-[var(--text-base)] border border-[var(--border-muted)] border-b-transparent mt-0 -mb-px shadow-[0_-1px_2px_rgba(0,0,0,0.02)]"
+              : "text-[var(--text-muted)] hover:text-[var(--text-base)] hover:bg-[var(--overlay-hover)] border border-transparent border-b-0"
           }`}
           onClick={() => navigate(`/chat/${tab.id}`)}
         >
