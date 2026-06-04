@@ -12,7 +12,6 @@ if TYPE_CHECKING:
     from laffyhand.agent.db.repository.tag import FileTagRepo
 
 
-_TAG_DISPLAY_LEN = 60
 _STALE_NOTE = (
     "Note: Tags are maintained by AI agents. "
     "Each file can have only one tag — "
@@ -31,12 +30,16 @@ def _date_from_iso(iso: str) -> str:
 
 
 def format_tag_summary(tag: FileTag) -> str:
-    message = tag.message
-    if len(message) > _TAG_DISPLAY_LEN:
-        message = message[:_TAG_DISPLAY_LEN - 3] + "..."
     date = _date_from_iso(tag.updated_at)
     stale = " ⚠️ STALE" if tag.status == "stale" else ""
-    return f"\U0001f516 {message} ({date}){stale}"
+    parts = [f"\U0001f516 {tag.message}"]
+    if tag.exports:
+        names = sorted(tag.exports.keys())
+        parts.append(f"exports: {', '.join(names)}")
+    if tag.side_effects:
+        parts.append("side effects: yes")
+    parts.append(f"({date}){stale}")
+    return " ".join(parts)
 
 
 def annotate_result(
@@ -46,6 +49,8 @@ def annotate_result(
     repo: FileTagRepo,
 ) -> str:
     if not result:
+        return result
+    if not params.get("show_tags", True):
         return result
     if tool_name == "glob":
         return _annotate_glob(result, params, repo)
@@ -97,6 +102,11 @@ class TagTool(BaseTool):
     description = (
         "Manage file tags — persistent semantic annotations for files that persist across sessions. "
         "Tags help you remember what a file does without re-reading it.\n\n"
+        "Structured metadata fields:\n"
+        "- exports: dict of exported symbol names mapped to their kind (class/function/constant/type/variable)\n"
+        "- side_effects: free-text description of import-time side effects (empty = none)\n"
+        "- depends_on: list of external module or file dependencies\n\n"
+        "To hide tag annotations in glob/read output, pass show_tags=false to those tools.\n\n"
         "IMPORTANT: Each file path can have exactly ONE tag. "
         "A tag should be a holistic (macro-level) description of the file's overall purpose, "
         "not just what was changed in the most recent edit. "
@@ -155,6 +165,20 @@ class TagTool(BaseTool):
                     "type": "string",
                     "description": "Macro-level semantic description of the file's overall purpose, not just what was changed",
                 },
+                "exports": {
+                    "type": "object",
+                    "description": "Exported symbols as a dict: {\"ClassName\": \"class\", \"func_name\": \"function\", \"CONST\": \"constant\"} (for add/update)",
+                    "additionalProperties": {"type": "string"},
+                },
+                "side_effects": {
+                    "type": "string",
+                    "description": "Description of import-time side effects, e.g. 'registers signal handlers on import' (for add/update)",
+                },
+                "depends_on": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "List of external module dependencies this file relies on (for add/update)",
+                },
                 "key": {
                     "type": "string",
                     "description": "Custom key for key-value pair (use with --value)",
@@ -184,6 +208,20 @@ class TagTool(BaseTool):
                             "message": {
                                 "type": "string",
                                 "description": "Macro-level semantic description of the file's overall purpose",
+                            },
+                            "exports": {
+                                "type": "object",
+                                "description": "Exported symbols as a dict: {\"ClassName\": \"class\", \"func\": \"function\"}",
+                                "additionalProperties": {"type": "string"},
+                            },
+                            "side_effects": {
+                                "type": "string",
+                                "description": "Description of import-time side effects",
+                            },
+                            "depends_on": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "List of external module dependencies",
                             },
                         },
                         "required": ["file_path", "message"],
@@ -224,10 +262,15 @@ class TagTool(BaseTool):
         real = _normalize(file_path)
         if not os.path.exists(real):
             return f"Error: path does not exist: {file_path}"
-        # Check for existing tag before overwriting
         existing = self._repo.get(real)
-        # Reset stale status if re-tagging an existing file
-        self._repo.upsert(real, message=message, status="active")
+        self._repo.upsert(
+            real,
+            message=message,
+            status="active",
+            exports=params.get("exports"),
+            side_effects=params.get("side_effects"),
+            depends_on=params.get("depends_on"),
+        )
         self._repo.commit()
         date = _date_from_iso(datetime.now(timezone.utc).isoformat())
         if existing:
@@ -246,17 +289,20 @@ class TagTool(BaseTool):
         real = _normalize(file_path)
         if not os.path.exists(real):
             return f"Error: path does not exist: {file_path}"
-        # Fetch existing to show diff
         existing = self._repo.get(real)
         message = params.get("message")
         key = params.get("key")
         value = params.get("value")
-        if message:
-            self._repo.upsert(real, message=message)
+        exports = params.get("exports")
+        side_effects = params.get("side_effects")
+        depends_on = params.get("depends_on")
+        has_structured = any(x is not None for x in (message, exports, side_effects, depends_on))
+        if has_structured:
+            self._repo.upsert(real, message=message, exports=exports, side_effects=side_effects, depends_on=depends_on)
         elif key is not None:
             self._repo.upsert(real, key=key, value=value)
         else:
-            return "Error: provide either --message or --key/--value for update"
+            return "Error: provide --message, --exports/--side_effects/--depends_on, or --key/--value for update"
         self._repo.commit()
         tag = self._repo.get(real)
         assert tag is not None
@@ -267,6 +313,12 @@ class TagTool(BaseTool):
             if key is not None:
                 old_val = existing.tags.get(key, "(none)")
                 changes.append(f"  {key}: {old_val} → {value or ''}")
+            if exports is not None and existing.exports != exports:
+                changes.append("  exports: updated")
+            if side_effects is not None and existing.side_effects != side_effects:
+                changes.append("  side_effects: updated")
+            if depends_on is not None and existing.depends_on != depends_on:
+                changes.append("  depends_on: updated")
         return f"Updated tag for {real}\n" + "\n".join(changes) + "\n" + _format_tag_detail(tag) + "\n" + _STALE_NOTE
 
     def _batch(self, params: dict[str, Any]) -> str:
@@ -282,7 +334,14 @@ class TagTool(BaseTool):
                 continue
             real = _normalize(file_path)
             if os.path.exists(real):
-                self._repo.upsert(real, message=message, status="active")
+                self._repo.upsert(
+                    real,
+                    message=message,
+                    status="active",
+                    exports=entry.get("exports"),
+                    side_effects=entry.get("side_effects"),
+                    depends_on=entry.get("depends_on"),
+                )
                 self._repo.commit()
                 date = _date_from_iso(datetime.now(timezone.utc).isoformat())
                 results.append(f"  \U0001f516 {real}: {message} ({date})")
@@ -336,8 +395,18 @@ class TagTool(BaseTool):
 
 def _format_tag_detail(tag: FileTag) -> str:
     lines = [f"  {tag.path}"]
-    stale = " ⚠️ STALE (file no longer exists)" if tag.status == "stale" else ""
+    stale = " \u26a0\ufe0f STALE (file no longer exists)" if tag.status == "stale" else ""
     lines.append(f"    \U0001f516 {tag.message} ({_date_from_iso(tag.updated_at)}){stale}")
+    if tag.exports:
+        lines.append("    exports:")
+        for name, typ in tag.exports.items():
+            lines.append(f"      {name}: {typ}")
+    if tag.side_effects:
+        lines.append(f"    side_effects: {tag.side_effects}")
+    if tag.depends_on:
+        lines.append("    depends_on:")
+        for dep in tag.depends_on:
+            lines.append(f"      {dep}")
     for k, v in tag.tags.items():
         lines.append(f"    {k}: {v}")
     return "\n".join(lines)

@@ -14,6 +14,9 @@ class FileTag(BaseModel):
     tags: dict[str, str]
     updated_at: str
     status: str = "active"
+    exports: dict[str, str] = {}
+    side_effects: str = ""
+    depends_on: list[str] = []
 
 
 class FileTagRepo:
@@ -37,28 +40,44 @@ class FileTagRepo:
         key: str | None = None,
         value: str | None = None,
         status: str | None = None,
+        exports: dict[str, str] | None = None,
+        side_effects: str | None = None,
+        depends_on: list[str] | None = None,
     ) -> None:
         now = datetime.now(timezone.utc).isoformat()
         existing = self.get(path)
         tag_dict: dict[str, str] = {}
         new_message = message or ""
         new_status = status or "active"
+        new_exports: dict[str, str] = {}
+        new_side_effects = ""
+        new_depends_on: list[str] = []
         if existing:
             new_message = message if message is not None else existing.message
             tag_dict = dict(existing.tags)
             if status is None:
                 new_status = existing.status
+            new_exports = dict(existing.exports) if exports is None else exports
+            new_side_effects = existing.side_effects if side_effects is None else side_effects
+            new_depends_on = list(existing.depends_on) if depends_on is None else depends_on
+        else:
+            if exports is not None:
+                new_exports = exports
+            if side_effects is not None:
+                new_side_effects = side_effects
+            if depends_on is not None:
+                new_depends_on = depends_on
         if key is not None:
             tag_dict[key] = value or ""
         if existing:
             self._conn.execute(
-                "UPDATE file_tag SET message=?, tags=?, updated_at=?, status=? WHERE path=?",
-                (new_message, json.dumps(tag_dict), now, new_status, path),
+                "UPDATE file_tag SET message=?, tags=?, updated_at=?, status=?, exports=?, side_effects=?, depends_on=? WHERE path=?",
+                (new_message, json.dumps(tag_dict), now, new_status, json.dumps(new_exports), new_side_effects, json.dumps(new_depends_on), path),
             )
         else:
             self._conn.execute(
-                "INSERT INTO file_tag (path, message, tags, updated_at, status) VALUES (?, ?, ?, ?, ?)",
-                (path, new_message, json.dumps(tag_dict), now, new_status),
+                "INSERT INTO file_tag (path, message, tags, updated_at, status, exports, side_effects, depends_on) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (path, new_message, json.dumps(tag_dict), now, new_status, json.dumps(new_exports), new_side_effects, json.dumps(new_depends_on)),
             )
 
     def get(self, path: str) -> FileTag | None:
@@ -73,6 +92,9 @@ class FileTagRepo:
             tags=json.loads(row["tags"]),
             updated_at=row["updated_at"],
             status=row["status"],
+            exports=json.loads(row["exports"]) if row["exports"] else {},
+            side_effects=row["side_effects"],
+            depends_on=json.loads(row["depends_on"]) if row["depends_on"] else [],
         )
 
     def list_by_prefix(self, prefix: str) -> list[FileTag]:
@@ -87,6 +109,9 @@ class FileTagRepo:
                 tags=json.loads(r["tags"]),
                 updated_at=r["updated_at"],
                 status=r["status"],
+                exports=json.loads(r["exports"]) if r["exports"] else {},
+                side_effects=r["side_effects"],
+                depends_on=json.loads(r["depends_on"]) if r["depends_on"] else [],
             )
             for r in rows
         ]
@@ -102,6 +127,9 @@ class FileTagRepo:
                 tags=json.loads(r["tags"]),
                 updated_at=r["updated_at"],
                 status=r["status"],
+                exports=json.loads(r["exports"]) if r["exports"] else {},
+                side_effects=r["side_effects"],
+                depends_on=json.loads(r["depends_on"]) if r["depends_on"] else [],
             )
             for r in rows
         ]
@@ -161,6 +189,9 @@ class FileTagRepo:
                 tags=json.loads(r["tags"]),
                 updated_at=r["updated_at"],
                 status=r["status"],
+                exports=json.loads(r["exports"]) if r["exports"] else {},
+                side_effects=r["side_effects"],
+                depends_on=json.loads(r["depends_on"]) if r["depends_on"] else [],
             )
             for r in rows
         ]

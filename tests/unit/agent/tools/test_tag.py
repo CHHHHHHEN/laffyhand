@@ -10,7 +10,8 @@ import pytest
 
 from laffyhand.agent.db.repository import FileTagRepo
 from laffyhand.agent.db.schema import create_tables
-from laffyhand.agent.tools.tag import TagTool, annotate_result, _normalize, _date_from_iso
+from laffyhand.agent.db.repository.tag import FileTag
+from laffyhand.agent.tools.tag import TagTool, annotate_result, format_tag_summary, _normalize, _date_from_iso
 
 
 @pytest.fixture
@@ -234,6 +235,72 @@ class TestFileTagRepo:
         assert t2 is not None
         assert t2.updated_at > ts1
 
+    def test_upsert_with_exports(self, repo):
+        repo.upsert("/tmp/test.py", message="test file", exports={"MyClass": "class", "my_func": "function"})
+        repo.commit()
+        tag = repo.get("/tmp/test.py")
+        assert tag is not None
+        assert tag.exports == {"MyClass": "class", "my_func": "function"}
+
+    def test_upsert_with_side_effects(self, repo):
+        repo.upsert("/tmp/test.py", message="test file", side_effects="registers signal handlers on import")
+        repo.commit()
+        tag = repo.get("/tmp/test.py")
+        assert tag is not None
+        assert tag.side_effects == "registers signal handlers on import"
+
+    def test_upsert_with_depends_on(self, repo):
+        repo.upsert("/tmp/test.py", message="test file", depends_on=["redis", "database.session"])
+        repo.commit()
+        tag = repo.get("/tmp/test.py")
+        assert tag is not None
+        assert tag.depends_on == ["redis", "database.session"]
+
+    def test_upsert_all_structured_fields(self, repo):
+        repo.upsert(
+            "/tmp/test.py",
+            message="test file",
+            exports={"Util": "class"},
+            side_effects="monkey-patches os.path",
+            depends_on=["requests", "sqlalchemy"],
+        )
+        repo.commit()
+        tag = repo.get("/tmp/test.py")
+        assert tag is not None
+        assert tag.exports == {"Util": "class"}
+        assert tag.side_effects == "monkey-patches os.path"
+        assert tag.depends_on == ["requests", "sqlalchemy"]
+
+    def test_upsert_preserves_exports_on_message_update(self, repo):
+        repo.upsert("/tmp/test.py", message="first", exports={"A": "class"})
+        repo.commit()
+        repo.upsert("/tmp/test.py", message="second")
+        repo.commit()
+        tag = repo.get("/tmp/test.py")
+        assert tag is not None
+        assert tag.message == "second"
+        assert tag.exports == {"A": "class"}
+
+    def test_upsert_preserves_side_effects_on_message_update(self, repo):
+        repo.upsert("/tmp/test.py", message="first", side_effects="sets global state")
+        repo.commit()
+        repo.upsert("/tmp/test.py", message="second")
+        repo.commit()
+        tag = repo.get("/tmp/test.py")
+        assert tag is not None
+        assert tag.message == "second"
+        assert tag.side_effects == "sets global state"
+
+    def test_upsert_preserves_depends_on_on_message_update(self, repo):
+        repo.upsert("/tmp/test.py", message="first", depends_on=["libfoo"])
+        repo.commit()
+        repo.upsert("/tmp/test.py", message="second")
+        repo.commit()
+        tag = repo.get("/tmp/test.py")
+        assert tag is not None
+        assert tag.message == "second"
+        assert tag.depends_on == ["libfoo"]
+
     def test_status_in_all_listings(self, repo):
         repo.upsert("/tmp/a.py", message="active", status="active")
         repo.upsert("/tmp/b.py", message="stale", status="stale")
@@ -338,7 +405,7 @@ class TestTagTool:
         result = asyncio.run(
             tool.run({"operation": "update", "file_path": temp_file})
         )
-        assert "provide either --message or --key/--value" in result
+        assert "provide --message, --exports/--side_effects/--depends_on, or --key/--value" in result
 
     def test_update_nonexistent_path(self, tool):
         result = asyncio.run(
@@ -471,6 +538,133 @@ class TestTagTool:
         assert "Tags are maintained by AI agents" in result
 
 
+    def test_add_with_exports(self, tool, temp_file):
+        result = asyncio.run(
+            tool.run({
+                "operation": "add",
+                "file_path": temp_file,
+                "message": "test file",
+                "exports": {"MyClass": "class", "my_func": "function"},
+            })
+        )
+        assert "Tagged" in result
+        tag = tool._repo.get(os.path.realpath(temp_file))
+        assert tag is not None
+        assert tag.exports == {"MyClass": "class", "my_func": "function"}
+
+    def test_add_with_side_effects(self, tool, temp_file):
+        result = asyncio.run(
+            tool.run({
+                "operation": "add",
+                "file_path": temp_file,
+                "message": "test file",
+                "side_effects": "registers signal handlers on import",
+            })
+        )
+        assert "Tagged" in result
+        tag = tool._repo.get(os.path.realpath(temp_file))
+        assert tag is not None
+        assert tag.side_effects == "registers signal handlers on import"
+
+    def test_add_with_depends_on(self, tool, temp_file):
+        result = asyncio.run(
+            tool.run({
+                "operation": "add",
+                "file_path": temp_file,
+                "message": "test file",
+                "depends_on": ["redis", "database.session"],
+            })
+        )
+        assert "Tagged" in result
+        tag = tool._repo.get(os.path.realpath(temp_file))
+        assert tag is not None
+        assert tag.depends_on == ["redis", "database.session"]
+
+    def test_update_exports(self, tool, temp_file):
+        asyncio.run(tool.run({"operation": "add", "file_path": temp_file, "message": "base"}))
+        result = asyncio.run(
+            tool.run({
+                "operation": "update",
+                "file_path": temp_file,
+                "exports": {"NewClass": "class"},
+            })
+        )
+        assert "Updated tag" in result
+        assert "exports: updated" in result
+        tag = tool._repo.get(os.path.realpath(temp_file))
+        assert tag is not None
+        assert tag.exports == {"NewClass": "class"}
+
+    def test_update_side_effects(self, tool, temp_file):
+        asyncio.run(tool.run({"operation": "add", "file_path": temp_file, "message": "base"}))
+        result = asyncio.run(
+            tool.run({
+                "operation": "update",
+                "file_path": temp_file,
+                "side_effects": "modifies global config",
+            })
+        )
+        assert "Updated tag" in result
+        assert "side_effects: updated" in result
+        tag = tool._repo.get(os.path.realpath(temp_file))
+        assert tag is not None
+        assert tag.side_effects == "modifies global config"
+
+    def test_update_depends_on(self, tool, temp_file):
+        asyncio.run(tool.run({"operation": "add", "file_path": temp_file, "message": "base"}))
+        result = asyncio.run(
+            tool.run({
+                "operation": "update",
+                "file_path": temp_file,
+                "depends_on": ["libfoo", "libbar"],
+            })
+        )
+        assert "Updated tag" in result
+        assert "depends_on: updated" in result
+        tag = tool._repo.get(os.path.realpath(temp_file))
+        assert tag is not None
+        assert tag.depends_on == ["libfoo", "libbar"]
+
+    def test_list_shows_exports_section(self, tool, temp_file):
+        asyncio.run(
+            tool.run({
+                "operation": "add",
+                "file_path": temp_file,
+                "message": "test file",
+                "exports": {"MyClass": "class", "CONST": "constant"},
+                "side_effects": "patches stdlib",
+                "depends_on": ["os", "sys"],
+            })
+        )
+        result = asyncio.run(tool.run({"operation": "list", "path": temp_file}))
+        assert "exports:" in result
+        assert "MyClass: class" in result
+        assert "CONST: constant" in result
+        assert "side_effects: patches stdlib" in result
+        assert "depends_on:" in result
+        assert "os" in result
+        assert "sys" in result
+
+    def test_batch_with_exports(self, tool, temp_dir):
+        api_py = Path(temp_dir) / "api.py"
+        result = asyncio.run(
+            tool.run({
+                "operation": "batch",
+                "tags": [{
+                    "file_path": str(api_py),
+                    "message": "API handler",
+                    "exports": {"handle_request": "function"},
+                    "side_effects": "sets up routes",
+                }],
+            })
+        )
+        assert "Batch processed 1 tag(s)" in result
+        tag = tool._repo.get(str(api_py))
+        assert tag is not None
+        assert tag.exports == {"handle_request": "function"}
+        assert tag.side_effects == "sets up routes"
+
+
 # ── Annotation tests ───────────────────────────────────────────
 
 
@@ -568,6 +762,27 @@ class TestAnnotation:
         assert "STALE" in annotated
         assert "\U0001f516" in annotated
 
+    def test_annotate_glob_show_tags_false(self, repo, temp_dir):
+        api_py = Path(temp_dir) / "api.py"
+        repo.upsert(str(api_py), message="API handler")
+        repo.commit()
+
+        glob_result = "api.py"
+        params = {"path": temp_dir, "show_tags": False}
+        annotated = annotate_result("glob", glob_result, params, repo)
+        assert annotated == "api.py"
+        assert "\U0001f516" not in annotated
+
+    def test_annotate_read_show_tags_false(self, repo, temp_dir):
+        api_py = Path(temp_dir) / "api.py"
+        repo.upsert(str(api_py), message="API handler")
+        repo.commit()
+
+        read_result = f"Contents of {temp_dir} (total 1 entries):\n  api.py (1 lines)"
+        params = {"file_path": temp_dir, "show_tags": False}
+        annotated = annotate_result("read", read_result, params, repo)
+        assert "\U0001f516" not in annotated
+
 
 # ── Utility tests ──────────────────────────────────────────────
 
@@ -585,3 +800,31 @@ class TestUtils:
     def test_date_from_iso(self):
         assert _date_from_iso("2026-06-04T12:34:56+00:00") == "2026-06-04"
         assert _date_from_iso("2026-06-04") == "2026-06-04"
+
+    def test_format_tag_summary_with_exports(self):
+        tag = FileTag(
+            path="/tmp/test.py",
+            message="test file",
+            tags={},
+            updated_at="2026-06-04T12:00:00+00:00",
+            exports={"MyClass": "class", "my_func": "function"},
+            side_effects="monkey-patches os.path",
+            depends_on=["os", "sys"],
+        )
+        summary = format_tag_summary(tag)
+        assert "\U0001f516 test file" in summary
+        assert "MyClass, my_func" in summary
+        assert "side effects: yes" in summary
+        assert "(2026-06-04)" in summary
+
+    def test_format_tag_summary_no_truncation(self):
+        long_msg = "a" * 200
+        tag = FileTag(
+            path="/tmp/test.py",
+            message=long_msg,
+            tags={},
+            updated_at="2026-06-04T12:00:00+00:00",
+        )
+        summary = format_tag_summary(tag)
+        assert long_msg in summary
+        assert "..." not in summary

@@ -4,9 +4,14 @@ import sqlite3
 
 from loguru import logger
 
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
 
 _MIGRATIONS: dict[int, str] = {
+    10: """
+        ALTER TABLE file_tag ADD COLUMN exports TEXT NOT NULL DEFAULT '{}' CHECK (JSON_VALID(exports));
+        ALTER TABLE file_tag ADD COLUMN side_effects TEXT NOT NULL DEFAULT '';
+        ALTER TABLE file_tag ADD COLUMN depends_on TEXT NOT NULL DEFAULT '[]' CHECK (JSON_VALID(depends_on));
+    """,
     9: """
         ALTER TABLE file_tag ADD COLUMN status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','stale'));
     """,
@@ -143,13 +148,18 @@ CREATE INDEX IF NOT EXISTS idx_session_fork ON session(fork_id);
 CREATE INDEX IF NOT EXISTS idx_todo_task_tool ON todo(task_tool_id);
 
 CREATE TABLE IF NOT EXISTS file_tag (
-    path        TEXT PRIMARY KEY,
-    message     TEXT NOT NULL DEFAULT '',
-    tags        TEXT NOT NULL DEFAULT '{}'
+    path            TEXT PRIMARY KEY,
+    message         TEXT NOT NULL DEFAULT '',
+    tags            TEXT NOT NULL DEFAULT '{}'
         CHECK (JSON_VALID(tags)),
-    updated_at  TEXT NOT NULL,
-    status      TEXT NOT NULL DEFAULT 'active'
-        CHECK (status IN ('active','stale'))
+    updated_at      TEXT NOT NULL,
+    status          TEXT NOT NULL DEFAULT 'active'
+        CHECK (status IN ('active','stale')),
+    exports         TEXT NOT NULL DEFAULT '{}'
+        CHECK (JSON_VALID(exports)),
+    side_effects    TEXT NOT NULL DEFAULT '',
+    depends_on      TEXT NOT NULL DEFAULT '[]'
+        CHECK (JSON_VALID(depends_on))
 );
 """
 
