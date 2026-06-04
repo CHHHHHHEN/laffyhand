@@ -95,6 +95,12 @@ class TagTool(BaseTool):
     description = (
         "Manage file tags — persistent semantic annotations for files that persist across sessions. "
         "Tags help you remember what a file does without re-reading it.\n\n"
+        "Best practice — always tag files you create or modify:\n"
+        "After you use write/edit to create or modify a file, call 'tag add' or 'tag batch' "
+        "to annotate the file with a brief semantic description "
+        "(e.g. what the file does or what was changed). "
+        "This maintains persistent context across sessions so you (and other agents) "
+        "can understand the codebase without re-reading every file.\n\n"
         "Operations:\n"
         "- add --file_path <path> --message <description>: Tag a file with a semantic description.\n"
         "- update --file_path <path> --message <description>: Update the description.\n"
