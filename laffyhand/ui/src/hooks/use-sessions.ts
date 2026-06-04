@@ -145,7 +145,18 @@ export function useCurrentSession(sessionId: string | undefined) {
     // was lost but the server continues processing).
     refetchInterval: (query) => {
       const data = query.state.data
-      if (data?.is_streaming) return 2000
+      if (data?.is_streaming) {
+        // Don't poll when the frontend has an active SSE stream —
+        // SSE events already provide live updates, and polling would
+        // overwrite in-progress messages mid-stream (loadMessages
+        // resets isStreaming & streaming buffers), causing the
+        // finish event to append a duplicate assistant message.
+        const [, sid] = query.queryKey
+        const chatState = useChatStore.getState()
+        const sess = typeof sid === "string" ? chatState.sessions[sid] : undefined
+        if (sess?.isStreaming) return false
+        return 2000
+      }
       return false
     },
   })

@@ -242,4 +242,94 @@ describe("useCurrentSession", () => {
 
     expect(mockSessionLoad).toHaveBeenCalledTimes(1)
   })
+
+  it("does not poll when frontend is already streaming", async () => {
+    // Pre-seed the store with a session that has isStreaming=true (SSE active)
+    useChatStore.getState().addSession("sess-live")
+    useChatStore.setState((s) => ({
+      sessions: {
+        ...s.sessions,
+        ["sess-live"]: {
+          ...s.sessions["sess-live"]!,
+          isStreaming: true,
+        },
+      },
+    }))
+
+    mockSessionLoad.mockResolvedValue({
+      session_id: "sess-live",
+      messages_count: 1,
+      turn_count: 1,
+      is_streaming: true,
+      messages: [
+        { id: "m1", role: "assistant" as const, content: "partial", createdAt: 100 },
+      ],
+    })
+
+    renderHook(() => useCurrentSession("sess-live"), { wrapper: createWrapper() })
+
+    await waitFor(() => expect(mockSessionLoad).toHaveBeenCalledTimes(1))
+
+    // Even with is_streaming=true on the server, the frontend's
+    // active SSE stream should suppress polling.
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 150))
+    })
+
+    expect(mockSessionLoad).toHaveBeenCalledTimes(1)
+  })
+
+  it("resumes polling after frontend streaming stops", async () => {
+    // Start with isStreaming=true (SSE active), then set it to false
+    useChatStore.getState().addSession("sess-resume")
+    useChatStore.setState((s) => ({
+      sessions: {
+        ...s.sessions,
+        ["sess-resume"]: {
+          ...s.sessions["sess-resume"]!,
+          isStreaming: true,
+        },
+      },
+    }))
+
+    mockSessionLoad.mockResolvedValue({
+      session_id: "sess-resume",
+      messages_count: 2,
+      turn_count: 1,
+      is_streaming: true,
+      messages: [
+        { id: "m1", role: "assistant" as const, content: "partial", createdAt: 100 },
+      ],
+    })
+
+    renderHook(() => useCurrentSession("sess-resume"), { wrapper: createWrapper() })
+
+    await waitFor(() => expect(mockSessionLoad).toHaveBeenCalledTimes(1))
+
+    // Now stop the frontend SSE — polling should activate
+    useChatStore.setState((s) => ({
+      sessions: {
+        ...s.sessions,
+        ["sess-resume"]: {
+          ...s.sessions["sess-resume"]!,
+          isStreaming: false,
+        },
+      },
+    }))
+
+    mockSessionLoad.mockResolvedValue({
+      session_id: "sess-resume",
+      messages_count: 3,
+      turn_count: 2,
+      is_streaming: true,
+      messages: [
+        { id: "m1", role: "assistant" as const, content: "partial", createdAt: 100 },
+        { id: "m2", role: "user" as const, content: "next", createdAt: 200 },
+      ],
+    })
+
+    await waitFor(() => expect(mockSessionLoad).toHaveBeenCalledTimes(2), { timeout: 5000 })
+
+    expect(mockSessionLoad).toHaveBeenCalledWith("sess-resume")
+  }, 10000)
 })
