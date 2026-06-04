@@ -11,6 +11,15 @@ from laffyhand.agent.tools.file._ripgrep import rg_available, glob as rg_glob
 MAX_RESULTS = 100
 
 
+def _is_within_root(target: Path, root: Path) -> bool:
+    """Check whether *target* resolves to a path inside *root*."""
+    try:
+        target.resolve().relative_to(root.resolve())
+        return True
+    except ValueError:
+        return False
+
+
 class GlobTool(BaseTool):
     name = "glob"
     path_params = ["path"]
@@ -20,7 +29,7 @@ class GlobTool(BaseTool):
         "Uses ripgrep when available for faster results with native .gitignore support.\n\n"
         "Parameters:\n"
         "- pattern: glob pattern (e.g. **/*.py, src/**/*.ts)\n"
-        "- path: directory to search in (default: current working directory)\n"
+        "- path: absolute search directory — must start with the workspace path from <env>\n"
         "- include_ignored: if true, include files that match .gitignore patterns (default: false)"
     )
     max_result_size = 50000
@@ -35,7 +44,7 @@ class GlobTool(BaseTool):
                 },
                 "path": {
                     "type": "string",
-                    "description": "Directory to search in (default: current working directory)",
+                    "description": "Absolute search directory — must start with the workspace path from <env>",
                 },
                 "include_ignored": {
                     "type": "boolean",
@@ -60,7 +69,7 @@ class GlobTool(BaseTool):
                     if not p:
                         continue
                     p_obj = (root / p).resolve()
-                    if not str(p_obj).startswith(str(root)):
+                    if not _is_within_root(p_obj, root):
                         logger.warning(f"Glob: blocked path traversal: {p_obj}")
                         continue
                     if p_obj.is_file():
@@ -72,7 +81,7 @@ class GlobTool(BaseTool):
         if not matches:
             for p in glob_module.glob(pattern, root_dir=root, recursive=True):
                 p_obj = (root / p).resolve()
-                if not str(p_obj).startswith(str(root)):
+                if not _is_within_root(p_obj, root):
                     logger.warning(f"Glob: blocked path traversal: {p_obj}")
                     continue
                 if p_obj.is_file():

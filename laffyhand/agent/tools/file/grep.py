@@ -23,6 +23,7 @@ class GrepTool(BaseTool):
     path_params = ["path"]
     description = (
         "Search file contents using a regular expression. "
+        "Use absolute paths for the path parameter — prefix with the workspace directory from <env>. "
         "Results are sorted by file modification time (newest first) and limited to 100 matches. "
         "Uses ripgrep when available for significantly faster performance."
     )
@@ -42,7 +43,7 @@ class GrepTool(BaseTool):
                 },
                 "path": {
                     "type": "string",
-                    "description": "Directory or file to search in (default: current working directory)",
+                    "description": "Absolute directory or file to search in — must start with the workspace path from <env>",
                 },
                 "output_mode": {
                     "type": "string",

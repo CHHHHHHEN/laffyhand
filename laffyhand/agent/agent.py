@@ -65,7 +65,9 @@ BUILTIN_AGENTS: dict[str, AgentInfo] = {
         "- NEVER guess URLs unless confident they help.\n"
         "- If you cannot help, offer helpful alternatives.\n"
         "- Your access is restricted to <env>'s workspace directory. "
-        "Accessing files outside requires user approval.\n",
+        "Accessing files outside requires user approval.\n"
+        "- Always construct absolute paths by prepending the workspace path from <env>. "
+        "NEVER use root-relative paths like /some/path — they will resolve outside the workspace.\n",
         permission={},
     ),
     "plan": AgentInfo(
@@ -123,7 +125,7 @@ BUILTIN_AGENTS: dict[str, AgentInfo] = {
         "(--message required, plus --exports/--side_effects/--depends_on)\n"
         "- Adapt search depth to the caller's thoroughness requirement\n\n"
         "# Output\n"
-        "- Return file paths as absolute paths\n"
+        "- Return file paths as absolute paths (prefixed with workspace from <env>)\n"
         "- Summarize key findings — do NOT dump full file contents\n"
         "- Report structure, signatures, patterns — not raw text\n"
         "- Be concise, avoid emojis\n\n"
