@@ -5,6 +5,7 @@ from typing import Any
 
 from loguru import logger
 from laffyhand.agent.tools.base import BaseTool
+from laffyhand.agent.tools.file._gitignore import GitignoreFilter
 from laffyhand.agent.tools.file._security import looks_binary
 
 
@@ -23,7 +24,9 @@ class ReadTool(BaseTool):
         "To read around specific keywords, provide pattern (regex) and optional context (default 5). "
         "When pattern is given, offset/limit apply to matches, not raw lines.\n\n"
         "To read multiple files at once, provide paths (array of absolute paths).\n\n"
-        "Directory listings show file line counts in parentheses."
+        "Directory listings show file line counts in parentheses. "
+        "By default, files matching .gitignore patterns are excluded from directory listings; "
+        "pass include_ignored=true to include them."
     )
     max_result_size = 50000
 
@@ -65,6 +68,11 @@ class ReadTool(BaseTool):
                     "type": "integer",
                     "description": "Directory listing depth. 1 = flat, 2 = one level deep (default), etc. Only applies when file_path is a directory",
                 },
+                "include_ignored": {
+                    "type": "boolean",
+                    "description": "If true, include files that match .gitignore patterns in directory listings (default: false)",
+                    "default": False,
+                },
             },
             "anyOf": [
                 {"required": ["file_path"]},
@@ -88,7 +96,10 @@ class ReadTool(BaseTool):
             return []
         return difflib.get_close_matches(path.name, candidates, n=5, cutoff=0.3)
 
-    def _format_entry(self, entry: Path, indent: int, depth: int) -> list[str]:
+    def _format_entry(
+        self, entry: Path, indent: int, depth: int,
+        gitignore: GitignoreFilter | None = None,
+    ) -> list[str]:
         """Format a single directory entry. Recursively formats children when depth > 1."""
         prefix = "  " * indent
         lines: list[str] = []
@@ -118,12 +129,17 @@ class ReadTool(BaseTool):
                 lines.append(f"{prefix}  (Permission denied)")
             else:
                 for child in children:
-                    lines.extend(self._format_entry(child, indent + 1, depth - 1))
+                    if gitignore and gitignore.is_ignored(child):
+                        continue
+                    lines.extend(
+                        self._format_entry(child, indent + 1, depth - 1, gitignore)
+                    )
 
         return lines
 
     def _list_directory(
-        self, path: Path, offset: int | None, limit: int | None, depth: int = 2
+        self, path: Path, offset: int | None, limit: int | None, depth: int = 2,
+        include_ignored: bool = False,
     ) -> str:
         if depth <= 0:
             return ""
@@ -134,6 +150,12 @@ class ReadTool(BaseTool):
             )
         except PermissionError:
             return f"Permission denied: {path}"
+
+        gitignore = None if include_ignored else GitignoreFilter(path)
+
+        if gitignore:
+            entries = [e for e in entries if not gitignore.is_ignored(e)]
+
         total = len(entries)
         start = (offset - 1) if offset is not None else 0
         if offset is not None and offset > total:
@@ -145,7 +167,7 @@ class ReadTool(BaseTool):
         lines.append(f"Contents of {path} (depth={depth}):")
 
         for entry in selected:
-            lines.extend(self._format_entry(entry, 1, depth))
+            lines.extend(self._format_entry(entry, 1, depth, gitignore))
 
         return "\n".join(lines)
 
@@ -244,7 +266,8 @@ class ReadTool(BaseTool):
 
         if path.is_dir():
             result = self._list_directory(
-                path, params.get("offset"), params.get("limit"), params.get("depth", 2)
+                path, params.get("offset"), params.get("limit"), params.get("depth", 2),
+                params.get("include_ignored", False),
             )
             logger.info(f"Read: listed directory {path}")
             return result
@@ -363,6 +386,7 @@ class ReadTool(BaseTool):
                     params.get("offset"),
                     params.get("limit"),
                     params.get("depth", 2),
+                    params.get("include_ignored", False),
                 )
                 parts.append(f"{head}\n{dir_content}")
                 total_size += len(dir_content) + len(head) + 2

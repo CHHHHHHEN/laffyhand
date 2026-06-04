@@ -14,11 +14,15 @@ def rg_available() -> bool:
     return _RG_CACHE
 
 
-def glob(cwd: Path, pattern: str) -> list[str] | None:
+def glob(cwd: Path, pattern: str, include_ignored: bool = False) -> list[str] | None:
     """List files matching a glob pattern using ripgrep. Returns None on failure."""
     try:
+        cmd = ["rg", "--files", "--glob", pattern]
+        if include_ignored:
+            cmd.append("--no-ignore")
+        cmd.append(".")
         result = subprocess.run(
-            ["rg", "--files", "--glob", pattern, "."],
+            cmd,
             cwd=cwd,
             capture_output=True,
             text=True,

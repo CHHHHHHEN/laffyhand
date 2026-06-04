@@ -4,6 +4,7 @@ from typing import Any
 
 from loguru import logger
 from laffyhand.agent.tools.base import BaseTool
+from laffyhand.agent.tools.file._gitignore import GitignoreFilter
 from laffyhand.agent.tools.file._ripgrep import rg_available, glob as rg_glob
 
 
@@ -14,7 +15,12 @@ class GlobTool(BaseTool):
     name = "glob"
     description = (
         "Find files matching a glob pattern. Results are sorted by modification time (newest first) "
-        "and limited to 100 files. Uses ripgrep when available for faster results with .gitignore support."
+        "and limited to 100 files. By default, files matched by .gitignore patterns are excluded. "
+        "Uses ripgrep when available for faster results with native .gitignore support.\n\n"
+        "Parameters:\n"
+        "- pattern: glob pattern (e.g. **/*.py, src/**/*.ts)\n"
+        "- path: directory to search in (default: current working directory)\n"
+        "- include_ignored: if true, include files that match .gitignore patterns (default: false)"
     )
     max_result_size = 50000
 
@@ -30,6 +36,11 @@ class GlobTool(BaseTool):
                     "type": "string",
                     "description": "Directory to search in (default: current working directory)",
                 },
+                "include_ignored": {
+                    "type": "boolean",
+                    "description": "If true, include files that match .gitignore patterns (default: false)",
+                    "default": False,
+                },
             },
             "required": ["pattern"],
         }
@@ -37,11 +48,12 @@ class GlobTool(BaseTool):
     async def run(self, params: dict[str, Any]) -> str:
         root = Path(params.get("path", ".")).resolve()
         pattern = params["pattern"]
+        include_ignored = params.get("include_ignored", False)
 
         matches: list[Path] = []
 
         if rg_available():
-            rg_results = rg_glob(root, pattern)
+            rg_results = rg_glob(root, pattern, include_ignored=include_ignored)
             if rg_results is not None:
                 for p in rg_results:
                     if not p:
@@ -59,12 +71,14 @@ class GlobTool(BaseTool):
         if not matches:
             for p in glob_module.glob(pattern, root_dir=root, recursive=True):
                 p_obj = (root / p).resolve()
-                # Prevent path traversal outside root
                 if not str(p_obj).startswith(str(root)):
                     logger.warning(f"Glob: blocked path traversal: {p_obj}")
                     continue
                 if p_obj.is_file():
                     matches.append(p_obj)
+            if not include_ignored and matches:
+                gitignore = GitignoreFilter(root)
+                matches = gitignore.filter(matches)
             logger.debug(
                 f"Glob: Python glob returned {len(matches)} results for {pattern} in {root}"
             )
