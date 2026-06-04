@@ -4,9 +4,18 @@ import sqlite3
 
 from loguru import logger
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 _MIGRATIONS: dict[int, str] = {
+    8: """
+        CREATE TABLE IF NOT EXISTS file_tag (
+            path        TEXT PRIMARY KEY,
+            message     TEXT NOT NULL DEFAULT '',
+            tags        TEXT NOT NULL DEFAULT '{}'
+                CHECK (JSON_VALID(tags)),
+            updated_at  TEXT NOT NULL
+        );
+    """,
     7: """
         ALTER TABLE session ADD COLUMN cost INTEGER NOT NULL DEFAULT 0;
     """,
@@ -129,6 +138,14 @@ CREATE INDEX IF NOT EXISTS idx_session_parent ON session(parent_id);
 CREATE INDEX IF NOT EXISTS idx_session_parent_status ON session(parent_id, status);
 CREATE INDEX IF NOT EXISTS idx_session_fork ON session(fork_id);
 CREATE INDEX IF NOT EXISTS idx_todo_task_tool ON todo(task_tool_id);
+
+CREATE TABLE IF NOT EXISTS file_tag (
+    path        TEXT PRIMARY KEY,
+    message     TEXT NOT NULL DEFAULT '',
+    tags        TEXT NOT NULL DEFAULT '{}'
+        CHECK (JSON_VALID(tags)),
+    updated_at  TEXT NOT NULL
+);
 """
 
 

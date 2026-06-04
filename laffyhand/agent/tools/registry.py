@@ -17,6 +17,7 @@ class ToolRegistry:
         self.permission = permission or PermissionManager()
         self._on_build_defs: list[Callable[[], None]] = []
         self._lock = asyncio.Lock()
+        self.result_post_processor: Callable[[str, str, dict[str, Any]], str] | None = None
 
     def on_build_defs(self, callback: Callable[[], None]) -> None:
         self._on_build_defs.append(callback)
@@ -81,6 +82,9 @@ class ToolRegistry:
 
         logger.info(f"Running tool: {name}")
         result = await tool.run(params)
+
+        if self.result_post_processor is not None:
+            result = self.result_post_processor(name, result, params)
 
         if tool.max_result_size and len(result) > tool.max_result_size:
             result = truncate_output(result, tool.max_result_size)

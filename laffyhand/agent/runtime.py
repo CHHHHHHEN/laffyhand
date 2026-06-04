@@ -41,6 +41,7 @@ from laffyhand.agent.tools.registry import ToolRegistry
 from laffyhand.agent.tools.file import ReadTool, WriteTool, EditTool, GlobTool, GrepTool
 from laffyhand.agent.tools.bash import BashTool
 from laffyhand.agent.tools.todo import TodoTool
+from laffyhand.agent.tools.tag import TagTool, annotate_result
 from laffyhand.agent.session.todo import TodoManager
 from laffyhand.agent.tools.skill_tool import SkillTool
 from laffyhand.agent.tools.task import TaskTool
@@ -50,6 +51,7 @@ from laffyhand.agent.tools.mcp_manage import (
     MCPDisconnectTool,
 )
 from laffyhand.agent.mcp import MCPService
+from laffyhand.agent.db.repository import FileTagRepo
 from laffyhand.agent.loop import agent_loop
 from laffyhand.agent.llm.factory import build_route
 from laffyhand.agent.llm.facade import LLM
@@ -113,6 +115,8 @@ class AgentRuntime:
 
         self.todo_manager = TodoManager.from_session_manager(self.session_manager)
 
+        self._file_tag_repo = FileTagRepo(self.session_manager.connection)
+
         self._states: dict[str, AgentState] = {}
         self._session_locks: dict[str, asyncio.Lock] = {}
         self._session_contexts: dict[str, SessionContext] = {}
@@ -160,6 +164,19 @@ class AgentRuntime:
 
         self._task_tool = TaskTool(runtime=self)
         self.tool_registry.register_tool(self._task_tool)
+
+        # Tag tool
+        self.tool_registry.register_tool(TagTool(self._file_tag_repo))
+
+        # Post-process glob/read results with tag annotations
+        repo = self._file_tag_repo
+
+        def _post_process(name: str, result: str, params: dict) -> str:
+            if name in ("glob", "read"):
+                return annotate_result(name, result, params, repo)
+            return result
+
+        self.tool_registry.result_post_processor = _post_process
 
         # MCP management tools
         self.tool_registry.register_tool(MCPListTool(self.mcp_service))
