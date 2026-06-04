@@ -60,6 +60,10 @@ class ReadTool(BaseTool):
                     "type": "integer",
                     "description": "Number of context lines before and after each match (default: 5). Only used with pattern",
                 },
+                "depth": {
+                    "type": "integer",
+                    "description": "Directory listing depth. 1 = flat (default), 2 = one level deep, etc. Only applies when file_path is a directory",
+                },
             },
             "anyOf": [
                 {"required": ["file_path"]},
@@ -83,7 +87,41 @@ class ReadTool(BaseTool):
             return []
         return difflib.get_close_matches(path.name, candidates, n=5, cutoff=0.3)
 
-    def _list_directory(self, path: Path, offset: int | None, limit: int | None) -> str:
+    def _format_entry(self, entry: Path, indent: int, depth: int) -> list[str]:
+        """Format a single directory entry. Recursively formats children when depth > 1."""
+        prefix = "  " * indent
+        lines: list[str] = []
+
+        if entry.is_file() and not looks_binary(entry):
+            try:
+                text = entry.read_text(encoding="utf-8", errors="replace")
+                count = len(text.splitlines())
+                lines.append(f"{prefix}{entry.name} ({count} lines)")
+            except Exception:
+                lines.append(f"{prefix}{entry.name}")
+        else:
+            lines.append(f"{prefix}{entry.name}/")
+
+        if depth > 1 and entry.is_dir():
+            try:
+                children = sorted(
+                    entry.iterdir(),
+                    key=lambda p: (0 if p.is_dir() else 1, p.name.lower()),
+                )
+            except PermissionError:
+                lines.append(f"{prefix}  (Permission denied)")
+            else:
+                for child in children:
+                    lines.extend(self._format_entry(child, indent + 1, depth - 1))
+
+        return lines
+
+    def _list_directory(
+        self, path: Path, offset: int | None, limit: int | None, depth: int = 1
+    ) -> str:
+        if depth <= 0:
+            return ""
+
         try:
             entries = sorted(
                 path.iterdir(), key=lambda p: (0 if p.is_dir() else 1, p.name.lower())
@@ -96,18 +134,29 @@ class ReadTool(BaseTool):
             return f"Offset {offset} is out of range (directory has {total} entries)"
         end = total if limit is None else start + limit
         selected = entries[start:end]
-        lines = [f"Contents of {path} (total {total} entries):"]
+
+        lines: list[str] = []
+        show_recursive = depth > 1
+        if show_recursive:
+            lines.append(f"Contents of {path} (depth={depth}):")
+        else:
+            lines.append(f"Contents of {path} (total {total} entries):")
+
         for entry in selected:
-            suffix = "/" if entry.is_dir() else ""
-            if entry.is_file() and not looks_binary(entry):
-                try:
-                    text = entry.read_text(encoding="utf-8", errors="replace")
-                    count = len(text.splitlines())
-                    lines.append(f"  {entry.name}{suffix} ({count} lines)")
-                except Exception:
-                    lines.append(f"  {entry.name}{suffix}")
+            if show_recursive:
+                lines.extend(self._format_entry(entry, 1, depth))
             else:
-                lines.append(f"  {entry.name}{suffix}")
+                suffix = "/" if entry.is_dir() else ""
+                if entry.is_file() and not looks_binary(entry):
+                    try:
+                        text = entry.read_text(encoding="utf-8", errors="replace")
+                        count = len(text.splitlines())
+                        lines.append(f"  {entry.name}{suffix} ({count} lines)")
+                    except Exception:
+                        lines.append(f"  {entry.name}{suffix}")
+                else:
+                    lines.append(f"  {entry.name}{suffix}")
+
         return "\n".join(lines)
 
     def _read_with_context(
@@ -205,7 +254,7 @@ class ReadTool(BaseTool):
 
         if path.is_dir():
             result = self._list_directory(
-                path, params.get("offset"), params.get("limit")
+                path, params.get("offset"), params.get("limit"), params.get("depth", 1)
             )
             logger.info(f"Read: listed directory {path}")
             return result
@@ -310,7 +359,10 @@ class ReadTool(BaseTool):
 
             if path.is_dir():
                 dir_content = self._list_directory(
-                    path, params.get("offset"), params.get("limit")
+                    path,
+                    params.get("offset"),
+                    params.get("limit"),
+                    params.get("depth", 1),
                 )
                 parts.append(f"{head}\n{dir_content}")
                 total_size += len(dir_content) + len(head) + 2
