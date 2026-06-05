@@ -27,67 +27,12 @@ class AgentInfo(BaseModel):
     options: dict[str, Any] = {}
 
 
-def _load_builtin_prompts_from_dir() -> None:
-    if not _PROMPTS_DIR.is_dir():
-        return
-    for f in sorted(_PROMPTS_DIR.iterdir()):
-        if f.suffix == ".md" and f.stem in BUILTIN_AGENTS:
-            BUILTIN_AGENTS[f.stem].system_prompt = f.read_text(encoding="utf-8")
-
-
-BUILTIN_AGENTS: dict[str, AgentInfo] = {
-    "build": AgentInfo(
-        name="build",
-        description="Main coding agent with full tool access",
-        mode="primary",
-        system_prompt="",
-        permission={},
-    ),
-    "plan": AgentInfo(
-        name="plan",
-        description="Plan mode agent — reads code, proposes changes, does not edit",
-        mode="primary",
-        permission={"deny": ["write", "edit", "bash", "task"]},
-        system_prompt="",
-        hidden=True,
-    ),
-    "general": AgentInfo(
-        name="general",
-        description="General-purpose subagent for multi-step tasks",
-        mode="subagent",
-        system_prompt="",
-    ),
-    "explore": AgentInfo(
-        name="explore",
-        description="Fast codebase exploration and file search",
-        mode="subagent",
-        system_prompt="",
-        permission={"deny": ["write", "edit", "bash", "task", "todowrite", "skill"]},
-    ),
-    "compaction": AgentInfo(
-        name="compaction",
-        description="Summarize conversation context (internal use)",
-        mode="subagent",
-        hidden=True,
-        system_prompt="",
-    ),
-    "title": AgentInfo(
-        name="title",
-        description="Generate session title (internal use)",
-        mode="subagent",
-        hidden=True,
-        system_prompt="",
-    ),
-}
-
-_load_builtin_prompts_from_dir()
-
-
 class AgentRegistry:
     def __init__(self) -> None:
         self._agents: dict[str, AgentInfo] = {}
-        for name, info in BUILTIN_AGENTS.items():
-            self._agents[name] = info
+        if _PROMPTS_DIR.is_dir():
+            self.discover([str(_PROMPTS_DIR)])
+
     def register(self, info: AgentInfo) -> None:
         self._agents[info.name] = info
         logger.debug(f"Agent registered: {info.name} ({info.mode})")
@@ -113,7 +58,7 @@ class AgentRegistry:
             if not path.is_dir():
                 continue
             for f in sorted(path.iterdir()):
-                if f.suffix == ".md" and f.stem != "README":
+                if f.suffix == ".md" and f.stem not in ("README", "template_agent"):
                     info = _load_agent_file(f)
                     if info is not None:
                         self.register(info)
@@ -160,3 +105,10 @@ def _load_agent_file(path: Path) -> AgentInfo | None:
         hidden=meta.get("hidden", False),
         options=meta.get("options", {}),
     )
+
+
+def get_builtin(name: str) -> AgentInfo | None:
+    path = _PROMPTS_DIR / f"{name}.md"
+    if not path.is_file():
+        return None
+    return _load_agent_file(path)

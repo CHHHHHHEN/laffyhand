@@ -21,7 +21,7 @@ from laffyhand.core.schemas import (
 from laffyhand.core.token_utils import estimate_tokens, estimate_message_tokens, estimate_messages_tokens
 from laffyhand.core.llm.facade import LLM
 from laffyhand.core.truncation import truncate_output
-from laffyhand.core.agent.agent import BUILTIN_AGENTS
+from laffyhand.core.agent.agent import get_builtin
 
 if TYPE_CHECKING:
     from laffyhand.core.session import SessionManager
@@ -182,7 +182,8 @@ async def _summarize(
     head_text = build_summary_text(head, tool_truncate=tool_truncate)
     summary_prompt = SUMMARY_PROMPT_TEMPLATE.format(head_text=head_text)
 
-    system_prompt = BUILTIN_AGENTS["compaction"].system_prompt
+    info = get_builtin("compaction")
+    system_prompt = info.system_prompt if info else ""
     summary_messages: list[Message] = [
         SystemMessage(content=system_prompt),
         UserMessage(content=summary_prompt),

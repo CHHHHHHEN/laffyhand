@@ -7,8 +7,8 @@ from unittest import TestCase
 from laffyhand.core.agent.agent import (
     AgentInfo,
     AgentRegistry,
-    BUILTIN_AGENTS,
     _load_agent_file,
+    get_builtin,
 )
 
 
@@ -50,29 +50,40 @@ class TestAgentInfo(TestCase):
 
 
 class TestBuiltinAgents(TestCase):
+    def setUp(self):
+        self.registry = AgentRegistry()
+
     def test_build_agent_exists(self):
-        self.assertIn("build", BUILTIN_AGENTS)
+        self.assertIsNotNone(self.registry.get("build"))
 
     def test_build_agent_is_primary(self):
-        self.assertEqual(BUILTIN_AGENTS["build"].mode, "primary")
+        self.assertEqual(self.registry.get("build").mode, "primary")
 
     def test_plan_agent_hidden(self):
-        self.assertTrue(BUILTIN_AGENTS["plan"].hidden)
+        self.assertTrue(self.registry.get("plan").hidden)
 
     def test_plan_agent_denies_edit_tools(self):
-        self.assertIn("write", BUILTIN_AGENTS["plan"].permission.get("deny", []))
+        self.assertIn("write", self.registry.get("plan").permission.get("deny", []))
 
     def test_explore_agent_denies_write(self):
-        self.assertIn("write", BUILTIN_AGENTS["explore"].permission.get("deny", []))
+        self.assertIn("write", self.registry.get("explore").permission.get("deny", []))
 
     def test_compaction_agent_hidden(self):
-        self.assertTrue(BUILTIN_AGENTS["compaction"].hidden)
+        self.assertTrue(self.registry.get("compaction").hidden)
 
     def test_title_agent_hidden(self):
-        self.assertTrue(BUILTIN_AGENTS["title"].hidden)
+        self.assertTrue(self.registry.get("title").hidden)
 
     def test_general_agent_mode(self):
-        self.assertEqual(BUILTIN_AGENTS["general"].mode, "subagent")
+        self.assertEqual(self.registry.get("general").mode, "subagent")
+
+    def test_get_builtin_returns_agent(self):
+        info = get_builtin("build")
+        self.assertIsNotNone(info)
+        self.assertEqual(info.mode, "primary")
+
+    def test_get_builtin_returns_none_for_unknown(self):
+        self.assertIsNone(get_builtin("nonexistent"))
 
 
 class TestAgentRegistry(TestCase):
@@ -80,7 +91,7 @@ class TestAgentRegistry(TestCase):
         self.registry = AgentRegistry()
 
     def test_init_loads_builtin_agents(self):
-        for name in BUILTIN_AGENTS:
+        for name in ("build", "plan", "general", "explore", "compaction", "title"):
             self.assertIsNotNone(self.registry.get(name))
 
     def test_register(self):
@@ -114,7 +125,7 @@ class TestAgentRegistry(TestCase):
             self.assertFalse(a.hidden)
 
     def test_list_visible_does_not_include_hidden_builtins(self):
-        hidden_names = {n for n, a in BUILTIN_AGENTS.items() if a.hidden}
+        hidden_names = {"plan", "compaction", "title"}
         visible_names = {a.name for a in self.registry.list_visible()}
         self.assertTrue(hidden_names.isdisjoint(visible_names))
 
