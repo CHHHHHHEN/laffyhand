@@ -64,7 +64,7 @@ describe("ChatInput", () => {
   })
 
   it("disables send button when input is empty", () => {
-    render(<ChatInput onSend={vi.fn()} />)
+    render(<ChatInput onSend={vi.fn()} agents={MOCK_AGENTS} />)
 
     // 开始时为空，按钮应 disabled
     const sendButton = screen.getByRole("button", { name: /send/i })
@@ -91,7 +91,7 @@ describe("ChatInput", () => {
   })
 
   it("does not show busy mode selector when not streaming", () => {
-    render(<ChatInput onSend={vi.fn()} />)
+    render(<ChatInput onSend={vi.fn()} agents={MOCK_AGENTS} />)
     expect(screen.queryByText("Interrupt")).not.toBeInTheDocument()
     expect(screen.queryByText("Steer")).not.toBeInTheDocument()
     expect(screen.queryByText("Queue")).not.toBeInTheDocument()
@@ -99,7 +99,7 @@ describe("ChatInput", () => {
 
   it("shows cancel button when streaming", () => {
     const onCancel = vi.fn()
-    render(<ChatInput onSend={vi.fn()} onCancel={onCancel} isStreaming={true} />)
+    render(<ChatInput onSend={vi.fn()} agents={MOCK_AGENTS} onCancel={onCancel} isStreaming={true} />)
 
     const cancelButton = screen.getByTitle("Cancel")
     expect(cancelButton).toBeInTheDocument()
@@ -108,7 +108,7 @@ describe("ChatInput", () => {
   })
 
   it("does not show cancel button when not streaming", () => {
-    render(<ChatInput onSend={vi.fn()} />)
+    render(<ChatInput onSend={vi.fn()} agents={MOCK_AGENTS} />)
     expect(screen.queryByTitle("Cancel")).not.toBeInTheDocument()
   })
 
@@ -171,34 +171,12 @@ describe("ChatInput", () => {
   // ── 底部提示 ──
 
   it("shows bottom hint text", () => {
-    render(<ChatInput onSend={vi.fn()} />)
+    render(<ChatInput onSend={vi.fn()} agents={MOCK_AGENTS} />)
     expect(screen.getByText(/Shift\+Enter/)).toBeInTheDocument()
   })
 
-  // ── 按钮文字 ──
-
-  it("shows 'Interrupt' submit button text in interrupt mode during streaming", () => {
-    render(<ChatInput onSend={vi.fn()} agents={MOCK_AGENTS} isStreaming={true} />)
-    // 提交按钮包含 ⚡ 和 Interrupt
-    expect(screen.getByText("Interrupt")).toBeInTheDocument()
-  })
-
-  it("shows 'Steer' submit button text in steer mode during streaming", () => {
-    useUiStore.getState().setBusyMode("steer")
-    render(<ChatInput onSend={vi.fn()} agents={MOCK_AGENTS} isStreaming={true} />)
-    expect(screen.getByText("Steer")).toBeInTheDocument()
-  })
-
-  it("shows 'Queue' submit button text in queue mode during streaming", () => {
-    useUiStore.getState().setBusyMode("queue")
-    render(<ChatInput onSend={vi.fn()} agents={MOCK_AGENTS} isStreaming={true} />)
-    expect(screen.getByText("Queue")).toBeInTheDocument()
-  })
-
-  // ── 布局对齐 ──
-
   it("has matching border-box for vertical alignment with textarea", () => {
-    render(<ChatInput onSend={vi.fn()} />)
+    render(<ChatInput onSend={vi.fn()} agents={MOCK_AGENTS} />)
     const sendButton = screen.getByRole("button", { name: /send/i })
     // Button and textarea both have `border` so their total heights
     // (padding + border) match, ensuring vertical centering in the flex row

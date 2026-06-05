@@ -74,6 +74,7 @@ export function ChatInput({ onSend, onInterrupt, onSteer, onQueue, onCancel, onF
     if (agents.length === 0) return
     const idx = agents.findIndex((a) => a.name === defaultAgent)
     const next = agents[(idx + 1) % agents.length]
+    if (!next) return
     setDefaultAgent(next.name)
     showNotification(`Agent: ${defaultAgent} → ${next.name}`)
   }
