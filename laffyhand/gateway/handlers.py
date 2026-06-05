@@ -235,6 +235,7 @@ async def handle_session_load(
         is_streaming = transport.dispatcher.get_active_session_stream(session_id) is not None
     return {
         "session_id": state.session_id,
+        "title": session.title if session else None,
         "model": session.model if session else "",
         "agent": session.agent_version if session else "",
         "messages_count": len(state.messages),
@@ -1018,7 +1019,11 @@ async def handle_session_compact(
         raise ValueError("session_id is required")
     new_id = await runtime.compact_session(session_id)
     if new_id is None:
-        raise RuntimeError("Compaction failed — no session state or nothing to compact")
+        return {
+            "status": "nothing_to_compact",
+            "session_id": session_id,
+            "parent_id": None,
+        }
     return {
         "status": "compacted",
         "session_id": new_id,

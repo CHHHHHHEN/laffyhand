@@ -78,6 +78,10 @@ export function ChatPage() {
     if (!sessionId) return
     try {
       const result = await rpcClient.sessionCompact(sessionId)
+      if (result.status === "nothing_to_compact") {
+        console.log("No messages to compact, session unchanged")
+        return
+      }
       useSessionStore.getState().addActiveSession(result.session_id)
       useChatStore.getState().addSession(result.session_id)
       navigate(`/chat/${result.session_id}`, { replace: true })

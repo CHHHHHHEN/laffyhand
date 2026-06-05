@@ -557,6 +557,8 @@ class AgentRuntime:
 
         state = self._states.get(session_id)
         if state is None:
+            state = self.load_session_state(session_id)
+        if state is None:
             logger.warning(f"compact_session: state not found for {session_id}")
             return None
         llm = self._llm_for_session(session_id)

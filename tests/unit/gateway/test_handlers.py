@@ -134,14 +134,33 @@ class TestHandleSessionLoad:
         mock_state.messages = ["m1", "m2"]
         mock_state.turn_count = 7
         runtime.load_session_state = MagicMock(return_value=mock_state)
+        mock_session = MagicMock()
+        mock_session.title = "My Session"
+        runtime.session_manager.get = MagicMock(return_value=mock_session)
 
         result = await handle_session_load(
             runtime, {"session_id": "sess-target"}, transport, 1, "c1"
         )
 
         assert result["session_id"] == "sess-target"
+        assert result["title"] == "My Session"
         assert result["messages_count"] == 2
         assert result["turn_count"] == 7
+
+    @pytest.mark.anyio
+    async def test_loads_session_without_title(self, runtime, transport):
+        mock_state = MagicMock()
+        mock_state.session_id = "sess-untitled"
+        mock_state.messages = []
+        mock_state.turn_count = 0
+        runtime.load_session_state = MagicMock(return_value=mock_state)
+        runtime.session_manager.get = MagicMock(return_value=None)
+
+        result = await handle_session_load(
+            runtime, {"session_id": "sess-untitled"}, transport, 1, "c1"
+        )
+
+        assert result["title"] is None
 
     @pytest.mark.anyio
     async def test_requires_session_id(self, runtime, transport):
@@ -217,12 +236,15 @@ class TestHandleSessionCompact:
             await handle_session_compact(runtime, {}, transport, 1, "c1")
 
     @pytest.mark.anyio
-    async def test_raises_on_failure(self, runtime, transport):
+    async def test_returns_nothing_to_compact_when_noop(self, runtime, transport):
         runtime.compact_session = AsyncMock(return_value=None)
-        with pytest.raises(RuntimeError, match="Compaction failed"):
-            await handle_session_compact(
-                runtime, {"session_id": "sess-1"}, transport, 1, "c1"
-            )
+        result = await handle_session_compact(
+            runtime, {"session_id": "sess-1"}, transport, 1, "c1"
+        )
+        assert result["status"] == "nothing_to_compact"
+        assert result["session_id"] == "sess-1"
+        assert result["parent_id"] is None
+        runtime.compact_session.assert_awaited_once_with("sess-1")
 
 
 class TestHandleChat:
@@ -501,11 +523,15 @@ class TestHandleSessionLoadWithMessages:
         ]
         mock_state.turn_count = 2
         runtime.load_session_state = MagicMock(return_value=mock_state)
+        mock_session = MagicMock()
+        mock_session.title = "Chat Title"
+        runtime.session_manager.get = MagicMock(return_value=mock_session)
 
         result = await handle_session_load(
             runtime, {"session_id": "sess-target"}, transport, 1, "c1"
         )
 
+        assert result["title"] == "Chat Title"
         assert "messages" in result
         assert len(result["messages"]) == 2
         assert result["messages"][0]["role"] == "user"

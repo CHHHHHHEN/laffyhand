@@ -216,7 +216,7 @@ export interface TodoListResult {
 export interface SessionCompactResult {
   status: string
   session_id: string
-  parent_id: string
+  parent_id: string | null
 }
 
 export interface WorkspaceSetResult {
