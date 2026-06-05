@@ -107,8 +107,8 @@ class WriteTool(BaseTool):
 
         # Append diff for existing-file edits
         if old_content is not None:
-            diff_display = format_diff(path, old_content, content)
-            if diff_display.strip():
-                result += f"\n\n{diff_display}"
+            diff = format_diff(path, old_content, content)
+            if diff.display.strip():
+                result += f"\n\n{diff.display}"
 
         return result

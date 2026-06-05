@@ -13,6 +13,14 @@ class TestDiffConfig(unittest.TestCase):
         config = DiffConfig(max_lines=10)
         self.assertEqual(config.max_lines, 10)
 
+    def test_default_truncate_enabled(self):
+        config = DiffConfig()
+        self.assertTrue(config.truncate)
+
+    def test_truncate_disabled(self):
+        config = DiffConfig(truncate=False)
+        self.assertFalse(config.truncate)
+
 
 class TestFormatDiff(unittest.TestCase):
     def setUp(self):
@@ -63,10 +71,40 @@ class TestFormatDiff(unittest.TestCase):
         result = format_diff(self.path, "a\n", "b\n")
         self.assertIn(str(self.path), result.display)
 
+    def test_truncate_disabled_shows_full_diff(self):
+        old = "\n".join(f"line{i}" for i in range(100))
+        new = "\n".join(f"line{i}" for i in range(100))
+        new += "\nextra"
+        config = DiffConfig(max_lines=5, truncate=False)
+        result = format_diff(self.path, old, new, config)
+        self.assertFalse(result.truncated)
+        self.assertNotIn("diff truncated", result.display)
+
+    def test_additions_counted(self):
+        result = format_diff(self.path, "a\nb\n", "a\nb\nc\nd\n")
+        self.assertEqual(result.additions, 2)
+        self.assertEqual(result.deletions, 0)
+
+    def test_deletions_counted(self):
+        result = format_diff(self.path, "a\nb\nc\n", "a\n")
+        self.assertEqual(result.additions, 0)
+        self.assertEqual(result.deletions, 2)
+
+    def test_additions_and_deletions(self):
+        result = format_diff(self.path, "a\nb\n", "a\nc\n")
+        self.assertEqual(result.additions, 1)
+        self.assertEqual(result.deletions, 1)
+
+    def test_no_changes(self):
+        result = format_diff(self.path, "a\nb\n", "a\nb\n")
+        self.assertEqual(result.additions, 0)
+        self.assertEqual(result.deletions, 0)
+
     def test_diff_result_fields(self):
-        config = DiffConfig(max_lines=1)
-        result = format_diff(self.path, "a\nb\n", "a\nc\n", config)
+        result = format_diff(self.path, "a\nb\n", "a\nc\n")
         self.assertIsInstance(result, DiffResult)
         self.assertIsInstance(result.display, str)
         self.assertIsInstance(result.total_lines, int)
         self.assertIsInstance(result.truncated, bool)
+        self.assertIsInstance(result.additions, int)
+        self.assertIsInstance(result.deletions, int)

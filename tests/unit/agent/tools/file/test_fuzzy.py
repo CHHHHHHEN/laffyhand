@@ -1,7 +1,6 @@
 import unittest
 
 from laffyhand.core.tools.file._fuzzy import (
-    count_diff,
     exact_match,
     whitespace_normalized_match,
     trimmed_boundary_match,
@@ -11,33 +10,6 @@ from laffyhand.core.tools.file._fuzzy import (
     find_all_fuzzy,
     STRATEGIES,
 )
-
-
-class TestCountDiff(unittest.TestCase):
-    def test_count_diff_additions(self):
-        additions, deletions = count_diff("foo\nbar\n", "foo\nbar\nbaz\n")
-        self.assertEqual(additions, 1)
-        self.assertEqual(deletions, 0)
-
-    def test_count_diff_deletions(self):
-        additions, deletions = count_diff("foo\nbar\nbaz\n", "foo\nbar\n")
-        self.assertEqual(additions, 0)
-        self.assertEqual(deletions, 1)
-
-    def test_count_diff_both(self):
-        additions, deletions = count_diff("foo\nbar\n", "foo\nqux\n")
-        self.assertEqual(additions, 1)
-        self.assertEqual(deletions, 1)
-
-    def test_count_diff_no_change(self):
-        additions, deletions = count_diff("foo\nbar\n", "foo\nbar\n")
-        self.assertEqual(additions, 0)
-        self.assertEqual(deletions, 0)
-
-    def test_count_diff_empty_old(self):
-        additions, deletions = count_diff("", "hello\nworld\n")
-        self.assertEqual(additions, 2)
-        self.assertEqual(deletions, 0)
 
 
 class TestExactMatch(unittest.TestCase):

@@ -1,24 +1,16 @@
-import difflib
+"""Fuzzy string matching strategies for locating content in files.
+
+Each strategy tries to find *old* within *content* under different
+normalisations of whitespace, escaping, or line-level anchoring.
+Strategies are ordered by specificity — the most specific match
+wins when multiple candidates exist.
+"""
+
 import re
 from typing import Callable
 
 
-def count_diff(old: str, new: str) -> tuple[int, int]:
-    """Count lines added and removed between two strings using SequenceMatcher."""
-    old_lines = old.splitlines()
-    new_lines = new.splitlines()
-    matcher = difflib.SequenceMatcher(None, old_lines, new_lines)
-    additions = 0
-    deletions = 0
-    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
-        if tag == "replace":
-            deletions += i2 - i1
-            additions += j2 - j1
-        elif tag == "delete":
-            deletions += i2 - i1
-        elif tag == "insert":
-            additions += j2 - j1
-    return additions, deletions
+# --- Types --------------------------------------------------------------------
 
 
 MatchFn = Callable[[str, str], tuple[int, int] | None]
@@ -37,6 +29,7 @@ def _build_whitespace_flexible_regex(old: str) -> re.Pattern[str]:
 
 
 def exact_match(content: str, old: str) -> tuple[int, int] | None:
+    """Simple substring match — fastest, highest specificity."""
     idx = content.find(old)
     if idx == -1:
         return None
@@ -78,6 +71,9 @@ def escape_normalized_match(content: str, old: str) -> tuple[int, int] | None:
     return exact_match(content, unescaped)
 
 
+# --- Similarity utilities -----------------------------------------------------
+
+
 def _text_similarity(a: str, b: str) -> float:
     """Levenshtein-based similarity between 0 and 1."""
     max_len = max(len(a), len(b))
@@ -101,8 +97,8 @@ def _levenshtein(s: str, t: str) -> int:
     return prev[-1]
 
 
-SINGLE_CANDIDATE_THRESHOLD = 0.3
-MULTIPLE_CANDIDATES_THRESHOLD = 0.3
+_SINGLE_CANDIDATE_THRESHOLD = 0.3
+_MULTIPLE_CANDIDATES_THRESHOLD = 0.3
 
 
 def block_anchor_match(content: str, old: str) -> tuple[int, int] | None:
@@ -157,7 +153,7 @@ def block_anchor_match(content: str, old: str) -> tuple[int, int] | None:
     if len(candidates) == 1:
         start, end = candidates[0]
         sim = _eval_candidate(start, end)
-        if sim >= SINGLE_CANDIDATE_THRESHOLD:
+        if sim >= _SINGLE_CANDIDATE_THRESHOLD:
             return _match_span(start, end)
         return None
 
@@ -165,9 +161,12 @@ def block_anchor_match(content: str, old: str) -> tuple[int, int] | None:
     best = max(candidates, key=lambda c: _eval_candidate(c[0], c[1]))
     start, end = best
     sim = _eval_candidate(start, end)
-    if sim >= MULTIPLE_CANDIDATES_THRESHOLD:
+    if sim >= _MULTIPLE_CANDIDATES_THRESHOLD:
         return _match_span(start, end)
     return None
+
+
+# --- Combinators --------------------------------------------------------------
 
 
 def find_all_fuzzy(content: str, old: str) -> list[tuple[int, int]]:

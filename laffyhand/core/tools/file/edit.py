@@ -7,7 +7,6 @@ from laffyhand.core.tools.base import BaseTool
 from laffyhand.core.tools.file._diff import format_diff
 from laffyhand.core.tools.file._fuzzy import (
     STRATEGIES,
-    count_diff,
     find_all_fuzzy,
 )
 from laffyhand.core.tools.file._security import (
@@ -203,15 +202,11 @@ class EditTool(BaseTool):
         content = normalize_newlines(content, line_ending)
         await atomic_write(path, content)
 
-        additions, deletions = count_diff(original, content)
+        diff_result = format_diff(path, original, content)
         logger.info(f"Edit: applied {len(changes)} change(s) to {path}")
-        result = f"Edited {path}: applied {len(changes)} change(s) (+{additions} lines, -{deletions} lines)"
-        return self._append_diff(result, path, original, content)
-
-    def _append_diff(self, result: str, path: Path, old_content: str, new_content: str) -> str:
-        diff_display = format_diff(path, old_content, new_content)
-        if diff_display.strip():
-            result += f"\n\n{diff_display}"
+        result = f"Edited {path}: applied {len(changes)} change(s) (+{diff_result.additions} lines, -{diff_result.deletions} lines)"
+        if diff_result.display.strip():
+            result += f"\n\n{diff_result.display}"
         return result
 
     async def _create_file(self, path: Path, content: str) -> str:
@@ -224,10 +219,12 @@ class EditTool(BaseTool):
         new_content = prefix + "\n" + content
         new_content = normalize_newlines(new_content, line_ending)
         await atomic_write(path, new_content)
+        diff_result = format_diff(path, content, new_content)
         logger.info(f"Edit: prepended to {path}")
-        additions, deletions = count_diff("", prefix)
-        result = f"Edited {path}: prepended (+{additions} lines)"
-        return self._append_diff(result, path, content, new_content)
+        result = f"Edited {path}: prepended (+{diff_result.additions} lines)"
+        if diff_result.display.strip():
+            result += f"\n\n{diff_result.display}"
+        return result
 
     async def _replace_regex(self, path: Path, content: str, pattern: str, new: str, replace_all: bool) -> str:
         line_ending = detect_line_ending(path)
@@ -249,12 +246,12 @@ class EditTool(BaseTool):
 
         new_content = normalize_newlines(new_content, line_ending)
         await atomic_write(path, new_content)
-        additions, deletions = count_diff(
-            content if count == 1 else matches[0].group(), new
-        )
+        diff_result = format_diff(path, content, new_content)
         logger.info(f"Edit: regex replaced {count} occurrence(s) in {path}")
-        result = f"Edited {path} (regex): replaced {count} occurrence(s) (+{additions} lines, -{deletions} lines)"
-        return self._append_diff(result, path, content, new_content)
+        result = f"Edited {path} (regex): replaced {count} occurrence(s) (+{diff_result.additions} lines, -{diff_result.deletions} lines)"
+        if diff_result.display.strip():
+            result += f"\n\n{diff_result.display}"
+        return result
 
     async def _replace_all(self, path: Path, content: str, old: str, new: str) -> str:
         line_ending = detect_line_ending(path)
@@ -267,10 +264,12 @@ class EditTool(BaseTool):
             new_content = content.replace(old, new)
             new_content = normalize_newlines(new_content, line_ending)
             await atomic_write(path, new_content)
-            additions, deletions = count_diff(old, new)
+            diff_result = format_diff(path, content, new_content)
             logger.info(f"Edit: replaced {exact_count} occurrence(s) in {path}")
-            result = f"Edited {path}: replaced {exact_count} occurrence(s) (+{additions} lines, -{deletions} lines)"
-            return self._append_diff(result, path, content, new_content)
+            result = f"Edited {path}: replaced {exact_count} occurrence(s) (+{diff_result.additions} lines, -{diff_result.deletions} lines)"
+            if diff_result.display.strip():
+                result += f"\n\n{diff_result.display}"
+            return result
 
         # Fuzzy path — find all occurrences via fuzzy strategies
         if not fuzzy_matches:
@@ -282,16 +281,18 @@ class EditTool(BaseTool):
             new_content = new_content[:start] + new + new_content[end:]
         new_content = normalize_newlines(new_content, line_ending)
         await atomic_write(path, new_content)
-        additions, deletions = count_diff(old, new)
+        diff_result = format_diff(path, content, new_content)
         label = "fuzzy" if exact_count == 0 else "mixed"
         logger.info(
             f"Edit: {label} replaced {len(fuzzy_matches)} occurrence(s) in {path}"
         )
         result = (
             f"Edited {path} ({label}): replaced {len(fuzzy_matches)} occurrence(s) "
-            f"(+{additions} lines, -{deletions} lines)"
+            f"(+{diff_result.additions} lines, -{diff_result.deletions} lines)"
         )
-        return self._append_diff(result, path, content, new_content)
+        if diff_result.display.strip():
+            result += f"\n\n{diff_result.display}"
+        return result
 
     async def _replace_one(self, path: Path, content: str, old: str, new: str) -> str:
         line_ending = detect_line_ending(path)
@@ -307,13 +308,15 @@ class EditTool(BaseTool):
             new_content = normalize_newlines(new_content, line_ending)
             await atomic_write(path, new_content)
 
-            additions, deletions = count_diff(old, new)
+            diff_result = format_diff(path, content, new_content)
             strategy = "exact" if matched_text == old else name
             logger.info(f"Edit: {strategy} match in {path}")
             result = (
                 f"Edited {path} ({strategy} match): "
-                f"replaced 1 occurrence (+{additions} lines, -{deletions} lines)"
+                f"replaced 1 occurrence (+{diff_result.additions} lines, -{diff_result.deletions} lines)"
             )
-            return self._append_diff(result, path, content, new_content)
+            if diff_result.display.strip():
+                result += f"\n\n{diff_result.display}"
+            return result
 
         return f"old_string not found in {path}"
