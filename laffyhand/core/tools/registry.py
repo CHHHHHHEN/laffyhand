@@ -1,12 +1,68 @@
 import asyncio
+import json
+import re
+import threading
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any
 
 from loguru import logger
-from laffyhand.core.llm.specs.models import ToolDefinition
+from laffyhand.core.llm.specs.models import ToolDefinition, ToolCallContent, ToolMessage
 from laffyhand.core.tools.base import BaseTool
 from laffyhand.core.tools.permission import PermissionManager
 from laffyhand.core._utils import truncate_output
+
+
+@dataclass
+class ToolExecutionResult:
+    message: ToolMessage
+    event_data: str
+    is_error: bool
+
+
+def _try_parse_json(raw: str) -> dict[str, Any] | None:
+    cleaned = raw.strip()
+    if not cleaned:
+        logger.warning("Empty JSON args, skipping repair")
+        return None
+
+    try:
+        return json.loads(cleaned)
+    except json.JSONDecodeError:
+        pass
+
+    replacements = [
+        ("{{", "{"),
+        ("}}", "}"),
+        ('""', '"'),
+        ("::", ":"),
+        (",,", ","),
+    ]
+    for old, new in replacements:
+        cleaned = cleaned.replace(old, new)
+
+    try:
+        return json.loads(cleaned)
+    except json.JSONDecodeError:
+        pass
+
+    def _dedup_exact(m: re.Match[str]) -> str:
+        word = m.group(0)
+        half = len(word) // 2
+        if half >= 2 and word[:half] == word[half:]:
+            return word[:half]
+        return word
+
+    cleaned = re.sub(
+        r'(?<=["\'])\w{4,}(?=["\'])|(?<=[\s,{])\w{4,}(?=[:])', _dedup_exact, cleaned
+    )
+
+    try:
+        return json.loads(cleaned)
+    except json.JSONDecodeError:
+        pass
+
+    return None
 
 
 class ToolRegistry:
@@ -16,7 +72,7 @@ class ToolRegistry:
         self._dirty = True
         self.permission = permission or PermissionManager()
         self._on_build_defs: list[Callable[[], None]] = []
-        self._lock = asyncio.Lock()
+        self._lock = threading.Lock()
         self.result_post_processor: Callable[[str, str, dict[str, Any]], str] | None = None
         self.workspace: str | None = None
 
@@ -24,20 +80,23 @@ class ToolRegistry:
         self._on_build_defs.append(callback)
 
     def register_tool(self, tool: BaseTool) -> None:
-        self._tools[tool.name] = tool
-        self._dirty = True
+        with self._lock:
+            self._tools[tool.name] = tool
+            self._dirty = True
 
     def unregister_tool(self, name: str) -> None:
-        self._tools.pop(name, None)
-        self._dirty = True
+        with self._lock:
+            self._tools.pop(name, None)
+            self._dirty = True
 
     def list_tools(self) -> dict[str, BaseTool]:
-        return dict(self._tools)
+        with self._lock:
+            return dict(self._tools)
 
     async def build_tool_definitions(
         self, exclude: set[str] | None = None,
     ) -> list[ToolDefinition]:
-        async with self._lock:
+        with self._lock:
             if self._dirty:
                 for cb in self._on_build_defs:
                     cb()
@@ -70,6 +129,62 @@ class ToolRegistry:
             lines.append(f"- **{tool.name}**{params}: {tool.description}")
         lines.append("</tools>")
         return "\n".join(lines)
+
+    async def execute_tool_call(
+        self,
+        tool_call: ToolCallContent,
+        context: dict[str, Any] | None = None,
+    ) -> ToolExecutionResult:
+        params = _try_parse_json(tool_call.args)
+        if params is None:
+            logger.warning(
+                f"Failed to parse tool args for {tool_call.tool_name}: {tool_call.args[:200]}"
+            )
+            return ToolExecutionResult(
+                message=ToolMessage(
+                    tool_call_id=tool_call.tool_call_id,
+                    tool_name=tool_call.tool_name,
+                    args=tool_call.args,
+                    content=f"Error: failed to parse tool arguments for {tool_call.tool_name}. "
+                    f'Args must be valid JSON object like {{"key": "value"}}. '
+                    f"Received: {tool_call.args}",
+                    is_error=True,
+                ),
+                event_data=f"Error: invalid JSON args for {tool_call.tool_name}",
+                is_error=True,
+            )
+
+        if context:
+            for key in context:
+                params.pop(key, None)
+            params.update(context)
+
+        try:
+            result = await self.run_tool(tool_call.tool_name, params)
+        except Exception as e:
+            logger.exception(f"Tool execution failed for {tool_call.tool_name}: {e}")
+            return ToolExecutionResult(
+                message=ToolMessage(
+                    tool_call_id=tool_call.tool_call_id,
+                    tool_name=tool_call.tool_name,
+                    args=tool_call.args,
+                    content=f"Error executing tool {tool_call.tool_name}: internal error",
+                    is_error=True,
+                ),
+                event_data=f"Error: {tool_call.tool_name} failed: internal error",
+                is_error=True,
+            )
+
+        return ToolExecutionResult(
+            message=ToolMessage(
+                tool_call_id=tool_call.tool_call_id,
+                tool_name=tool_call.tool_name,
+                args=tool_call.args,
+                content=result,
+            ),
+            event_data=result,
+            is_error=False,
+        )
 
     async def run_tool(self, name: str, params: dict[str, Any]) -> str:
         tool = self._tools.get(name)
@@ -107,6 +222,8 @@ class ToolRegistry:
                     if not ok:
                         return reason or f"Error: Access to '{p}' outside workspace was denied."
 
+        params = await tool.before_run(params)
+
         timeout = getattr(tool, "timeout", 120)
         try:
             if timeout and timeout > 0:
@@ -116,6 +233,8 @@ class ToolRegistry:
         except asyncio.TimeoutError:
             logger.warning(f"Tool '{name}' timed out after {timeout}s")
             return f"Error: Tool '{name}' timed out after {timeout}s. Try a more specific query or reduce scope."
+
+        result = await tool.after_run(result)
 
         if self.result_post_processor is not None:
             result = self.result_post_processor(name, result, params)

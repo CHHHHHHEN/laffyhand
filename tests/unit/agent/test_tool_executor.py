@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from unittest.mock import MagicMock, AsyncMock
+from unittest.mock import AsyncMock
 
 import pytest
 
 from laffyhand.core.llm.specs.models import ToolMessage
 from laffyhand.core.llm.specs.models import ToolCallContent
-from laffyhand.core.tools.tool_executor import ToolExecutor, ToolExecutionResult
+from laffyhand.core.tools.registry import ToolRegistry, ToolExecutionResult
 
 
 class TestToolExecutionResult:
@@ -28,7 +28,7 @@ class TestToolExecutionResult:
 class TestToolExecutor:
     @pytest.mark.anyio
     async def test_successful_execution(self):
-        registry = MagicMock()
+        registry = ToolRegistry()
         registry.run_tool = AsyncMock(return_value="tool result")
         tool_call = ToolCallContent(
             tool_call_id="tc1",
@@ -36,7 +36,7 @@ class TestToolExecutor:
             args='{"key": "val"}',
         )
 
-        result = await ToolExecutor.execute(registry, tool_call)
+        result = await registry.execute_tool_call(tool_call)
 
         assert result.is_error is False
         assert result.event_data == "tool result"
@@ -47,7 +47,7 @@ class TestToolExecutor:
 
     @pytest.mark.anyio
     async def test_invalid_json_returns_error(self):
-        registry = MagicMock()
+        registry = ToolRegistry()
         registry.run_tool = AsyncMock()
         tool_call = ToolCallContent(
             tool_call_id="tc1",
@@ -55,7 +55,7 @@ class TestToolExecutor:
             args="not valid json",
         )
 
-        result = await ToolExecutor.execute(registry, tool_call)
+        result = await registry.execute_tool_call(tool_call)
 
         assert result.is_error is True
         assert "invalid JSON args" in result.event_data
@@ -65,7 +65,7 @@ class TestToolExecutor:
 
     @pytest.mark.anyio
     async def test_empty_args(self):
-        registry = MagicMock()
+        registry = ToolRegistry()
         registry.run_tool = AsyncMock(return_value="ok")
         tool_call = ToolCallContent(
             tool_call_id="tc2",
@@ -73,7 +73,7 @@ class TestToolExecutor:
             args="{}",
         )
 
-        result = await ToolExecutor.execute(registry, tool_call)
+        result = await registry.execute_tool_call(tool_call)
 
         assert result.is_error is False
         assert result.message.content == "ok"
@@ -81,7 +81,7 @@ class TestToolExecutor:
 
     @pytest.mark.anyio
     async def test_truncated_args_in_warning(self):
-        registry = MagicMock()
+        registry = ToolRegistry()
         registry.run_tool = AsyncMock()
         long_args = "x" * 500
         tool_call = ToolCallContent(
@@ -90,6 +90,6 @@ class TestToolExecutor:
             args=long_args,
         )
 
-        await ToolExecutor.execute(registry, tool_call)
+        await registry.execute_tool_call(tool_call)
 
         registry.run_tool.assert_not_called()
