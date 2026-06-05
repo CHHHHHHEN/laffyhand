@@ -48,6 +48,12 @@ export function ChatInput({ onSend, onInterrupt, onSteer, onQueue, onCancel, onF
   const [selectedCmdIdx, setSelectedCmdIdx] = useState(0)
   const [agentNotification, setAgentNotification] = useState<string | null>(null)
 
+  const currentAgent = useMemo(
+    () => agents.find((a) => a.name === defaultAgent),
+    [agents, defaultAgent],
+  )
+  const agentDisplayName = currentAgent?.name ?? defaultAgent
+
   const filteredCommands = useMemo(() => {
     if (!inputValue.startsWith("/")) return []
     const partial = inputValue.toLowerCase()
@@ -245,6 +251,18 @@ export function ChatInput({ onSend, onInterrupt, onSteer, onQueue, onCancel, onF
 
       {/* Input area */}
       <div className="flex items-center gap-2">
+        {/* Agent indicator */}
+        {agents.length > 0 && (
+          <button
+            type="button"
+            onClick={cycleAgent}
+            title={`Agent: ${agentDisplayName} — Click to switch (Tab)`}
+            className="flex items-center gap-1.5 px-2.5 py-2 text-xs font-medium rounded-lg border border-[var(--border-base)] bg-[var(--bg-deep)] text-[var(--text-base)] hover:text-[var(--accent)] hover:border-[var(--accent)] transition-all cursor-pointer shrink-0"
+          >
+            <span className="w-2 h-2 rounded-full bg-[var(--accent)] shrink-0" />
+            <span className="max-w-24 truncate">{agentDisplayName}</span>
+          </button>
+        )}
         <div className="flex-1 relative">
           <textarea
             ref={textareaRef}

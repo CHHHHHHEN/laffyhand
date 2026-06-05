@@ -271,4 +271,31 @@ describe("ChatInput", () => {
 
     expect(onSend).toHaveBeenCalledWith("/hello")
   })
+
+  // ── Agent indicator badge ──
+
+  it("shows current agent name in the indicator badge", () => {
+    useUiStore.setState({ defaultAgent: "explore" })
+    render(<ChatInput onSend={vi.fn()} agents={MOCK_AGENTS} />)
+
+    const badge = screen.getByTitle(/Agent: explore/)
+    expect(badge).toBeInTheDocument()
+    expect(badge).toHaveTextContent("explore")
+  })
+
+  it("cycles agent when clicking the indicator badge", () => {
+    useUiStore.setState({ defaultAgent: "build" })
+    render(<ChatInput onSend={vi.fn()} agents={MOCK_AGENTS} />)
+
+    const badge = screen.getByTitle(/Agent: build/)
+    fireEvent.click(badge)
+
+    expect(useUiStore.getState().defaultAgent).toBe("general")
+  })
+
+  it("does not show agent indicator when agents list is empty", () => {
+    render(<ChatInput onSend={vi.fn()} agents={[]} />)
+
+    expect(screen.queryByTitle(/Agent:/)).not.toBeInTheDocument()
+  })
 })
