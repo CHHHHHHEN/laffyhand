@@ -7,7 +7,8 @@ import pytest
 
 from laffyhand.core.agent import AgentInfo
 from laffyhand.core.llm.specs.models import AssistantMessage, SystemMessage, UserMessage
-from laffyhand.core.runtime import AgentRuntime, MAX_SUBAGENT_DEPTH
+from laffyhand.core.runtime import AgentRuntime
+from laffyhand.core.subagent.orchestrator import MAX_SUBAGENT_DEPTH
 from laffyhand.core.schemas import (
     AgentState,
     SessionID,
@@ -111,7 +112,7 @@ class TestPreferences:
     async def test_load_initial_preferences_from_cwd(self, runtime, tmp_path):
         agents_md = tmp_path / "AGENTS.md"
         agents_md.write_text("Rule 1\nRule 2")
-        runtime._preferences = None  # force fresh load
+        runtime.preference_service._preferences = None  # force fresh load
         with (
             patch("os.getcwd", return_value=str(tmp_path)),
             patch("os.path.expanduser", return_value="/nonexistent"),
@@ -120,14 +121,14 @@ class TestPreferences:
         assert "<preference>" in result
         assert "Rule 1" in result
         assert "Rule 2" in result
-        assert runtime._preferences is not None
+        assert runtime.preference_service._preferences is not None
         # cached on second call
         cached = await runtime._load_preferences()
         assert cached is result
 
     @pytest.mark.anyio
     async def test_load_initial_no_agents_md(self, runtime):
-        runtime._preferences = None
+        runtime.preference_service._preferences = None
         with (
             patch("os.getcwd", return_value="/nonexistent"),
             patch("os.path.expanduser", return_value="/nonexistent"),
@@ -137,8 +138,8 @@ class TestPreferences:
 
     @pytest.mark.anyio
     async def test_poll_new_preferences_detects_new_file(self, runtime, tmp_path):
-        runtime._preferences = ""
-        runtime._prefs_initialized = True
+        runtime.preference_service._preferences = ""
+        runtime.preference_service._prefs_initialized = True
         with (
             patch("os.getcwd", return_value=str(tmp_path)),
             patch("os.path.expanduser", return_value="/nonexistent"),
@@ -159,7 +160,7 @@ class TestPreferences:
     async def test_poll_new_preferences_detects_changed_file(self, runtime, tmp_path):
         agents_md = tmp_path / "AGENTS.md"
         agents_md.write_text("Original rule")
-        runtime._preferences = None
+        runtime.preference_service._preferences = None
         with (
             patch("os.getcwd", return_value=str(tmp_path)),
             patch("os.path.expanduser", return_value="/nonexistent"),
@@ -179,7 +180,7 @@ class TestPreferences:
     ):
         agents_md = tmp_path / "AGENTS.md"
         agents_md.write_text("Stable rule")
-        runtime._preferences = None
+        runtime.preference_service._preferences = None
         with (
             patch("os.getcwd", return_value=str(tmp_path)),
             patch("os.path.expanduser", return_value="/nonexistent"),
@@ -196,9 +197,9 @@ class TestPreferences:
     async def test_poll_new_preferences_cleared_cache_rescans(self, runtime, tmp_path):
         agents_md = tmp_path / "AGENTS.md"
         agents_md.write_text("Persistent rule")
-        runtime._preferences = ""
-        runtime._preference_files = {}
-        runtime._prefs_initialized = True
+        runtime.preference_service._preferences = ""
+        runtime.preference_service._preference_files = {}
+        runtime.preference_service._prefs_initialized = True
         with (
             patch("os.getcwd", return_value=str(tmp_path)),
             patch("os.path.expanduser", return_value="/nonexistent"),
@@ -210,7 +211,7 @@ class TestPreferences:
     async def test_preference_includes_in_system_prompt(self, runtime, tmp_path):
         agents_md = tmp_path / "AGENTS.md"
         agents_md.write_text("Be concise.")
-        runtime._preferences = None
+        runtime.preference_service._preferences = None
         with (
             patch("os.getcwd", return_value=str(tmp_path)),
             patch("os.path.expanduser", return_value="/nonexistent"),
@@ -230,7 +231,7 @@ class TestPreferenceFileDiscovery:
         inner.mkdir(parents=True)
         md = outer / "AGENTS.md"
         md.write_text("outer rules")
-        found = runtime._find_up("AGENTS.md", start=inner, stop=tmp_path)
+        found = runtime.preference_service.find_up("AGENTS.md", start=inner, stop=tmp_path)
         assert found is not None
         assert found == md
 
@@ -241,17 +242,17 @@ class TestPreferenceFileDiscovery:
         child.mkdir(parents=True)
         md = tmp_path / "AGENTS.md"  # above stop boundary
         md.write_text("should not be found")
-        found = runtime._find_up("AGENTS.md", start=child, stop=parent)
+        found = runtime.preference_service.find_up("AGENTS.md", start=child, stop=parent)
         assert found is None
 
     def test_find_up_returns_none_when_missing(self, runtime, tmp_path):
-        found = runtime._find_up("AGENTS.md", start=tmp_path, stop=tmp_path)
+        found = runtime.preference_service.find_up("AGENTS.md", start=tmp_path, stop=tmp_path)
         assert found is None
 
     def test_find_up_uses_cwd_default(self, runtime):
         """_find_up with no args searches from CWD."""
         with patch("os.getcwd", return_value="/nonexistent"):
-            found = runtime._find_up("AGENTS.md")
+            found = runtime.preference_service.find_up("AGENTS.md")
         assert found is None  # /nonexistent doesn't have AGENTS.md
 
     def test_find_up_all_collects_multiple_matches(self, runtime, tmp_path):
@@ -263,7 +264,7 @@ class TestPreferenceFileDiscovery:
         outer_md.write_text("outer")
         inner_md = inner / "AGENTS.md"
         inner_md.write_text("inner")
-        found = runtime._find_up_all("AGENTS.md", start=inner, stop=tmp_path)
+        found = runtime.preference_service.find_up_all("AGENTS.md", start=inner, stop=tmp_path)
         assert len(found) == 2
         assert inner_md in found
         assert outer_md in found
@@ -276,7 +277,7 @@ class TestPreferenceFileDiscovery:
             patch("os.getcwd", return_value=str(tmp_path)),
             patch("os.path.expanduser", return_value="/nonexistent"),
         ):
-            result = runtime._read_preference_files()
+            result = runtime.preference_service._read_preference_files()
         assert len(result) == 1
         assert str(agents_md) in result
         assert "project rules" in result[str(agents_md)]
@@ -291,7 +292,7 @@ class TestPreferenceFileDiscovery:
             patch("os.getcwd", return_value=str(tmp_path)),
             patch("os.path.expanduser", return_value=str(home)),
         ):
-            result = runtime._read_preference_files()
+            result = runtime.preference_service._read_preference_files()
         assert len(result) == 1
         assert str(home_md) in result
         assert "home rules" in result[str(home_md)]
@@ -308,7 +309,7 @@ class TestPreferenceFileDiscovery:
             patch("os.getcwd", return_value=str(tmp_path)),
             patch("os.path.expanduser", return_value=str(home)),
         ):
-            result = runtime._read_preference_files()
+            result = runtime.preference_service._read_preference_files()
         assert len(result) == 1, "Only project-level should be loaded"
         assert str(agents_md) in result
         assert str(home_md) not in result
@@ -318,7 +319,7 @@ class TestPreferenceFileDiscovery:
         """poll_new_preferences uses the same first-match-wins logic."""
         agents_md = tmp_path / "AGENTS.md"
         agents_md.write_text("project rule")
-        runtime._preferences = None
+        runtime.preference_service._preferences = None
         with (
             patch("os.getcwd", return_value=str(tmp_path)),
             patch("os.path.expanduser", return_value="/nonexistent"),
@@ -331,7 +332,7 @@ class TestPreferenceFileDiscovery:
         ):
             result = await runtime.poll_new_preferences()
         assert "changed project rule" in result
-        assert len(runtime._preference_files) == 1
+        assert len(runtime.preference_service._preference_files) == 1
 
 
 class TestPreferenceResolution:
@@ -634,14 +635,14 @@ class TestCreateSubagent:
         runtime._states[session.id] = state
         agent_info = AgentInfo(name="test", system_prompt="You are test.")
 
-        with patch("laffyhand.core.runtime.agent_loop") as mock_loop:
+        with patch("laffyhand.core.loop.agent_loop") as mock_loop:
 
             async def mock_agent_loop(*args, **kwargs):
                 child_state = args[0]
                 child_state.messages.append(
                     AssistantMessage(content="final answer")
                 )
-                from laffyhand.core.schemas import StepFinish
+                from laffyhand.core.events import StepFinish
 
                 yield StepFinish(index=1, reason="stop")
 
@@ -665,10 +666,10 @@ class TestCreateSubagent:
         runtime._states[session.id] = state
         agent_info = AgentInfo(name="test", system_prompt="You are test.")
 
-        with patch("laffyhand.core.runtime.agent_loop") as mock_loop:
+        with patch("laffyhand.core.loop.agent_loop") as mock_loop:
 
             async def mock_agent_loop(*args, **kwargs):
-                from laffyhand.core.schemas import StepFinish
+                from laffyhand.core.events import StepFinish
 
                 yield StepFinish(index=1, reason="stop")
 
@@ -747,10 +748,10 @@ class TestCreateSubagent:
 
         runtime._event_sinks[session.id] = event_sink
 
-        with patch("laffyhand.core.runtime.agent_loop") as mock_loop:
+        with patch("laffyhand.core.loop.agent_loop") as mock_loop:
 
             async def mock_agent_loop(*args, **kwargs):
-                from laffyhand.core.schemas import StepFinish
+                from laffyhand.core.events import StepFinish
 
                 yield StepFinish(index=1, reason="stop")
 
@@ -764,7 +765,7 @@ class TestCreateSubagent:
             )
 
         # Should have two TodoUpdate events: in_progress + completed
-        from laffyhand.core.schemas import TodoUpdate as TodoUpdateEvent
+        from laffyhand.core.events import TodoUpdate as TodoUpdateEvent
 
         todo_events = [e for e in events if isinstance(e, TodoUpdateEvent)]
         assert len(todo_events) == 2, f"Expected 2 TodoUpdate events, got {len(todo_events)}: {events}"
@@ -794,10 +795,10 @@ class TestCreateSubagent:
 
         runtime._event_sinks[session.id] = event_sink
 
-        with patch("laffyhand.core.runtime.agent_loop") as mock_loop:
+        with patch("laffyhand.core.loop.agent_loop") as mock_loop:
 
             async def mock_agent_loop(*args, **kwargs):
-                from laffyhand.core.schemas import StepFinish
+                from laffyhand.core.events import StepFinish
 
                 yield StepFinish(index=1, reason="stop")
 
@@ -810,7 +811,7 @@ class TestCreateSubagent:
                 todo_id=None,
             )
 
-        from laffyhand.core.schemas import TodoUpdate as TodoUpdateEvent
+        from laffyhand.core.events import TodoUpdate as TodoUpdateEvent
 
         todo_events = [e for e in events if isinstance(e, TodoUpdateEvent)]
         assert len(todo_events) == 0, f"Expected 0 TodoUpdate events, got {len(todo_events)}"
@@ -848,7 +849,7 @@ class TestCreateSubagent:
                 todo_id=todo.id,
             )
 
-        from laffyhand.core.schemas import TodoUpdate as TodoUpdateEvent
+        from laffyhand.core.events import TodoUpdate as TodoUpdateEvent
 
         todo_events = [e for e in events if isinstance(e, TodoUpdateEvent)]
         assert len(todo_events) == 1, f"Expected 1 TodoUpdate event (in_progress), got {len(todo_events)}: {events}"
@@ -904,7 +905,7 @@ class TestCreateSubagent:
         # Give the fire-and-forget task time to execute
         await asyncio.sleep(0)
 
-        from laffyhand.core.schemas import TodoUpdate as TodoUpdateEvent
+        from laffyhand.core.events import TodoUpdate as TodoUpdateEvent
 
         todo_events = [e for e in events if isinstance(e, TodoUpdateEvent)]
         assert len(todo_events) == 1, f"Expected 1 TodoUpdate event from on_complete, got {len(todo_events)}: {events}"

@@ -1,9 +1,3 @@
-"""Task tool — delegate work to a specialized sub-agent.
-
-Sub-agent types and their descriptions are populated dynamically
-from the agent registry at schema-generation time.
-"""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
@@ -20,21 +14,27 @@ class TaskParams(BaseModel):
     todo_id: str | None = Field(None, description="Link to a TODO task ID (auto-updates status)")
 
 if TYPE_CHECKING:
-    from laffyhand.core.runtime import AgentRuntime
+    from laffyhand.core.agent import AgentRegistry
+    from laffyhand.core.subagent.orchestrator import SubagentOrchestrator
 
 
 class TaskTool(BaseTool):
     name = "task"
     description = "Delegate a task to a specialized sub-agent"
 
-    def __init__(self, runtime: AgentRuntime) -> None:
-        self._runtime = runtime
+    def __init__(
+        self,
+        agent_registry: AgentRegistry,
+        orchestrator: SubagentOrchestrator,
+    ) -> None:
+        self._agent_registry = agent_registry
+        self._orchestrator = orchestrator
         self._cached_schema: dict[str, Any] | None = None
 
     def _input_schema(self) -> dict[str, Any]:
         if self._cached_schema is not None:
             return self._cached_schema
-        agents = self._runtime.agent_registry.list_subagents()
+        agents = self._agent_registry.list_subagents()
         enum_agents = [a.name for a in agents]
         schema = TaskParams.model_json_schema()
         schema.pop("title", None)
@@ -57,16 +57,12 @@ class TaskTool(BaseTool):
         if not parent_session_id:
             return "Error: no active session"
 
-        agent_info = self._runtime.agent_registry.get(subagent_type)
+        agent_info = self._agent_registry.get(subagent_type)
         if agent_info is None:
             return f"Error: unknown sub-agent '{subagent_type}'"
 
-        result = await self._runtime.create_subagent(
-            parent_session_id,
-            agent_info,
-            prompt,
-            description=description,
-            background=background,
-            todo_id=todo_id,
+        result = await self._orchestrator.create_subagent(
+            parent_session_id, agent_info, prompt,
+            description=description, background=background, todo_id=todo_id,
         )
         return result

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from unittest.mock import MagicMock, AsyncMock
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -9,23 +9,26 @@ from laffyhand.core.tools.task import TaskTool
 
 
 @pytest.fixture
-def runtime():
-    rt = MagicMock()
-    rt.agent_registry = AgentRegistry()
-    rt.create_subagent = AsyncMock()
-    rt.current_session_id = "session-123"
-    return rt
+def agent_registry():
+    return AgentRegistry()
 
 
 @pytest.fixture
-def task_tool(runtime):
-    return TaskTool(runtime=runtime)
+def orchestrator(agent_registry):
+    orch = AsyncMock()
+    orch.create_subagent = AsyncMock()
+    return orch
+
+
+@pytest.fixture
+def task_tool(agent_registry, orchestrator):
+    return TaskTool(agent_registry=agent_registry, orchestrator=orchestrator)
 
 
 class TestTaskTool:
     @pytest.mark.anyio
-    async def test_run_calls_create_subagent(self, task_tool, runtime):
-        runtime.create_subagent.return_value = "<task>\nDone\n</task>"
+    async def test_run_calls_create_subagent(self, task_tool, agent_registry, orchestrator):
+        orchestrator.create_subagent.return_value = "<task>\nDone\n</task>"
         result = await task_tool.run(
             {
                 "subagent_type": "explore",
@@ -34,8 +37,8 @@ class TestTaskTool:
             }
         )
         assert result == "<task>\nDone\n</task>"
-        agent = runtime.agent_registry.get("explore")
-        runtime.create_subagent.assert_awaited_once_with(
+        agent = agent_registry.get("explore")
+        orchestrator.create_subagent.assert_awaited_once_with(
             "session-123",
             agent,
             "Find the main function",
@@ -45,8 +48,8 @@ class TestTaskTool:
         )
 
     @pytest.mark.anyio
-    async def test_run_with_background(self, task_tool, runtime):
-        runtime.create_subagent.return_value = "Sub-agent started"
+    async def test_run_with_background(self, task_tool, agent_registry, orchestrator):
+        orchestrator.create_subagent.return_value = "Sub-agent started"
         result = await task_tool.run(
             {
                 "subagent_type": "general",
@@ -56,8 +59,8 @@ class TestTaskTool:
             }
         )
         assert result == "Sub-agent started"
-        agent = runtime.agent_registry.get("general")
-        runtime.create_subagent.assert_awaited_once_with(
+        agent = agent_registry.get("general")
+        orchestrator.create_subagent.assert_awaited_once_with(
             "session-123",
             agent,
             "Do something",
@@ -67,8 +70,8 @@ class TestTaskTool:
         )
 
     @pytest.mark.anyio
-    async def test_run_with_description(self, task_tool, runtime):
-        runtime.create_subagent.return_value = "<task>ok</task>"
+    async def test_run_with_description(self, task_tool, agent_registry, orchestrator):
+        orchestrator.create_subagent.return_value = "<task>ok</task>"
         await task_tool.run(
             {
                 "subagent_type": "build",
@@ -77,8 +80,8 @@ class TestTaskTool:
                 "session_id": "session-123",
             }
         )
-        agent = runtime.agent_registry.get("build")
-        runtime.create_subagent.assert_awaited_once_with(
+        agent = agent_registry.get("build")
+        orchestrator.create_subagent.assert_awaited_once_with(
             "session-123",
             agent,
             "Fix the bug",
@@ -88,7 +91,7 @@ class TestTaskTool:
         )
 
     @pytest.mark.anyio
-    async def test_unknown_agent_returns_error(self, task_tool, runtime):
+    async def test_unknown_agent_returns_error(self, task_tool, orchestrator):
         result = await task_tool.run(
             {
                 "subagent_type": "nonexistent",
@@ -97,7 +100,7 @@ class TestTaskTool:
             }
         )
         assert "unknown sub-agent" in result.lower()
-        runtime.create_subagent.assert_not_called()
+        orchestrator.create_subagent.assert_not_called()
 
     def test_input_schema_includes_agent_enum(self, task_tool):
         schema = task_tool._input_schema()
@@ -113,7 +116,7 @@ class TestTaskTool:
         schema = task_tool._input_schema()
         enum = schema["properties"]["subagent_type"]["enum"]
         subagent_names = {
-            a.name for a in task_tool._runtime.agent_registry.list_subagents()
+            a.name for a in task_tool._agent_registry.list_subagents()
         }
         for name in subagent_names:
             assert name in enum

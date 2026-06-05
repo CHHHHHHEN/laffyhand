@@ -31,7 +31,7 @@ from laffyhand.core._utils import (
     estimate_messages_tokens,
 )
 from laffyhand.core.loop import build_llm_context
-from laffyhand.core.prune import prune, PRUNE_PROTECT
+from laffyhand.core.prune import prune, _PRUNE_PROTECT as PRUNE_PROTECT
 
 
 class TestEstimateMessageTokens(unittest.TestCase):
