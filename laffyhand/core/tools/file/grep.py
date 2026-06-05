@@ -1,8 +1,15 @@
+"""Grep tool — search file contents with regex.
+
+Uses ripgrep (when available) for performance, with a Python
+fallback. Supports ``content``, ``files_only``, and ``count``
+output modes, context lines, and pagination.
+"""
+
 import asyncio
 import glob as glob_module
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from loguru import logger
 from pydantic import BaseModel, Field
@@ -15,29 +22,49 @@ from laffyhand.core.tools.file._ripgrep import (
     grep_count as rg_grep_count,
 )
 
-MAX_RESULTS = 100
-MAX_LINE_LENGTH = 2000
-MAX_FILE_SIZE = 1_000_000
+_MAX_RESULTS = 100
+_MAX_LINE_LENGTH = 2000
+_MAX_FILE_SIZE = 1_000_000
 
 
 class GrepParams(BaseModel):
-    pattern: str = Field(description="Regular expression to search for")
-    include: str | None = Field(None, description="File glob filter (e.g. *.py, *.{ts,tsx})")
-    path: str | None = Field(None, description="Absolute directory or file to search in — must start with the workspace path from <env>")
-    output_mode: str | None = Field(None, description="Output format: content (default), files_only (just file paths), count (per-file match counts)")
-    context: int | None = Field(None, description="Number of context lines before and after each match (default: 0)")
-    offset: int | None = Field(None, description="Skip first N results for pagination (default: 0)")
-    limit: int | None = Field(None, description="Maximum number of results to return (default: 100)")
+    """Search file contents with a regex pattern.
+
+    Required: ``pattern`` + ``path``.
+    """
+
+    pattern: str = Field(description="Regex pattern to search for (required)")
+    path: str = Field(description="Directory to search recursively, or a single file. Absolute path recommended — use the workspace root from <env>.")
+    include: str | None = Field(None, description="Glob pattern — only files matching this are scanned (e.g. *.py for Python files)")
+    exclude: str | None = Field(None, description="Glob pattern — matching files are skipped (e.g. test_*.py to exclude tests)")
+    include_ignored: bool = Field(False, description="If true, also search files that match .gitignore patterns")
+    output_mode: Literal["content", "files_only", "count"] = Field("content", description="content (default): matching lines with context; files_only: file paths only; count: per-file match counts")
+    context: int = Field(0, description="Lines of context before and after each match (0 = matching line only)", ge=0)
+    offset: int = Field(0, description="Number of initial results to skip (for pagination)", ge=0)
+    limit: int = Field(_MAX_RESULTS, description=f"Maximum results to return (default {_MAX_RESULTS})", ge=1)
+
+
+def _truncate_line(line: str) -> str:
+    display = line.rstrip("\n\r")
+    if len(display) > _MAX_LINE_LENGTH:
+        display = display[:_MAX_LINE_LENGTH] + "... (truncated)"
+    return display
 
 
 class GrepTool(BaseTool):
     name = "grep"
     path_params = ["path"]
     description = (
-        "Search file contents using a regular expression. "
-        "Use absolute paths for the path parameter — prefix with the workspace directory from <env>. "
-        "Results are sorted by file modification time (newest first) and limited to 100 matches. "
-        "Uses ripgrep when available for significantly faster performance."
+        "Search file contents with a regex pattern.\n\n"
+        "**Required:** ``pattern`` (regex), ``path`` (directory or file).\n\n"
+        "**Output** depends on ``output_mode``:\n"
+        "  - ``content`` (default) — ``file:line:content``, header ``--- N matches ---``\n"
+        "  - ``files_only`` — file paths only\n"
+        "  - ``count`` — ``file: N`` per-file counts\n\n"
+        "Results are sorted newest-first by mtime and capped "
+        f"at {_MAX_RESULTS}. Use ``offset``/``limit`` for pagination.\n\n"
+        "**include**/**exclude** use glob syntax (e.g. ``*.py``).\n"
+        "``.gitignore`` is respected by default; ``include_ignored`` overrides it."
     )
     max_result_size = 100_000
 
@@ -45,43 +72,47 @@ class GrepTool(BaseTool):
         return GrepParams.model_json_schema()
 
     async def run(self, params: dict[str, Any]) -> str:
-        pattern_str = params["pattern"]
-        include = params.get("include")
-        output_mode = params.get("output_mode", "content")
-        context = params.get("context", 0)
-        offset = params.get("offset", 0)
-        limit = params.get("limit", MAX_RESULTS)
+        validated = GrepParams.model_validate(params)
+        pattern_str = validated.pattern
+        include = validated.include
+        exclude = validated.exclude
+        include_ignored = validated.include_ignored
+        output_mode = validated.output_mode
+        context = validated.context
+        offset = validated.offset
+        limit = validated.limit
 
-        root = Path(params.get("path", "."))
+        root = Path(validated.path).resolve()
         if not root.exists():
             return f"Path not found: {root}"
 
-        if not pattern_str:
-            return "Pattern is empty"
+        if len(pattern_str) > 200:
+            return f"Pattern too long ({len(pattern_str)} chars, max 200)"
 
         try:
             pattern = re.compile(pattern_str)
         except re.error as e:
             return f"Invalid regex pattern: {e}"
 
-        if len(pattern_str) > 200:
-            return f"Pattern too long ({len(pattern_str)} chars, max 200)"
-
         if root.is_file():
-            return await self._search_single_file(
-                root, pattern, context, offset, limit
-            )
+            return await self._search_single_file(root, pattern, context, offset, limit)
 
         return await self._search_directory(
-            root, pattern, include, output_mode, context, offset, limit
+            root, pattern, include, exclude, include_ignored, output_mode, context, offset, limit,
         )
 
+    # --- Helpers ---------------------------------------------------------------
+
     @staticmethod
-    def _truncate_line(line: str) -> str:
-        display = line.rstrip("\n\r")
-        if len(display) > MAX_LINE_LENGTH:
-            display = display[:MAX_LINE_LENGTH] + "... (truncated)"
-        return display
+    def _paginate(items: list[str], offset: int, limit: int, label: str = "matches") -> str:
+        """Slice *items* with offset/limit, join with newlines, add summary."""
+        selected = items[offset:offset + limit]
+        if not selected:
+            return ""
+        result = "\n".join(selected)
+        if len(selected) < len(items):
+            result += f"\n[Showing {len(selected)} of {len(items)} {label}]"
+        return result
 
     def _format_match_with_context(
         self,
@@ -95,10 +126,10 @@ class GrepTool(BaseTool):
         if context and prev_idx is not None and idx - prev_idx > 1:
             result.append("--")
         for ci in range(max(0, idx - context), idx):
-            result.append(f"{file_label}:{ci + 1}- {self._truncate_line(lines[ci])}")
-        result.append(f"{file_label}:{idx + 1}: {self._truncate_line(lines[idx])}")
+            result.append(f"{file_label}:{ci + 1}- {_truncate_line(lines[ci])}")
+        result.append(f"{file_label}:{idx + 1}: {_truncate_line(lines[idx])}")
         for ci in range(idx + 1, min(len(lines), idx + context + 1)):
-            result.append(f"{file_label}:{ci + 1}- {self._truncate_line(lines[ci])}")
+            result.append(f"{file_label}:{ci + 1}- {_truncate_line(lines[ci])}")
         return result
 
     async def _search_single_file(
@@ -106,10 +137,23 @@ class GrepTool(BaseTool):
     ) -> str:
         if not path.is_file():
             return f"Not a file: {path}"
-        if path.stat().st_size > MAX_FILE_SIZE:
+        if path.stat().st_size > _MAX_FILE_SIZE:
             logger.info(f"Grep: skipped large file {path}")
             return f"Skipped (file too large): {path}"
 
+        pattern_str = pattern.pattern
+
+        # Try ripgrep first for performance
+        if rg_available():
+            raw = await rg_grep(path.parent, pattern_str, include=path.name, context=context, include_ignored=True)
+            if raw is not None:
+                lines = [ln.removeprefix("./") for ln in raw.splitlines() if ln.strip()]
+                if not lines:
+                    return f"No matches for `{pattern_str}` in {path}"
+                lines = [_truncate_line(line) for line in lines]
+                return self._paginate(lines, offset, limit, "lines")
+
+        # Python fallback
         try:
             text = path.read_text(encoding="utf-8", errors="replace")
         except Exception as e:
@@ -135,11 +179,7 @@ class GrepTool(BaseTool):
             return f"No matches for `{pattern.pattern}` in {path}"
 
         total_matches = len(match_indices)
-        selected_indices = (
-            match_indices[offset : offset + limit]
-            if offset is not None
-            else match_indices[:limit]
-        )
+        selected_indices = match_indices[offset:offset + limit]
 
         file_label = str(path)
         result_lines: list[str] = []
@@ -156,7 +196,9 @@ class GrepTool(BaseTool):
             )
             prev_idx = idx
 
-        result = "\n".join(result_lines)
+        label = "match" if total_matches == 1 else "matches"
+        result = f"--- {total_matches} {label} ---\n"
+        result += "\n".join(result_lines)
         if len(selected_indices) < total_matches:
             result += f"\n[Showing {len(selected_indices)} of {total_matches} matches]"
         return result
@@ -166,185 +208,105 @@ class GrepTool(BaseTool):
         root: Path,
         pattern: re.Pattern[str],
         include: str | None,
-        output_mode: str,
+        exclude: str | None,
+        include_ignored: bool,
+        output_mode: Literal["content", "files_only", "count"],
         context: int,
         offset: int,
         limit: int,
     ) -> str:
         pattern_str = pattern.pattern
-        if output_mode == "files_only" and rg_available():
-            result = await self._rg_files_only(root, pattern_str, include, offset, limit)
-            if result is not None:
-                return result
 
-        if output_mode == "count" and rg_available():
-            result = await self._rg_count(root, pattern_str, include, offset, limit)
-            if result is not None:
-                return result
-
-        if output_mode == "content" and rg_available():
-            result = await self._rg_content(
-                root, pattern_str, include, context, offset, limit
+        if rg_available():
+            result = await self._rg_search(
+                root, pattern_str, include, exclude, include_ignored,
+                output_mode, context, offset, limit,
             )
             if result is not None:
                 return result
 
-        if output_mode == "files_only":
-            return await self._py_search_files_only(
-                root, pattern, include, offset, limit
-            )
-        if output_mode == "count":
-            return await self._py_search_count(
-                root, pattern, include, offset, limit
-            )
-        return await self._py_search_content(
-            root, pattern, include, context, offset, limit
+        return await self._py_search(
+            root, pattern, include, exclude, include_ignored,
+            output_mode, context, offset, limit,
         )
 
-    async def _rg_files_only(
-        self, root: Path, pattern_str: str, include: str | None, offset: int, limit: int
-    ) -> str | None:
-        results = await rg_grep_files(root, pattern_str, include)
-        if results is None:
-            return None
-
-        total = len(results)
-        selected = (
-            results[offset : offset + limit] if offset is not None else results[:limit]
-        )
-        if not selected:
-            return f"No matches for `{pattern_str}`"
-        result = "\n".join(selected)
-        if len(selected) < total:
-            result += f"\n[Showing {len(selected)} of {total} files]"
-        return result
-
-    async def _rg_count(
-        self, root: Path, pattern_str: str, include: str | None, offset: int, limit: int
-    ) -> str | None:
-        raw = await rg_grep_count(root, pattern_str, include)
-        if raw is None:
-            return None
-
-        lines = [ln for ln in raw.splitlines() if ln.strip()]
-        total = len(lines)
-        selected = (
-            lines[offset : offset + limit] if offset is not None else lines[:limit]
-        )
-        if not selected:
-            return f"No matches for `{pattern_str}`"
-        result = "\n".join(selected)
-        if len(selected) < total:
-            result += f"\n[Showing {len(selected)} of {total} files]"
-        return result
-
-    async def _rg_content(
+    async def _rg_search(
         self,
         root: Path,
         pattern_str: str,
         include: str | None,
+        exclude: str | None,
+        include_ignored: bool,
+        output_mode: Literal["content", "files_only", "count"],
         context: int,
         offset: int,
         limit: int,
     ) -> str | None:
-        raw = await rg_grep(root, pattern_str, include, context)
-        if raw is None:
+        """Try ripgrep; return ``None`` to signal fallback to Python."""
+        if output_mode == "files_only":
+            raw_files = await rg_grep_files(root, pattern_str, include, include_ignored=include_ignored, exclude=exclude)
+            if raw_files is None:
+                return None
+            files = [f.removeprefix("./") for f in raw_files]
+            if not files:
+                return f"No matches for `{pattern_str}`"
+            return self._paginate(files, offset, limit, "files")
+
+        if output_mode == "count":
+            raw_str = await rg_grep_count(root, pattern_str, include, include_ignored=include_ignored, exclude=exclude)
+        else:
+            raw_str = await rg_grep(root, pattern_str, include, context, include_ignored=include_ignored, exclude=exclude)
+        if raw_str is None:
             return None
 
-        lines = raw.splitlines()
-        total = len(lines)
-        selected = (
-            lines[offset : offset + limit] if offset is not None else lines[:limit]
-        )
-        if not selected:
+        lines = [ln.removeprefix("./") for ln in raw_str.splitlines() if ln.strip()]
+        if not lines:
             return f"No matches for `{pattern_str}`"
 
-        result_lines: list[str] = []
-        for line in selected:
-            display = line
-            if len(display) > MAX_LINE_LENGTH:
-                display = display[:MAX_LINE_LENGTH] + "... (truncated)"
-            result_lines.append(display)
+        if output_mode == "content":
+            total = len(lines)
+            lines = [_truncate_line(line) for line in lines]
+            result = self._paginate(lines, offset, limit, "lines")
+            if not result:
+                return f"No matches for `{pattern_str}`"
+            label = "line" if total == 1 else "lines"
+            return f"--- {total} {label} ---\n{result}"
 
-        result = "\n".join(result_lines)
-        if len(selected) < total:
-            result += f"\n[Showing {len(selected)} of {total} lines]"
-        return result
+        return self._paginate(lines, offset, limit, "files")
 
-    async def _py_search_files_only(
-        self, root: Path, pattern: re.Pattern[str], include: str | None, offset: int, limit: int
-    ) -> str:
-        pattern_str = pattern.pattern
-        logger.debug(f"Grep: Python fallback files_only for `{pattern_str}` in {root}")
-        files_with_matches = await self._collect_matches(root, pattern, include)
-        if not files_with_matches:
-            return f"No matches for `{pattern_str}`"
-
-        paths = [str(f.relative_to(root)) for f, _ in files_with_matches]
-        total = len(paths)
-        selected = (
-            paths[offset : offset + limit] if offset is not None else paths[:limit]
-        )
-        if not selected:
-            return f"No matches for `{pattern_str}`"
-        result = "\n".join(selected)
-        if len(selected) < total:
-            result += f"\n[Showing {len(selected)} of {total} files]"
-        return result
-
-    async def _py_search_count(
-        self, root: Path, pattern: re.Pattern[str], include: str | None, offset: int, limit: int
-    ) -> str:
-        pattern_str = pattern.pattern
-        logger.debug(f"Grep: Python fallback count for `{pattern_str}` in {root}")
-        files_with_matches = await self._collect_matches(root, pattern, include)
-        if not files_with_matches:
-            return f"No matches for `{pattern_str}`"
-
-        result_lines = [
-            f"{f.relative_to(root)}: {len(m)}" for f, m in files_with_matches
-        ]
-        total = len(result_lines)
-        selected = (
-            result_lines[offset : offset + limit]
-            if offset is not None
-            else result_lines[:limit]
-        )
-        if not selected:
-            return f"No matches for `{pattern_str}`"
-        result = "\n".join(selected)
-        if len(selected) < total:
-            result += f"\n[Showing {len(selected)} of {total} files]"
-        return result
-
-    async def _py_search_content(
+    async def _py_search(
         self,
         root: Path,
         pattern: re.Pattern[str],
         include: str | None,
+        exclude: str | None,
+        include_ignored: bool,
+        output_mode: Literal["content", "files_only", "count"],
         context: int,
         offset: int,
         limit: int,
     ) -> str:
         pattern_str = pattern.pattern
-        logger.debug(f"Grep: Python fallback content for `{pattern_str}` in {root}")
-        files_with_matches = await self._collect_matches(root, pattern, include)
-        if not files_with_matches:
+        logger.debug(f"Grep: Python fallback {output_mode} for `{pattern_str}` in {root}")
+        stop_early = output_mode == "files_only"
+        files_with_matches = await self._collect_matches(root, pattern, include, exclude, include_ignored, stop_early)
+
+        if output_mode == "files_only":
+            paths = [str(f.relative_to(root)) for f, _ in files_with_matches]
+            return self._paginate(paths, offset, limit, "files") or f"No matches for `{pattern_str}`"
+
+        if output_mode == "count":
+            lines = [f"{f.relative_to(root)}: {len(m)}" for f, m in files_with_matches]
+            return self._paginate(lines, offset, limit, "files") or f"No matches for `{pattern_str}`"
+
+        # content mode
+        flat_matches: list[tuple[Path, int]] = [
+            (fp, idx) for fp, indices in files_with_matches for idx in indices
+        ]
+        if not flat_matches:
             return f"No matches for `{pattern_str}`"
 
-        flat_matches: list[tuple[Path, int]] = []
-        for fp, indices in files_with_matches:
-            for idx in indices:
-                flat_matches.append((fp, idx))
-
-        total_matches = len(flat_matches)
-        selected = (
-            flat_matches[offset : offset + limit]
-            if offset is not None
-            else flat_matches[:limit]
-        )
-        if not selected:
-            return f"No matches for `{pattern_str}`"
+        selected = flat_matches[offset:offset + limit]
 
         lines_cache: dict[str, list[str]] = {}
         result_lines: list[str] = []
@@ -362,27 +324,28 @@ class GrepTool(BaseTool):
             if prev_file is not None and prev_file != label:
                 prev_idx = None
             result_lines.extend(
-                self._format_match_with_context(
-                    label,
-                    lines,
-                    idx,
-                    context,
-                    prev_idx,
-                )
+                self._format_match_with_context(label, lines, idx, context, prev_idx)
             )
             prev_file = label
             prev_idx = idx
 
-        result = "\n".join(result_lines)
-        if len(selected) < total_matches:
-            result += f"\n[Showing {len(selected)} of {total_matches} matches]"
+        total = len(flat_matches)
+        label = "match" if total == 1 else "matches"
+        result = f"--- {total} {label} ---\n"
+        result += "\n".join(result_lines)
+        if len(selected) < total:
+            result += f"\n[Showing {len(selected)} of {total} matches]"
         return result
 
     async def _collect_matches(
-        self, root: Path, pattern: re.Pattern[str], include: str | None
+        self, root: Path, pattern: re.Pattern[str], include: str | None,
+        exclude: str | None = None, include_ignored: bool = False,
+        stop_early: bool = False,
     ) -> list[tuple[Path, list[int]]]:
         """Scan files and return (file_path, [match_line_index, ...]) pairs.
-        Used by _py_search_files_only and _py_search_count.
+
+        When *stop_early* is True, scanning a file stops at the first match
+        (useful for ``files_only`` mode where counts are not needed).
         """
 
         include_glob = include or "*"
@@ -397,7 +360,9 @@ class GrepTool(BaseTool):
                 fp = root / rel_path
                 if not fp.is_file():
                     continue
-                if fp.stat().st_size > MAX_FILE_SIZE:
+                if fp.stat().st_size > _MAX_FILE_SIZE:
+                    continue
+                if exclude and fp.match(exclude):
                     continue
                 try:
                     text = fp.read_text(encoding="utf-8", errors="replace")
@@ -405,15 +370,20 @@ class GrepTool(BaseTool):
                     continue
 
                 lines = text.splitlines(keepends=True)
-                indices = [i for i, line in enumerate(lines) if pattern.search(line)]
-                if indices:
-                    result.append((fp, indices))
+                if stop_early:
+                    if any(pattern.search(line) for line in lines):
+                        result.append((fp, []))
+                else:
+                    indices = [i for i, line in enumerate(lines) if pattern.search(line)]
+                    if indices:
+                        result.append((fp, indices))
 
-            # Apply .gitignore filtering (matching GlobTool behavior)
-            gitignore = GitignoreFilter(root)
-            result = [
-                (fp, idx) for fp, idx in result if not gitignore.is_ignored(fp)
-            ]
+            # Apply .gitignore filtering (matching GlobTool / ListDirTool behavior)
+            if not include_ignored:
+                gitignore = GitignoreFilter(root)
+                result = [
+                    (fp, idx) for fp, idx in result if not gitignore.is_ignored(fp)
+                ]
 
             result.sort(key=lambda x: x[0].stat().st_mtime, reverse=True)
             return result

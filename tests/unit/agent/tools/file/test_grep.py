@@ -71,7 +71,7 @@ class TestGrepTool(unittest.TestCase):
             )
         )
         lines = result.strip().split("\n")
-        self.assertLessEqual(len(lines), 6)  # 5 matches + optional footer
+        self.assertLessEqual(len(lines), 7)  # header + 5 matches + optional footer
 
     def test_grep_single_file(self):
         f = self.root / "target.py"
@@ -224,3 +224,25 @@ class TestGrepTool(unittest.TestCase):
             )
         )
         self.assertIn("No matches", result)
+
+    @mock.patch("laffyhand.core.tools.file.grep.rg_available", return_value=False)
+    def test_grep_include_ignored_default_skips_gitignored(self, mock_rg):
+        (self.root / ".gitignore").write_text("ignored.py\n")
+        (self.root / "tracked.py").write_text("secret")
+        (self.root / "ignored.py").write_text("secret")
+        tool = GrepTool()
+        result = asyncio.run(tool.run({"pattern": "secret", "path": str(self.root)}))
+        self.assertIn("tracked.py", result)
+        self.assertNotIn("ignored.py", result)
+
+    @mock.patch("laffyhand.core.tools.file.grep.rg_available", return_value=False)
+    def test_grep_include_ignored_true_includes_gitignored(self, mock_rg):
+        (self.root / ".gitignore").write_text("ignored.py\n")
+        (self.root / "tracked.py").write_text("secret")
+        (self.root / "ignored.py").write_text("secret")
+        tool = GrepTool()
+        result = asyncio.run(
+            tool.run({"pattern": "secret", "path": str(self.root), "include_ignored": True})
+        )
+        self.assertIn("tracked.py", result)
+        self.assertIn("ignored.py", result)

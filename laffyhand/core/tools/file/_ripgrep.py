@@ -57,11 +57,13 @@ async def _rg_run(
 # --- Command helpers ----------------------------------------------------------
 
 
-def _rg_cmd(*parts: str, include: str | None = None) -> list[str]:
+def _rg_cmd(*parts: str, include: str | None = None, exclude: str | None = None) -> list[str]:
     """Build an ``rg`` command array with common flags."""
     cmd = ["rg", *parts]
     if include:
         cmd.extend(["--glob", include])
+    if exclude:
+        cmd.extend(["--glob", f"!{exclude}"])
     cmd.append(".")
     return cmd
 
@@ -81,29 +83,44 @@ async def glob(cwd: Path, pattern: str, include_ignored: bool = False) -> list[s
 
 
 async def grep(
-    cwd: Path, pattern: str, include: str | None = None, context: int = 0
+    cwd: Path, pattern: str, include: str | None = None, context: int = 0,
+    include_ignored: bool = False, exclude: str | None = None,
 ) -> str | None:
     """Search file contents using ripgrep. Returns raw output or None on failure."""
     parts = ["--line-number", "--no-heading", "--color", "never", pattern]
     if context:
         parts.extend(["-C", str(context)])
-    result = await _rg_run(_rg_cmd(*parts, include=include), cwd)
+    if include_ignored:
+        parts.append("--no-ignore")
+    result = await _rg_run(_rg_cmd(*parts, include=include, exclude=exclude), cwd)
     if result is not None:
         return result
     return None
 
 
-async def grep_files(cwd: Path, pattern: str, include: str | None = None) -> list[str] | None:
+async def grep_files(
+    cwd: Path, pattern: str, include: str | None = None,
+    include_ignored: bool = False, exclude: str | None = None,
+) -> list[str] | None:
     """List files containing matches using ripgrep. Returns None on failure."""
-    result = await _rg_run(_rg_cmd("--files-with-matches", "--color", "never", pattern, include=include), cwd)
+    parts = ["--files-with-matches", "--color", "never", pattern]
+    if include_ignored:
+        parts.append("--no-ignore")
+    result = await _rg_run(_rg_cmd(*parts, include=include, exclude=exclude), cwd)
     if result is not None:
         return result.splitlines()
     return None
 
 
-async def grep_count(cwd: Path, pattern: str, include: str | None = None) -> str | None:
+async def grep_count(
+    cwd: Path, pattern: str, include: str | None = None,
+    include_ignored: bool = False, exclude: str | None = None,
+) -> str | None:
     """Get per-file match counts using ripgrep. Returns raw output or None."""
-    result = await _rg_run(_rg_cmd("--count", "--color", "never", pattern, include=include), cwd)
+    parts = ["--count", "--color", "never", pattern]
+    if include_ignored:
+        parts.append("--no-ignore")
+    result = await _rg_run(_rg_cmd(*parts, include=include, exclude=exclude), cwd)
     if result is not None:
         return result
     return None
