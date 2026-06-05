@@ -40,7 +40,7 @@ from laffyhand.agent.skill import SkillRegistry
 from laffyhand.agent.session import SessionManager, TitleConfig
 from laffyhand.agent.subagent.manager import SubagentManager, build_subagent_state
 from laffyhand.agent.tools.registry import ToolRegistry
-from laffyhand.agent.tools.file import ReadTool, WriteTool, EditTool, GlobTool, GrepTool
+from laffyhand.agent.tools.file import ReadTool, ListDirTool, WriteTool, EditTool, GlobTool, GrepTool
 from laffyhand.agent.tools.bash import BashTool
 from laffyhand.agent.tools.web_fetch import WebFetchTool
 from laffyhand.agent.tools.todo import TodoTool
@@ -153,7 +153,8 @@ class AgentRuntime:
     async def init_tools(self) -> None:
         for mcp_tool in await self.mcp_service.get_wrapped_tools():
             self.tool_registry.register_tool(mcp_tool)
-        self.tool_registry.register_tool(ReadTool(preference_resolver=self.resolve_preferences))
+        self.tool_registry.register_tool(ReadTool())
+        self.tool_registry.register_tool(ListDirTool())
         self.tool_registry.register_tool(
             WriteTool(permission_manager=self.tool_registry.permission)
         )
@@ -177,7 +178,7 @@ class AgentRuntime:
         repo = self._file_tag_repo
 
         def _post_process(name: str, result: str, params: dict) -> str:
-            if name in ("glob", "read"):
+            if name in ("glob", "read", "list_dir"):
                 return annotate_result(name, result, params, repo)
             return result
 

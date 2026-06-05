@@ -100,7 +100,7 @@ def annotate_result(
         return result
     if tool_name == "glob":
         return _annotate_glob(result, params, repo)
-    if tool_name == "read":
+    if tool_name in ("read", "list_dir"):
         return _annotate_read(result, params, repo)
     return result
 
@@ -123,7 +123,7 @@ def _annotate_glob(result: str, params: dict[str, Any], repo: FileTagRepo) -> st
 
 
 def _annotate_read(result: str, params: dict[str, Any], repo: FileTagRepo) -> str:
-    file_path = params.get("file_path")
+    file_path = params.get("file_path") or params.get("directory_path")
     if not file_path or not result.startswith("Contents of "):
         return result
     dir_path = Path(file_path).resolve()

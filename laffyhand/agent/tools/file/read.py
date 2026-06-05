@@ -1,68 +1,28 @@
 import asyncio
 import difflib
 import re
-from collections import OrderedDict
 from pathlib import Path
 from typing import Any
 
 from loguru import logger
 from laffyhand.agent.tools.base import BaseTool
-from laffyhand.agent.tools.file._gitignore import GitignoreFilter
 from laffyhand.agent.tools.file._security import looks_binary
-
-
-MAX_CONSECUTIVE_READS = 4
-MAX_CACHE_SIZE = 200
-
-
-class _LRUCache:
-    """Simple LRU dict that evicts the least-recently-used entry when full."""
-
-    def __init__(self, maxsize: int) -> None:
-        self._maxsize = maxsize
-        self._data: OrderedDict[str, tuple[float, str]] = OrderedDict()
-
-    def get(self, key: str) -> tuple[float, str] | None:
-        if key not in self._data:
-            return None
-        self._data.move_to_end(key)
-        return self._data[key]
-
-    def put(self, key: str, value: tuple[float, str]) -> None:
-        self._data[key] = value
-        self._data.move_to_end(key)
-        if len(self._data) > self._maxsize:
-            self._data.popitem(last=False)
-
-    def pop(self, key: str, default: Any = None) -> Any:
-        return self._data.pop(key, default)
-
-    def __len__(self) -> int:
-        return len(self._data)
 
 
 class ReadTool(BaseTool):
     name = "read"
-    path_params = ["file_path", "paths"]
+    path_params = ["file_path"]
     description = (
-        "Read files or directories from the local filesystem. "
-        "Supports line-numbered output, pattern-based context reading, and batch reading.\n\n"
-        "To read a single file, provide file_path. "
+        "Read a text file from the local filesystem. "
+        "Supports line-numbered output and pattern-based context reading.\n\n"
+        "Use file_path (absolute path) to specify which file to read. "
         "Use offset (1-indexed) and limit for pagination (default limit: 2000). "
         "Any line longer than 2000 characters is truncated.\n\n"
         "To read around specific keywords, provide pattern (regex) and optional context (default 5). "
         "When pattern is given, offset/limit apply to matches, not raw lines.\n\n"
-        "To read multiple files at once, provide paths (array of absolute paths).\n\n"
-        "Directory listings show file line counts in parentheses. "
-        "By default, files matching .gitignore patterns are excluded from directory listings; "
-        "pass include_ignored=true to include them."
+        "To list a directory's contents, use the list_dir tool instead."
     )
     max_result_size = 50000
-
-    def __init__(self, preference_resolver=None) -> None:
-        self._read_cache: _LRUCache = _LRUCache(MAX_CACHE_SIZE)
-        self._consecutive: dict[str, int] = {}
-        self._preference_resolver = preference_resolver
 
     def _input_schema(self) -> dict[str, Any]:
         return {
@@ -70,12 +30,7 @@ class ReadTool(BaseTool):
             "properties": {
                 "file_path": {
                     "type": "string",
-                    "description": "Single absolute path to a file or directory to read",
-                },
-                "paths": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "Multiple absolute file paths to read at once",
+                    "description": "Absolute path to a file to read",
                 },
                 "offset": {
                     "type": "integer",
@@ -93,28 +48,9 @@ class ReadTool(BaseTool):
                     "type": "integer",
                     "description": "Number of context lines before and after each match (default: 5). Only used with pattern",
                 },
-                "depth": {
-                    "type": "integer",
-                    "description": "Directory listing depth. 1 = flat, 2 = one level deep (default), etc. Only applies when file_path is a directory",
-                },
-                "include_ignored": {
-                    "type": "boolean",
-                    "description": "If true, include files that match .gitignore patterns in directory listings (default: false)",
-                    "default": False,
-                },
             },
-            "anyOf": [
-                {"required": ["file_path"]},
-                {"required": ["paths"]},
-            ],
+            "required": ["file_path"],
         }
-
-    def _cache_key(self, path: Path, offset: int | None, limit: int | None) -> str:
-        try:
-            resolved = path.resolve()
-        except Exception:
-            resolved = path
-        return f"{resolved}:{offset or ''}:{limit or ''}"
 
     def _suggest_similar(self, path: Path) -> list[str]:
         if not path.parent.exists():
@@ -124,81 +60,6 @@ class ReadTool(BaseTool):
         except PermissionError:
             return []
         return difflib.get_close_matches(path.name, candidates, n=5, cutoff=0.3)
-
-    def _format_entry(
-        self, entry: Path, indent: int, depth: int,
-        gitignore: GitignoreFilter | None = None,
-    ) -> list[str]:
-        """Format a single directory entry. Recursively formats children when depth > 1."""
-        prefix = "  " * indent
-        lines: list[str] = []
-
-        if entry.is_dir():
-            lines.append(f"{prefix}{entry.name}/")
-        elif entry.is_file():
-            if not looks_binary(entry):
-                try:
-                    text = entry.read_text(encoding="utf-8", errors="replace")
-                    count = len(text.splitlines())
-                    lines.append(f"{prefix}{entry.name} ({count} lines)")
-                except Exception:
-                    lines.append(f"{prefix}{entry.name}")
-            else:
-                lines.append(f"{prefix}{entry.name} (binary)")
-        else:
-            lines.append(f"{prefix}{entry.name}")
-
-        if depth > 1 and entry.is_dir():
-            try:
-                children = sorted(
-                    entry.iterdir(),
-                    key=lambda p: (0 if p.is_dir() else 1, p.name.lower()),
-                )
-            except PermissionError:
-                lines.append(f"{prefix}  (Permission denied)")
-            else:
-                for child in children:
-                    if gitignore and gitignore.is_ignored(child):
-                        continue
-                    lines.extend(
-                        self._format_entry(child, indent + 1, depth - 1, gitignore)
-                    )
-
-        return lines
-
-    def _list_directory(
-        self, path: Path, offset: int | None, limit: int | None, depth: int = 2,
-        include_ignored: bool = False,
-    ) -> str:
-        if depth <= 0:
-            return ""
-
-        try:
-            entries = sorted(
-                path.iterdir(), key=lambda p: (0 if p.is_dir() else 1, p.name.lower())
-            )
-        except PermissionError:
-            return f"Permission denied: {path}"
-
-        gitignore = None if include_ignored else GitignoreFilter(path)
-
-        if gitignore:
-            entries = [e for e in entries if not gitignore.is_ignored(e)]
-
-        total = len(entries)
-        start = (offset - 1) if offset is not None else 0
-        if offset is not None and offset > total:
-            return f"Offset {offset} is out of range (directory has {total} entries)"
-        end = total if limit is None else start + limit
-        selected = entries[start:end]
-
-        lines: list[str] = []
-        lines.append(f"Contents of {path} (depth={depth}):")
-
-        for entry in selected:
-            lines.extend(self._format_entry(entry, 1, depth, gitignore))
-
-        return "\n".join(lines)
 
     async def _read_with_context(
         self,
@@ -271,21 +132,10 @@ class ReadTool(BaseTool):
 
     async def run(self, params: dict[str, Any]) -> str:
         file_path: str | None = params.get("file_path")
-        paths_input: Any = params.get("paths")
 
-        if not file_path and not paths_input:
-            return "Either file_path or paths is required"
+        if not file_path:
+            return "file_path is required"
 
-        if file_path:
-            return await self._run_single(file_path, params)
-
-        if not isinstance(paths_input, list) or not paths_input:
-            return "Either file_path or paths is required"
-
-        paths: list[str] = [str(p) for p in paths_input]
-        return await self._run_multi(paths, params)
-
-    async def _run_single(self, file_path: str, params: dict[str, Any]) -> str:
         path = Path(file_path.strip())
 
         exists = await asyncio.to_thread(path.exists)
@@ -298,13 +148,7 @@ class ReadTool(BaseTool):
 
         is_dir = await asyncio.to_thread(path.is_dir)
         if is_dir:
-            result = await asyncio.to_thread(
-                self._list_directory,
-                path, params.get("offset"), params.get("limit"), params.get("depth", 2),
-                params.get("include_ignored", False),
-            )
-            logger.info(f"Read: listed directory {path}")
-            return result
+            return f"'{path}' is a directory. Use the list_dir tool to list directory contents."
 
         is_bin = await asyncio.to_thread(looks_binary, path)
         if is_bin:
@@ -323,27 +167,6 @@ class ReadTool(BaseTool):
 
         offset = params.get("offset")
         limit = params.get("limit")
-        key = self._cache_key(path, offset, limit)
-
-        try:
-            current_mtime = await asyncio.to_thread(lambda: path.stat().st_mtime)
-        except OSError:
-            current_mtime = 0.0
-
-        cached = self._read_cache.get(key)
-        if cached is not None:
-            cached_mtime, cached_result = cached
-            if cached_mtime == current_mtime:
-                self._consecutive[key] = self._consecutive.get(key, 0) + 1
-                count = self._consecutive[key]
-                if count >= MAX_CONSECUTIVE_READS:
-                    return (
-                        f"File `{path}` has been read {count} times consecutively "
-                        "without changes. Try a different approach."
-                    )
-                return cached_result
-
-        self._consecutive.pop(key, None)
 
         text = await asyncio.to_thread(
             path.read_text, encoding="utf-8", errors="replace"
@@ -381,67 +204,5 @@ class ReadTool(BaseTool):
         logger.info(
             f"Read: {path} ({total_lines} lines, offset={offset}, limit={limit})"
         )
-        self._read_cache.put(key, (current_mtime, result))
-
-        # ── Preference injection: walk upward from the read file ──
-        if self._preference_resolver is not None:
-            claim_id = params.get("_claim_id") or params.get("session_id") or ""
-            instructions = self._preference_resolver(
-                str(path.resolve()), claim_id
-            )
-            if instructions:
-                pref_block = "\n".join(
-                    f"<preference>\n{item['content']}\n</preference>"
-                    for item in instructions
-                )
-                result = f"{pref_block}\n\n{result}"
 
         return result
-
-    async def _run_multi(self, paths: list[str], params: dict[str, Any]) -> str:
-        parts: list[str] = []
-        total_size = 0
-        max_size = self.max_result_size
-
-        for p in paths:
-            if total_size >= max_size:
-                parts.append(f"... (result truncated, max {max_size} characters)")
-                break
-
-            path = Path(p)
-            head = f"==== {p} ===="
-
-            exists = await asyncio.to_thread(path.exists)
-            if not exists:
-                parts.append(f"File not found: {p}")
-                continue
-
-            is_dir = await asyncio.to_thread(path.is_dir)
-            if is_dir:
-                dir_content = await asyncio.to_thread(
-                    self._list_directory,
-                    path,
-                    params.get("offset"),
-                    params.get("limit"),
-                    params.get("depth", 2),
-                    params.get("include_ignored", False),
-                )
-                parts.append(f"{head}\n{dir_content}")
-                total_size += len(dir_content) + len(head) + 2
-                continue
-
-            is_bin = await asyncio.to_thread(looks_binary, path)
-            if is_bin:
-                parts.append(f"{head}\n(binary file)")
-                total_size += len(head) + 15
-                continue
-
-            file_params: dict[str, Any] = {
-                k: v for k, v in params.items() if k != "paths"
-            }
-            file_params["file_path"] = p
-            result = await self._run_single(p, file_params)
-            parts.append(f"{head}\n{result}")
-            total_size += len(result)
-
-        return "\n\n".join(parts)
