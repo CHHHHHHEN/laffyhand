@@ -54,7 +54,7 @@ async def _shutdown_gateway(client_t: InProcessTransport) -> None:
 
 
 async def _mock_run_agent_turn(**kwargs):
-    from laffyhand.core.schemas import TextDelta, StepFinish
+    from laffyhand.core.events import TextDelta, StepFinish
     from laffyhand.core.llm.specs.models import Usage
 
     yield TextDelta(id="text-1", text="Hello from LLM")
@@ -373,7 +373,7 @@ class _ControllableAgent:
             ev.set()
 
     async def run(self, **kwargs: Any) -> AsyncIterator[Any]:
-        from laffyhand.core.schemas import TextDelta, StepFinish
+        from laffyhand.core.events import TextDelta, StepFinish
         from laffyhand.core.llm.specs.models import Usage
 
         yield TextDelta(id="text-1", text="Hello from LLM")

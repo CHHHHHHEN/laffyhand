@@ -10,6 +10,7 @@ from mcp.client.streamable_http import streamable_http_client
 from mcp.types import CallToolResult, TextContent
 
 from laffyhand.core.mcp.config import MCPConfig, LocalMCPConfig, RemoteMCPConfig
+from laffyhand.core.exceptions import MCPError
 
 
 class MCPToolDef:
@@ -138,7 +139,7 @@ class MCPClient:
 
     async def list_tools(self) -> list[MCPToolDef]:
         if self._session is None:
-            raise RuntimeError(f"MCP client '{self.name}' not connected")
+            raise MCPError(f"MCP client '{self.name}' not connected")
         result = await self._session.list_tools()
         return [
             MCPToolDef(
@@ -151,7 +152,7 @@ class MCPClient:
 
     async def call_tool(self, tool_name: str, arguments: dict[str, Any]) -> str:
         if self._session is None:
-            raise RuntimeError(f"MCP client '{self.name}' not connected")
+            raise MCPError(f"MCP client '{self.name}' not connected")
         result: CallToolResult = await self._session.call_tool(tool_name, arguments)
         parts: list[str] = []
         for content in result.content:

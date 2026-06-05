@@ -150,7 +150,7 @@ export type StreamEvent =
   | { type: "reasoning-start"; id: string }
   | { type: "reasoning-delta"; id: string; text: string }
   | { type: "reasoning-end"; id: string }
-  | { type: "tool-call"; id: string; name: string; input: string }
+  | { type: "tool-call"; tool_call_id: string; tool_name: string; args: string }
   | { type: "tool-result"; id: string; name: string; result: string; error?: boolean }
   | { type: "tool-error"; id: string; name: string; message: string; error?: boolean }
   | { type: "step-finish"; index: number; reason: string; usage?: Usage }

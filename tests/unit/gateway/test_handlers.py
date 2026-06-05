@@ -541,7 +541,7 @@ class TestHandleSessionLoadWithMessages:
 class TestHandleChatStream:
     @pytest.mark.anyio
     async def test_streams_events_and_finish(self, runtime, transport):
-        from laffyhand.core.schemas import TextDelta
+        from laffyhand.core.events import TextDelta
 
         mock_state = MagicMock()
         mock_state.session_id = "sess-1"

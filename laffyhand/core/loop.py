@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator, Awaitable, Callable
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
@@ -16,11 +16,14 @@ from laffyhand.core.llm.specs.models import (
     FinishReason,
     ToolCallContent,
     Usage,
+    LLMEvent,
 )
 from laffyhand.core.schemas import (
     AgentState,
     CompactionConfig,
     RetryConfig,
+)
+from laffyhand.core.events import (
     StepStart,
     TextStart,
     TextDelta,
@@ -28,7 +31,6 @@ from laffyhand.core.schemas import (
     ReasoningStart,
     ReasoningDelta,
     ReasoningEnd,
-    ToolCall,
     ToolResult,
     ToolError,
     StepFinish,
@@ -40,7 +42,7 @@ from laffyhand.core.schemas import (
 
 from laffyhand.core.compaction import compact_on_overflow
 from laffyhand.core.prune import prune
-from laffyhand.core.tools.tool_executor import ToolExecutionResult, ToolExecutor
+from laffyhand.core.tools.registry import ToolExecutionResult
 from laffyhand.core.llm.facade import LLM
 from laffyhand.core.tools import ToolRegistry
 
@@ -65,6 +67,85 @@ def build_llm_context(
     return agent_state.messages
 
 
+# ── Message persistence helper ───────────────────────────────────
+
+
+class MessageStore:
+    """Tracks and persists new messages since last flush."""
+
+    def __init__(
+        self, session_manager: SessionManager | None, session_id: str | None
+    ) -> None:
+        self._session_manager = session_manager
+        self._session_id = session_id
+        self._stored_count = 0
+
+    def sync(self, total: int) -> None:
+        self._stored_count = total
+
+    async def flush(self, messages: list[Message]) -> None:
+        if self._session_manager is not None and self._session_id:
+            new_msgs = messages[self._stored_count:]
+            if new_msgs:
+                self._session_manager.store_messages(self._session_id, new_msgs)
+                self._stored_count = len(messages)
+
+
+# ── Stream event conversion helper ──────────────────────────────
+
+
+class StreamEventConverter:
+    """Converts LLM stream events to agent-level events, managing segment IDs."""
+
+    def __init__(self, step_index: int) -> None:
+        self.step_index = step_index
+        self.content_buf: list[str] = []
+        self.reasoning_buf: list[str] = []
+        self.tool_calls: list[ToolCallContent] = []
+        self.finish_reason: FinishReason | None = None
+        self.usage: Usage | None = None
+        self._text_id: str | None = None
+        self._reasoning_id: str | None = None
+
+    def handle(self, event: LLMEvent) -> list[AgentEvent]:
+        events: list[AgentEvent] = []
+        if isinstance(event, StreamReasoning):
+            self.reasoning_buf.append(event.delta)
+            if self._reasoning_id is None:
+                self._reasoning_id = f"reasoning-{self.step_index}"
+                events.append(ReasoningStart(id=self._reasoning_id))
+            events.append(ReasoningDelta(id=self._reasoning_id, text=event.delta))
+        elif isinstance(event, StreamText):
+            self.content_buf.append(event.delta)
+            if self._text_id is None:
+                self._text_id = f"text-{self.step_index}"
+                events.append(TextStart(id=self._text_id))
+            events.append(TextDelta(id=self._text_id, text=event.delta))
+        elif isinstance(event, StreamToolCall):
+            tc = ToolCallContent(
+                tool_call_id=event.tool_call_id,
+                tool_name=event.tool_name,
+                args=event.args,
+            )
+            self.tool_calls.append(tc)
+            events.append(event)
+        elif isinstance(event, StreamFinish):
+            self.finish_reason = event.finish_reason
+            self.usage = event.usage
+        elif isinstance(event, StreamError):
+            logger.error(f"Stream error: {event.error}")
+            self.finish_reason = "error"
+        return events
+
+    def end_segments(self) -> list[AgentEvent]:
+        events: list[AgentEvent] = []
+        if self._text_id is not None:
+            events.append(TextEnd(id=self._text_id))
+        if self._reasoning_id is not None:
+            events.append(ReasoningEnd(id=self._reasoning_id))
+        return events
+
+
 # ── Main agent loop ────────────────────────────────────────────
 
 
@@ -83,9 +164,8 @@ async def agent_loop(
 ) -> AsyncIterator[AgentEvent]:
     context_size = agent_state.usage.context_size
     _compacted_this_step = False
-    # Track how many messages have been persisted to DB,
-    # so we can store all new messages (not just [-1:]) each turn.
-    _stored_count = len(agent_state.messages)
+    store = MessageStore(session_manager, agent_state.session_id)
+    store.sync(len(agent_state.messages))
 
     while True:
         if agent_state.interrupt_requested:
@@ -110,8 +190,7 @@ async def agent_loop(
                 on_compacted=on_compacted,
             ):
                 _compacted_this_step = True
-                # Messages were replaced by compaction summary, reset store tracker
-                _stored_count = len(agent_state.messages)
+                store.sync(len(agent_state.messages))
                 yield Compacting(data="Compacting conversation history...")
                 continue
 
@@ -156,75 +235,38 @@ async def agent_loop(
         _final_usage: Usage | None = None
 
         while True:
-            content_buf: list[str] = []
-            reasoning_buf: list[str] = []
-            tool_calls: list[ToolCallContent] = []
-            finish_reason: FinishReason | None = None
-            usage: Usage | None = None
-            text_id: str | None = None
-            reasoning_id: str | None = None
+            converter = StreamEventConverter(step_index)
 
             async for event in llm.stream(llm_context, tools=tool_definitions):
-                if isinstance(event, StreamReasoning):
-                    reasoning_buf.append(event.delta)
-                    if reasoning_id is None:
-                        reasoning_id = f"reasoning-{step_index}"
-                        yield ReasoningStart(id=reasoning_id)
-                    yield ReasoningDelta(id=reasoning_id, text=event.delta)
-                elif isinstance(event, StreamText):
-                    content_buf.append(event.delta)
-                    if text_id is None:
-                        text_id = f"text-{step_index}"
-                        yield TextStart(id=text_id)
-                    yield TextDelta(id=text_id, text=event.delta)
-                elif isinstance(event, StreamToolCall):
-                    tool_calls.append(
-                        ToolCallContent(
-                            tool_call_id=event.tool_call_id,
-                            tool_name=event.tool_name,
-                            args=event.args,
-                        )
-                    )
-                    yield ToolCall(
-                        id=event.tool_call_id,
-                        name=event.tool_name,
-                        input=event.args,
-                    )
-                elif isinstance(event, StreamFinish):
-                    finish_reason = event.finish_reason
-                    usage = event.usage
-                elif isinstance(event, StreamError):
-                    logger.error(f"Stream error: {event.error}")
-                    finish_reason = "error"
+                for ev in converter.handle(event):
+                    yield ev
 
-            # End in-flight content segments
-            if text_id is not None:
-                yield TextEnd(id=text_id)
-            if reasoning_id is not None:
-                yield ReasoningEnd(id=reasoning_id)
+            for ev in converter.end_segments():
+                yield ev
 
             # Decide whether to retry, commit partial, or commit error
-            if finish_reason != "error":
-                _final_content = content_buf
-                _final_reasoning = reasoning_buf
-                _final_tool_calls = tool_calls
-                _final_finish_reason = finish_reason
-                _final_usage = usage
+            if converter.finish_reason != "error":
+                _final_content = converter.content_buf
+                _final_reasoning = converter.reasoning_buf
+                _final_tool_calls = converter.tool_calls
+                _final_finish_reason = converter.finish_reason
+                _final_usage = converter.usage
                 break
 
-            if content_buf or tool_calls:
-                _final_content = content_buf
-                _final_reasoning = reasoning_buf
-                _final_tool_calls = tool_calls
-                _final_finish_reason = finish_reason
-                _final_usage = usage
+            if converter.content_buf or converter.tool_calls:
+                _final_content = converter.content_buf
+                _final_reasoning = converter.reasoning_buf
+                _final_tool_calls = converter.tool_calls
+                _final_finish_reason = converter.finish_reason
+                _final_usage = converter.usage
                 break
 
             if _retry_count >= retry_config.max_retries:
-                _final_content = content_buf
-                _final_reasoning = reasoning_buf
-                _final_finish_reason = finish_reason
-                _final_usage = usage
+                _final_content = converter.content_buf
+                _final_reasoning = converter.reasoning_buf
+                _final_tool_calls = converter.tool_calls
+                _final_finish_reason = converter.finish_reason
+                _final_usage = converter.usage
                 break
 
             _retry_count += 1
@@ -287,8 +329,7 @@ async def agent_loop(
                 return (
                     _tc.tool_call_id,
                     _tc.tool_name,
-                    await ToolExecutor.execute(
-                        tool_registry,
+                    await tool_registry.execute_tool_call(
                         _tc,
                         context=exec_context,
                     ),
@@ -335,25 +376,13 @@ async def agent_loop(
                 index=step_index, reason=finish_reason or "stop", usage=usage
             )
 
-            if session_manager is not None and agent_state.session_id:
-                new_msgs = agent_state.messages[_stored_count:]
-                if new_msgs:
-                    session_manager.store_messages(
-                        agent_state.session_id, new_msgs
-                    )
-                    _stored_count = len(agent_state.messages)
+            await store.flush(agent_state.messages)
             continue
 
         yield StepFinish(index=step_index, reason=finish_reason or "stop", usage=usage)
 
         if finish_reason is not None:
-            if session_manager is not None and agent_state.session_id:
-                new_msgs = agent_state.messages[_stored_count:]
-                if new_msgs:
-                    session_manager.store_messages(
-                        agent_state.session_id, new_msgs
-                    )
-                    _stored_count = len(agent_state.messages)
+            await store.flush(agent_state.messages)
             if (
                 context_size
                 and not _compacted_this_step
@@ -366,8 +395,7 @@ async def agent_loop(
                 )
             ):
                 _compacted_this_step = True
-                # Messages were replaced by compaction summary, reset store tracker
-                _stored_count = len(agent_state.messages)
+                store.sync(len(agent_state.messages))
                 yield Compacting(data="Compacting conversation history...")
                 if compaction_config.auto_continue:
                     agent_state.messages.append(
@@ -375,11 +403,114 @@ async def agent_loop(
                             content="Continue if you have next steps, or stop and ask for clarification if you are unsure how to proceed.",
                         )
                     )
-                    if session_manager is not None and agent_state.session_id:
-                        session_manager.store_messages(
-                            agent_state.session_id, agent_state.messages[_stored_count:]
-                        )
-                        _stored_count = len(agent_state.messages)
+                    await store.flush(agent_state.messages)
                     yield Compacting(data="Continuing after compaction...")
                     continue
             break
+
+
+# ── Orchestrator ────────────────────────────────────────────────
+
+_TURN_DONE = object()
+
+
+class LoopOrchestrator:
+    """Manages agent turn lifecycle: foreground execution, background tasks, and cancellation."""
+
+    def __init__(
+        self,
+        *,
+        session_manager: SessionManager,
+        tool_registry: ToolRegistry,
+        subagent_manager: SubagentManager | None,
+        llm_provider: Callable[[str], LLM],
+        compaction_config: CompactionConfig,
+        max_steps: int,
+        preference_checker: Callable[[], Awaitable[str]] | None,
+        title_scheduler: Callable[[str, str], None],
+        states: dict[str, AgentState],
+        event_sinks: dict[str, Callable[[Any], Awaitable[None]]],
+    ) -> None:
+        self._session_manager = session_manager
+        self._tool_registry = tool_registry
+        self._subagent_manager = subagent_manager
+        self._llm_provider = llm_provider
+        self._compaction_config = compaction_config
+        self._max_steps = max_steps
+        self._preference_checker = preference_checker
+        self._title_scheduler = title_scheduler
+        self._states = states
+        self._event_sinks = event_sinks
+        self._session_tasks: dict[str, asyncio.Task[None]] = {}
+        self._session_event_queues: dict[str, asyncio.Queue[Any]] = {}
+
+    async def run_agent_turn(
+        self,
+        session_id: str,
+        event_sink: Callable[[Any], Awaitable[None]] | None = None,
+    ):
+        state = self._states.get(session_id)
+        assert state is not None, f"state not found for session {session_id}"
+        if event_sink is not None:
+            self._event_sinks[session_id] = event_sink
+        llm = self._llm_provider(session_id)
+        try:
+            async for event in agent_loop(
+                state,
+                llm,
+                self._tool_registry,
+                compaction_config=self._compaction_config,
+                max_steps=self._max_steps,
+                session_manager=self._session_manager,
+                subagent_manager=self._subagent_manager,
+                preference_checker=self._preference_checker,
+                on_compacted=lambda child_sid: self._title_scheduler(
+                    child_sid, "on_compact"
+                ),
+            ):
+                yield event
+        finally:
+            self._event_sinks.pop(session_id, None)
+
+    def is_session_running(self, session_id: str) -> bool:
+        return session_id in self._session_tasks and not self._session_tasks[session_id].done()
+
+    async def start_background_agent_turn(
+        self,
+        session_id: str,
+        event_sink: Callable[[Any], Awaitable[None]] | None = None,
+    ) -> asyncio.Queue[Any]:
+        queue: asyncio.Queue[Any] = asyncio.Queue()
+        self._session_event_queues[session_id] = queue
+
+        async def _run() -> None:
+            try:
+                async for event in self.run_agent_turn(
+                    session_id=session_id,
+                    event_sink=event_sink,
+                ):
+                    await queue.put(event)
+            except asyncio.CancelledError:
+                pass
+            except Exception:
+                logger.exception(f"Background agent turn failed for {session_id}")
+            finally:
+                await queue.put(_TURN_DONE)
+                self._session_tasks.pop(session_id, None)
+                self._session_event_queues.pop(session_id, None)
+                self._event_sinks.pop(session_id, None)
+
+        task = asyncio.create_task(_run())
+        self._session_tasks[session_id] = task
+        return queue
+
+    def cancel_background_agent_turn(self, session_id: str) -> None:
+        task = self._session_tasks.get(session_id)
+        if task is not None and not task.done():
+            task.cancel()
+
+    async def cancel_all(self) -> None:
+        for sid in list(self._session_tasks):
+            self.cancel_background_agent_turn(sid)
+        if self._session_tasks:
+            await asyncio.wait(list(self._session_tasks.values()), timeout=5.0)

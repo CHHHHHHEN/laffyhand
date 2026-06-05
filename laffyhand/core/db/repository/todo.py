@@ -4,7 +4,7 @@ import sqlite3
 from typing import Optional
 
 from laffyhand.core.session.todo.models import TodoItem
-from laffyhand.core.session.models import _utcnow
+from laffyhand.core.session.models import utcnow
 from laffyhand.core.db.repository.common import (
     _from_ts,
     _serialize_json,
@@ -141,8 +141,8 @@ class TodoRepo:
             status=row["status"],
             priority=row["priority"],
             depends_on=_deserialize_str_list(row["depends_on"]),
-            created_at=_from_ts(row["created_at"]) or _utcnow(),
-            updated_at=_from_ts(row["updated_at"]) or _utcnow(),
+            created_at=_from_ts(row["created_at"]) or utcnow(),
+            updated_at=_from_ts(row["updated_at"]) or utcnow(),
             completed_at=_from_ts(row["completed_at"]) if row["completed_at"] else None,
             task_tool_id=row["task_tool_id"],
             metadata=_deserialize_metadata(row["metadata"]),

@@ -103,16 +103,16 @@ export function useChat() {
                   }
                   break
                 case "tool-call": {
-                  let args: Record<string, unknown> = {}
+                  let parsed: Record<string, unknown> = {}
                   try {
-                    args = JSON.parse(event.input)
+                    parsed = JSON.parse(event.args)
                   } catch {
-                    args = {}
+                    parsed = {}
                   }
                   store.addToolCall(sessionId, {
-                    id: event.id,
-                    name: event.name,
-                    arguments: args,
+                    id: event.tool_call_id,
+                    name: event.tool_name,
+                    arguments: parsed,
                   })
                   break
                 }

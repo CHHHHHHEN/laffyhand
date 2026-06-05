@@ -9,12 +9,12 @@ from pydantic import BaseModel, Field
 from laffyhand.core.llm.specs.models import ModelID, ProviderID
 
 
-def _utcnow() -> datetime:
+def utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _generate_id() -> str:
-    now = _utcnow()
+def generate_id() -> str:
+    now = utcnow()
     return now.strftime("%Y%m%d_%H%M%S") + "_" + uuid4().hex[:8]
 
 
@@ -206,7 +206,7 @@ SessionStatus = Literal["active", "completed", "archived"]
 
 
 class Session(BaseModel):
-    id: str = Field(default_factory=_generate_id, description="会话唯一标识")
+    id: str = Field(default_factory=generate_id, description="会话唯一标识")
     status: SessionStatus = Field(default="active", description="会话状态")
     title: str = Field(default="", description="会话标题")
     cwd: str = Field(default="", description="工作目录")
@@ -226,8 +226,8 @@ class Session(BaseModel):
     message_count: int = Field(default=0, description="消息数")
     summary: Optional[str] = Field(default=None, description="会话摘要")
     metadata: Dict[str, Any] = Field(default_factory=dict, description="扩展元数据")
-    created_at: datetime = Field(default_factory=_utcnow, description="创建时间")
-    updated_at: datetime = Field(default_factory=_utcnow, description="最后更新时间")
+    created_at: datetime = Field(default_factory=utcnow, description="创建时间")
+    updated_at: datetime = Field(default_factory=utcnow, description="最后更新时间")
     ended_at: Optional[datetime] = Field(default=None, description="完成/归档时间")
 
 

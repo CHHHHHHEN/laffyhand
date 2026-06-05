@@ -11,7 +11,7 @@ from laffyhand.core.session.todo.models import (
     TodoPriority,
     TodoStatus,
 )
-from laffyhand.core.session.models import _generate_id, _utcnow
+from laffyhand.core.session.models import generate_id, utcnow
 from laffyhand.core.db.repository.common import _ts
 
 if TYPE_CHECKING:
@@ -64,7 +64,7 @@ class TodoManager:
         if id is not None:
             if self._repo.get_by_session_and_id(session_id, id) is not None:
                 raise ValueError(f"Task with id '{id}' already exists in this session")
-        item_id = id if id is not None else _generate_id()
+        item_id = id if id is not None else generate_id()
         item = TodoItem(
             id=item_id,
             session_id=session_id,
@@ -108,7 +108,7 @@ class TodoManager:
                     )
                 item_id = t.id
             else:
-                item_id = _generate_id()
+                item_id = generate_id()
 
             item = TodoItem(
                 id=item_id,
@@ -168,11 +168,11 @@ class TodoManager:
         if updates.status is not None:
             item.status = updates.status
             if updates.status == "completed" and old_status != "completed":
-                item.completed_at = _utcnow()
+                item.completed_at = utcnow()
             elif updates.status != "completed":
                 item.completed_at = None
 
-        item.updated_at = _utcnow()
+        item.updated_at = utcnow()
         try:
             self._repo.update(item)
             self._repo.commit()
@@ -187,7 +187,7 @@ class TodoManager:
             and updates.status is not None
             and updates.status != "completed"
         ):
-            now = _utcnow()
+            now = utcnow()
             try:
                 self._repo.connection.execute(
                     "UPDATE todo SET updated_at=? WHERE session_id=?",
@@ -212,7 +212,7 @@ class TodoManager:
                 dep_item = self._repo.get(dep_id)
                 if dep_item is not None:
                     dep_item.depends_on = deps
-                    dep_item.updated_at = _utcnow()
+                    dep_item.updated_at = utcnow()
                     self._repo.update(dep_item)
         self._repo.delete(task_id)
         self._repo.commit()
@@ -325,7 +325,7 @@ class TodoManager:
                     else:
                         t.metadata.pop("blocked_by", None)
                         t.status = "pending"
-                        t.updated_at = _utcnow()
+                        t.updated_at = utcnow()
                         self._repo.update(t)
                         changed = True
         if changed:

@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any
 from loguru import logger
 
 from laffyhand.core.llm.specs.models import AssistantMessage, Message, SystemMessage, ToolMessage, UserMessage
-from laffyhand.core.schemas import TextDelta, StepFinish, Finish, PermissionRequest
+from laffyhand.core.events import TextDelta, StepFinish, Finish, PermissionRequest
 from laffyhand.core.tools.permission import request_callback as _pm_callback
 from laffyhand.core.schemas import (
     AgentState,

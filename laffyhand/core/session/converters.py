@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from uuid import uuid4
 
 from laffyhand.core.llm.specs.models import (
     AssistantMessage,
@@ -31,28 +29,20 @@ from laffyhand.core.session.models import (
     UserData,
 )
 from laffyhand.core.llm.specs.models import ModelID, ProviderID
-
-
-def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
-
-
-def _generate_id() -> str:
-    now = _utcnow()
-    return now.strftime("%Y%m%d_%H%M%S") + "_" + uuid4().hex[:8]
+from laffyhand.core.session.models import generate_id, utcnow
 
 
 def message_to_session_message(msg: Message, session_id: str) -> SessionMessage:
-    now = int(_utcnow().timestamp() * 1000)
+    now = int(utcnow().timestamp() * 1000)
     if isinstance(msg, SystemMessage):
         return SessionMessage(
-            id=_generate_id(), session_id=session_id, type="synthetic",
+            id=generate_id(), session_id=session_id, type="synthetic",
             time_created=now, time_updated=now,
             data=SyntheticData(sessionID=session_id, text=msg.content),
         )
     if isinstance(msg, UserMessage):
         return SessionMessage(
-            id=_generate_id(), session_id=session_id, type="user",
+            id=generate_id(), session_id=session_id, type="user",
             time_created=now, time_updated=now,
             data=UserData(text=msg.content),
         )
@@ -75,7 +65,7 @@ def message_to_session_message(msg: Message, session_id: str) -> SessionMessage:
             cache=TokenCache(read=msg.tokens.cache_read_tokens or 0, write=msg.tokens.cache_write_tokens or 0),
         ) if msg.tokens else None
         return SessionMessage(
-            id=_generate_id(), session_id=session_id, type="assistant",
+            id=generate_id(), session_id=session_id, type="assistant",
             time_created=now, time_updated=now,
             data=AssistantData(
                 agent="", model=Model(id=ModelID(""), provider=ProviderID("")),
@@ -84,11 +74,12 @@ def message_to_session_message(msg: Message, session_id: str) -> SessionMessage:
             ),
         )
     if isinstance(msg, ToolMessage):
+        command = f"{msg.tool_name} {msg.args}" if msg.tool_name else ""
         return SessionMessage(
-            id=_generate_id(), session_id=session_id, type="shell",
+            id=generate_id(), session_id=session_id, type="shell",
             time_created=now, time_updated=now,
             data=ShellData(
-                callID=msg.tool_call_id, command="", output=msg.content,
+                callID=msg.tool_call_id, command=command, output=msg.content,
                 is_error=msg.is_error, time=MessageTime(created=now),
             ),
         )

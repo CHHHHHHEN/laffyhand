@@ -7,6 +7,7 @@ from loguru import logger
 from laffyhand.core.mcp.client import MCPClient, MCPToolDef
 from laffyhand.core.mcp.config import MCPConfig, LocalMCPConfig
 from laffyhand.core.tools.base import BaseTool
+from laffyhand.core.exceptions import MCPError
 
 
 class MCPWrappedTool(BaseTool):
@@ -168,7 +169,7 @@ class MCPService:
         """
         async with self._lock:
             if name in self._clients:
-                raise ValueError(f"MCP server '{name}' is already connected")
+                raise MCPError(f"MCP server '{name}' is already connected")
             self._reconnect_cfgs[name] = cfg
         client = MCPClient(name, cfg)
         try:

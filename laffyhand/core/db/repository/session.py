@@ -6,7 +6,7 @@ from typing import Optional, cast
 from loguru import logger
 
 from laffyhand.core.llm.specs.models import ModelID, ProviderID
-from laffyhand.core.session.models import Session, _utcnow
+from laffyhand.core.session.models import Session, utcnow
 from laffyhand.core.db.repository.common import (
     _from_ts,
     _serialize_metadata,
@@ -43,8 +43,8 @@ class SessionRepo:
             message_count=row["message_count"],
             summary=row["summary"],
             metadata=_deserialize_metadata(row["metadata"] or "{}"),
-            created_at=_from_ts(row["created_at"]) or _utcnow(),
-            updated_at=_from_ts(row["updated_at"]) or _utcnow(),
+            created_at=_from_ts(row["created_at"]) or utcnow(),
+            updated_at=_from_ts(row["updated_at"]) or utcnow(),
             ended_at=_from_ts(row["ended_at"]) if row["ended_at"] else None,
         )
 
@@ -96,7 +96,7 @@ class SessionRepo:
         return [self._row_to_session(r) for r in rows]
 
     def update(self, session: Session) -> None:
-        session.updated_at = _utcnow()
+        session.updated_at = utcnow()
         self._conn.execute(
             """UPDATE session SET status=?, title=?, cwd=?, model=?, agent_version=?,
                 turn_count=?, step_count=?,
@@ -118,7 +118,7 @@ class SessionRepo:
         )
 
     def complete(self, session_id: str, summary: Optional[str] = None) -> None:
-        now = _utcnow()
+        now = utcnow()
         self._conn.execute(
             "UPDATE session SET status='completed', summary=?, ended_at=?, updated_at=? WHERE id=?",
             (summary, _ts(now), _ts(now), session_id),
@@ -127,7 +127,7 @@ class SessionRepo:
     def archive(self, session_id: str) -> None:
         self._conn.execute(
             "UPDATE session SET status='archived', updated_at=? WHERE id=?",
-            (_ts(_utcnow()), session_id),
+            (_ts(utcnow()), session_id),
         )
 
     def delete(self, session_id: str) -> None:
@@ -160,7 +160,7 @@ class SessionRepo:
             WHERE id=?""",
             (turn_count, step_count, input_tokens, output_tokens,
              reasoning_tokens, cache_read_tokens, cache_write_tokens,
-             cost, message_count, _ts(_utcnow()), session_id),
+             cost, message_count, _ts(utcnow()), session_id),
         )
 
     def get_depth(self, session_id: str, max_depth: int = 1000) -> int:

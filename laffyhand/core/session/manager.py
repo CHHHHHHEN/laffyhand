@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import sqlite3
-import threading
 from pathlib import Path
 from collections.abc import Sequence
 
@@ -9,11 +8,12 @@ from loguru import logger
 
 from laffyhand.core.llm.specs.models import AssistantMessage, Message, SystemMessage, UserMessage
 from laffyhand.core.llm.specs.models import ModelID, ProviderID
-from laffyhand.core.session.models import Session, _utcnow
+from laffyhand.core.session.models import Session, utcnow
 from laffyhand.core.session.converters import message_to_session_message, session_message_to_message
 from laffyhand.core.db.repository import SessionRepo, MessageRepo
 from laffyhand.core.db.schema import create_tables
 from laffyhand.core.schemas import AgentState, SessionID, SessionUsage
+from laffyhand.core.exceptions import SessionError
 
 
 class SessionManager:
@@ -34,8 +34,6 @@ class SessionManager:
         self._sessions = SessionRepo(self._conn)
         self._messages = MessageRepo(self._conn)
         self._pending_meta: dict[str, dict] = {}
-        self._meta_lock = threading.Lock()
-        self._msg_lock = threading.Lock()
 
     @property
     def connection(self) -> sqlite3.Connection:
@@ -85,16 +83,14 @@ class SessionManager:
 
     def set_pending_meta(self, session_id: str, **kwargs: str) -> None:
         """Store session creation metadata for later lazy persistence."""
-        with self._meta_lock:
-            self._pending_meta[session_id] = kwargs
+        self._pending_meta[session_id] = kwargs
 
     def ensure_exists(self, session_id: str) -> Session:
         """Create a session in DB if it doesn't exist yet (lazy persistence)."""
         existing = self._sessions.get(session_id)
         if existing is not None:
             return existing
-        with self._meta_lock:
-            meta = self._pending_meta.pop(session_id, {})
+        meta = self._pending_meta.pop(session_id, {})
         session = Session(
             id=session_id,
             title=meta.get("title", ""),
@@ -159,8 +155,7 @@ class SessionManager:
 
     def store_messages(self, session_id: str, messages: list[Message]) -> int:
         """Store new Message objects as V2 session messages and update counters."""
-        with self._msg_lock:
-            session = self.ensure_exists(session_id)
+        session = self.ensure_exists(session_id)
         began = self._begin()
         try:
             existing = self._messages.count_by_session(session_id)
@@ -181,8 +176,7 @@ class SessionManager:
         return new_count
 
     def sync_messages(self, session_id: str, messages: list[Message]) -> int:
-        with self._msg_lock:
-            self.ensure_exists(session_id)
+        self.ensure_exists(session_id)
         began = self._begin()
         try:
             self._messages.delete_by_session(session_id)
@@ -310,7 +304,7 @@ class SessionManager:
     def fork(self, session_id: str, title: str = "") -> Session:
         parent = self._sessions.get(session_id)
         if parent is None:
-            raise ValueError(f"Source session not found: {session_id}")
+            raise SessionError(f"Source session not found: {session_id}")
         messages = self.get_messages(session_id)
         child = self.create(
             title=title or parent.title or "", cwd=parent.cwd,
@@ -355,5 +349,5 @@ class SessionManager:
     def _update_counters(self, session_id: str, message_count: int) -> None:
         self._conn.execute(
             "UPDATE session SET message_count=?, updated_at=? WHERE id=?",
-            (message_count, _utcnow().isoformat(), session_id),
+            (message_count, utcnow().isoformat(), session_id),
         )

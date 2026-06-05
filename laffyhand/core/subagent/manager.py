@@ -18,22 +18,11 @@ from laffyhand.core.schemas import (
     SessionID,
     SessionUsage,
 )
-from laffyhand.core.schemas import (
-    StepStart,
-    TextStart,
-    TextEnd,
-    ReasoningStart,
-    ReasoningEnd,
-    Compacting,
+from laffyhand.core.events import (
     SubAgentStart,
-    SubAgentDelta,
     SubAgentEnd,
-    TextDelta,
-    ReasoningDelta,
-    ToolCall as StreamToolCall,
-    ToolResult as StreamToolResult,
-    ToolError as StreamToolError,
 )
+from laffyhand.core.subagent.orchestrator import map_event_to_subagent_delta
 from laffyhand.core.tools.permission import SubagentPermissions
 
 if TYPE_CHECKING:
@@ -204,52 +193,7 @@ class SubagentManager:
                         max_steps=agent_info.max_steps,
                         session_manager=session_manager,
                     ):
-                        if isinstance(event, TextDelta):
-                            await _relay_event(
-                                SubAgentDelta(
-                                    id=task_id,
-                                    kind="text",
-                                    content=event.text,
-                                )
-                            )
-                        elif isinstance(event, ReasoningDelta):
-                            await _relay_event(
-                                SubAgentDelta(
-                                    id=task_id,
-                                    kind="reasoning",
-                                    content=event.text,
-                                )
-                            )
-                        elif isinstance(event, StreamToolCall):
-                            tool_call_count += 1
-                            await _relay_event(
-                                SubAgentDelta(
-                                    id=task_id,
-                                    kind="tool",
-                                    tool_name=event.name,
-                                    tool_input=event.input,
-                                )
-                            )
-                        elif isinstance(event, StreamToolResult):
-                            await _relay_event(
-                                SubAgentDelta(
-                                    id=task_id,
-                                    kind="tool_result",
-                                    tool_name=event.name,
-                                    content=event.result,
-                                )
-                            )
-                        elif isinstance(event, StreamToolError):
-                            await _relay_event(
-                                SubAgentDelta(
-                                    id=task_id,
-                                    kind="tool_result",
-                                    tool_name=event.name,
-                                    content=event.message,
-                                )
-                            )
-                        elif isinstance(event, (StepStart, TextStart, TextEnd, ReasoningStart, ReasoningEnd, Compacting)):
-                            await _relay_event(event)
+                        tool_call_count += await map_event_to_subagent_delta(task_id, event, _relay_event)
 
                     assert child_state.session_id is not None
                     session_manager.save_state(child_state.session_id, child_state)

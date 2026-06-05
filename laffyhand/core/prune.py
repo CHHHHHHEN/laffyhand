@@ -4,8 +4,8 @@ from laffyhand.core._utils import estimate_tokens
 from laffyhand.core.llm.specs.models import Message, ToolMessage
 
 
-PRUNE_PROTECT = 40_000
-PRUNE_MINIMUM = 20_000
+_PRUNE_PROTECT = 40_000
+_PRUNE_MINIMUM = 20_000
 _PRUNE_MIN_SAVINGS = 50
 
 
@@ -30,12 +30,12 @@ def prune(
     logger.trace(
         f"Prune: found {len(tool_indices)} ToolMessages, total_tokens={total_tokens}"
     )
-    if total_tokens <= PRUNE_PROTECT:
+    if total_tokens <= _PRUNE_PROTECT:
         logger.trace(
-            f"Total tokens {total_tokens} <= PRUNE_PROTECT {PRUNE_PROTECT}, skipping"
+            f"Total tokens {total_tokens} <= _PRUNE_PROTECT {_PRUNE_PROTECT}, skipping"
         )
         return messages
-    target = max(PRUNE_MINIMUM, total_tokens // 2)
+    target = max(_PRUNE_MINIMUM, total_tokens // 2)
     pruned = 0
     result = list(messages)
     for idx in reversed(tool_indices):

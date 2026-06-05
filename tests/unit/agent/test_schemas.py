@@ -10,6 +10,8 @@ from laffyhand.core.schemas import (
     SessionUsage,
     AgentState,
     CompactionConfig,
+)
+from laffyhand.core.events import (
     UsageUpdate,
     TodoUpdate,
 )
@@ -81,7 +83,7 @@ class TestUsageUpdateEvent(unittest.TestCase):
         self.assertEqual(event.session_usage["total_input"], 100)
 
     def test_usage_update_in_agent_event_union(self):
-        from laffyhand.core.schemas import AgentEvent
+        from laffyhand.core.events import AgentEvent
         event: AgentEvent = UsageUpdate(session_usage={"total_input": 50})
         self.assertEqual(event.type, "usage-update")
 
@@ -92,7 +94,7 @@ class TestTodoUpdateEvent(unittest.TestCase):
         self.assertEqual(event.type, "todo-update")
 
     def test_todo_update_in_agent_event_union(self):
-        from laffyhand.core.schemas import AgentEvent
+        from laffyhand.core.events import AgentEvent
         event: AgentEvent = TodoUpdate()
         self.assertEqual(event.type, "todo-update")
 

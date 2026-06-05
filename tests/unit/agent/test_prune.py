@@ -7,7 +7,7 @@ from laffyhand.core.llm.specs.models import (
     ToolMessage,
     UserMessage,
 )
-from laffyhand.core.prune import PRUNE_PROTECT, prune
+from laffyhand.core.prune import _PRUNE_PROTECT as PRUNE_PROTECT, prune
 
 
 def _tool(content: str, tool_call_id: str = "call_1") -> ToolMessage:

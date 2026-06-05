@@ -4,41 +4,24 @@ import asyncio
 import copy
 import os
 import sys
-import uuid
 from datetime import datetime, timezone
 from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from contextlib import asynccontextmanager
-from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
-from laffyhand.core.llm.specs.models import AssistantMessage, ModelID, ProviderID, SystemMessage
+from laffyhand.core.llm.specs.models import ModelID, ProviderID, SystemMessage
 from laffyhand.core.schemas import (
     AgentState,
-    Compacting,
     CompactionConfig,
     SessionID,
-    StepFinish,
-    StepStart,
-    SubAgentEnd,
-    SubAgentStart,
-    SubAgentDelta,
-    TextDelta,
-    TextEnd,
-    TextStart,
-    ReasoningDelta,
-    ReasoningEnd,
-    ReasoningStart,
-    ToolCall as StreamToolCall,
-    ToolResult as StreamToolResult,
-    ToolError as StreamToolError,
 )
 from laffyhand.core.agent import AgentRegistry
 from laffyhand.core.skill import SkillRegistry
 from laffyhand.core.session import SessionManager, TitleConfig
-from laffyhand.core.subagent.manager import SubagentManager, build_subagent_state
+from laffyhand.core.subagent import SubagentManager, SubagentOrchestrator, SessionContext
 from laffyhand.core.tools.registry import ToolRegistry
 from laffyhand.core.tools.file import ReadTool, ListDirTool, WriteTool, EditTool, GlobTool, GrepTool
 from laffyhand.core.tools.bash import BashTool
@@ -55,27 +38,18 @@ from laffyhand.core.tools.mcp_manage import (
 )
 from laffyhand.core.mcp import MCPService
 from laffyhand.core.db.repository import FileTagRepo
-from laffyhand.core.loop import agent_loop
+from laffyhand.core.loop import LoopOrchestrator
 from laffyhand.core.llm.factory import build_route
 from laffyhand.core.llm.facade import LLM
+from laffyhand.core.exceptions import SessionError, ConfigError
+from laffyhand.core.preference import PreferenceService
+from laffyhand.core.title import TitleService
+from laffyhand.core.workspace import WorkspaceService
 
 if TYPE_CHECKING:
     from laffyhand.core.agent import AgentInfo
 
 from laffyhand.config import LaffyConfig
-
-
-MAX_SUBAGENT_DEPTH = 3
-
-# Sentinel object marking agent turn completion
-_TURN_DONE = object()
-
-
-@dataclass
-class SessionContext:
-    """Per-call context attached to a running agent turn."""
-    subagent_id: str | None = None
-    subagent_depth: int = 0
 
 
 class AgentRuntime:
@@ -98,6 +72,11 @@ class AgentRuntime:
             tail_turns=config.agent.compaction_tail_turns,
         )
         self.title_config = TitleConfig(mode=config.agent.title_mode)
+        self.title_service = TitleService(
+            session_manager=self.session_manager,
+            title_config=self.title_config,
+            llm_provider=self._llm_for_session,
+        )
         self.max_steps = config.agent.max_steps
         self.subagent_manager = SubagentManager(
             max_concurrent=config.agent.max_concurrent_subagents,
@@ -112,8 +91,9 @@ class AgentRuntime:
             logger.warning(f"Could not resolve provider/model for context_size: {e}")
             self._context_size = 128_000
 
+        self.workspace_service = WorkspaceService(self._config)
         self.tool_registry = ToolRegistry()
-        self.tool_registry.workspace = self._resolve_workspace()
+        self.tool_registry.workspace = self.workspace_service.resolve_workspace()
         self.agent_registry = AgentRegistry()
         self.skill_registry = SkillRegistry()
 
@@ -121,22 +101,37 @@ class AgentRuntime:
 
         self._file_tag_repo = FileTagRepo(self.session_manager.connection)
 
+        self.subagent_orchestrator = SubagentOrchestrator(
+            session_manager=self.session_manager,
+            tool_registry=self.tool_registry,
+            subagent_manager=self.subagent_manager,
+            llm_provider=self._llm_for_session,
+            compaction_config=self.compaction_config,
+            todo_manager=self.todo_manager,
+            event_sink_provider=lambda sid: self._event_sinks.get(sid),
+        )
+
         self._states: dict[str, AgentState] = {}
+
+        self.loop_orchestrator = LoopOrchestrator(
+            session_manager=self.session_manager,
+            tool_registry=self.tool_registry,
+            subagent_manager=self.subagent_manager,
+            llm_provider=self._llm_for_session,
+            compaction_config=self.compaction_config,
+            max_steps=self.max_steps,
+            preference_checker=self.poll_new_preferences,
+            title_scheduler=self._schedule_title_generation,
+            states=self._states,
+            event_sinks=self._event_sinks,
+        )
         self._session_locks: dict[str, asyncio.Lock] = {}
         self._session_contexts: dict[str, SessionContext] = {}
         self._pending_permissions: dict[
             str, tuple[asyncio.Event, str, str, bool | None, str | None]
         ] = {}
         self._task_tool: TaskTool | None = None
-        self._preferences: str | None = None
-        self._preference_files: dict[str, str] = {}
-        self._pref_lock = asyncio.Lock()
-        self._prefs_initialized: bool = False
-        self._pref_claims: dict[str, set[str]] = {}
-
-        # Background session tasks (decoupled from HTTP connections)
-        self._session_tasks: dict[str, asyncio.Task[None]] = {}
-        self._session_event_queues: dict[str, asyncio.Queue] = {}
+        self.preference_service = PreferenceService()
 
 
 
@@ -168,7 +163,7 @@ class AgentRuntime:
         skill_tool = SkillTool(self.skill_registry, self.tool_registry.permission)
         self.tool_registry.register_tool(skill_tool)
 
-        self._task_tool = TaskTool(runtime=self)
+        self._task_tool = TaskTool(agent_registry=self.agent_registry, orchestrator=self.subagent_orchestrator)
         self.tool_registry.register_tool(self._task_tool)
 
         # Tag tool
@@ -228,7 +223,7 @@ class AgentRuntime:
         """
         state = self._states.get(session_id)
         if state is None:
-            raise RuntimeError(f"Session not found: {session_id}")
+            raise SessionError(f"Session not found: {session_id}")
         ctx = SessionContext()
         self._session_contexts[session_id] = ctx
         lock = self.get_session_lock(session_id)
@@ -257,125 +252,16 @@ class AgentRuntime:
     def load_skills(self, skill_dirs: Sequence[str | Path]) -> None:
         self.skill_registry.discover(list(skill_dirs))
 
-    @staticmethod
-    def _find_up(
-        target: str,
-        start: Path | None = None,
-        stop: Path | None = None,
-    ) -> Path | None:
-        """Walk upward from *start* toward *stop*, returning the first *target* file found.
+    def _resolve_workspace(self) -> str:
+        return self.workspace_service.resolve_workspace()
 
-        This implements the "first-match-wins" strategy used by opencode:
-        the closest ancestor containing *target* wins, and we stop searching
-        so that AGENTS.md files from multiple ancestor directories never stack.
-        """
-        if start is None:
-            start = Path(os.getcwd()).resolve()
-        if stop is None:
-            stop = Path(os.path.expanduser("~")).resolve()
-        current = start.resolve()
-        while True:
-            candidate = current / target
-            if candidate.is_file():
-                return candidate
-            if current == stop or current.parent == current:
-                break
-            current = current.parent
-        return None
-
-    @staticmethod
-    def _find_up_all(
-        target: str,
-        start: Path | None = None,
-        stop: Path | None = None,
-    ) -> list[Path]:
-        """Walk upward from *start* toward *stop*, collecting *all* matching files.
-
-        Used for dynamic resolution (walking upward from a read file path).
-        """
-        if start is None:
-            start = Path(os.getcwd()).resolve()
-        if stop is None:
-            stop = Path(os.path.expanduser("~")).resolve()
-        result: list[Path] = []
-        current = start.resolve()
-        while True:
-            candidate = current / target
-            if candidate.is_file():
-                result.append(candidate)
-            if current == stop or current.parent == current:
-                break
-            current = current.parent
-        return result
-
-    def _read_preference_files(self) -> dict[str, str]:
-        """Read AGENTS.md with first-match-wins strategy.
-
-        1. Search upward from CWD — the closest project-level AGENTS.md wins.
-        2. If no project-level AGENTS.md found, fall back to home directory.
-        """
-        result: dict[str, str] = {}
-
-        # Phase 1: project-level — closest ancestor AGENTS.md wins
-        project_md = self._find_up("AGENTS.md")
-        if project_md is not None:
-            result[str(project_md)] = project_md.read_text(encoding="utf-8").strip()
-            return result  # first match wins — don't also load home
-
-        # Phase 2: fallback — home directory AGENTS.md as global config
-        home_md = Path(os.path.expanduser("~")) / "AGENTS.md"
-        if home_md.is_file():
-            result[str(home_md)] = home_md.read_text(encoding="utf-8").strip()
-
-        return result
+    # ── Preference delegation (backward compat) ─────────────────
 
     async def _load_preferences(self) -> str:
-        async with self._pref_lock:
-            if self._preferences is not None:
-                return self._preferences
-            self._preference_files = self._read_preference_files()
-            sections = [
-                f"<preference>\n{text}\n</preference>"
-                for text in self._preference_files.values()
-            ]
-            self._preferences = "\n".join(sections) if sections else ""
-            self._prefs_initialized = True
-            return self._preferences
+        return await self.preference_service.load_preferences()
 
     async def poll_new_preferences(self) -> str:
-        current = self._read_preference_files()
-
-        async with self._pref_lock:
-            if not self._prefs_initialized:
-                # Not yet loaded into system prompt — just populate cache without emitting
-                self._preference_files = current
-                return ""
-
-            changed = False
-            sections: list[str] = []
-
-            # Detect new/changed files
-            for path, text in current.items():
-                prev = self._preference_files.get(path)
-                if prev == text:
-                    continue
-                self._preference_files[path] = text
-                sections.append(f"<preference>\n{text}\n</preference>")
-                changed = True
-                logger.info(f"New/changed preferences: {path}")
-
-            # Detect deleted files
-            for path in list(self._preference_files):
-                if path not in current:
-                    del self._preference_files[path]
-                    changed = True
-                    logger.info(f"Removed preferences from deleted file: {path}")
-
-            if changed:
-                self._preferences = (
-                    None  # invalidate cache so next _load_preferences re-reads
-                )
-        return "\n".join(sections) if sections else ""
+        return await self.preference_service.poll_new_preferences()
 
     def resolve_preferences(
         self,
@@ -384,48 +270,10 @@ class AgentRuntime:
         *,
         root: str | None = None,
     ) -> list[dict[str, str]]:
-        """Walk upward from *file_path* and return newly-found AGENTS.md contents.
-
-        This mirrors opencode's ``Instruction.resolve()``: when a file is read,
-        we walk upward from its directory to discover nearby instruction files
-        and attach their content once per message.
-
-        Returns a list of ``{"filepath": …, "content": …}`` dicts for files
-        that haven't been claimed for *message_id* yet.
-        """
-        start = Path(file_path).resolve().parent
-        stop = Path(root).resolve() if root else Path(os.getcwd()).resolve()
-        results: list[dict[str, str]] = []
-
-        # Collect all AGENTS.md files walking upward from the file's directory
-        found = self._find_up_all("AGENTS.md", start=start, stop=stop)
-
-        # Ensure claims set exists for this message
-        claims = self._pref_claims.setdefault(message_id, set())
-
-        for md_path in found:
-            sp = str(md_path)
-            if sp in claims:
-                continue  # already injected for this message
-            claims.add(sp)
-            content = md_path.read_text(encoding="utf-8").strip()
-            if content:
-                results.append({
-                    "filepath": sp,
-                    "content": f"Instructions from: {sp}\n{content}",
-                })
-
-        return results
-
-    def _resolve_workspace(self) -> str:
-        cfg = self._config.paths.workspace
-        if cfg:
-            return str(Path(cfg).resolve())
-        return os.getcwd()
+        return self.preference_service.resolve_preferences(file_path, message_id, root=root)
 
     def clear_preference_claims(self, message_id: str) -> None:
-        """Release claims for a finished message."""
-        self._pref_claims.pop(message_id, None)
+        self.preference_service.clear_preference_claims(message_id)
 
     async def build_system_prompt(self, base_prompt: str, disabled_tools: set[str] | None = None) -> str:
         parts: list[str] = []
@@ -521,35 +369,15 @@ class AgentRuntime:
             return self._build_llm(provider, model)
         if self.llm is not None:
             return self.llm
-        raise RuntimeError("No LLM available for session")
+        raise ConfigError("No LLM available for session")
 
     async def run_agent_turn(  # type: ignore[no-untyped-def]
         self,
         session_id: str,
         event_sink: Callable[[Any], Awaitable[None]] | None = None,
     ):
-        state = self._states.get(session_id)
-        assert state is not None, f"state not found for session {session_id}"
-        if event_sink is not None:
-            self._event_sinks[session_id] = event_sink
-        llm = self._llm_for_session(session_id)
-        try:
-            async for event in agent_loop(
-                state,
-                llm,
-                self.tool_registry,
-                compaction_config=self.compaction_config,
-                max_steps=self.max_steps,
-                session_manager=self.session_manager,
-                subagent_manager=self.subagent_manager,
-                preference_checker=self.poll_new_preferences,
-                on_compacted=lambda child_sid: self._schedule_title_generation(
-                    child_sid, "on_compact"
-                ),
-            ):
-                yield event
-        finally:
-            self._event_sinks.pop(session_id, None)
+        async for event in self.loop_orchestrator.run_agent_turn(session_id, event_sink=event_sink):
+            yield event
 
     async def compact_session(self, session_id: str) -> str | None:
         """Manually trigger compaction for a session. Returns new session_id or None."""
@@ -584,46 +412,17 @@ class AgentRuntime:
     # ── Background session tasks ──────────────────────────────
 
     def is_session_running(self, session_id: str) -> bool:
-        return session_id in self._session_tasks and not self._session_tasks[session_id].done()
+        return self.loop_orchestrator.is_session_running(session_id)
 
     async def start_background_agent_turn(
         self,
         session_id: str,
         event_sink: Callable[[Any], Awaitable[None]] | None = None,
     ) -> asyncio.Queue:
-        """Run agent_loop in a background task, pushing events to a per-session queue.
-
-        The queue remains valid even after the HTTP connection drops.
-        Returns the event queue for the caller to drain.
-        """
-        queue: asyncio.Queue = asyncio.Queue()
-        self._session_event_queues[session_id] = queue
-
-        async def _run() -> None:
-            try:
-                async for event in self.run_agent_turn(
-                    session_id=session_id,
-                    event_sink=event_sink,
-                ):
-                    await queue.put(event)
-            except asyncio.CancelledError:
-                pass
-            except Exception:
-                logger.exception(f"Background agent turn failed for {session_id}")
-            finally:
-                await queue.put(_TURN_DONE)
-                self._session_tasks.pop(session_id, None)
-                self._session_event_queues.pop(session_id, None)
-                self._event_sinks.pop(session_id, None)
-
-        task = asyncio.create_task(_run())
-        self._session_tasks[session_id] = task
-        return queue
+        return await self.loop_orchestrator.start_background_agent_turn(session_id, event_sink=event_sink)
 
     def cancel_background_agent_turn(self, session_id: str) -> None:
-        task = self._session_tasks.get(session_id)
-        if task is not None and not task.done():
-            task.cancel()
+        self.loop_orchestrator.cancel_background_agent_turn(session_id)
 
     async def create_subagent(
         self,
@@ -634,285 +433,37 @@ class AgentRuntime:
         background: bool = False,
         todo_id: str | None = None,
     ) -> str:
-        depth = self.session_manager.get_depth(parent_session_id)
-        if depth > MAX_SUBAGENT_DEPTH:
-            return (
-                f"Error: maximum sub-agent depth ({MAX_SUBAGENT_DEPTH}) exceeded. "
-                "Cannot spawn further sub-agents."
-            )
-
-        task_id = uuid.uuid4().hex[:12]
-        ctx = self._session_contexts.get(parent_session_id)
-        parent_subagent_id = ctx.subagent_id if ctx else None
-        subagent_depth = (ctx.subagent_depth + 1) if ctx else 1
-
-        if todo_id:
-            from laffyhand.core.session.todo import TodoUpdate
-
-            self.todo_manager.update_task(
-                todo_id,
-                parent_session_id,
-                TodoUpdate(status="in_progress"),
-            )
-            _sink = self._event_sinks.get(parent_session_id)
-            if _sink:
-                from laffyhand.core.schemas import TodoUpdate as TodoUpdateEvent
-
-                await _sink(TodoUpdateEvent())
-
-        if background:
-            assert self.subagent_manager is not None
-            bg_llm = self._llm_for_session(parent_session_id)
-
-            def _on_complete(_task_id: str, success: bool) -> None:
-                if todo_id:
-                    from laffyhand.core.session.todo import TodoUpdate
-
-                    self.todo_manager.update_task(
-                        todo_id,
-                        parent_session_id,
-                        TodoUpdate(
-                            status="completed" if success else "pending",
-                        ),
-                    )
-                    _sink = self._event_sinks.get(parent_session_id)
-                    if _sink:
-                        from laffyhand.core.schemas import TodoUpdate as TodoUpdateEvent
-
-                        asyncio.ensure_future(_sink(TodoUpdateEvent()))
-
-            await self.subagent_manager.spawn(
-                parent_session_id=parent_session_id,
-                agent_info=agent_info,
-                prompt=prompt,
-                llm=bg_llm,
-                tool_registry=self.tool_registry,
-                parent_permission=self.tool_registry.permission,
-                session_manager=self.session_manager,
-                compaction_config=self.compaction_config,
-                on_complete=_on_complete,
-                event_sink=self._event_sinks.get(parent_session_id),
-                task_id=task_id,
-                parent_subagent_id=parent_subagent_id,
-                subagent_depth=subagent_depth,
-                description=description,
-            )
-            return f"Sub-agent [{agent_info.name}] started (id: {task_id[:8]}). I'll notify you when it completes."
-
-        # Track nesting for foreground
-        ctx = self._session_contexts.get(parent_session_id)
-        prev_subagent_id = ctx.subagent_id if ctx else None
-        prev_subagent_depth = ctx.subagent_depth if ctx else 0
-        if ctx:
-            ctx.subagent_id = task_id
-            ctx.subagent_depth = subagent_depth
-
-        try:
-            result = await self._run_subagent_foreground(
-                parent_session_id,
-                agent_info,
-                prompt,
-                event_sink=self._event_sinks.get(parent_session_id),
-                task_id=task_id,
-                parent_subagent_id=parent_subagent_id,
-                subagent_depth=subagent_depth,
-                description=description,
-            )
-        finally:
-            if ctx:
-                ctx.subagent_id = prev_subagent_id
-                ctx.subagent_depth = prev_subagent_depth
-
-        if todo_id:
-            from laffyhand.core.session.todo import TodoUpdate
-
-            self.todo_manager.update_task(
-                todo_id,
-                parent_session_id,
-                TodoUpdate(status="completed"),
-            )
-            _sink = self._event_sinks.get(parent_session_id)
-            if _sink:
-                from laffyhand.core.schemas import TodoUpdate as TodoUpdateEvent
-
-                await _sink(TodoUpdateEvent())
-
-        return result
-
-    async def _run_subagent_foreground(
-        self,
-        parent_session_id: str,
-        agent_info: AgentInfo,
-        prompt: str,
-        event_sink: Callable[[Any], Awaitable[None]] | None = None,
-        task_id: str = "",
-        parent_subagent_id: str | None = None,
-        subagent_depth: int = 0,
-        description: str = "",
-    ) -> str:
-        child_state, child_registry = build_subagent_state(
-            self.session_manager,
-            parent_session_id,
-            agent_info,
-            prompt,
-            self.tool_registry.permission,
-            self.tool_registry,
+        return await self.subagent_orchestrator.create_subagent(
+            parent_session_id, agent_info, prompt,
+            description=description, background=background, todo_id=todo_id,
         )
 
-        llm = self._llm_for_session(parent_session_id)
-
-        if event_sink:
-            await event_sink(
-                SubAgentStart(
-                    id=task_id,
-                    parent_id=parent_subagent_id,
-                    agent_type=agent_info.name,
-                    description=description or prompt[:80],
-                    prompt=prompt,
-                    mode="foreground",
-                    depth=subagent_depth,
-                )
-            )
-
-        result_content = ""
-        tool_call_count = 0
-        async for event in agent_loop(
-            child_state,
-            llm,
-            child_registry,
-            compaction_config=CompactionConfig(
-                tail_turns=self.compaction_config.tail_turns,
-            ),
-            max_steps=agent_info.max_steps,
-            session_manager=self.session_manager,
-        ):
-            if event_sink:
-                if isinstance(event, TextDelta):
-                    await event_sink(
-                        SubAgentDelta(
-                            id=task_id,
-                            kind="text",
-                            content=event.text,
-                        )
-                    )
-                elif isinstance(event, ReasoningDelta):
-                    await event_sink(
-                        SubAgentDelta(
-                            id=task_id,
-                            kind="reasoning",
-                            content=event.text,
-                        )
-                    )
-                elif isinstance(event, StreamToolCall):
-                    tool_call_count += 1
-                    await event_sink(
-                        SubAgentDelta(
-                            id=task_id,
-                            kind="tool",
-                            tool_name=event.name,
-                            tool_input=event.input,
-                        )
-                    )
-                elif isinstance(event, StreamToolResult):
-                    await event_sink(
-                        SubAgentDelta(
-                            id=task_id,
-                            kind="tool_result",
-                            tool_name=event.name,
-                            content=event.result,
-                        )
-                    )
-                elif isinstance(event, StreamToolError):
-                    await event_sink(
-                        SubAgentDelta(
-                            id=task_id,
-                            kind="tool_result",
-                            tool_name=event.name,
-                            content=event.message,
-                        )
-                    )
-                elif isinstance(event, (StepStart, TextStart, TextEnd, ReasoningStart, ReasoningEnd, Compacting)):
-                    await event_sink(event)
-            if isinstance(event, StepFinish):
-                last_assistant_msg = None
-                for msg in reversed(child_state.messages):
-                    if isinstance(msg, AssistantMessage) and msg.content:
-                        last_assistant_msg = msg
-                        break
-                if last_assistant_msg is not None and last_assistant_msg.content:
-                    result_content = last_assistant_msg.content
-
-        assert child_state.session_id is not None
-        self.session_manager.save_state(child_state.session_id, child_state)
-        self.session_manager.complete(child_state.session_id)
-
-        result = result_content.strip()
-        if not result:
-            result = "[No output]"
-
-        if event_sink:
-            step_usage = child_state.usage
-            await event_sink(
-                SubAgentEnd(
-                    id=task_id,
-                    status="completed",
-                    summary=result[:200],
-                    tool_count=tool_call_count,
-                    input_tokens=step_usage.total_input,
-                    output_tokens=step_usage.total_output,
-                )
-            )
-
-        return f"<task>\n{result}\n</task>"
-
     def _should_generate_title(self, session_id: str, trigger: str) -> bool:
-        """Check if title generation should proceed based on mode, trigger, and session state."""
-        if self.title_config.mode == "off":
-            return False
-        if self.title_config.mode != trigger:
-            return False
-        session = self.session_manager.get(session_id)
-        if session is None:
-            # Session not yet persisted — create it now (lazy persistence)
-            session = self.session_manager.ensure_exists(session_id)
-        return session is not None and not session.title
+        return self.title_service.should_generate(session_id, trigger)
 
     def _schedule_title_generation(self, session_id: str, trigger: str) -> None:
-        """Fire-and-forget title generation for background triggers (on_create, on_compact)."""
-        if not self._should_generate_title(session_id, trigger):
+        if not self.title_service.should_generate(session_id, trigger):
             return
         asyncio.create_task(self._do_generate_title(session_id))
 
     async def _generate_title(self, session_id: str, trigger: str) -> bool:
-        """Synchronously generate and save title. Returns True if title was generated."""
         if not self._should_generate_title(session_id, trigger):
             return False
-        title = await self._do_generate_title(session_id)
+        try:
+            llm = self._llm_for_session(session_id)
+        except Exception:
+            logger.exception(f"Failed to resolve LLM for session {session_id}")
+            return False
+        title = await self.title_service.generate_title(session_id, llm=llm)
         return bool(title)
 
     async def _do_generate_title(self, session_id: str) -> str | None:
-        """Call LLM to generate a title and save to DB. Returns the title or None."""
         try:
-            from laffyhand.core.title import generate_title
-
             llm = self._llm_for_session(session_id)
-            title = await asyncio.wait_for(
-                generate_title(self.session_manager, session_id, llm, self.title_config),
-                timeout=30,
-            )
-            if title:
-                logger.info(f"Auto-generated title for session {session_id}: {title}")
-            else:
-                logger.warning(
-                    f"Title generator returned empty for session {session_id}"
-                )
-            return title
-        except asyncio.TimeoutError:
-            logger.warning(f"Title generation timed out for session {session_id}")
-            return None
         except Exception:
-            logger.exception(f"Title generation failed for session {session_id}")
+            logger.exception(f"Failed to resolve LLM for session {session_id}")
             return None
+        return await self.title_service.generate_title(session_id, llm=llm)
 
     def interrupt_session(self, session_id: str) -> bool:
         state = self._states.get(session_id)
@@ -920,8 +471,7 @@ class AgentRuntime:
             return False
         state.interrupt_requested = True
         # Cascade interrupt to all child (sub-agent) sessions
-        if self.subagent_manager is not None:
-            self.subagent_manager.cancel_session(session_id)
+        self.subagent_orchestrator.cancel_session(session_id)
         logger.debug(f"Interrupt requested for session {session_id}")
         return True
 
@@ -938,17 +488,10 @@ class AgentRuntime:
 
     async def shutdown(self) -> None:
         # Cancel in-flight background agent turns before saving state
-        for sid in list(self._session_tasks):
-            self.cancel_background_agent_turn(sid)
-        if self._session_tasks:
-            await asyncio.wait(
-                list(self._session_tasks.values()),
-                timeout=5.0,
-            )
+        await self.loop_orchestrator.cancel_all()
 
         # Cancel in-flight subagent tasks
-        if self.subagent_manager is not None:
-            self.subagent_manager.cancel_all()
+        await self.subagent_orchestrator.cancel_all()
 
         # Now save state — no more in-flight tasks modifying state
         for sid, state in list(self._states.items()):
