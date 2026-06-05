@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react"
-import type { ActiveSubagent, SubagentTool } from "@/types/session"
+import type { ActiveSubagent, SubagentEvent, SubagentTool } from "@/types/session"
 import type { SubagentTreeNode } from "@/lib/subagentTree"
 import { Spinner } from "@/components/ui/Spinner"
 import { ReasoningBlock } from "./ChatComponents"
@@ -54,6 +54,19 @@ function ToolResultBlock({ tool }: { tool: SubagentTool }) {
       )}
     </div>
   )
+}
+
+function mergeAdjacentEvents(events: SubagentEvent[]) {
+  const merged: SubagentEvent[] = []
+  for (const evt of events) {
+    const last = merged[merged.length - 1]
+    if (last && last.kind === evt.kind && (evt.kind === "text" || evt.kind === "reasoning")) {
+      last.content = (last.content ?? "") + (evt.content ?? "")
+    } else {
+      merged.push({ ...evt })
+    }
+  }
+  return merged
 }
 
 export function SubagentCard({
@@ -144,8 +157,11 @@ export function SubagentCard({
           {/* Chronological event rendering */}
           {subagent.events && subagent.events.length > 0 ? (
             (() => {
+              const merged = mergeAdjacentEvents(subagent.events)
               let toolIdx = 0
-              return subagent.events.map((evt, i) => {
+              return merged.map((evt, i) => {
+                // Use a stable ID derived from the original event indices so React
+                // can reorder rather than remount when a new chunk is appended.
                 switch (evt.kind) {
                   case "reasoning":
                     return evt.content ? (

@@ -14,6 +14,7 @@ function makeSubagent(overrides: Partial<ActiveSubagent> & { id: string }): Acti
     reasoning: "",
     tools: [],
     toolCount: 0,
+    events: [],
     summary: undefined,
     inputTokens: 0,
     outputTokens: 0,
