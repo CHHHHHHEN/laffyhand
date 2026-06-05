@@ -1,3 +1,9 @@
+"""Write tool — create or overwrite a file.
+
+Supports atomic writes, line-ending preservation, and
+interactive confirmation with diff preview.
+"""
+
 from __future__ import annotations
 
 from pathlib import Path

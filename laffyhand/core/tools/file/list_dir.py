@@ -1,3 +1,9 @@
+"""List directory tool — show directory contents with depth control.
+
+Supports .gitignore filtering, pagination, and line counts
+for text files. Binary files are marked.
+"""
+
 import asyncio
 from pathlib import Path
 from typing import Any
@@ -21,12 +27,11 @@ class ListDirTool(BaseTool):
     name = "list_dir"
     path_params = ["directory_path"]
     description = (
-        "List the contents of a directory on the local filesystem. "
-        "Shows file line counts in parentheses and marks binary files.\n\n"
-        "By default, files matching .gitignore patterns are excluded; "
-        "pass include_ignored=true to include them.\n\n"
-        "Use depth to control recursion depth (default: 2, 0 returns nothing). "
-        "Use offset and limit to paginate top-level entries."
+        "List a directory's contents with line counts and binary detection.\n\n"
+        "**Required:** ``directory_path``.\n\n"
+        "Use ``depth`` to control recursion (default 2, 0 = nothing). "
+        "Use ``offset`` (1-indexed) and ``limit`` to paginate top-level entries.\n\n"
+        "``.gitignore`` is respected by default; ``include_ignored`` overrides it."
     )
     max_result_size = 50000
 

@@ -1,3 +1,9 @@
+"""Task tool — delegate work to a specialized sub-agent.
+
+Sub-agent types and their descriptions are populated dynamically
+from the agent registry at schema-generation time.
+"""
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any

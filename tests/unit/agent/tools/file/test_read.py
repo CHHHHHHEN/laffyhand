@@ -27,7 +27,7 @@ class TestReadTool(unittest.TestCase):
         f.write_text("")
         tool = ReadTool()
         result = asyncio.run(tool.run({"file_path": str(f)}))
-        self.assertEqual(result, "")
+        self.assertIn("(0 lines, showing 0)", result)
 
     def test_read_with_offset(self):
         f = self.root / "test.txt"

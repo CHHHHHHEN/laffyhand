@@ -1,3 +1,9 @@
+"""Read tool — view file contents with line numbers and pattern search.
+
+Supports pagination (offset/limit), pattern-based context reading,
+and automatic binary-file detection.
+"""
+
 import asyncio
 import difflib
 import re
@@ -22,14 +28,13 @@ class ReadTool(BaseTool):
     name = "read"
     path_params = ["file_path"]
     description = (
-        "Read a text file from the local filesystem. "
-        "Supports line-numbered output and pattern-based context reading.\n\n"
-        "Use file_path (absolute path) to specify which file to read. "
-        "Use offset (1-indexed) and limit for pagination (default limit: 2000). "
-        "Any line longer than 2000 characters is truncated.\n\n"
-        "To read around specific keywords, provide pattern (regex) and optional context (default 5). "
-        "When pattern is given, offset/limit apply to matches, not raw lines.\n\n"
-        "To list a directory's contents, use the list_dir tool instead."
+        "Read a text file with line-numbered output.\n\n"
+        "**Required:** ``file_path``.\n\n"
+        "Use ``offset`` (1-indexed) and ``limit`` for pagination "
+        "(default limit: 2000). Lines longer than 2000 chars are truncated.\n\n"
+        "To find specific content, pass ``pattern`` (regex) and optional "
+        "``context`` (default 5). Matches are prefixed with ``>``.\n\n"
+        "Use the list_dir tool for directory listings."
     )
     max_result_size = 50000
 
@@ -108,7 +113,8 @@ class ReadTool(BaseTool):
                     line += "\n"
                 result_parts.append(f"{line_num}{marker}{line}")
 
-        result = "".join(result_parts)
+        header = f"--- {total_matches} match{'es' if total_matches != 1 else ''} in {path} ---\n"
+        result = header + "".join(result_parts)
         if len(selected) < total_matches:
             result += f"\n[Showing {len(selected)} of {total_matches} matches]"
 
@@ -180,7 +186,8 @@ class ReadTool(BaseTool):
                 line += "\n"
             result_parts.append(f"{line_num}|{line}")
 
-        result = "".join(result_parts)
+        header = f"--- {path} ({total_lines} lines, showing {len(selected)}) ---\n"
+        result = header + "".join(result_parts)
 
         if offset is None and limit is None and len(text) > 512 * 1024:
             result += f"\n[File is large ({len(text)} bytes). Use offset and limit to read specific sections.]"

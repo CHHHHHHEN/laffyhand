@@ -93,7 +93,7 @@ class TestTodoTool:
             tool.run({"operation": "add", "content": "task", "session_id": session_id})
         )
         tasks = asyncio.run(tool.run({"operation": "read", "session_id": session_id}))
-        task_id = tasks.split("\n")[0].split()[0]
+        task_id = tasks.split("\n")[1].strip().split()[0]
         result = asyncio.run(
             tool.run(
                 {
@@ -130,7 +130,7 @@ class TestTodoTool:
             tool.run({"operation": "add", "content": "old", "session_id": session_id})
         )
         tasks = asyncio.run(tool.run({"operation": "read", "session_id": session_id}))
-        task_id = tasks.split("\n")[0].split()[0]
+        task_id = tasks.split("\n")[1].strip().split()[0]
         result = asyncio.run(
             tool.run(
                 {
@@ -149,7 +149,7 @@ class TestTodoTool:
             tool.run({"operation": "add", "content": "task", "session_id": session_id})
         )
         tasks = asyncio.run(tool.run({"operation": "read", "session_id": session_id}))
-        task_id = tasks.split("\n")[0].split()[0]
+        task_id = tasks.split("\n")[1].strip().split()[0]
         asyncio.run(
             tool.run({"operation": "delete", "id": task_id, "session_id": session_id})
         )
@@ -245,7 +245,7 @@ class TestTodoTool:
             )
         )
         tasks = asyncio.run(tool.run({"operation": "read", "session_id": session_id}))
-        task_id = tasks.split("\n")[0].split()[0]
+        task_id = tasks.split("\n")[1].strip().split()[0]
         asyncio.run(
             tool.run(
                 {
@@ -290,7 +290,7 @@ class TestTodoTool:
             )
         )
         tasks = asyncio.run(tool.run({"operation": "read", "session_id": session_id}))
-        parent_id = tasks.split("\n")[0].split()[0]
+        parent_id = tasks.split("\n")[1].strip().split()[0]
         result = asyncio.run(
             tool.run(
                 {
@@ -312,7 +312,7 @@ class TestTodoTool:
             )
         )
         tasks = asyncio.run(tool.run({"operation": "read", "session_id": session_id}))
-        parent_id = tasks.split("\n")[0].split()[0]
+        parent_id = tasks.split("\n")[1].strip().split()[0]
         asyncio.run(
             tool.run(
                 {

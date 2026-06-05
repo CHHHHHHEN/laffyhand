@@ -1,3 +1,9 @@
+"""Web fetch tool — retrieve content from a URL.
+
+Returns content as markdown or plain text.
+Truncated at 100 KB with a notice appended.
+"""
+
 from __future__ import annotations
 
 import re
@@ -54,11 +60,14 @@ class WebFetchTool(BaseTool):
         if output_format == "markdown":
             text = self._html_to_markdown(text)
 
+        content_len = len(response.text)
+        header = f"--- Fetched {url} ({content_len} bytes) ---\n"
+
         if truncated:
             text += "\n\n[Content truncated at 100KB. Use more specific URLs to retrieve targeted content.]"
 
         logger.info(f"WebFetch: fetched {url} ({len(text)} chars)")
-        return text
+        return header + text
 
     @staticmethod
     def _html_to_markdown(html: str) -> str:

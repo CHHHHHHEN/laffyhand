@@ -1,3 +1,9 @@
+"""Bash tool — execute a shell command with security checks.
+
+Blocks dangerous commands (rm -rf /, sudo, network tools, etc.)
+and redacts sensitive strings (API keys, tokens) from logs.
+"""
+
 import asyncio
 import re
 from typing import Any

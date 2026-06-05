@@ -1,3 +1,9 @@
+"""Todo tool — manage a session-level task list with DAG dependency tracking.
+
+Supports read, add, update, delete, plan (batch-create with deps),
+and cleanup (remove completed/cancelled) operations.
+"""
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
@@ -76,12 +82,12 @@ class TodoTool(BaseTool):
             tasks = self._todo_manager.get_tasks(session_id, status=status)
             if not tasks:
                 return "No tasks."
-            lines = []
+            lines = [f"Found {len(tasks)} task(s):"]
             for t in tasks:
                 blocked = t.metadata.get("blocked_by", [])
                 blocked_str = f" [blocked by: {', '.join(blocked)}]" if blocked else ""
                 lines.append(
-                    f"{t.id} [{t.status}] {t.priority}: {t.content}{blocked_str}"
+                    f"  {t.id} [{t.status}] {t.priority}: {t.content}{blocked_str}"
                 )
             return "\n".join(lines)
 

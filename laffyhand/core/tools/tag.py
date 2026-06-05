@@ -1,3 +1,9 @@
+"""Tag tool — annotate files with persistent semantic descriptions.
+
+Operations: add, update, batch, list, prune.
+Tags persist across sessions and are shown in glob/read/list_dir output.
+"""
+
 from __future__ import annotations
 
 import json
@@ -190,49 +196,22 @@ def _annotate_read(result: str, params: dict[str, Any], repo: FileTagRepo) -> st
 class TagTool(BaseTool):
     name = "tag"
     description = (
-        "Manage file tags — persistent semantic annotations for files that persist across sessions. "
-        "Tags help you remember what a file does without re-reading it.\n\n"
-        "Structured metadata fields:\n"
-        "- exports: dict of exported symbol names mapped to their kind (class/function/constant/type/variable)\n"
-        "- side_effects: free-text description of import-time side effects (empty = none)\n"
-        "- depends_on: list of external module or file dependencies\n\n"
-        "To hide tag annotations in glob/read output, pass show_tags=false to those tools.\n\n"
-        "IMPORTANT: Each file path can have exactly ONE tag. "
-        "A tag should be a holistic (macro-level) description of the file's overall purpose, "
-        "not just what was changed in the most recent edit. "
-        "For example, if a file implements authentication middleware, "
-        "the tag should say 'Authentication middleware — validates JWTs and enforces RBAC', "
-        "not 'Added JWT validation'.\n\n"
-        "Choosing the right operation:\n"
-        "- Use 'tag add' to create the first tag, or to update an existing tag's description while "
-        "**preserving** any existing structured metadata (exports, side_effects, depends_on). "
-        "If you provide new values for those fields, they replace the previous values.\n"
-        "- Use 'tag update' for incremental changes — update message, add custom key-value pairs, "
-        "or change specific structured fields without affecting the rest.\n"
-        "- If you are unsure whether a file already has a tag, "
-        "call 'tag list --path <path>' first.\n\n"
-        "Best practice — always tag files you create or modify:\n"
-        "After you use write/edit to create or modify a file, call 'tag add' or 'tag batch' "
-        "to annotate the file with a holistic description "
-        "(what the file does overall, not just what was changed in this step). "
-        "Similarly, after reading a file that lacks a tag or has a stale tag, "
-        "update it so the knowledge persists across sessions. "
-        "This maintains persistent context so you (and other agents) "
-        "can understand the codebase without re-reading every file.\n\n"
-        "Operations:\n"
-        "- add --file_path <path> --message <description>: "
-        "Tag a file with a macro-level semantic description. "
-        "If the file already has a tag, the message is updated while "
-        "existing exports/side_effects/depends_on are preserved unless explicitly overridden. "
-        "Use for first-time tagging or to update a tag's summary.\n"
-        "- update --file_path <path> --message <description>: "
-        "Update the description of an existing tag without losing key-value metadata.\n"
-        "- update --file_path <path> --key <k> --value <v>: "
-        "Add or update a custom key-value field on an existing tag.\n"
-        "- batch --tags <list>: Batch add/update multiple tags at once.\n"
-        "- list [path]: List all tags (optionally under a directory). "
-        "Use 'tag list --path <file>' to check if a file already has a tag.\n"
-        "- prune [--delete]: Mark stale tags for missing files, or --delete to remove them permanently."
+        "Annotate files with persistent semantic descriptions.\n\n"
+        "**Operations** (``operation`` parameter):\n"
+        "  - ``add`` — tag a file (requires ``file_path`` + ``message``). "
+        "Preserves existing metadata unless overridden.\n"
+        "  - ``update`` — change an existing tag's message, key-value pairs, "
+        "or structured fields.\n"
+        "  - ``batch`` — add/update multiple files at once (``tags`` array).\n"
+        "  - ``list`` — show tags (optionally filter by ``path`` or ``status``).\n"
+        "  - ``prune`` — mark or delete tags for missing files.\n\n"
+        "Each file path can have exactly ONE tag. "
+        "Use holistic descriptions of the file's overall purpose, "
+        "not just what changed in the last edit.\n"
+        "Structured metadata: ``exports`` (dict), ``side_effects`` (str), "
+        "``depends_on`` (list).\n\n"
+        "Tags appear in glob/read/list_dir output; pass ``show_tags=false`` "
+        "to those tools to hide annotations."
     )
     max_result_size = 50000
 
