@@ -6,8 +6,32 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from pydantic import BaseModel, Field
 from laffyhand.core.db.repository.tag import FileTag
 from laffyhand.core.tools.base import BaseTool
+
+
+class TagBatchItem(BaseModel):
+    file_path: str = Field(description="Absolute path to the file")
+    message: str = Field(description="Macro-level semantic description of the file's overall purpose")
+    exports: dict[str, str] | None = Field(None, description="Exported symbols as a dict: {\"ClassName\": \"class\", \"func\": \"function\"}")
+    side_effects: str | None = Field(None, description="Description of import-time side effects")
+    depends_on: list[str] | None = Field(None, description="List of external module dependencies")
+
+
+class TagParams(BaseModel):
+    operation: str = Field(description="Operation to perform")
+    file_path: str | None = Field(None, description="File path to tag (for add/update)")
+    message: str | None = Field(None, description="Macro-level semantic description of the file's overall purpose, not just what was changed")
+    exports: dict[str, str] | None = Field(None, description="Exported symbols as a dict: {\"ClassName\": \"class\", \"func_name\": \"function\", \"CONST\": \"constant\"} (for add/update)")
+    side_effects: str | None = Field(None, description="Description of import-time side effects, e.g. 'registers signal handlers on import' (for add/update)")
+    depends_on: list[str] | None = Field(None, description="List of external module dependencies this file relies on (for add/update)")
+    key: str | None = Field(None, description="Custom key for key-value pair (use with --value)")
+    value: str | None = Field(None, description="Value for the custom key (use with --key)")
+    path: str | None = Field(None, description="Directory path to list or filter by")
+    status: str | None = Field(None, description="Filter tags by status (for list operation)")
+    tags: list[TagBatchItem] | None = Field(None, description="List of tags for batch operation")
+    delete: bool | None = Field(default=False, description="When pruning, set to true to permanently delete stale tags instead of marking them")
 
 if TYPE_CHECKING:
     from laffyhand.core.db.repository.tag import FileTagRepo
@@ -216,94 +240,19 @@ class TagTool(BaseTool):
         super().__init__()
         self._repo = repo
 
+    _TAG_SCHEMA: dict[str, Any] | None = None
+
     def _input_schema(self) -> dict[str, Any]:
-        return {
-            "type": "object",
-            "properties": {
-                "operation": {
-                    "type": "string",
-                    "enum": ["add", "update", "batch", "list", "prune"],
-                    "description": "Operation to perform",
-                },
-                "file_path": {
-                    "type": "string",
-                    "description": "File path to tag (for add/update)",
-                },
-                "message": {
-                    "type": "string",
-                    "description": "Macro-level semantic description of the file's overall purpose, not just what was changed",
-                },
-                "exports": {
-                    "type": "object",
-                    "description": "Exported symbols as a dict: {\"ClassName\": \"class\", \"func_name\": \"function\", \"CONST\": \"constant\"} (for add/update)",
-                    "additionalProperties": {"type": "string"},
-                },
-                "side_effects": {
-                    "type": "string",
-                    "description": "Description of import-time side effects, e.g. 'registers signal handlers on import' (for add/update)",
-                },
-                "depends_on": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "List of external module dependencies this file relies on (for add/update)",
-                },
-                "key": {
-                    "type": "string",
-                    "description": "Custom key for key-value pair (use with --value)",
-                },
-                "value": {
-                    "type": "string",
-                    "description": "Value for the custom key (use with --key)",
-                },
-                "path": {
-                    "type": "string",
-                    "description": "Directory path to list or filter by",
-                },
-                "status": {
-                    "type": "string",
-                    "enum": ["active", "stale"],
-                    "description": "Filter tags by status (for list operation)",
-                },
-                "tags": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "file_path": {
-                                "type": "string",
-                                "description": "Absolute path to the file",
-                            },
-                            "message": {
-                                "type": "string",
-                                "description": "Macro-level semantic description of the file's overall purpose",
-                            },
-                            "exports": {
-                                "type": "object",
-                                "description": "Exported symbols as a dict: {\"ClassName\": \"class\", \"func\": \"function\"}",
-                                "additionalProperties": {"type": "string"},
-                            },
-                            "side_effects": {
-                                "type": "string",
-                                "description": "Description of import-time side effects",
-                            },
-                            "depends_on": {
-                                "type": "array",
-                                "items": {"type": "string"},
-                                "description": "List of external module dependencies",
-                            },
-                        },
-                        "required": ["file_path", "message"],
-                    },
-                    "description": "List of tags for batch operation",
-                },
-                "delete": {
-                    "type": "boolean",
-                    "description": "When pruning, set to true to permanently delete stale tags instead of marking them",
-                    "default": False,
-                },
-            },
-            "required": ["operation"],
-        }
+        if TagTool._TAG_SCHEMA is not None:
+            return TagTool._TAG_SCHEMA
+        schema = TagParams.model_json_schema()
+        schema.pop("title", None)
+        schema.pop("$defs", None)
+        schema["properties"]["operation"]["enum"] = ["add", "update", "batch", "list", "prune"]
+        if "status" in schema["properties"]:
+            schema["properties"]["status"]["enum"] = ["active", "stale"]
+        TagTool._TAG_SCHEMA = schema
+        return schema
 
     async def run(self, params: dict[str, Any]) -> str:
         op = params.get("operation")

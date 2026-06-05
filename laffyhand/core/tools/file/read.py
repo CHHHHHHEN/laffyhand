@@ -5,8 +5,17 @@ from pathlib import Path
 from typing import Any
 
 from loguru import logger
+from pydantic import BaseModel, Field
 from laffyhand.core.tools.base import BaseTool
 from laffyhand.core.tools.file._security import looks_binary
+
+
+class ReadParams(BaseModel):
+    file_path: str = Field(description="Absolute path to a file to read")
+    offset: int | None = Field(None, description="Line number to start from (1-indexed) for normal reads; skip first N matches for pattern reads")
+    limit: int | None = Field(None, description="Maximum number of lines or matches to return (defaults to 2000)")
+    pattern: str | None = Field(None, description="Regex pattern to find lines of interest; shows matching lines with surrounding context (see context param)")
+    context: int | None = Field(None, description="Number of context lines before and after each match (default: 5). Only used with pattern")
 
 
 class ReadTool(BaseTool):
@@ -25,32 +34,7 @@ class ReadTool(BaseTool):
     max_result_size = 50000
 
     def _input_schema(self) -> dict[str, Any]:
-        return {
-            "type": "object",
-            "properties": {
-                "file_path": {
-                    "type": "string",
-                    "description": "Absolute path to a file to read",
-                },
-                "offset": {
-                    "type": "integer",
-                    "description": "Line number to start from (1-indexed) for normal reads; skip first N matches for pattern reads",
-                },
-                "limit": {
-                    "type": "integer",
-                    "description": "Maximum number of lines or matches to return (defaults to 2000)",
-                },
-                "pattern": {
-                    "type": "string",
-                    "description": "Regex pattern to find lines of interest; shows matching lines with surrounding context (see context param)",
-                },
-                "context": {
-                    "type": "integer",
-                    "description": "Number of context lines before and after each match (default: 5). Only used with pattern",
-                },
-            },
-            "required": ["file_path"],
-        }
+        return ReadParams.model_json_schema()
 
     def _suggest_similar(self, path: Path) -> list[str]:
         if not path.parent.exists():

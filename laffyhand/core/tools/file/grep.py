@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from loguru import logger
+from pydantic import BaseModel, Field
 from laffyhand.core.tools.base import BaseTool
 from laffyhand.core.tools.file._gitignore import GitignoreFilter
 from laffyhand.core.tools.file._ripgrep import (
@@ -19,6 +20,16 @@ MAX_LINE_LENGTH = 2000
 MAX_FILE_SIZE = 1_000_000
 
 
+class GrepParams(BaseModel):
+    pattern: str = Field(description="Regular expression to search for")
+    include: str | None = Field(None, description="File glob filter (e.g. *.py, *.{ts,tsx})")
+    path: str | None = Field(None, description="Absolute directory or file to search in — must start with the workspace path from <env>")
+    output_mode: str | None = Field(None, description="Output format: content (default), files_only (just file paths), count (per-file match counts)")
+    context: int | None = Field(None, description="Number of context lines before and after each match (default: 0)")
+    offset: int | None = Field(None, description="Skip first N results for pagination (default: 0)")
+    limit: int | None = Field(None, description="Maximum number of results to return (default: 100)")
+
+
 class GrepTool(BaseTool):
     name = "grep"
     path_params = ["path"]
@@ -31,41 +42,7 @@ class GrepTool(BaseTool):
     max_result_size = 100_000
 
     def _input_schema(self) -> dict[str, Any]:
-        return {
-            "type": "object",
-            "properties": {
-                "pattern": {
-                    "type": "string",
-                    "description": "Regular expression to search for",
-                },
-                "include": {
-                    "type": "string",
-                    "description": "File glob filter (e.g. *.py, *.{ts,tsx})",
-                },
-                "path": {
-                    "type": "string",
-                    "description": "Absolute directory or file to search in — must start with the workspace path from <env>",
-                },
-                "output_mode": {
-                    "type": "string",
-                    "enum": ["content", "files_only", "count"],
-                    "description": "Output format: content (default), files_only (just file paths), count (per-file match counts)",
-                },
-                "context": {
-                    "type": "integer",
-                    "description": "Number of context lines before and after each match (default: 0)",
-                },
-                "offset": {
-                    "type": "integer",
-                    "description": "Skip first N results for pagination (default: 0)",
-                },
-                "limit": {
-                    "type": "integer",
-                    "description": "Maximum number of results to return (default: 100)",
-                },
-            },
-            "required": ["pattern"],
-        }
+        return GrepParams.model_json_schema()
 
     async def run(self, params: dict[str, Any]) -> str:
         pattern_str = params["pattern"]

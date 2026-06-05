@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Any
 
 from loguru import logger
+from pydantic import BaseModel, Field
 from laffyhand.core.tools.base import BaseTool
 from laffyhand.core.tools.file._gitignore import GitignoreFilter
 from laffyhand.core.tools.file._ripgrep import rg_available, glob as rg_glob
@@ -20,6 +21,12 @@ def _is_within_root(target: Path, root: Path) -> bool:
         return False
 
 
+class GlobParams(BaseModel):
+    pattern: str = Field(description="Glob pattern (e.g. **/*.py, src/**/*.ts)")
+    path: str | None = Field(None, description="Absolute search directory — must start with the workspace path from <env>")
+    include_ignored: bool | None = Field(default=False, description="If true, include files that match .gitignore patterns (default: false)")
+
+
 class GlobTool(BaseTool):
     name = "glob"
     path_params = ["path"]
@@ -35,25 +42,7 @@ class GlobTool(BaseTool):
     max_result_size = 50000
 
     def _input_schema(self) -> dict[str, Any]:
-        return {
-            "type": "object",
-            "properties": {
-                "pattern": {
-                    "type": "string",
-                    "description": "Glob pattern (e.g. **/*.py, src/**/*.ts)",
-                },
-                "path": {
-                    "type": "string",
-                    "description": "Absolute search directory — must start with the workspace path from <env>",
-                },
-                "include_ignored": {
-                    "type": "boolean",
-                    "description": "If true, include files that match .gitignore patterns (default: false)",
-                    "default": False,
-                },
-            },
-            "required": ["pattern"],
-        }
+        return GlobParams.model_json_schema()
 
     async def run(self, params: dict[str, Any]) -> str:
         root = Path(params.get("path", ".")).resolve()

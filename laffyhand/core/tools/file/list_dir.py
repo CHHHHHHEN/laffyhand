@@ -3,9 +3,18 @@ from pathlib import Path
 from typing import Any
 
 from loguru import logger
+from pydantic import BaseModel, Field
 from laffyhand.core.tools.base import BaseTool
 from laffyhand.core.tools.file._gitignore import GitignoreFilter
 from laffyhand.core.tools.file._security import looks_binary
+
+
+class ListDirParams(BaseModel):
+    directory_path: str = Field(description="Absolute path to a directory to list")
+    depth: int | None = Field(None, description="Directory listing depth. 1 = flat, 2 = one level deep (default), etc.")
+    offset: int | None = Field(None, description="Entry number to start from (1-indexed)")
+    limit: int | None = Field(None, description="Maximum number of top-level entries to return")
+    include_ignored: bool | None = Field(default=False, description="If true, include files that match .gitignore patterns (default: false)")
 
 
 class ListDirTool(BaseTool):
@@ -22,33 +31,7 @@ class ListDirTool(BaseTool):
     max_result_size = 50000
 
     def _input_schema(self) -> dict[str, Any]:
-        return {
-            "type": "object",
-            "properties": {
-                "directory_path": {
-                    "type": "string",
-                    "description": "Absolute path to a directory to list",
-                },
-                "depth": {
-                    "type": "integer",
-                    "description": "Directory listing depth. 1 = flat, 2 = one level deep (default), etc.",
-                },
-                "offset": {
-                    "type": "integer",
-                    "description": "Entry number to start from (1-indexed)",
-                },
-                "limit": {
-                    "type": "integer",
-                    "description": "Maximum number of top-level entries to return",
-                },
-                "include_ignored": {
-                    "type": "boolean",
-                    "description": "If true, include files that match .gitignore patterns (default: false)",
-                    "default": False,
-                },
-            },
-            "required": ["directory_path"],
-        }
+        return ListDirParams.model_json_schema()
 
     def _format_entry(
         self, entry: Path, indent: int, depth: int,

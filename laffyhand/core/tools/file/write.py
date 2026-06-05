@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from loguru import logger
+from pydantic import BaseModel, Field
 from laffyhand.core.tools.base import BaseTool
 from laffyhand.core.tools.file._diff import format_diff
 from laffyhand.core.tools.file._security import (
@@ -19,6 +20,12 @@ if TYPE_CHECKING:
     from laffyhand.core.tools.permission import PermissionManager
 
 
+class WriteParams(BaseModel):
+    file_path: str = Field(description="The absolute path to the file to write (must be absolute, not relative)")
+    content: str = Field(description="Content to write to the file")
+    confirm: bool | None = Field(None, description="If true, prompts for interactive confirmation before writing")
+
+
 class WriteTool(BaseTool):
     name = "write"
     path_params = ["file_path"]
@@ -29,24 +36,7 @@ class WriteTool(BaseTool):
         self._permission = permission_manager
 
     def _input_schema(self) -> dict[str, Any]:
-        return {
-            "type": "object",
-            "properties": {
-                "file_path": {
-                    "type": "string",
-                    "description": "The absolute path to the file to write (must be absolute, not relative)",
-                },
-                "content": {
-                    "type": "string",
-                    "description": "Content to write to the file",
-                },
-                "confirm": {
-                    "type": "boolean",
-                    "description": "If true, prompts for interactive confirmation before writing",
-                },
-            },
-            "required": ["file_path", "content"],
-        }
+        return WriteParams.model_json_schema()
 
     async def run(self, params: dict[str, Any]) -> str:
         raw = params["file_path"]

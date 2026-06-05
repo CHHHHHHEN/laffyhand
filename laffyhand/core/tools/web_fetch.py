@@ -6,7 +6,14 @@ from typing import Any
 import httpx
 from loguru import logger
 
+from pydantic import BaseModel, Field
+
 from laffyhand.core.tools.base import BaseTool
+
+
+class WebFetchParams(BaseModel):
+    url: str = Field(description="The URL to fetch content from (must be a fully-formed valid URL)")
+    format: str | None = Field(default="markdown", description="Output format: markdown (default) or plain text")
 
 
 class WebFetchTool(BaseTool):
@@ -14,22 +21,7 @@ class WebFetchTool(BaseTool):
     description = "Fetch and read content from a URL, returning it as markdown or plain text."
 
     def _input_schema(self) -> dict[str, Any]:
-        return {
-            "type": "object",
-            "properties": {
-                "url": {
-                    "type": "string",
-                    "description": "The URL to fetch content from (must be a fully-formed valid URL)",
-                },
-                "format": {
-                    "type": "string",
-                    "enum": ["markdown", "text"],
-                    "description": "Output format: markdown (default) or plain text",
-                    "default": "markdown",
-                },
-            },
-            "required": ["url"],
-        }
+        return WebFetchParams.model_json_schema()
 
     async def run(self, params: dict[str, Any]) -> str:
         url: str = params["url"]

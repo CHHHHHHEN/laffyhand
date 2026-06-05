@@ -2,8 +2,27 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from pydantic import BaseModel, Field
 from laffyhand.core.session.todo import TodoCreate, TodoUpdate
 from laffyhand.core.tools.base import BaseTool
+
+
+class PlanTaskParams(BaseModel):
+    id: str | None = Field(None, description="Optional custom short ID for plan references")
+    content: str = Field(description="Task description")
+    priority: str | None = Field(None, description="Priority (default: medium)")
+    depends_on: list[str] | None = Field(None, description="Task IDs this task depends on")
+
+
+class TodoParams(BaseModel):
+    operation: str = Field(description="Operation to perform: read, add, update, delete, plan, cleanup")
+    id: str | None = Field(None, description="Task ID: required for update/delete single task; optional for add to specify a custom short ID")
+    ids: list[str] | None = Field(None, description="Multiple task IDs (for batch delete/update)")
+    content: str | None = Field(None, description="Task description (required for add)")
+    status: str | None = Field(None, description="New status (for update)")
+    priority: str | None = Field(None, description="Priority (default: medium)")
+    depends_on: list[str] | None = Field(None, description="Task IDs this task depends on (for add/plan)")
+    tasks: list[PlanTaskParams] | None = Field(None, description="List of tasks for plan operation")
 
 if TYPE_CHECKING:
     from laffyhand.core.session.todo import TodoManager
@@ -22,77 +41,29 @@ class TodoTool(BaseTool):
         super().__init__()
         self._todo_manager = todo_manager
 
+    _TODO_SCHEMA: dict[str, Any] | None = None
+
     def _input_schema(self) -> dict[str, Any]:
-        return {
-            "type": "object",
-            "properties": {
-                "operation": {
-                    "type": "string",
-                    "enum": ["read", "add", "update", "delete", "plan", "cleanup"],
-                    "description": "Operation to perform. "
-                    "read: list tasks. "
-                    "add: create one task. "
-                    "update: change task status/priority/content/depends. "
-                    "delete: remove task(s) by id(s). "
-                    "plan: batch create with dependencies. "
-                    "cleanup: remove completed/cancelled tasks.",
-                },
-                "id": {
-                    "type": "string",
-                    "description": "Task ID: required for update/delete single task; "
-                    "optional for add to specify a custom short ID",
-                },
-                "ids": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "Multiple task IDs (for batch delete/update)",
-                },
-                "content": {
-                    "type": "string",
-                    "description": "Task description (required for add)",
-                },
-                "status": {
-                    "type": "string",
-                    "enum": ["pending", "in_progress", "completed", "cancelled"],
-                    "description": "New status (for update)",
-                },
-                "priority": {
-                    "type": "string",
-                    "enum": ["high", "medium", "low"],
-                    "description": "Priority (default: medium)",
-                },
-                "depends_on": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "Task IDs this task depends on (for add/plan)",
-                },
-                "tasks": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "id": {
-                                "type": "string",
-                                "description": "Optional custom short ID for plan references",
-                            },
-                            "content": {"type": "string"},
-                            "priority": {
-                                "type": "string",
-                                "enum": ["high", "medium", "low"],
-                            },
-                            "depends_on": {
-                                "type": "array",
-                                "items": {"type": "string"},
-                                "description": "Task IDs this task depends on",
-                            },
-                        },
-                        "required": ["content"],
-                    },
-                    "description": "List of tasks for plan operation",
-                },
-            },
-            "required": ["operation"],
-        }
+        if TodoTool._TODO_SCHEMA is not None:
+            return TodoTool._TODO_SCHEMA
+        schema = TodoParams.model_json_schema()
+        schema.pop("title", None)
+        # Inject enum constraints that Pydantic generics cannot express
+        op_desc = (
+            "Operation to perform. "
+            "read: list tasks. "
+            "add: create one task. "
+            "update: change task status/priority/content/depends. "
+            "delete: remove task(s) by id(s). "
+            "plan: batch create with dependencies. "
+            "cleanup: remove completed/cancelled tasks."
+        )
+        schema["properties"]["operation"]["enum"] = ["read", "add", "update", "delete", "plan", "cleanup"]
+        schema["properties"]["operation"]["description"] = op_desc
+        if "status" in schema["properties"]:
+            schema["properties"]["status"]["enum"] = ["pending", "in_progress", "completed", "cancelled"]
+        TodoTool._TODO_SCHEMA = schema
+        return schema
 
     async def run(self, params: dict[str, Any]) -> str:
         op = params["operation"]

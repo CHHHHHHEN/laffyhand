@@ -3,8 +3,16 @@ import re
 from typing import Any
 
 from loguru import logger
+from pydantic import BaseModel, Field
 
 from laffyhand.core.tools.base import BaseTool
+
+
+class BashParams(BaseModel):
+    command: str = Field(description="The shell command to execute")
+    description: str | None = Field(None, description="Brief description of the command (5-10 words)")
+    timeout: int | None = Field(None, description="Timeout in milliseconds (default: 120000)")
+    workdir: str | None = Field(None, description="Working directory for the command (default: current directory)")
 
 _SENSITIVE_PATTERNS = re.compile(
     r"(?i)\b(api[_-]?key|token|secret|password|passwd|credential|auth[_-]?token|access[_-]?key|private[_-]?key)"
@@ -137,28 +145,7 @@ class BashTool(BaseTool):
     max_result_size = 50000
 
     def _input_schema(self) -> dict[str, Any]:
-        return {
-            "type": "object",
-            "properties": {
-                "command": {
-                    "type": "string",
-                    "description": "The shell command to execute",
-                },
-                "description": {
-                    "type": "string",
-                    "description": "Brief description of the command (5-10 words)",
-                },
-                "timeout": {
-                    "type": "integer",
-                    "description": "Timeout in milliseconds (default: 120000)",
-                },
-                "workdir": {
-                    "type": "string",
-                    "description": "Working directory for the command (default: current directory)",
-                },
-            },
-            "required": ["command"],
-        }
+        return BashParams.model_json_schema()
 
     async def run(self, params: dict[str, Any]) -> str:
         command = params["command"]

@@ -2,7 +2,16 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from pydantic import BaseModel, Field
 from laffyhand.core.tools.base import BaseTool
+
+
+class TaskParams(BaseModel):
+    subagent_type: str = Field(description="Which sub-agent to delegate to")
+    prompt: str = Field(description="Detailed task description for the sub-agent")
+    description: str | None = Field(None, description="Short 3-5 word summary of the task")
+    background: bool | None = Field(default=False, description="Run in background (non-blocking)")
+    todo_id: str | None = Field(None, description="Link to a TODO task ID (auto-updates status)")
 
 if TYPE_CHECKING:
     from laffyhand.core.runtime import AgentRuntime
@@ -21,35 +30,13 @@ class TaskTool(BaseTool):
             return self._cached_schema
         agents = self._runtime.agent_registry.list_subagents()
         enum_agents = [a.name for a in agents]
-        schema = {
-            "type": "object",
-            "properties": {
-                "subagent_type": {
-                    "type": "string",
-                    "enum": enum_agents,
-                    "description": "Which sub-agent to delegate to. "
-                    + " ".join(f"{a.name}: {a.description}" for a in agents),
-                },
-                "prompt": {
-                    "type": "string",
-                    "description": "Detailed task description for the sub-agent",
-                },
-                "description": {
-                    "type": "string",
-                    "description": "Short 3-5 word summary of the task",
-                },
-                "background": {
-                    "type": "boolean",
-                    "description": "Run in background (non-blocking)",
-                    "default": False,
-                },
-                "todo_id": {
-                    "type": "string",
-                    "description": "Link to a TODO task ID (auto-updates status)",
-                },
-            },
-            "required": ["subagent_type", "prompt"],
-        }
+        schema = TaskParams.model_json_schema()
+        schema.pop("title", None)
+        schema["properties"]["subagent_type"]["enum"] = enum_agents
+        schema["properties"]["subagent_type"]["description"] = (
+            "Which sub-agent to delegate to. "
+            + " ".join(f"{a.name}: {a.description}" for a in agents)
+        )
         self._cached_schema = schema
         return schema
 
