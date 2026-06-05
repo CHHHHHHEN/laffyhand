@@ -551,6 +551,34 @@ class AgentRuntime:
         finally:
             self._event_sinks.pop(session_id, None)
 
+    async def compact_session(self, session_id: str) -> str | None:
+        """Manually trigger compaction for a session. Returns new session_id or None."""
+        from laffyhand.agent.compaction import compact_with_chain
+
+        state = self._states.get(session_id)
+        if state is None:
+            logger.warning(f"compact_session: state not found for {session_id}")
+            return None
+        llm = self._llm_for_session(session_id)
+        result = await compact_with_chain(state, llm, self.compaction_config)
+        if result is None:
+            logger.info(f"compact_session: nothing to compact for {session_id}")
+            return None
+        summary, original_system, tail = result
+        child = self.session_manager.create_compacted_child(
+            parent_id=session_id,
+            system_messages=original_system,
+            summary_content=summary,
+            tail_messages=tail,
+        )
+        summary_msg = SystemMessage(content=summary.strip())
+        state.session_id = SessionID(child.id)
+        state.messages = original_system + [summary_msg] + tail
+        state.step = 0
+        self._schedule_title_generation(child.id, "on_compact")
+        logger.info(f"Manual compaction: {session_id} -> {child.id}")
+        return child.id
+
     # ── Background session tasks ──────────────────────────────
 
     def is_session_running(self, session_id: str) -> bool:

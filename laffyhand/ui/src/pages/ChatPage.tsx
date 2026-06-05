@@ -7,6 +7,7 @@ import { useChat } from "@/hooks/use-chat"
 import { useCurrentSession, useAgents, useSessions } from "@/hooks/use-sessions"
 import { useChatStore } from "@/stores/chat-store"
 import { useSessionStore } from "@/stores/session-store"
+import { rpcClient } from "@/lib/rpc"
 import { Spinner } from "@/components/ui/Spinner"
 
 export function ChatPage() {
@@ -73,6 +74,18 @@ export function ChatPage() {
     }
   }, [sessionId, forkSession, navigate])
 
+  const handleCompact = useCallback(async () => {
+    if (!sessionId) return
+    try {
+      const result = await rpcClient.sessionCompact(sessionId)
+      useSessionStore.getState().addActiveSession(result.session_id)
+      useChatStore.getState().addSession(result.session_id)
+      navigate(`/chat/${result.session_id}`, { replace: true })
+    } catch (err) {
+      console.error("Failed to compact session:", err)
+    }
+  }, [sessionId, navigate])
+
   useEffect(() => {
     const title = session?.title
       ? `${session.title} — Laffyhand`
@@ -127,6 +140,7 @@ export function ChatPage() {
         onQueue={queueMessage}
         onCancel={cancelStream}
         onFork={handleFork}
+        onCompact={handleCompact}
         agents={agents}
         isStreaming={isStreaming}
       />

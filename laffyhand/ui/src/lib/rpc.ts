@@ -9,6 +9,7 @@ import type {
   SessionLoadResult,
   SessionDeleteResult,
   SessionForkResult,
+  SessionCompactResult,
   CancelResult,
   ToolsListResult,
   ToolsSetDisabledResult,
@@ -238,6 +239,10 @@ export const rpcClient = {
 
   sessionFork(sessionId: string): Promise<SessionForkResult> {
     return call<SessionForkResult>("session/fork", { session_id: sessionId })
+  },
+
+  sessionCompact(sessionId: string): Promise<SessionCompactResult> {
+    return call<SessionCompactResult>("session/compact", { session_id: sessionId })
   },
 
   sessionSetTitle(sessionId: string, title: string): Promise<{ status: string; session_id: string; title: string }> {

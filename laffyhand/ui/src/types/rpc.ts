@@ -213,6 +213,12 @@ export interface TodoListResult {
   tasks: TodoItemData[]
 }
 
+export interface SessionCompactResult {
+  status: string
+  session_id: string
+  parent_id: string
+}
+
 export interface WorkspaceSetResult {
   workspace: string
 }

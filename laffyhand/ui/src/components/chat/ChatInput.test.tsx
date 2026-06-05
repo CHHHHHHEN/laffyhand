@@ -235,6 +235,7 @@ describe("ChatInput", () => {
     fireEvent.input(textarea, { target: { value: "/" } })
 
     expect(screen.getByText("/fork")).toBeInTheDocument()
+    expect(screen.getByText("/compact")).toBeInTheDocument()
     expect(screen.getByText("/agent <name>")).toBeInTheDocument()
     expect(screen.getByText("/help")).toBeInTheDocument()
   })
@@ -248,6 +249,19 @@ describe("ChatInput", () => {
     fireEvent.keyDown(textarea, { key: "Enter" })
 
     expect(onFork).toHaveBeenCalled()
+  })
+
+  it("calls onCompact when submitting /compact", () => {
+    const onCompact = vi.fn()
+    render(<ChatInput onSend={vi.fn()} agents={MOCK_AGENTS} onCompact={onCompact} />)
+
+    const textarea = screen.getByPlaceholderText(/Type a message/)
+    fireEvent.input(textarea, { target: { value: "/compact" } })
+    fireEvent.keyDown(textarea, { key: "Enter" })
+
+    expect(onCompact).toHaveBeenCalled()
+    // onSend should not be called for known slash commands
+    expect(screen.queryByText("Send")).toBeInTheDocument()
   })
 
   it("switches agent via /agent command", () => {

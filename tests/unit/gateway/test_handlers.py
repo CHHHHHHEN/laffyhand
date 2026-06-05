@@ -15,6 +15,7 @@ from laffyhand.gateway.handlers import (
     handle_session_load,
     handle_session_delete,
     handle_session_fork,
+    handle_session_compact,
     handle_chat,
     handle_chat_stream,
     handle_chat_cancel,
@@ -196,6 +197,32 @@ class TestHandleSessionFork:
         runtime.fork_session = MagicMock(return_value=None)
         with pytest.raises(ValueError, match="not found"):
             await handle_session_fork(runtime, {"session_id": "sess-1"}, transport, 1, "c1")
+
+
+class TestHandleSessionCompact:
+    @pytest.mark.anyio
+    async def test_compacts_session(self, runtime, transport):
+        runtime.compact_session = AsyncMock(return_value="compacted-id")
+        result = await handle_session_compact(
+            runtime, {"session_id": "sess-1"}, transport, 1, "c1"
+        )
+        assert result["status"] == "compacted"
+        assert result["session_id"] == "compacted-id"
+        assert result["parent_id"] == "sess-1"
+        runtime.compact_session.assert_awaited_once_with("sess-1")
+
+    @pytest.mark.anyio
+    async def test_requires_session_id(self, runtime, transport):
+        with pytest.raises(ValueError, match="session_id is required"):
+            await handle_session_compact(runtime, {}, transport, 1, "c1")
+
+    @pytest.mark.anyio
+    async def test_raises_on_failure(self, runtime, transport):
+        runtime.compact_session = AsyncMock(return_value=None)
+        with pytest.raises(RuntimeError, match="Compaction failed"):
+            await handle_session_compact(
+                runtime, {"session_id": "sess-1"}, transport, 1, "c1"
+            )
 
 
 class TestHandleChat:

@@ -48,6 +48,7 @@ from laffyhand.gateway.protocol import (
     PERMISSION_RESPOND,
     TODO_LIST,
     TODO_UPDATE,
+    SESSION_COMPACT,
     Notification,
 )
 
@@ -1005,6 +1006,26 @@ async def handle_agent_list(
     }
 
 
+async def handle_session_compact(
+    runtime: AgentRuntime,
+    params: dict[str, Any],
+    transport: Transport,
+    _request_id: str | int | None,
+    conn_id: str,
+) -> dict[str, Any]:
+    session_id: str = params.get("session_id", "")
+    if not session_id:
+        raise ValueError("session_id is required")
+    new_id = await runtime.compact_session(session_id)
+    if new_id is None:
+        raise RuntimeError("Compaction failed — no session state or nothing to compact")
+    return {
+        "status": "compacted",
+        "session_id": new_id,
+        "parent_id": session_id,
+    }
+
+
 def register_all_handlers(dispatcher: Dispatcher) -> None:
     dispatcher.register(INITIALIZE, handle_initialize)
     dispatcher.register(SHUTDOWN, handle_shutdown)
@@ -1035,3 +1056,4 @@ def register_all_handlers(dispatcher: Dispatcher) -> None:
     dispatcher.register(PERMISSION_RESPOND, handle_permission_respond)
     dispatcher.register(TODO_LIST, handle_todo_list)
     dispatcher.register(TODO_UPDATE, handle_todo_update)
+    dispatcher.register(SESSION_COMPACT, handle_session_compact)

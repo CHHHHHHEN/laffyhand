@@ -4,6 +4,7 @@ import type { AgentInfo } from "@/types/rpc"
 
 const SLASH_COMMANDS = [
   { command: "/fork", description: "Fork current session into a new one" },
+  { command: "/compact", description: "Manually compress conversation context" },
   { command: "/agent <name>", description: "Switch to a different agent type" },
   { command: "/help", description: "Show available commands" },
 ] as const
@@ -15,6 +16,7 @@ interface ChatInputProps {
   onQueue?: (content: string) => void
   onCancel?: () => void
   onFork?: () => void
+  onCompact?: () => void
   agents: AgentInfo[]
   isStreaming?: boolean
 }
@@ -37,7 +39,7 @@ const MODE_CONFIG: Record<BusyMode, { label: string; description: string; color:
   },
 }
 
-export function ChatInput({ onSend, onInterrupt, onSteer, onQueue, onCancel, onFork, agents, isStreaming }: ChatInputProps) {
+export function ChatInput({ onSend, onInterrupt, onSteer, onQueue, onCancel, onFork, onCompact, agents, isStreaming }: ChatInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const [inputValue, setInputValue] = useState("")
   const busyMode = useUiStore((s) => s.busyMode)
@@ -90,6 +92,11 @@ export function ChatInput({ onSend, onInterrupt, onSteer, onQueue, onCancel, onF
 
     if (trimmed === "/fork") {
       onFork?.()
+      return true
+    }
+
+    if (trimmed === "/compact") {
+      onCompact?.()
       return true
     }
 
