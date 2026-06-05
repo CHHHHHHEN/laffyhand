@@ -144,18 +144,21 @@ class MCPService:
         self._status: dict[str, Status] = {}
         self._reconnect_cfgs: dict[str, MCPConfig] = {}
         self._reconnect_attempts: dict[str, int] = {}
+        self._lock = asyncio.Lock()
 
     def get_client(self, name: str) -> MCPClient | None:
         return self._clients.get(name)
 
     async def connect_all(self, configs: dict[str, MCPConfig]) -> None:
-        # NOTE: 在连接完成前就存储 config，使得首次连接失败的 server
-        # 后续仍可通过 reconnect() 重试。如果不需要此行为，可在连接失败后
-        # 从 _reconnect_cfgs 中移除对应条目。
-        self._reconnect_cfgs.update(configs)
-        async with asyncio.TaskGroup() as tg:
-            for name, cfg in configs.items():
-                tg.create_task(self._connect_one(name, cfg))
+        async with self._lock:
+            self._reconnect_cfgs.update(configs)
+        results = await asyncio.gather(
+            *(self._connect_one(name, cfg) for name, cfg in configs.items()),
+            return_exceptions=True,
+        )
+        for name, result in zip(configs, results, strict=False):
+            if isinstance(result, Exception):
+                logger.error(f"MCP '{name}' connection failed: {result}")
 
     async def connect_server(self, name: str, cfg: MCPConfig) -> list[MCPToolDef]:
         """Connect a single MCP server and return its tools.
@@ -163,19 +166,22 @@ class MCPService:
         This is the public API for runtime MCP connection.
         Returns a description of discovered tools.
         """
-        if name in self._clients:
-            raise ValueError(f"MCP server '{name}' is already connected")
-        self._reconnect_cfgs[name] = cfg
+        async with self._lock:
+            if name in self._clients:
+                raise ValueError(f"MCP server '{name}' is already connected")
+            self._reconnect_cfgs[name] = cfg
         client = MCPClient(name, cfg)
         try:
             await client.connect()
         except Exception as e:
-            self._status[name] = f"failed: {e}"
-            self._reconnect_attempts[name] = 0
+            async with self._lock:
+                self._status[name] = f"failed: {e}"
+                self._reconnect_attempts[name] = 0
             raise
-        self._clients[name] = client
-        self._status[name] = "connected"
-        self._reconnect_attempts[name] = 0
+        async with self._lock:
+            self._clients[name] = client
+            self._status[name] = "connected"
+            self._reconnect_attempts[name] = 0
         defs = await client.list_tools()
         logger.info(f"MCP '{name}' connected with {len(defs)} tool(s)")
         return defs
@@ -186,30 +192,33 @@ class MCPService:
         client = MCPClient(name, cfg)
         try:
             await client.connect()
-            self._clients[name] = client
-            self._status[name] = "connected"
-            self._reconnect_attempts[name] = 0
+            async with self._lock:
+                self._clients[name] = client
+                self._status[name] = "connected"
+                self._reconnect_attempts[name] = 0
             logger.info(f"MCP '{name}' connected")
         except Exception as e:
-            self._status[name] = f"failed: {e}"
-            self._reconnect_attempts[name] = 0
+            async with self._lock:
+                self._status[name] = f"failed: {e}"
+                self._reconnect_attempts[name] = 0
             logger.error(f"MCP '{name}' connection failed: {e}")
 
     async def disconnect(self, name: str) -> None:
-        client = self._clients.pop(name, None)
+        async with self._lock:
+            client = self._clients.pop(name, None)
+            self._status.pop(name, None)
+            self._reconnect_cfgs.pop(name, None)
+            self._reconnect_attempts.pop(name, None)
         if client is not None:
             await client.disconnect()
-        self._status.pop(name, None)
-        self._reconnect_cfgs.pop(name, None)
-        self._reconnect_attempts.pop(name, None)
         logger.debug(f"MCP '{name}' removed from service")
 
     async def disconnect_all(self) -> None:
-        names = list(self._clients.keys())
+        async with self._lock:
+            names = list(self._clients.keys())
         if not names:
             logger.debug("No MCP connections to clean up")
             return
-        # Disconnect sequentially to avoid AsyncExitStack task-context errors
         for name in names:
             try:
                 await self.disconnect(name)
@@ -218,8 +227,10 @@ class MCPService:
         logger.info(f"Disconnected all MCP clients: {names}")
 
     async def get_wrapped_tools(self) -> list[BaseTool]:
+        async with self._lock:
+            snapshot = dict(self._clients)
         tools: list[BaseTool] = []
-        for name, client in self._clients.items():
+        for name, client in snapshot.items():
             try:
                 defs = await client.list_tools()
                 logger.debug(f"Discovered {len(defs)} tool(s) from MCP '{name}'")
@@ -231,14 +242,15 @@ class MCPService:
         return tools
 
     async def reconnect(self, name: str) -> bool:
-        cfg = self._reconnect_cfgs.get(name)
-        if cfg is None:
-            logger.warning(f"No config for MCP '{name}', cannot reconnect")
-            return False
+        async with self._lock:
+            cfg = self._reconnect_cfgs.get(name)
+            if cfg is None:
+                logger.warning(f"No config for MCP '{name}', cannot reconnect")
+                return False
+            current_attempts = self._reconnect_attempts.get(name, 0)
 
         max_attempts = 3
         base_delay = 0.5
-        current_attempts = self._reconnect_attempts.get(name, 0)
 
         for attempt in range(1, max_attempts + 1):
             total_attempt = current_attempts + attempt
@@ -248,18 +260,20 @@ class MCPService:
                 )
                 client = MCPClient(name, cfg)
                 await client.connect()
-                old = self._clients.pop(name, None)
+                async with self._lock:
+                    old = self._clients.pop(name, None)
+                    self._clients[name] = client
+                    self._status[name] = "connected"
+                    self._reconnect_attempts[name] = 0
                 if old is not None:
                     await old.disconnect()
-                self._clients[name] = client
-                self._status[name] = "connected"
-                self._reconnect_attempts[name] = 0
                 logger.info(
                     f"MCP '{name}' reconnected after {total_attempt} total attempt(s)"
                 )
                 return True
             except Exception as e:
-                self._reconnect_attempts[name] = total_attempt
+                async with self._lock:
+                    self._reconnect_attempts[name] = total_attempt
                 logger.warning(
                     f"MCP '{name}' reconnect attempt {attempt}/{max_attempts} failed: {e}"
                 )
@@ -268,9 +282,8 @@ class MCPService:
                     logger.debug(f"MCP '{name}' retrying in {delay:.1f}s...")
                     await asyncio.sleep(delay)
 
-        self._status[name] = (
-            f"disconnected (after {max_attempts} reconnection attempts)"
-        )
+        async with self._lock:
+            self._status[name] = "disconnected"
         logger.error(f"MCP '{name}' failed to reconnect after {max_attempts} attempts")
         return False
 

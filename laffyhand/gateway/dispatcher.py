@@ -41,6 +41,7 @@ class Dispatcher:
     shutdown_requested: bool = False
     _active_tasks: dict[str, asyncio.Task[None]] = field(default_factory=dict)
     _session_streams: dict[str, asyncio.Task[Any]] = field(default_factory=dict)
+    _stream_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
     def register_session_stream(self, session_id: str, task: asyncio.Task[Any]) -> None:
         self._session_streams[session_id] = task
@@ -51,12 +52,13 @@ class Dispatcher:
     def get_active_session_stream(self, session_id: str) -> asyncio.Task[None] | None:
         return self._session_streams.get(session_id)
 
-    def cancel_session_stream(self, session_id: str) -> bool:
-        task = self._session_streams.get(session_id)
-        if task is not None and not task.done():
-            task.cancel()
-            return True
-        return False
+    async def cancel_session_stream(self, session_id: str) -> bool:
+        async with self._stream_lock:
+            task = self._session_streams.get(session_id)
+            if task is not None and not task.done():
+                task.cancel()
+                return True
+            return False
 
     def register(
         self,
@@ -93,20 +95,22 @@ class Dispatcher:
 
         if entry.streaming and request.method != SHUTDOWN:
             session_id: str | None = params.get("session_id")
+            task: asyncio.Task[Any] | None = None
             if session_id is not None:
-                existing = self._session_streams.get(session_id)
-                if existing is not None and not existing.done():
-                    error = Error(
-                        code=SESSION_ALREADY_STREAMING,
-                        message=f"Session {session_id} already has an active stream",
-                    )
-                    await transport.send(ErrorResponse(id=request.id, error=error).json())
-                    elapsed_ms = (time.monotonic() - t0) * 1000
-                    logger.warning(
-                        f"Rejected duplicate streaming for session {session_id} "
-                        f"({elapsed_ms:.1f}ms)"
-                    )
-                    return
+                async with self._stream_lock:
+                    existing = self._session_streams.get(session_id)
+                    if existing is not None and not existing.done():
+                        error = Error(
+                            code=SESSION_ALREADY_STREAMING,
+                            message=f"Session {session_id} already has an active stream",
+                        )
+                        await transport.send(ErrorResponse(id=request.id, error=error).json())
+                        elapsed_ms = (time.monotonic() - t0) * 1000
+                        logger.warning(
+                            f"Rejected duplicate streaming for session {session_id} "
+                            f"({elapsed_ms:.1f}ms)"
+                        )
+                        return
 
             task = asyncio.create_task(
                 self._run_streaming(entry, params, transport, request.id, conn_id),

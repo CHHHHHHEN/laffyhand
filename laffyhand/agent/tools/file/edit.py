@@ -125,7 +125,7 @@ class EditTool(BaseTool):
         if path.is_dir():
             return f"Cannot edit a directory: {path}"
 
-        content = path.read_text(encoding="utf-8")
+        content = path.read_text(encoding="utf-8", errors="replace")
 
         # Regex mode
         if old_pattern:
@@ -148,7 +148,7 @@ class EditTool(BaseTool):
         if path.is_dir():
             return f"Cannot edit a directory: {path}"
 
-        content = path.read_text(encoding="utf-8")
+        content = path.read_text(encoding="utf-8", errors="replace")
         original = content
 
         for i, change in enumerate(changes):

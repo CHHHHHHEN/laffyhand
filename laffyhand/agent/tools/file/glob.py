@@ -63,7 +63,7 @@ class GlobTool(BaseTool):
         matches: list[Path] = []
 
         if rg_available():
-            rg_results = rg_glob(root, pattern, include_ignored=include_ignored)
+            rg_results = await rg_glob(root, pattern, include_ignored=include_ignored)
             if rg_results is not None:
                 for p in rg_results:
                     if not p:

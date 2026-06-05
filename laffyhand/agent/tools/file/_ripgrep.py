@@ -1,5 +1,5 @@
+import asyncio
 import shutil
-import subprocess
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -15,44 +15,47 @@ def rg_available() -> bool:
     return _RG_CACHE
 
 
-def _rg_run(
+async def _rg_run(
     args: Sequence[str],
     cwd: Path,
     timeout: int = 60,
-) -> subprocess.CompletedProcess[str] | None:
+) -> str | None:
     """Run ripgrep with a standardised set of flags.
 
-    Returns *None* when rg is unavailable or the call failed.
+    Returns stdout on success (including zero matches, exit code 0 or 1),
+    or *None* when rg is unavailable or the call failed.
     """
     try:
-        result = subprocess.run(
-            args,
+        proc = await asyncio.create_subprocess_exec(
+            *args,
             cwd=cwd,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
         )
-        if result.returncode in (0, 1):
-            return result
-        logger.debug(f"ripgrep exited with code {result.returncode}: {result.stderr[:200]}")
-    except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as e:
+        stdout, stderr = await asyncio.wait_for(
+            proc.communicate(), timeout=timeout
+        )
+        if proc.returncode in (0, 1):
+            return stdout.decode()
+        logger.debug(f"ripgrep exited with code {proc.returncode}: {stderr.decode()[:200]}")
+    except (asyncio.TimeoutError, FileNotFoundError, OSError) as e:
         logger.debug(f"ripgrep failed: {e}")
     return None
 
 
-def glob(cwd: Path, pattern: str, include_ignored: bool = False) -> list[str] | None:
+async def glob(cwd: Path, pattern: str, include_ignored: bool = False) -> list[str] | None:
     """List files matching a glob pattern using ripgrep. Returns None on failure."""
     cmd = ["rg", "--files", "--glob", pattern]
     if include_ignored:
         cmd.append("--no-ignore")
     cmd.append(".")
-    result = _rg_run(cmd, cwd, timeout=30)
+    result = await _rg_run(cmd, cwd, timeout=30)
     if result is not None:
-        return result.stdout.splitlines()
+        return result.splitlines()
     return None
 
 
-def grep(
+async def grep(
     cwd: Path, pattern: str, include: str | None = None, context: int = 0
 ) -> str | None:
     """Search file contents using ripgrep. Returns raw output or None on failure."""
@@ -69,13 +72,13 @@ def grep(
     if context:
         cmd.extend(["-C", str(context)])
     cmd.append(".")
-    result = _rg_run(cmd, cwd)
+    result = await _rg_run(cmd, cwd)
     if result is not None:
-        return result.stdout
+        return result
     return None
 
 
-def grep_files(cwd: Path, pattern: str, include: str | None = None) -> list[str] | None:
+async def grep_files(cwd: Path, pattern: str, include: str | None = None) -> list[str] | None:
     """List files containing matches using ripgrep. Returns None on failure."""
     cmd = [
         "rg",
@@ -87,19 +90,19 @@ def grep_files(cwd: Path, pattern: str, include: str | None = None) -> list[str]
     if include:
         cmd.extend(["--glob", include])
     cmd.append(".")
-    result = _rg_run(cmd, cwd)
+    result = await _rg_run(cmd, cwd)
     if result is not None:
-        return result.stdout.splitlines()
+        return result.splitlines()
     return None
 
 
-def grep_count(cwd: Path, pattern: str, include: str | None = None) -> str | None:
+async def grep_count(cwd: Path, pattern: str, include: str | None = None) -> str | None:
     """Get per-file match counts using ripgrep. Returns raw output or None."""
     cmd = ["rg", "--count", "--color", "never", pattern]
     if include:
         cmd.extend(["--glob", include])
     cmd.append(".")
-    result = _rg_run(cmd, cwd)
+    result = await _rg_run(cmd, cwd)
     if result is not None:
-        return result.stdout
+        return result
     return None

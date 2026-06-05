@@ -42,6 +42,7 @@ from laffyhand.agent.subagent.manager import SubagentManager, build_subagent_sta
 from laffyhand.agent.tools.registry import ToolRegistry
 from laffyhand.agent.tools.file import ReadTool, WriteTool, EditTool, GlobTool, GrepTool
 from laffyhand.agent.tools.bash import BashTool
+from laffyhand.agent.tools.web_fetch import WebFetchTool
 from laffyhand.agent.tools.todo import TodoTool
 from laffyhand.agent.tools.tag import TagTool, annotate_result
 from laffyhand.agent.session.todo import TodoManager
@@ -160,6 +161,7 @@ class AgentRuntime:
         self.tool_registry.register_tool(GlobTool())
         self.tool_registry.register_tool(GrepTool())
         self.tool_registry.register_tool(BashTool())
+        self.tool_registry.register_tool(WebFetchTool())
         self.tool_registry.register_tool(TodoTool(self.todo_manager))
 
         skill_tool = SkillTool(self.skill_registry, self.tool_registry.permission)

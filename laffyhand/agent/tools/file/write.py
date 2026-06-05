@@ -65,7 +65,7 @@ class WriteTool(BaseTool):
 
         old_content: str | None = None
         if path.exists() and path.is_file():
-            old_content = path.read_text(encoding="utf-8")
+            old_content = path.read_text(encoding="utf-8", errors="replace")
             line_ending = detect_line_ending(path)
             content = normalize_newlines(content, line_ending)
 

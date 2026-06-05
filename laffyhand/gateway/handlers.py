@@ -525,7 +525,7 @@ async def handle_chat_cancel(
 
     # 1. Session-scoped cancel (precise — only cancels one session's stream)
     if dispatcher is not None and session_id:
-        if dispatcher.cancel_session_stream(session_id):
+        if await dispatcher.cancel_session_stream(session_id):
             logger.info(f"Streaming task cancelled for session {session_id}")
             return {"status": "cancelled"}
 

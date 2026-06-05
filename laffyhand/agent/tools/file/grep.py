@@ -195,17 +195,17 @@ class GrepTool(BaseTool):
     ) -> str:
         pattern_str = pattern.pattern
         if output_mode == "files_only" and rg_available():
-            result = self._rg_files_only(root, pattern_str, include, offset, limit)
+            result = await self._rg_files_only(root, pattern_str, include, offset, limit)
             if result is not None:
                 return result
 
         if output_mode == "count" and rg_available():
-            result = self._rg_count(root, pattern_str, include, offset, limit)
+            result = await self._rg_count(root, pattern_str, include, offset, limit)
             if result is not None:
                 return result
 
         if output_mode == "content" and rg_available():
-            result = self._rg_content(
+            result = await self._rg_content(
                 root, pattern_str, include, context, offset, limit
             )
             if result is not None:
@@ -223,10 +223,10 @@ class GrepTool(BaseTool):
             root, pattern, include, context, offset, limit
         )
 
-    def _rg_files_only(
+    async def _rg_files_only(
         self, root: Path, pattern_str: str, include: str | None, offset: int, limit: int
     ) -> str | None:
-        results = rg_grep_files(root, pattern_str, include)
+        results = await rg_grep_files(root, pattern_str, include)
         if results is None:
             return None
 
@@ -241,10 +241,10 @@ class GrepTool(BaseTool):
             result += f"\n[Showing {len(selected)} of {total} files]"
         return result
 
-    def _rg_count(
+    async def _rg_count(
         self, root: Path, pattern_str: str, include: str | None, offset: int, limit: int
     ) -> str | None:
-        raw = rg_grep_count(root, pattern_str, include)
+        raw = await rg_grep_count(root, pattern_str, include)
         if raw is None:
             return None
 
@@ -260,7 +260,7 @@ class GrepTool(BaseTool):
             result += f"\n[Showing {len(selected)} of {total} files]"
         return result
 
-    def _rg_content(
+    async def _rg_content(
         self,
         root: Path,
         pattern_str: str,
@@ -269,7 +269,7 @@ class GrepTool(BaseTool):
         offset: int,
         limit: int,
     ) -> str | None:
-        raw = rg_grep(root, pattern_str, include, context)
+        raw = await rg_grep(root, pattern_str, include, context)
         if raw is None:
             return None
 

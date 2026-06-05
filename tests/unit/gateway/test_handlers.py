@@ -270,7 +270,7 @@ class TestHandleChatCancel:
     async def test_cancels_by_session(self, runtime, transport):
         """cancel_session_stream is tried first when session_id is present."""
         dispatcher = MagicMock()
-        dispatcher.cancel_session_stream = MagicMock(return_value=True)
+        dispatcher.cancel_session_stream = AsyncMock(return_value=True)
         transport.dispatcher = dispatcher
         result = await handle_chat_cancel(runtime, {"session_id": "sess-1"}, transport, 1, "c1")
         assert result["status"] == "cancelled"
@@ -291,7 +291,7 @@ class TestHandleChatCancel:
     async def test_no_active_stream_when_cancel_fails(self, runtime, transport):
         """Both session and conn_id cancel fail -> no_active_stream."""
         dispatcher = MagicMock()
-        dispatcher.cancel_session_stream = MagicMock(return_value=False)
+        dispatcher.cancel_session_stream = AsyncMock(return_value=False)
         dispatcher.cancel_connection = MagicMock(return_value=False)
         transport.dispatcher = dispatcher
         transport.sse_canceller = None

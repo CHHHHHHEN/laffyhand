@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+import threading
 from pathlib import Path
 from collections.abc import Sequence
 
@@ -33,6 +34,8 @@ class SessionManager:
         self._sessions = SessionRepo(self._conn)
         self._messages = MessageRepo(self._conn)
         self._pending_meta: dict[str, dict] = {}
+        self._meta_lock = threading.Lock()
+        self._msg_lock = threading.Lock()
 
     @property
     def connection(self) -> sqlite3.Connection:
@@ -82,14 +85,16 @@ class SessionManager:
 
     def set_pending_meta(self, session_id: str, **kwargs: str) -> None:
         """Store session creation metadata for later lazy persistence."""
-        self._pending_meta[session_id] = kwargs
+        with self._meta_lock:
+            self._pending_meta[session_id] = kwargs
 
     def ensure_exists(self, session_id: str) -> Session:
         """Create a session in DB if it doesn't exist yet (lazy persistence)."""
         existing = self._sessions.get(session_id)
         if existing is not None:
             return existing
-        meta = self._pending_meta.pop(session_id, {})
+        with self._meta_lock:
+            meta = self._pending_meta.pop(session_id, {})
         session = Session(
             id=session_id,
             title=meta.get("title", ""),
@@ -154,7 +159,8 @@ class SessionManager:
 
     def store_messages(self, session_id: str, messages: list[Message]) -> int:
         """Store new Message objects as V2 session messages and update counters."""
-        session = self.ensure_exists(session_id)
+        with self._msg_lock:
+            session = self.ensure_exists(session_id)
         began = self._begin()
         try:
             existing = self._messages.count_by_session(session_id)
@@ -175,7 +181,8 @@ class SessionManager:
         return new_count
 
     def sync_messages(self, session_id: str, messages: list[Message]) -> int:
-        self.ensure_exists(session_id)
+        with self._msg_lock:
+            self.ensure_exists(session_id)
         began = self._begin()
         try:
             self._messages.delete_by_session(session_id)
