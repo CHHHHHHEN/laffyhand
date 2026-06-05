@@ -6,7 +6,7 @@ from loguru import logger
 from laffyhand.core.llm.specs.models import ToolDefinition
 from laffyhand.core.tools.base import BaseTool
 from laffyhand.core.tools.permission import PermissionManager
-from laffyhand.core.truncation import truncate_output
+from laffyhand.core._utils import truncate_output
 
 
 class ToolRegistry:

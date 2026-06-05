@@ -26,11 +26,11 @@ from laffyhand.core.compaction import (
     _select_compaction_targets,
     _is_summary_content,
 )
-from laffyhand.core.token_utils import (
+from laffyhand.core._utils import (
     estimate_message_tokens,
     estimate_messages_tokens,
 )
-from laffyhand.core.context import build_llm_context
+from laffyhand.core.loop import build_llm_context
 from laffyhand.core.prune import prune, PRUNE_PROTECT
 
 

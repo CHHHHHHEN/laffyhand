@@ -18,9 +18,8 @@ from laffyhand.core.schemas import (
     CompactionConfig,
     SessionID,
 )
-from laffyhand.core.token_utils import estimate_tokens, estimate_message_tokens, estimate_messages_tokens
+from laffyhand.core._utils import estimate_tokens, estimate_message_tokens, estimate_messages_tokens, truncate_output
 from laffyhand.core.llm.facade import LLM
-from laffyhand.core.truncation import truncate_output
 from laffyhand.core.agent import get_builtin
 
 if TYPE_CHECKING:

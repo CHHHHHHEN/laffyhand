@@ -1,3 +1,5 @@
+from loguru import logger
+
 from laffyhand.core.llm.specs.models import (
     AssistantMessage, Message, SystemMessage, ToolMessage, UserMessage,
 )
@@ -29,3 +31,13 @@ def estimate_message_tokens(msg: Message) -> int:
 
 def estimate_messages_tokens(messages: list[Message]) -> int:
     return sum(estimate_message_tokens(m) for m in messages)
+
+
+def truncate_output(text: str | None, max_chars: int = 2000) -> str:
+    if text is None:
+        return ""
+    if not text or len(text) <= max_chars:
+        return text
+    omitted = len(text) - max_chars
+    logger.debug(f"Truncated output: {len(text)} \u2192 {max_chars} (omitted {omitted})")
+    return f"{text[:max_chars]}\n[Tool output truncated: omitted {omitted} chars]"

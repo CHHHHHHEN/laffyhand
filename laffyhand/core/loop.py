@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
-from laffyhand.core.llm.specs.models import AssistantMessage, UserMessage
+from laffyhand.core.llm.specs.models import AssistantMessage, Message, UserMessage
 from laffyhand.core.llm.specs.models import (
     StreamText,
     StreamReasoning,
@@ -39,7 +39,7 @@ from laffyhand.core.schemas import (
 )
 
 from laffyhand.core.compaction import compact_on_overflow
-from laffyhand.core.context import build_llm_context
+from laffyhand.core.prune import prune
 from laffyhand.core.tools.tool_executor import ToolExecutionResult, ToolExecutor
 from laffyhand.core.llm.facade import LLM
 from laffyhand.core.tools import ToolRegistry
@@ -47,6 +47,22 @@ from laffyhand.core.tools import ToolRegistry
 if TYPE_CHECKING:
     from laffyhand.core.session import SessionManager
     from laffyhand.core.subagent.manager import SubagentManager
+
+
+# ── Helpers ────────────────────────────────────────────────────
+
+
+def build_llm_context(
+    agent_state: AgentState,
+    compaction_config: CompactionConfig,
+) -> list[Message]:
+    if compaction_config.prune:
+        return prune(
+            agent_state.messages,
+            curr_context_usage=agent_state.usage.curr_context_usage,
+            context_size=agent_state.usage.context_size,
+        )
+    return agent_state.messages
 
 
 # ── Main agent loop ────────────────────────────────────────────

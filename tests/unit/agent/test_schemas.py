@@ -13,7 +13,7 @@ from laffyhand.core.schemas import (
     UsageUpdate,
     TodoUpdate,
 )
-from laffyhand.core.token_utils import estimate_tokens
+from laffyhand.core._utils import estimate_tokens
 
 
 class TestEstimateTokens(unittest.TestCase):

@@ -1,5 +1,5 @@
 import unittest
-from laffyhand.core.truncation import truncate_output
+from laffyhand.core._utils import truncate_output
 
 
 class TestTruncation(unittest.TestCase):
