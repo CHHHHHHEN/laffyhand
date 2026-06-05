@@ -9,9 +9,6 @@ from laffyhand.core.llm.specs.models import SystemMessage, ToolMessage, UserMess
 from laffyhand.core.llm.specs.models import (
     AssistantMessage,
     Message,
-    StreamError,
-    StreamFinish,
-    StreamText,
 )
 from laffyhand.core.schemas import (
     AgentState,
@@ -19,7 +16,7 @@ from laffyhand.core.schemas import (
     SessionID,
 )
 from laffyhand.core._utils import estimate_tokens, estimate_message_tokens, estimate_messages_tokens, truncate_output
-from laffyhand.core.llm.facade import LLM
+from laffyhand.core.llm.facade import LLM, stream_text
 from laffyhand.core.agent import get_builtin
 
 if TYPE_CHECKING:
@@ -45,7 +42,7 @@ def select_tail(
 ) -> tuple[list[Message], list[Message]]:
     preserve_recent = config.preserve_recent_tokens
     if not preserve_recent:
-        reserved = config.reserved or min(20_000, context_size // 4)
+        reserved = config.reserved or min(config.reserved_buffer, context_size // 4)
         usable = context_size - reserved
         preserve_recent = max(2_000, min(8_000, int(usable * 0.25)))
 
@@ -121,10 +118,7 @@ def _is_summary_content(content: str) -> bool:
     return s.startswith(_SUMMARY_TAG_OPEN) and s.endswith(_SUMMARY_TAG_CLOSE)
 
 
-_MAX_SUMMARY_DEPTH = 3
-
-
-def _summary_depth(messages: list[Message]) -> int:
+def _summary_depth(messages: list[Message], max_depth: int = 3) -> int:
     depth = 0
     for m in messages:
         content = ""
@@ -188,17 +182,7 @@ async def _summarize(
         UserMessage(content=summary_prompt),
     ]
 
-    text_parts: list[str] = []
-    async for event in llm.stream(summary_messages):
-        if isinstance(event, StreamText):
-            text_parts.append(event.delta)
-        elif isinstance(event, StreamFinish):
-            break
-        elif isinstance(event, StreamError):
-            logger.error(f"Summarization stream error: {event.error}")
-            return None
-
-    return "".join(text_parts) if text_parts else None
+    return await stream_text(llm, summary_messages)
 
 
 def _select_compaction_targets(
@@ -211,9 +195,9 @@ def _select_compaction_targets(
         logger.info("No messages to compact")
         return None
 
-    if _summary_depth(head) >= _MAX_SUMMARY_DEPTH:
+    if _summary_depth(head, config.max_summary_depth) >= config.max_summary_depth:
         logger.info(
-            f"Summary depth {_summary_depth(head)} >= max {_MAX_SUMMARY_DEPTH}, skipping"
+            f"Summary depth {_summary_depth(head, config.max_summary_depth)} >= max {config.max_summary_depth}, skipping"
         )
         return None
 
@@ -271,7 +255,7 @@ async def compact_on_overflow(
 ) -> bool:
     tokens = agent_state.usage.curr_context_usage or estimate_messages_tokens(agent_state.messages)
     context_size = agent_state.usage.context_size
-    reserved = compaction_config.reserved or min(20_000, context_size // 4)
+    reserved = compaction_config.reserved or min(compaction_config.reserved_buffer, context_size // 4)
     if not is_overflow(tokens, context_size, reserved):
         logger.debug(f"No compaction needed: {tokens} tokens within context limit")
         return False
@@ -298,3 +282,12 @@ async def compact_on_overflow(
     if on_compacted is not None:
         on_compacted(child.id)
     return True
+
+
+__all__ = [
+    "is_overflow",
+    "select_tail",
+    "build_summary_text",
+    "compact_with_chain",
+    "compact_on_overflow",
+]

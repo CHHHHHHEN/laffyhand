@@ -199,11 +199,7 @@ class MCPDisconnectTool(BaseTool):
 
         # Unregister tools from this server
         prefix = f"mcp_{name}_"
-        unregistered = 0
-        for tool_name in list(self._tool_registry.list_tools()):
-            if tool_name.startswith(prefix):
-                self._tool_registry.unregister_tool(tool_name)
-                unregistered += 1
+        unregistered = self._tool_registry.unregister_by_prefix(prefix)
 
         await self._mcp_service.disconnect(name)
         return (

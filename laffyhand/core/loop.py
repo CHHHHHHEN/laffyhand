@@ -40,6 +40,7 @@ from laffyhand.core.events import (
     AgentEvent,
 )
 
+from laffyhand.core._utils import exponential_backoff
 from laffyhand.core.compaction import compact_on_overflow
 from laffyhand.core.prune import prune
 from laffyhand.core.tools.registry import ToolExecutionResult
@@ -63,6 +64,7 @@ def build_llm_context(
             agent_state.messages,
             curr_context_usage=agent_state.usage.curr_context_usage,
             context_size=agent_state.usage.context_size,
+            config=compaction_config,
         )
     return agent_state.messages
 
@@ -270,10 +272,7 @@ async def agent_loop(
                 break
 
             _retry_count += 1
-            delay = min(
-                retry_config.base_delay * (2 ** (_retry_count - 1)),
-                retry_config.max_delay,
-            )
+            delay = exponential_backoff(retry_config.base_delay, _retry_count, retry_config.max_delay)
             logger.warning(
                 f"LLM stream error (attempt {_retry_count}/{retry_config.max_retries}), "
                 f"retrying in {delay:.1f}s"
@@ -514,3 +513,12 @@ class LoopOrchestrator:
             self.cancel_background_agent_turn(sid)
         if self._session_tasks:
             await asyncio.wait(list(self._session_tasks.values()), timeout=5.0)
+
+
+__all__ = [
+    "build_llm_context",
+    "MessageStore",
+    "StreamEventConverter",
+    "agent_loop",
+    "LoopOrchestrator",
+]

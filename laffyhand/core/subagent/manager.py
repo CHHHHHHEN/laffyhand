@@ -1,29 +1,17 @@
 from __future__ import annotations
 
 import asyncio
-import os
-import sys
 import uuid
 from collections.abc import Awaitable, Callable, Coroutine
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Literal
 
 from loguru import logger
 
-from laffyhand.core.llm.specs.models import AssistantMessage, SystemMessage, UserMessage
-from laffyhand.core.schemas import (
-    AgentState,
-    CompactionConfig,
-    SessionID,
-    SessionUsage,
-)
-from laffyhand.core.events import (
-    SubAgentStart,
-    SubAgentEnd,
-)
-from laffyhand.core.subagent.orchestrator import map_event_to_subagent_delta
-from laffyhand.core.tools.permission import SubagentPermissions
+from laffyhand.core.llm.specs.models import AssistantMessage
+from laffyhand.core.schemas import CompactionConfig
+from laffyhand.core.events import SubAgentStart, SubAgentEnd
+from laffyhand.core.subagent._shared import build_subagent_state, map_event_to_subagent_delta
 
 if TYPE_CHECKING:
     from laffyhand.core.agent import AgentInfo
@@ -55,62 +43,6 @@ class _RunningSubagent:
     agent_type: str
     task: asyncio.Task[None]
     status: SubagentStatus = "pending"
-
-
-def build_subagent_state(
-    session_manager: SessionManager,
-    parent_session_id: str,
-    agent_info: AgentInfo,
-    prompt: str,
-    parent_permission: PermissionManager,
-    tool_registry: ToolRegistry,
-) -> tuple[AgentState, ToolRegistry]:
-    """Common sub-agent bootstrap — create child session, compose permissions, build AgentState.
-
-    Returns (child_state, child_registry) for use by
-    both foreground (_run_foreground) and background (spawn) paths.
-    """
-    child_session = session_manager.create_child(
-        parent_id=parent_session_id,
-        model=agent_info.model or "",
-    )
-
-    child_permission = SubagentPermissions.compose(
-        parent_permission,
-        agent_info.permission,
-    )
-    child_registry = SubagentPermissions.filter_registry(
-        tool_registry,
-        child_permission,
-    )
-
-    system_content = (
-        agent_info.system_prompt or "You are a helpful sub-agent. Complete the assigned task."
-    )
-
-    now = datetime.now(timezone.utc)
-    workspace = child_registry.workspace or os.getcwd()
-    env_parts = [
-        f"Working directory: {os.getcwd()}",
-        f"Workspace: {workspace}",
-        f"Platform: {sys.platform}",
-        f"Current time: {now.isoformat()}",
-    ]
-    env_block = "<env>\n" + "\n".join(env_parts) + "\n</env>"
-
-    system_prompt = f"<soul>\n{system_content.strip()}\n</soul>"
-    system_prompt += f"\n{env_block}"
-    system_prompt += f"\n{child_registry.build_tool_prompt()}"
-
-    system_msg = SystemMessage(content=system_prompt)
-    user_msg = UserMessage(content=prompt)
-
-    child_state = AgentState(
-        messages=[system_msg, user_msg],
-        session_id=SessionID(child_session.id),
-        usage=SessionUsage(context_size=0),
-    )
-    return child_state, child_registry
 
 
 class SubagentManager:

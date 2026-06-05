@@ -4,6 +4,7 @@ from typing import Any
 
 from loguru import logger
 
+from laffyhand.core._utils import exponential_backoff
 from laffyhand.core.mcp.client import MCPClient, MCPToolDef
 from laffyhand.core.mcp.config import MCPConfig, LocalMCPConfig
 from laffyhand.core.tools.base import BaseTool
@@ -279,7 +280,7 @@ class MCPService:
                     f"MCP '{name}' reconnect attempt {attempt}/{max_attempts} failed: {e}"
                 )
                 if attempt < max_attempts:
-                    delay = min(base_delay * (2 ** (attempt - 1)), 30.0)
+                    delay = exponential_backoff(base_delay, attempt, max_delay=30.0)
                     logger.debug(f"MCP '{name}' retrying in {delay:.1f}s...")
                     await asyncio.sleep(delay)
 

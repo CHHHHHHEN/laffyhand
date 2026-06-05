@@ -41,6 +41,16 @@ class TodoManager:
         if self._session_manager is not None:
             self._session_manager.ensure_exists(session_id)
 
+    def _reraise_integrity_error(self, e: sqlite3.IntegrityError, session_id: str) -> None:
+        self._repo.rollback()
+        err_msg = str(e)
+        if "FOREIGN KEY" in err_msg or "session" in err_msg.lower():
+            raise ValueError(
+                f"Session '{session_id}' does not exist. "
+                "Cannot add todo task without a valid session."
+            ) from e
+        raise
+
     # ── CRUD (delegates to repo) ─────────────────────────────
 
     def get_task(self, task_id: str) -> Optional[TodoItem]:
@@ -80,14 +90,7 @@ class TodoManager:
             self._repo.insert(item)
             self._repo.commit()
         except sqlite3.IntegrityError as e:
-            self._repo.rollback()
-            err_msg = str(e)
-            if "FOREIGN KEY" in err_msg or "session" in err_msg.lower():
-                raise ValueError(
-                    f"Session '{session_id}' does not exist. "
-                    "Cannot add todo task without a valid session."
-                ) from e
-            raise
+            self._reraise_integrity_error(e, session_id)
         return item
 
     def add_tasks(
@@ -128,14 +131,7 @@ class TodoManager:
             try:
                 self._repo.insert(item)
             except sqlite3.IntegrityError as e:
-                self._repo.rollback()
-                err_msg = str(e)
-                if "FOREIGN KEY" in err_msg or "session" in err_msg.lower():
-                    raise ValueError(
-                        f"Session '{session_id}' does not exist. "
-                        "Cannot add todo tasks without a valid session."
-                    ) from e
-                raise
+                self._reraise_integrity_error(e, session_id)
             ids.append(item.id)
             existing = self._repo.get_by_session(session_id)
             existing_ids = {t.id for t in existing}

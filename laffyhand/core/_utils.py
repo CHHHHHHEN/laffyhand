@@ -1,3 +1,11 @@
+from __future__ import annotations
+
+import json
+import os
+import sys
+from datetime import datetime, timezone
+from typing import Any
+
 from loguru import logger
 
 from laffyhand.core.llm.specs.models import (
@@ -33,7 +41,59 @@ def estimate_messages_tokens(messages: list[Message]) -> int:
     return sum(estimate_message_tokens(m) for m in messages)
 
 
-def truncate_output(text: str | None, max_chars: int = 2000) -> str:
+_DEFAULT_TRUNCATE = 2000
+
+
+def _unwrap_json_string(value: str) -> Any | None:
+    try:
+        parsed = json.loads(value)
+        if isinstance(parsed, str):
+            return json.loads(parsed)
+        return parsed
+    except (json.JSONDecodeError, TypeError):
+        return None
+
+
+def coerce_json_dict(value: Any) -> dict[str, str] | None:
+    if value is None:
+        return None
+    if isinstance(value, dict):
+        return {k: str(v) for k, v in value.items()}
+    if isinstance(value, str):
+        parsed = _unwrap_json_string(value)
+        if isinstance(parsed, dict):
+            return {k: str(v) for k, v in parsed.items()}
+    return {}
+
+
+def coerce_json_list(value: Any) -> list[str] | None:
+    if value is None:
+        return None
+    if isinstance(value, list):
+        return [str(item) for item in value]
+    if isinstance(value, str):
+        parsed = _unwrap_json_string(value)
+        if isinstance(parsed, list):
+            return [str(item) for item in parsed]
+    return []
+
+
+def exponential_backoff(base: float, attempt: int, max_delay: float = 60.0) -> float:
+    return min(base * (2 ** (attempt - 1)), max_delay)
+
+
+def build_env_block(workspace: str | None = None) -> str:
+    now = datetime.now(timezone.utc)
+    parts = [
+        f"Working directory: {os.getcwd()}",
+        f"Workspace: {workspace or os.getcwd()}",
+        f"Platform: {sys.platform}",
+        f"Current time: {now.isoformat()}",
+    ]
+    return "<env>\n" + "\n".join(parts) + "\n</env>"
+
+
+def truncate_output(text: str | None, max_chars: int = _DEFAULT_TRUNCATE) -> str:
     if text is None:
         return ""
     if not text or len(text) <= max_chars:

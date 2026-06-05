@@ -193,38 +193,32 @@ class TestMCPDisconnectTool:
     @pytest.mark.anyio
     async def test_disconnect_no_tools(self, tool, mcp_service, tool_registry):
         mcp_service.get_client.return_value = MagicMock()
-        tool_registry.list_tools.return_value = {}
+        tool_registry.unregister_by_prefix.return_value = 0
 
         result = await tool.run({"name": "test"})
 
         mcp_service.disconnect.assert_awaited_once_with("test")
+        tool_registry.unregister_by_prefix.assert_called_once_with("mcp_test_")
         assert "0 tool(s)" in result
 
     @pytest.mark.anyio
     async def test_disconnect_with_tools(self, tool, mcp_service, tool_registry):
         mcp_service.get_client.return_value = MagicMock()
-        tool_registry.list_tools.return_value = {
-            "mcp_test_tool1": MagicMock(),
-            "mcp_test_tool2": MagicMock(),
-            "other_tool": MagicMock(),
-        }
+        tool_registry.unregister_by_prefix.return_value = 2
 
         result = await tool.run({"name": "test"})
 
-        assert tool_registry.unregister_tool.call_count == 2
+        tool_registry.unregister_by_prefix.assert_called_once_with("mcp_test_")
         mcp_service.disconnect.assert_awaited_once_with("test")
         assert "2 tool(s)" in result
 
     @pytest.mark.anyio
     async def test_disconnect_multiple_servers(self, tool, mcp_service, tool_registry):
         mcp_service.get_client.return_value = MagicMock()
-        tool_registry.list_tools.return_value = {
-            "mcp_foo_a": MagicMock(),
-            "mcp_bar_b": MagicMock(),
-        }
+        tool_registry.unregister_by_prefix.return_value = 1
 
         result = await tool.run({"name": "foo"})
 
-        assert tool_registry.unregister_tool.call_count == 1
+        tool_registry.unregister_by_prefix.assert_called_once_with("mcp_foo_")
         mcp_service.disconnect.assert_awaited_once_with("foo")
         assert "1 tool(s)" in result

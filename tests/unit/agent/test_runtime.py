@@ -954,19 +954,19 @@ class TestScheduleTitleGeneration:
     @pytest.mark.anyio
     async def test_existing_title_skips(self, runtime):
         runtime.title_config.mode = "auto"
-        runtime._do_generate_title = AsyncMock()
+        runtime.title_service._do_generate_title = AsyncMock()
         session = runtime.session_manager.create(title="Existing")
         runtime._schedule_title_generation(session.id, "auto")
-        runtime._do_generate_title.assert_not_called()
+        runtime.title_service._do_generate_title.assert_not_called()
 
     @pytest.mark.anyio
     async def test_fires_background_task(self, runtime):
         runtime.title_config.mode = "auto"
-        runtime._do_generate_title = AsyncMock()
+        runtime.title_service._do_generate_title = AsyncMock()
         session = runtime.session_manager.create()
         runtime._schedule_title_generation(session.id, "auto")
         await asyncio.sleep(0)
-        runtime._do_generate_title.assert_awaited_once_with(session.id)
+        runtime.title_service._do_generate_title.assert_awaited_once_with(session.id)
 
 
 class TestDoGenerateTitle:

@@ -128,6 +128,28 @@ class TodoUpdate(BaseModel):
     type: str = "todo-update"
 
 
+__all__ = [
+    "StepStart",
+    "TextStart",
+    "TextDelta",
+    "TextEnd",
+    "ReasoningStart",
+    "ReasoningDelta",
+    "ReasoningEnd",
+    "ToolResult",
+    "ToolError",
+    "StepFinish",
+    "Finish",
+    "Compacting",
+    "PermissionRequest",
+    "SubAgentStart",
+    "SubAgentDelta",
+    "SubAgentEnd",
+    "UsageUpdate",
+    "TodoUpdate",
+    "AgentEvent",
+]
+
 AgentEvent = Union[
     StepStart,
     TextStart,

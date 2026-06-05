@@ -7,6 +7,10 @@ from laffyhand.core.llm.specs import Framing
 from laffyhand.core.llm.specs.models import Frame
 
 
+class _DoneSentinel:
+    pass
+
+
 class SSEFraming(Framing):
     """Frames SSE (Server-Sent Events) from HTTP chunked transfer.
 
@@ -14,7 +18,7 @@ class SSEFraming(Framing):
     buffering incomplete data and only yielding complete events.
     """
 
-    _DONE = object()
+    _DONE = _DoneSentinel()
 
     async def frames(
         self, response: AsyncIterable[bytes]
@@ -35,7 +39,7 @@ class SSEFraming(Framing):
             if isinstance(parsed, dict):
                 yield Frame(data=parsed)
 
-    def _parse_event(self, raw: str) -> dict[str, Any] | None | object:
+    def _parse_event(self, raw: str) -> dict[str, Any] | None | _DoneSentinel:
         """Parse a single SSE event string.
 
         Returns:

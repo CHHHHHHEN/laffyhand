@@ -1,22 +1,30 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 from loguru import logger
 
 from laffyhand.core._utils import estimate_tokens
 from laffyhand.core.llm.specs.models import Message, ToolMessage
 
-
-_PRUNE_PROTECT = 40_000
-_PRUNE_MINIMUM = 20_000
-_PRUNE_MIN_SAVINGS = 50
+if TYPE_CHECKING:
+    from laffyhand.core.schemas import CompactionConfig
 
 
 def prune(
     messages: list[Message],
     curr_context_usage: int = 0,
     context_size: int = 0,
+    config: CompactionConfig | None = None,
 ) -> list[Message]:
-    # If we know the actual token usage and it's well within context capacity,
-    # skip pruning entirely — the char-based estimator overcounts tool tokens
-    # compared to the LLM's real tokenizer, causing false positives.
+    if config is None:
+        from laffyhand.core.schemas import CompactionConfig
+        config = CompactionConfig()
+
+    prune_protect = config.prune_protect
+    prune_minimum = config.prune_minimum
+    prune_min_savings = config.prune_min_savings
+
     if curr_context_usage and context_size and curr_context_usage < context_size * 0.7:
         return messages
 
@@ -30,12 +38,12 @@ def prune(
     logger.trace(
         f"Prune: found {len(tool_indices)} ToolMessages, total_tokens={total_tokens}"
     )
-    if total_tokens <= _PRUNE_PROTECT:
+    if total_tokens <= prune_protect:
         logger.trace(
-            f"Total tokens {total_tokens} <= _PRUNE_PROTECT {_PRUNE_PROTECT}, skipping"
+            f"Total tokens {total_tokens} <= prune_protect {prune_protect}, skipping"
         )
         return messages
-    target = max(_PRUNE_MINIMUM, total_tokens // 2)
+    target = max(prune_minimum, total_tokens // 2)
     pruned = 0
     result = list(messages)
     for idx in reversed(tool_indices):
@@ -43,7 +51,7 @@ def prune(
         if not isinstance(msg, ToolMessage):
             continue
         old_t = estimate_tokens(msg.content)
-        if old_t < _PRUNE_MIN_SAVINGS:
+        if old_t < prune_min_savings:
             continue
         if total_tokens - pruned <= target:
             break
@@ -58,3 +66,6 @@ def prune(
         )
     logger.info(f"Pruned {pruned} tokens from tool outputs")
     return result
+
+
+__all__ = ["prune"]

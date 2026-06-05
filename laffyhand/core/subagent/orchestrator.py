@@ -6,25 +6,11 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from laffyhand.core.events import (
-    Compacting,
-    ReasoningDelta,
-    ReasoningEnd,
-    ReasoningStart,
-    StepFinish,
-    StepStart,
-    SubAgentDelta,
-    SubAgentEnd,
-    SubAgentStart,
-    TextDelta,
-    TextEnd,
-    TextStart,
-    ToolCall,
-    ToolError,
-    ToolResult,
-)
+from laffyhand.core.events import StepFinish, SubAgentEnd, SubAgentStart, TodoUpdate as TodoUpdateEvent
 from laffyhand.core.llm.specs.models import AssistantMessage
 from laffyhand.core.schemas import CompactionConfig
+from laffyhand.core.session.todo import TodoStatus, TodoUpdate as TodoStatusUpdate
+from laffyhand.core.subagent._shared import build_subagent_state, map_event_to_subagent_delta
 
 if TYPE_CHECKING:
     from laffyhand.core.agent import AgentInfo
@@ -42,27 +28,6 @@ MAX_SUBAGENT_DEPTH = 3
 class SessionContext:
     subagent_id: str | None = None
     subagent_depth: int = 0
-
-
-async def map_event_to_subagent_delta(
-    task_id: str,
-    event: Any,
-    sink: Callable[[Any], Awaitable[None]],
-) -> int:
-    if isinstance(event, TextDelta):
-        await sink(SubAgentDelta(id=task_id, kind="text", content=event.text))
-    elif isinstance(event, ReasoningDelta):
-        await sink(SubAgentDelta(id=task_id, kind="reasoning", content=event.text))
-    elif isinstance(event, ToolCall):
-        await sink(SubAgentDelta(id=task_id, kind="tool", tool_name=event.tool_name, tool_input=event.args))
-        return 1
-    elif isinstance(event, ToolResult):
-        await sink(SubAgentDelta(id=task_id, kind="tool_result", tool_name=event.name, content=event.result))
-    elif isinstance(event, ToolError):
-        await sink(SubAgentDelta(id=task_id, kind="tool_result", tool_name=event.name, content=event.message))
-    elif isinstance(event, (StepStart, TextStart, TextEnd, ReasoningStart, ReasoningEnd, Compacting)):
-        await sink(event)
-    return 0
 
 
 class SubagentOrchestrator:
@@ -117,9 +82,6 @@ class SubagentOrchestrator:
         subagent_depth = (ctx.subagent_depth + 1) if ctx.subagent_id else 1
 
         if todo_id and self.todo_manager:
-            from laffyhand.core.session.todo import TodoUpdate as TodoStatusUpdate
-            from laffyhand.core.events import TodoUpdate as TodoUpdateEvent
-
             self.todo_manager.update_task(
                 todo_id, parent_session_id, TodoStatusUpdate(status="in_progress"),
             )
@@ -132,12 +94,9 @@ class SubagentOrchestrator:
 
             def _on_complete(_task_id: str, success: bool) -> None:
                 if todo_id and self.todo_manager:
-                    from laffyhand.core.session.todo import TodoUpdate as TodoStatusUpdate
-                    from laffyhand.core.events import TodoUpdate as TodoUpdateEvent
-
+                    status: TodoStatus = "completed" if success else "pending"
                     self.todo_manager.update_task(
-                        todo_id, parent_session_id,
-                        TodoStatusUpdate(status="completed" if success else "pending"),
+                        todo_id, parent_session_id, TodoStatusUpdate(status=status),
                     )
                     sink = event_sink or (self._event_sink_provider(parent_session_id) if self._event_sink_provider else None)
                     if sink:
@@ -180,9 +139,6 @@ class SubagentOrchestrator:
             ctx.subagent_depth = prev_subagent_depth
 
         if todo_id and self.todo_manager:
-            from laffyhand.core.session.todo import TodoUpdate as TodoStatusUpdate
-            from laffyhand.core.events import TodoUpdate as TodoUpdateEvent
-
             self.todo_manager.update_task(
                 todo_id, parent_session_id, TodoStatusUpdate(status="completed"),
             )
@@ -209,8 +165,6 @@ class SubagentOrchestrator:
         subagent_depth: int = 0,
         description: str = "",
     ) -> str:
-        from laffyhand.core.subagent.manager import build_subagent_state
-
         child_state, child_registry = build_subagent_state(
             self.session_manager, parent_session_id, agent_info, prompt,
             self.tool_registry.permission, self.tool_registry,

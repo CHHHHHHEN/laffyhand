@@ -2,9 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import copy
-import os
-import sys
-from datetime import datetime, timezone
 from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -42,6 +39,8 @@ from laffyhand.core.loop import LoopOrchestrator
 from laffyhand.core.llm.factory import build_route
 from laffyhand.core.llm.facade import LLM
 from laffyhand.core.exceptions import SessionError, ConfigError
+from laffyhand.core.events import AgentEvent
+from laffyhand.core._utils import build_env_block
 from laffyhand.core.preference import PreferenceService
 from laffyhand.core.title import TitleService
 from laffyhand.core.workspace import WorkspaceService
@@ -252,10 +251,7 @@ class AgentRuntime:
     def load_skills(self, skill_dirs: Sequence[str | Path]) -> None:
         self.skill_registry.discover(list(skill_dirs))
 
-    def _resolve_workspace(self) -> str:
-        return self.workspace_service.resolve_workspace()
-
-    # ── Preference delegation (backward compat) ─────────────────
+    # ── Preference delegation ────────────────────────────────────
 
     async def _load_preferences(self) -> str:
         return await self.preference_service.load_preferences()
@@ -279,14 +275,7 @@ class AgentRuntime:
         parts: list[str] = []
         parts.append(f"<soul>\n{base_prompt.strip()}\n</soul>")
 
-        now = datetime.now(timezone.utc)
-        env_parts = [
-            f"Working directory: {os.getcwd()}",
-            f"Workspace: {self.tool_registry.workspace or os.getcwd()}",
-            f"Platform: {sys.platform}",
-            f"Current time: {now.isoformat()}",
-        ]
-        parts.append("<env>\n" + "\n".join(env_parts) + "\n</env>")
+        parts.append(build_env_block(self.tool_registry.workspace))
 
         parts.append(self.tool_registry.build_tool_prompt(exclude=disabled_tools or set()))
 
@@ -322,11 +311,7 @@ class AgentRuntime:
 
     async def remove_mcp_server(self, name: str) -> int:
         prefix = f"mcp_{name}_"
-        unregistered = 0
-        for tool_name in list(self.tool_registry.list_tools()):
-            if tool_name.startswith(prefix):
-                self.tool_registry.unregister_tool(tool_name)
-                unregistered += 1
+        unregistered = self.tool_registry.unregister_by_prefix(prefix)
         await self.mcp_service.disconnect(name)
         return unregistered
 
@@ -371,11 +356,11 @@ class AgentRuntime:
             return self.llm
         raise ConfigError("No LLM available for session")
 
-    async def run_agent_turn(  # type: ignore[no-untyped-def]
+    async def run_agent_turn(
         self,
         session_id: str,
         event_sink: Callable[[Any], Awaitable[None]] | None = None,
-    ):
+    ) -> AsyncIterator[AgentEvent]:
         async for event in self.loop_orchestrator.run_agent_turn(session_id, event_sink=event_sink):
             yield event
 
@@ -442,19 +427,12 @@ class AgentRuntime:
         return self.title_service.should_generate(session_id, trigger)
 
     def _schedule_title_generation(self, session_id: str, trigger: str) -> None:
-        if not self.title_service.should_generate(session_id, trigger):
-            return
-        asyncio.create_task(self._do_generate_title(session_id))
+        self.title_service.schedule_generation(session_id, trigger)
 
     async def _generate_title(self, session_id: str, trigger: str) -> bool:
         if not self._should_generate_title(session_id, trigger):
             return False
-        try:
-            llm = self._llm_for_session(session_id)
-        except Exception:
-            logger.exception(f"Failed to resolve LLM for session {session_id}")
-            return False
-        title = await self.title_service.generate_title(session_id, llm=llm)
+        title = await self._do_generate_title(session_id)
         return bool(title)
 
     async def _do_generate_title(self, session_id: str) -> str | None:
@@ -503,3 +481,6 @@ class AgentRuntime:
         await self.mcp_service.disconnect_all()
         self.session_manager.close()
         logger.info("Agent shutdown complete")
+
+
+__all__ = ["AgentRuntime"]

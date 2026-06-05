@@ -7,6 +7,8 @@ from datetime import datetime, timezone
 
 from pydantic import BaseModel
 
+from laffyhand.core._utils import coerce_json_dict, coerce_json_list
+
 
 class FileTag(BaseModel):
     path: str
@@ -20,45 +22,30 @@ class FileTag(BaseModel):
 
 
 def _parse_json_dict(raw: str | None) -> dict[str, str]:
-    """Parse a JSON column value into ``dict[str, str]``.
-
-    Handles the case where the stored value was double-encoded by
-    a previous bug: ``json.dumps(json_str)`` produces a JSON-encoded
-    string like ``'"{\\"ChatInput\\": \\"function\\"}"'``.  When such
-    a value is read back, the outer ``json.loads`` returns the inner
-    string ``'{"ChatInput": "function"}'`` rather than a dict.
-    """
-    if not raw:
-        return {}
-    parsed = json.loads(raw)
-    if isinstance(parsed, dict):
-        return {k: str(v) for k, v in parsed.items()}
-    if isinstance(parsed, str):
-        # Double-encoded — try one more level.
-        try:
-            inner = json.loads(parsed)
-            if isinstance(inner, dict):
-                return {k: str(v) for k, v in inner.items()}
-        except (json.JSONDecodeError, TypeError):
-            pass
-    return {}
+    result = coerce_json_dict(raw)
+    return {} if result is None else result
 
 
 def _parse_json_list(raw: str | None) -> list[str]:
-    """Parse a JSON column value into ``list[str]``, unwrapping double-encoding."""
-    if not raw:
-        return []
-    parsed = json.loads(raw)
-    if isinstance(parsed, list):
-        return [str(item) for item in parsed]
-    if isinstance(parsed, str):
-        try:
-            inner = json.loads(parsed)
-            if isinstance(inner, list):
-                return [str(item) for item in inner]
-        except (json.JSONDecodeError, TypeError):
-            pass
-    return []
+    result = coerce_json_list(raw)
+    return [] if result is None else result
+
+
+def _row_to_tag(row: sqlite3.Row) -> FileTag:
+    return FileTag(
+        path=row["path"],
+        message=row["message"],
+        tags=json.loads(row["tags"]),
+        updated_at=row["updated_at"],
+        status=row["status"],
+        exports=_parse_json_dict(row["exports"]),
+        side_effects=row["side_effects"],
+        depends_on=_parse_json_list(row["depends_on"]),
+    )
+
+
+def _rows_to_tags(rows: list[sqlite3.Row]) -> list[FileTag]:
+    return [_row_to_tag(r) for r in rows]
 
 
 class FileTagRepo:
@@ -126,55 +113,20 @@ class FileTagRepo:
         row = self._conn.execute(
             "SELECT * FROM file_tag WHERE path=?", (path,)
         ).fetchone()
-        if row is None:
-            return None
-        return FileTag(
-            path=row["path"],
-            message=row["message"],
-            tags=json.loads(row["tags"]),
-            updated_at=row["updated_at"],
-            status=row["status"],
-            exports=_parse_json_dict(row["exports"]),
-            side_effects=row["side_effects"],
-            depends_on=_parse_json_list(row["depends_on"]),
-        )
+        return _row_to_tag(row) if row else None
 
     def list_by_prefix(self, prefix: str) -> list[FileTag]:
         rows = self._conn.execute(
             "SELECT * FROM file_tag WHERE path >= ? AND path < ? ORDER BY path",
             (prefix, prefix + "\xff"),
         ).fetchall()
-        return [
-            FileTag(
-                path=r["path"],
-                message=r["message"],
-                tags=json.loads(r["tags"]),
-                updated_at=r["updated_at"],
-                status=r["status"],
-                exports=_parse_json_dict(r["exports"]),
-                side_effects=r["side_effects"],
-                depends_on=_parse_json_list(r["depends_on"]),
-            )
-            for r in rows
-        ]
+        return _rows_to_tags(rows)
 
     def list_all(self) -> list[FileTag]:
         rows = self._conn.execute(
             "SELECT * FROM file_tag ORDER BY path"
         ).fetchall()
-        return [
-            FileTag(
-                path=r["path"],
-                message=r["message"],
-                tags=json.loads(r["tags"]),
-                updated_at=r["updated_at"],
-                status=r["status"],
-                exports=_parse_json_dict(r["exports"]),
-                side_effects=r["side_effects"],
-                depends_on=_parse_json_list(r["depends_on"]),
-            )
-            for r in rows
-        ]
+        return _rows_to_tags(rows)
 
     def delete(self, path: str) -> bool:
         row = self._conn.execute(
@@ -224,19 +176,7 @@ class FileTagRepo:
         rows = self._conn.execute(
             "SELECT * FROM file_tag WHERE status=? ORDER BY path", (status,)
         ).fetchall()
-        return [
-            FileTag(
-                path=r["path"],
-                message=r["message"],
-                tags=json.loads(r["tags"]),
-                updated_at=r["updated_at"],
-                status=r["status"],
-                exports=_parse_json_dict(r["exports"]),
-                side_effects=r["side_effects"],
-                depends_on=_parse_json_list(r["depends_on"]),
-            )
-            for r in rows
-        ]
+        return _rows_to_tags(rows)
 
     def get_all_paths(self) -> list[str]:
         rows = self._conn.execute("SELECT path FROM file_tag").fetchall()

@@ -30,10 +30,6 @@ class Model(BaseModel):
 # ── Message types ───────────────────────────────────────────────
 
 
-class TextPart(BaseModel):
-    text: str = Field(description="文本内容")
-
-
 class FilePart(BaseModel):
     path: str = Field(description="文件路径")
     content: str = Field(description="文件内容")
@@ -142,7 +138,7 @@ class AssistantData(BaseModel):
 
 class SyntheticData(BaseModel):
     """由系统插入的消息，如上下文压缩后插入的总结文本"""
-    sessionID: str = Field(description="源会话 ID")
+    session_id: str = Field(description="源会话 ID")
     text: str = Field(description="合成消息文本")
 
 

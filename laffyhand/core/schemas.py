@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from loguru import logger
 from pydantic import BaseModel, Field
-from typing import List, NewType
+from typing import NewType
 
 from laffyhand.core.llm.specs.models import Message, Usage
 
@@ -17,6 +17,11 @@ class CompactionConfig(BaseModel):
     prune: bool = Field(default=True, description="工具调用后是否修剪历史工具输出")
     auto_continue: bool = Field(default=True, description="压缩后是否自动注入继续提示")
     summary_tool_truncate: int = Field(default=2000, description="摘要中单条工具输出截断长度（Token）")
+    max_summary_depth: int = Field(default=3, description="嵌套摘要的最大深度")
+    reserved_buffer: int = Field(default=20_000, description="预留 Token 缓冲上限")
+    prune_protect: int = Field(default=40_000, description="修剪保护阈值（Token），低于此值跳过修剪")
+    prune_minimum: int = Field(default=20_000, description="修剪后至少保留的 Token 数")
+    prune_min_savings: int = Field(default=50, description="单条消息最少节省 Token 数，低于此值跳过修剪")
 
 
 class SessionUsage(BaseModel):
@@ -43,7 +48,7 @@ class SessionUsage(BaseModel):
 
 
 class AgentState(BaseModel):
-    messages: List[Message] = Field(description="当前会话的消息列表")
+    messages: list[Message] = Field(description="当前会话的消息列表")
     turn_count: int = Field(default=0, description="已完成的对话轮次数")
     step: int = Field(default=0, description="当前轮次内的步骤计数")
     usage: SessionUsage = Field(default_factory=SessionUsage, description="整个会话的Token用量统计")
@@ -57,3 +62,12 @@ class RetryConfig(BaseModel):
     max_retries: int = 3
     base_delay: float = 2.0
     max_delay: float = 60.0
+
+
+__all__ = [
+    "SessionID",
+    "CompactionConfig",
+    "SessionUsage",
+    "AgentState",
+    "RetryConfig",
+]

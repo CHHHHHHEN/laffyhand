@@ -7,7 +7,13 @@ from laffyhand.core.llm.specs.models import (
     ToolMessage,
     UserMessage,
 )
-from laffyhand.core.prune import _PRUNE_PROTECT as PRUNE_PROTECT, prune
+from laffyhand.core.prune import prune
+from laffyhand.core.schemas import CompactionConfig
+
+
+PRUNE_PROTECT = CompactionConfig().prune_protect
+PRUNE_MINIMUM = CompactionConfig().prune_minimum
+PRUNE_MIN_SAVINGS = CompactionConfig().prune_min_savings
 
 
 def _tool(content: str, tool_call_id: str = "call_1") -> ToolMessage:

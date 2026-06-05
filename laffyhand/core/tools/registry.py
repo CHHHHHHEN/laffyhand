@@ -89,6 +89,17 @@ class ToolRegistry:
             self._tools.pop(name, None)
             self._dirty = True
 
+    def unregister_by_prefix(self, prefix: str) -> int:
+        unregistered = 0
+        with self._lock:
+            for tool_name in list(self._tools):
+                if tool_name.startswith(prefix):
+                    self._tools.pop(tool_name, None)
+                    unregistered += 1
+            if unregistered:
+                self._dirty = True
+        return unregistered
+
     def list_tools(self) -> dict[str, BaseTool]:
         with self._lock:
             return dict(self._tools)

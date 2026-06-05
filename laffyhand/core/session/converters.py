@@ -38,7 +38,7 @@ def message_to_session_message(msg: Message, session_id: str) -> SessionMessage:
         return SessionMessage(
             id=generate_id(), session_id=session_id, type="synthetic",
             time_created=now, time_updated=now,
-            data=SyntheticData(sessionID=session_id, text=msg.content),
+            data=SyntheticData(session_id=session_id, text=msg.content),
         )
     if isinstance(msg, UserMessage):
         return SessionMessage(

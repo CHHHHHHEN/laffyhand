@@ -6,13 +6,8 @@ from collections.abc import Callable
 from loguru import logger
 
 from laffyhand.core.llm.specs.models import Message, SystemMessage, UserMessage
-from laffyhand.core.llm.specs.models import (
-    StreamError,
-    StreamFinish,
-    StreamText,
-)
 from laffyhand.core.session.models import TitleConfig
-from laffyhand.core.llm.facade import LLM
+from laffyhand.core.llm.facade import LLM, stream_text
 from laffyhand.core.session.manager import SessionManager
 from laffyhand.core.exceptions import ConfigError
 
@@ -35,16 +30,11 @@ async def generate_title(
         SystemMessage(content="You are a helpful assistant. Generate a concise title."),
         UserMessage(content=f"{config.prompt}\n\nConversation start:\n{first_prompt}"),
     ]
-    parts: list[str] = []
-    async for event in llm.stream(title_messages):
-        if isinstance(event, StreamText):
-            parts.append(event.delta)
-        elif isinstance(event, StreamFinish):
-            break
-        elif isinstance(event, StreamError):
-            logger.error(f"Title generation stream error: {event.error}")
-            return None
-    title = "".join(parts).strip().strip('"').strip("'")
+    result = await stream_text(llm, title_messages)
+    if result is None:
+        logger.error("Title generation stream error")
+        return None
+    title = result.strip().strip('"').strip("'")
     if not title:
         return None
     session_manager.set_title(session_id, title)
@@ -106,3 +96,6 @@ class TitleService:
         except Exception:
             logger.exception(f"Title generation failed for session {session_id}")
             return None
+
+
+__all__ = ["generate_title", "TitleService"]

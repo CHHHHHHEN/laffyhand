@@ -15,3 +15,6 @@ class WorkspaceService:
         if cfg:
             return str(Path(cfg).resolve())
         return os.getcwd()
+
+
+__all__ = ["WorkspaceService"]

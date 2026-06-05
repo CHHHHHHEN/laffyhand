@@ -6,13 +6,13 @@ Tags persist across sessions and are shown in glob/read/list_dir output.
 
 from __future__ import annotations
 
-import json
 import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
+from laffyhand.core._utils import coerce_json_dict, coerce_json_list
 from laffyhand.core.db.repository.tag import FileTag
 from laffyhand.core.tools.base import BaseTool
 
@@ -61,48 +61,11 @@ def _date_from_iso(iso: str) -> str:
 
 
 def _coerce_dict(value: Any) -> dict[str, str] | None:
-    """Coerce a value to dict[str, str], parsing a JSON string if needed.
-
-    LLMs sometimes send structured args like ``exports`` as a
-    double-encoded JSON string (e.g. ``'{"ChatInput": "function"}'``)
-    inside the outer JSON tool-call arguments.  This function
-    normalises such values so downstream code always receives a dict.
-
-    Returns ``None`` when *value* is ``None`` so callers can distinguish
-    between "not provided" and "empty dict".
-    """
-    if value is None:
-        return None
-    if isinstance(value, dict):
-        return {k: str(v) for k, v in value.items()}
-    if isinstance(value, str):
-        try:
-            parsed = json.loads(value)
-            if isinstance(parsed, dict):
-                return {k: str(v) for k, v in parsed.items()}
-        except (json.JSONDecodeError, TypeError):
-            pass
-    return {}
+    return coerce_json_dict(value)
 
 
 def _coerce_list(value: Any) -> list[str] | None:
-    """Coerce a value to list[str], parsing a JSON string if needed.
-
-    Returns ``None`` when *value* is ``None`` so callers can distinguish
-    between "not provided" and "empty list".
-    """
-    if value is None:
-        return None
-    if isinstance(value, list):
-        return [str(item) for item in value]
-    if isinstance(value, str):
-        try:
-            parsed = json.loads(value)
-            if isinstance(parsed, list):
-                return [str(item) for item in parsed]
-        except (json.JSONDecodeError, TypeError):
-            pass
-    return []
+    return coerce_json_list(value)
 
 
 def format_tag_summary(tag: FileTag) -> str:
