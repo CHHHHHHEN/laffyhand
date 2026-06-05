@@ -66,8 +66,8 @@ export function useSessions() {
   })
 
   const forkMutation = useMutation({
-    mutationFn: async () => {
-      const result = await rpcClient.sessionFork()
+    mutationFn: async (sessionId: string) => {
+      const result = await rpcClient.sessionFork(sessionId)
       return result.session_id
     },
     onSuccess: () => {

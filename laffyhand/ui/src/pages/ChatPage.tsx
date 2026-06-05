@@ -64,7 +64,7 @@ export function ChatPage() {
   const handleFork = useCallback(async () => {
     if (!sessionId) return
     try {
-      const id = await forkSession()
+      const id = await forkSession(sessionId)
       useSessionStore.getState().addActiveSession(id)
       useChatStore.getState().addSession(id)
       navigate(`/chat/${id}`)

@@ -118,7 +118,7 @@ describe("useSessions", () => {
     expect(mockSessionDelete).toHaveBeenCalledWith("sess-1")
   })
 
-  it("forks the current session", async () => {
+  it("forks the current session with session ID", async () => {
     mockSessionList.mockResolvedValue({ sessions: mockSessions })
     mockSessionFork.mockResolvedValue({ session_id: "sess-forked" })
 
@@ -128,11 +128,11 @@ describe("useSessions", () => {
 
     let forkedId: string
     await act(async () => {
-      forkedId = await result.current.forkSession()
+      forkedId = await result.current.forkSession("sess-1")
     })
 
     expect(forkedId!).toBe("sess-forked")
-    expect(mockSessionFork).toHaveBeenCalled()
+    expect(mockSessionFork).toHaveBeenCalledWith("sess-1")
   })
 })
 
