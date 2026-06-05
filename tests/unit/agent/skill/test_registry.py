@@ -1,8 +1,8 @@
 import unittest
 from pathlib import Path
 
-from laffyhand.agent.skill.models import SkillInfo, SkillNotFoundError
-from laffyhand.agent.skill.registry import SkillRegistry
+from laffyhand.core.skill.models import SkillInfo, SkillNotFoundError
+from laffyhand.core.skill.registry import SkillRegistry
 
 
 class TestSkillRegistry(unittest.TestCase):

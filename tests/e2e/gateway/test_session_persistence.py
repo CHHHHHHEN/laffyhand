@@ -5,9 +5,9 @@ import tempfile
 
 import pytest
 
-from laffyhand.agent.llm.specs.models import AssistantMessage, SystemMessage, UserMessage
-from laffyhand.agent.session import SessionManager
-from laffyhand.agent.schemas import (
+from laffyhand.core.llm.specs.models import AssistantMessage, SystemMessage, UserMessage
+from laffyhand.core.session import SessionManager
+from laffyhand.core.schemas import (
     AgentState,
     SessionUsage,
 )

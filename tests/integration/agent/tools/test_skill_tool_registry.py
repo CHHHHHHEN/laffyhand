@@ -2,9 +2,9 @@ import asyncio
 import unittest
 from pathlib import Path
 
-from laffyhand.agent.skill.models import SkillInfo
-from laffyhand.agent.skill.registry import SkillRegistry
-from laffyhand.agent.tools import ToolRegistry, SkillTool
+from laffyhand.core.skill.models import SkillInfo
+from laffyhand.core.skill.registry import SkillRegistry
+from laffyhand.core.tools import ToolRegistry, SkillTool
 
 
 class TestSkillToolInRegistry(unittest.TestCase):

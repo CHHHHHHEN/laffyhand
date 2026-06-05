@@ -2,7 +2,7 @@ import asyncio
 import unittest
 from unittest.mock import patch
 
-from laffyhand.agent.tools.permission import PermissionManager
+from laffyhand.core.tools.permission import PermissionManager
 
 
 class TestPermissionAsk(unittest.TestCase):

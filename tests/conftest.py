@@ -5,7 +5,7 @@ import tempfile
 
 import pytest
 
-from laffyhand.agent.session import SessionManager
+from laffyhand.core.session import SessionManager
 from laffyhand.config import LaffyConfig
 
 

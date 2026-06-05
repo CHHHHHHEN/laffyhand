@@ -8,7 +8,7 @@ import sys
 from loguru import logger
 from laffyhand import setup_logging
 from laffyhand.config import LaffyConfig, load_config
-from laffyhand.agent.runtime import AgentRuntime
+from laffyhand.core.runtime import AgentRuntime
 
 
 def parse_args() -> argparse.Namespace:

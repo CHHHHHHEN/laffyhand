@@ -4,8 +4,8 @@ from unittest.mock import MagicMock, AsyncMock
 
 import pytest
 
-from laffyhand.agent.agent import AgentRegistry
-from laffyhand.agent.tools.task import TaskTool
+from laffyhand.core.agent import AgentRegistry
+from laffyhand.core.tools.task import TaskTool
 
 
 @pytest.fixture

@@ -2,7 +2,7 @@ import asyncio
 import unittest
 import tempfile
 from pathlib import Path
-from laffyhand.agent.tools.file.edit import EditTool
+from laffyhand.core.tools.file.edit import EditTool
 
 
 class TestEditTool(unittest.TestCase):

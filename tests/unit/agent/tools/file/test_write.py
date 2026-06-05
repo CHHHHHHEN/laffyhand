@@ -2,7 +2,7 @@ import asyncio
 import unittest
 import tempfile
 from pathlib import Path
-from laffyhand.agent.tools.file.write import WriteTool
+from laffyhand.core.tools.file.write import WriteTool
 
 
 class TestWriteTool(unittest.TestCase):

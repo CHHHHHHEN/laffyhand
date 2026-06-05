@@ -10,10 +10,10 @@ from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
-from laffyhand.agent.llm.specs.models import AssistantMessage, Message, SystemMessage, ToolMessage, UserMessage
-from laffyhand.agent.schemas import TextDelta, StepFinish, Finish, PermissionRequest
-from laffyhand.agent.tools.permission import request_callback as _pm_callback
-from laffyhand.agent.schemas import (
+from laffyhand.core.llm.specs.models import AssistantMessage, Message, SystemMessage, ToolMessage, UserMessage
+from laffyhand.core.schemas import TextDelta, StepFinish, Finish, PermissionRequest
+from laffyhand.core.tools.permission import request_callback as _pm_callback
+from laffyhand.core.schemas import (
     AgentState,
     SessionID,
     SessionUsage,
@@ -53,7 +53,7 @@ from laffyhand.gateway.protocol import (
 )
 
 if TYPE_CHECKING:
-    from laffyhand.agent.runtime import AgentRuntime
+    from laffyhand.core.runtime import AgentRuntime
     from laffyhand.gateway.dispatcher import Dispatcher
     from laffyhand.gateway.transport import Transport
 
@@ -605,7 +605,7 @@ async def _ensure_session(
     system_content = await _system_prompt(runtime, params.get("system_prompt", ""), agent_name)
     system_message = SystemMessage(content=system_content)
     # Create session in memory only — defer DB persistence until the first message is stored
-    from laffyhand.agent.session.models import Session as SessionModel
+    from laffyhand.core.session.models import Session as SessionModel
     session = SessionModel(
         title=params.get("title", ""),
         cwd=params.get("cwd", os.getcwd()),
@@ -769,8 +769,8 @@ async def handle_mcp_add_server(
     name: str = params.get("name", "")
     if not name:
         raise ValueError("name is required")
-    from laffyhand.agent.mcp.config import LocalMCPConfig, RemoteMCPConfig
-    from laffyhand.agent.mcp.config import MCPConfig as MCPCfg
+    from laffyhand.core.mcp.config import LocalMCPConfig, RemoteMCPConfig
+    from laffyhand.core.mcp.config import MCPConfig as MCPCfg
     server_type: str = params.get("type", "local")
     if server_type == "local":
         command: list[str] = params.get("command", [])
@@ -960,7 +960,7 @@ async def handle_todo_update(
     if not task_id:
         raise ValueError("task_id is required")
 
-    from laffyhand.agent.session.todo import TodoUpdate as TodoUpdateModel
+    from laffyhand.core.session.todo import TodoUpdate as TodoUpdateModel
 
     updates = TodoUpdateModel(
         status=params.get("status"),

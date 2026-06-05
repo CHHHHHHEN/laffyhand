@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from laffyhand.agent.compaction import (
+from laffyhand.core.compaction import (
     _is_summary_content,
     _summary_depth,
     build_summary_text,
     is_overflow,
     select_tail,
 )
-from laffyhand.agent.llm.specs.models import (
+from laffyhand.core.llm.specs.models import (
     AssistantMessage,
     Message,
     SystemMessage,
@@ -15,7 +15,7 @@ from laffyhand.agent.llm.specs.models import (
     ToolMessage,
     UserMessage,
 )
-from laffyhand.agent.schemas import CompactionConfig
+from laffyhand.core.schemas import CompactionConfig
 
 
 # ── is_overflow ──────────────────────────────────────────────

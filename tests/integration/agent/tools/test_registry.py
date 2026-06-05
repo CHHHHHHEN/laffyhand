@@ -1,9 +1,9 @@
 import asyncio
 import unittest
 
-from laffyhand.agent.tools.base import BaseTool
-from laffyhand.agent.tools.registry import ToolRegistry
-from laffyhand.agent.tools.permission import PermissionManager
+from laffyhand.core.tools.base import BaseTool
+from laffyhand.core.tools.registry import ToolRegistry
+from laffyhand.core.tools.permission import PermissionManager
 
 
 class CountTool(BaseTool):

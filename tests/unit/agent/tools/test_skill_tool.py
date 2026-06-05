@@ -4,9 +4,9 @@ import unittest
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
-from laffyhand.agent.skill.models import SkillInfo, SkillNotFoundError
-from laffyhand.agent.skill.registry import SkillRegistry
-from laffyhand.agent.tools.skill_tool import SkillTool
+from laffyhand.core.skill.models import SkillInfo, SkillNotFoundError
+from laffyhand.core.skill.registry import SkillRegistry
+from laffyhand.core.tools.skill_tool import SkillTool
 
 
 class TestSkillTool(unittest.TestCase):

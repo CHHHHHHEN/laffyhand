@@ -3,10 +3,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from laffyhand.agent.skill.registry import SkillRegistry
-from laffyhand.agent.skill.discovery import discover_skills
-from laffyhand.agent.tools.skill_tool import SkillTool
-from laffyhand.agent.tools.permission import PermissionManager
+from laffyhand.core.skill.registry import SkillRegistry
+from laffyhand.core.skill.discovery import discover_skills
+from laffyhand.core.tools.skill_tool import SkillTool
+from laffyhand.core.tools.permission import PermissionManager
 
 
 class TestSkillLifecycle(unittest.TestCase):
@@ -81,7 +81,7 @@ class TestSkillLifecycle(unittest.TestCase):
         self._write_skill("existing", "I exist")
         registry = SkillRegistry()
         registry.discover([self.tmpdir])
-        from laffyhand.agent.skill.models import SkillNotFoundError
+        from laffyhand.core.skill.models import SkillNotFoundError
 
         with self.assertRaises(SkillNotFoundError) as ctx:
             registry.require("missing")

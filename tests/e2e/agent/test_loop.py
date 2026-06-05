@@ -1,23 +1,23 @@
 import asyncio
 import unittest
 
-from laffyhand.agent.llm.specs.models import SystemMessage, ToolMessage
-from laffyhand.agent.llm.specs.models import (
+from laffyhand.core.llm.specs.models import SystemMessage, ToolMessage
+from laffyhand.core.llm.specs.models import (
     Usage,
     StreamText,
     StreamToolCall,
     StreamFinish,
 )
-from laffyhand.agent.schemas import (
+from laffyhand.core.schemas import (
     AgentState,
     CompactionConfig,
     SessionID,
     SessionUsage,
 )
 
-from laffyhand.agent.loop import agent_loop
-from laffyhand.agent.tools.base import BaseTool
-from laffyhand.agent.tools.registry import ToolRegistry
+from laffyhand.core.loop import agent_loop
+from laffyhand.core.tools.base import BaseTool
+from laffyhand.core.tools.registry import ToolRegistry
 
 
 class EchoTool(BaseTool):

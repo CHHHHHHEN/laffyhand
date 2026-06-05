@@ -1,11 +1,11 @@
 import unittest
-from laffyhand.agent.llm.specs.models import AssistantMessage, SystemMessage, ToolMessage, UserMessage
-from laffyhand.agent.llm.specs.models import (
+from laffyhand.core.llm.specs.models import AssistantMessage, SystemMessage, ToolMessage, UserMessage
+from laffyhand.core.llm.specs.models import (
     ToolCallContent,
     ToolDefinition,
     Usage,
 )
-from laffyhand.agent.schemas import (
+from laffyhand.core.schemas import (
     SessionID,
     SessionUsage,
     AgentState,
@@ -13,7 +13,7 @@ from laffyhand.agent.schemas import (
     UsageUpdate,
     TodoUpdate,
 )
-from laffyhand.agent.token_utils import estimate_tokens
+from laffyhand.core.token_utils import estimate_tokens
 
 
 class TestEstimateTokens(unittest.TestCase):
@@ -81,7 +81,7 @@ class TestUsageUpdateEvent(unittest.TestCase):
         self.assertEqual(event.session_usage["total_input"], 100)
 
     def test_usage_update_in_agent_event_union(self):
-        from laffyhand.agent.schemas import AgentEvent
+        from laffyhand.core.schemas import AgentEvent
         event: AgentEvent = UsageUpdate(session_usage={"total_input": 50})
         self.assertEqual(event.type, "usage-update")
 
@@ -92,7 +92,7 @@ class TestTodoUpdateEvent(unittest.TestCase):
         self.assertEqual(event.type, "todo-update")
 
     def test_todo_update_in_agent_event_union(self):
-        from laffyhand.agent.schemas import AgentEvent
+        from laffyhand.core.schemas import AgentEvent
         event: AgentEvent = TodoUpdate()
         self.assertEqual(event.type, "todo-update")
 

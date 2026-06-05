@@ -3,7 +3,7 @@ import unittest
 from unittest import mock
 import tempfile
 from pathlib import Path
-from laffyhand.agent.tools.file.grep import GrepTool
+from laffyhand.core.tools.file.grep import GrepTool
 
 
 class TestGrepTool(unittest.TestCase):

@@ -11,7 +11,7 @@ from loguru import logger
 
 if TYPE_CHECKING:
     from aiohttp.web import Application, Request, Response, StreamResponse
-    from laffyhand.agent.runtime import AgentRuntime
+    from laffyhand.core.runtime import AgentRuntime
 
 
 _SECURITY_HEADERS = {

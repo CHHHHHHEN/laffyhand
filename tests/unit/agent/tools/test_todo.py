@@ -2,10 +2,10 @@ import asyncio
 import sqlite3
 import pytest
 
-from laffyhand.agent.session.todo import TodoManager
-from laffyhand.agent.db.repository import TodoRepo
-from laffyhand.agent.db.schema import create_tables
-from laffyhand.agent.tools.todo import TodoTool
+from laffyhand.core.session.todo import TodoManager
+from laffyhand.core.db.repository import TodoRepo
+from laffyhand.core.db.schema import create_tables
+from laffyhand.core.tools.todo import TodoTool
 
 
 @pytest.fixture

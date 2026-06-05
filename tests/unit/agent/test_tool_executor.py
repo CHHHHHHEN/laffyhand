@@ -4,9 +4,9 @@ from unittest.mock import MagicMock, AsyncMock
 
 import pytest
 
-from laffyhand.agent.llm.specs.models import ToolMessage
-from laffyhand.agent.llm.specs.models import ToolCallContent
-from laffyhand.agent.tool_executor import ToolExecutor, ToolExecutionResult
+from laffyhand.core.llm.specs.models import ToolMessage
+from laffyhand.core.llm.specs.models import ToolCallContent
+from laffyhand.core.tool_executor import ToolExecutor, ToolExecutionResult
 
 
 class TestToolExecutionResult:

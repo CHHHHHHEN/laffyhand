@@ -1,10 +1,10 @@
 import unittest
 from collections.abc import AsyncIterator
 
-from laffyhand.agent.llm._route import Route
-from laffyhand.agent.llm.specs import Protocol, Endpoint, Auth, Framing
-from laffyhand.agent.llm.specs.models import LLMRequest, SystemMessage, UserMessage, Header
-from laffyhand.agent.llm.specs.models import (
+from laffyhand.core.llm._route import Route
+from laffyhand.core.llm.specs import Protocol, Endpoint, Auth, Framing
+from laffyhand.core.llm.specs.models import LLMRequest, SystemMessage, UserMessage, Header
+from laffyhand.core.llm.specs.models import (
     StreamError,
     LLMEvent,
     StreamText,

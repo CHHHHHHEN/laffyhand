@@ -2,8 +2,8 @@ import asyncio
 import unittest
 from unittest.mock import MagicMock, AsyncMock
 
-from laffyhand.agent.mcp.client import MCPClient, MCPToolDef
-from laffyhand.agent.mcp.service import MCPService, MCPWrappedTool, _normalize_schema
+from laffyhand.core.mcp.client import MCPClient, MCPToolDef
+from laffyhand.core.mcp.service import MCPService, MCPWrappedTool, _normalize_schema
 
 
 class TestMCPWrappedTool(unittest.TestCase):

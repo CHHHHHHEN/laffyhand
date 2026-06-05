@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from laffyhand.agent.skill.parser import parse_skill_md
+from laffyhand.core.skill.parser import parse_skill_md
 
 
 class TestParseSkillMd(unittest.TestCase):

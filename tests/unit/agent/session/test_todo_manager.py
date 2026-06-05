@@ -4,10 +4,10 @@ import sqlite3
 
 import pytest
 
-from laffyhand.agent.session.todo import TodoCreate, TodoUpdate
-from laffyhand.agent.db.schema import create_tables
-from laffyhand.agent.db.repository import TodoRepo
-from laffyhand.agent.session.todo import TodoManager
+from laffyhand.core.session.todo import TodoCreate, TodoUpdate
+from laffyhand.core.db.schema import create_tables
+from laffyhand.core.db.repository import TodoRepo
+from laffyhand.core.session.todo import TodoManager
 
 
 @pytest.fixture

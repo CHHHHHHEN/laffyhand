@@ -10,7 +10,7 @@ from laffyhand.gateway.transport import Transport, _NullTransport
 
 if TYPE_CHECKING:
     import aiohttp.web
-    from laffyhand.agent.runtime import AgentRuntime
+    from laffyhand.core.runtime import AgentRuntime
     from laffyhand.gateway.dispatcher import Dispatcher, RegisteredHandler
     from laffyhand.gateway.protocol import Request
     from laffyhand.gateway.server import GatewayServer

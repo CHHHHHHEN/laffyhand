@@ -1,6 +1,6 @@
 import unittest
 
-from laffyhand.agent.tools.file._fuzzy import (
+from laffyhand.core.tools.file._fuzzy import (
     count_diff,
     exact_match,
     whitespace_normalized_match,

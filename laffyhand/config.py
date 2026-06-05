@@ -7,7 +7,7 @@ from typing import Annotated, Any, Literal
 import yaml
 from pydantic import BaseModel, Field, model_validator
 
-from laffyhand.agent.mcp.config import LocalMCPConfig, RemoteMCPConfig
+from laffyhand.core.mcp.config import LocalMCPConfig, RemoteMCPConfig
 
 
 class ModelConfig(BaseModel):

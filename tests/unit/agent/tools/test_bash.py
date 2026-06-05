@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from laffyhand.agent.tools.bash import BashTool
+from laffyhand.core.tools.bash import BashTool
 
 
 @unittest.skipIf(sys.platform == "win32", "Bash tool is Unix-specific")
@@ -53,27 +53,27 @@ class TestInlinePythonSecurity(unittest.TestCase):
     # ── _extract_inline_code tests ──────────────────────────────
 
     def test_extract_code_double_quotes(self):
-        from laffyhand.agent.tools.bash import _extract_inline_code
+        from laffyhand.core.tools.bash import _extract_inline_code
         code = _extract_inline_code('python3 -c "print(1+1)"')
         self.assertEqual(code, "print(1+1)")
 
     def test_extract_code_single_quotes(self):
-        from laffyhand.agent.tools.bash import _extract_inline_code
+        from laffyhand.core.tools.bash import _extract_inline_code
         code = _extract_inline_code("python3 -c 'repr(line)'")
         self.assertEqual(code, "repr(line)")
 
     def test_extract_code_no_inline(self):
-        from laffyhand.agent.tools.bash import _extract_inline_code
+        from laffyhand.core.tools.bash import _extract_inline_code
         code = _extract_inline_code("python3 my_script.py")
         self.assertIsNone(code)
 
     def test_extract_code_python2(self):
-        from laffyhand.agent.tools.bash import _extract_inline_code
+        from laffyhand.core.tools.bash import _extract_inline_code
         code = _extract_inline_code('python -c "import sys; print(sys.version)"')
         self.assertEqual(code, "import sys; print(sys.version)")
 
     def test_extract_code_no_quotes(self):
-        from laffyhand.agent.tools.bash import _extract_inline_code
+        from laffyhand.core.tools.bash import _extract_inline_code
         code = _extract_inline_code("python3 -c")
         self.assertIsNone(code)
 

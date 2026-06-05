@@ -1,6 +1,6 @@
 import unittest
 
-from laffyhand.agent.mcp.config import LocalMCPConfig, RemoteMCPConfig
+from laffyhand.core.mcp.config import LocalMCPConfig, RemoteMCPConfig
 
 
 class TestLocalMCPConfig(unittest.TestCase):

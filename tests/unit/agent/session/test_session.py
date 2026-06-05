@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import pytest
 
-from laffyhand.agent.llm.specs.models import AssistantMessage, SystemMessage, ToolMessage, UserMessage
-from laffyhand.agent.session import SessionManager
-from laffyhand.agent.llm.specs.models import ToolCallContent
-from laffyhand.agent.schemas import (
+from laffyhand.core.llm.specs.models import AssistantMessage, SystemMessage, ToolMessage, UserMessage
+from laffyhand.core.session import SessionManager
+from laffyhand.core.llm.specs.models import ToolCallContent
+from laffyhand.core.schemas import (
     AgentState,
     SessionUsage,
 )
@@ -465,7 +465,7 @@ class TestLoadCompressedState:
 
 class TestHelpers:
     def test_ts_roundtrip(self) -> None:
-        from laffyhand.agent.db.repository.common import _ts, _from_ts
+        from laffyhand.core.db.repository.common import _ts, _from_ts
         from datetime import datetime, timezone
 
         dt = datetime(2026, 5, 29, 12, 30, 0, tzinfo=timezone.utc)
@@ -475,13 +475,13 @@ class TestHelpers:
         assert recovered == dt
 
     def test_ts_none(self) -> None:
-        from laffyhand.agent.db.repository.common import _ts, _from_ts
+        from laffyhand.core.db.repository.common import _ts, _from_ts
 
         assert _ts(None) is None
         assert _from_ts(None) is None
 
     def test_serialize_metadata_roundtrip(self) -> None:
-        from laffyhand.agent.db.repository.common import (
+        from laffyhand.core.db.repository.common import (
             _serialize_metadata,
             _deserialize_metadata,
         )
@@ -493,18 +493,18 @@ class TestHelpers:
         assert recovered == meta
 
     def test_deserialize_metadata_empty(self) -> None:
-        from laffyhand.agent.db.repository.common import _deserialize_metadata
+        from laffyhand.core.db.repository.common import _deserialize_metadata
 
         assert _deserialize_metadata("") == {}
 
     def test_deserialize_metadata_invalid_json(self) -> None:
-        from laffyhand.agent.db.repository.common import _deserialize_metadata
+        from laffyhand.core.db.repository.common import _deserialize_metadata
 
         result = _deserialize_metadata("{invalid")
         assert result == {}
 
     def test_message_to_session_message_unknown_type(self) -> None:
-        from laffyhand.agent.session.converters import message_to_session_message
+        from laffyhand.core.session.converters import message_to_session_message
 
         class FakeMsg:
             pass
@@ -513,8 +513,8 @@ class TestHelpers:
             message_to_session_message(FakeMsg(), "sid")
 
     def test_message_to_session_message_assistant_with_tokens(self) -> None:
-        from laffyhand.agent.session.converters import message_to_session_message
-        from laffyhand.agent.llm.specs.models import Usage
+        from laffyhand.core.session.converters import message_to_session_message
+        from laffyhand.core.llm.specs.models import Usage
 
         msg = AssistantMessage(
             content="Hello", tokens=Usage(input_tokens=10, output_tokens=5, reasoning_tokens=3)
@@ -528,10 +528,10 @@ class TestHelpers:
         assert d.tokens.reasoning == 3
 
     def test_session_message_to_message_roundtrip(self) -> None:
-        from laffyhand.agent.session.converters import (
+        from laffyhand.core.session.converters import (
             message_to_session_message, session_message_to_message,
         )
-        from laffyhand.agent.llm.specs.models import Usage
+        from laffyhand.core.llm.specs.models import Usage
 
         msg = AssistantMessage(
             content="Hello", reasoning="thinking",
@@ -547,7 +547,7 @@ class TestHelpers:
         assert restored.tokens.cache_write_tokens == 1
 
     def test_shell_message_preserves_is_error(self) -> None:
-        from laffyhand.agent.session.converters import (
+        from laffyhand.core.session.converters import (
             message_to_session_message, session_message_to_message,
         )
 
@@ -622,7 +622,7 @@ class TestAdvancedCRUD:
 
 class TestSchema:
     def test_create_tables_idempotent(self, session_manager: SessionManager) -> None:
-        from laffyhand.agent.db.schema import create_tables
+        from laffyhand.core.db.schema import create_tables
 
         create_tables(session_manager._conn)  # should not raise
 
@@ -632,7 +632,7 @@ class TestSchema:
         conn = sqlite3.connect(db_path)
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA foreign_keys=ON")
-        from laffyhand.agent.db.schema import create_tables
+        from laffyhand.core.db.schema import create_tables
 
         create_tables(conn)
         row = conn.execute("SELECT MAX(version) FROM _schema_version").fetchone()

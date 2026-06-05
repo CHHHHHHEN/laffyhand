@@ -1,6 +1,6 @@
 import unittest
 
-from laffyhand.agent.mcp.client import MCPToolDef
+from laffyhand.core.mcp.client import MCPToolDef
 
 
 class TestMCPToolDef(unittest.TestCase):

@@ -5,7 +5,7 @@ import asyncio
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from laffyhand.agent.llm.specs.models import AssistantMessage, SystemMessage, ToolMessage, UserMessage
+from laffyhand.core.llm.specs.models import AssistantMessage, SystemMessage, ToolMessage, UserMessage
 from laffyhand.gateway import handlers
 from laffyhand.gateway.handlers import (
     handle_initialize,
@@ -30,7 +30,7 @@ from laffyhand.gateway.handlers import (
     _serialize_messages,
     _next_msg_id,
 )
-from laffyhand.agent.llm.specs.models import (
+from laffyhand.core.llm.specs.models import (
     ToolCallContent,
     Usage,
 )
@@ -541,7 +541,7 @@ class TestHandleSessionLoadWithMessages:
 class TestHandleChatStream:
     @pytest.mark.anyio
     async def test_streams_events_and_finish(self, runtime, transport):
-        from laffyhand.agent.schemas import TextDelta
+        from laffyhand.core.schemas import TextDelta
 
         mock_state = MagicMock()
         mock_state.session_id = "sess-1"

@@ -5,20 +5,20 @@ from unittest.mock import MagicMock, AsyncMock, patch
 
 import pytest
 
-from laffyhand.agent.agent import AgentInfo
-from laffyhand.agent.llm.specs.models import SystemMessage, UserMessage
-from laffyhand.agent.schemas import (
+from laffyhand.core.agent import AgentInfo
+from laffyhand.core.llm.specs.models import SystemMessage, UserMessage
+from laffyhand.core.schemas import (
     AgentState,
     SessionID,
     SessionUsage,
 )
-from laffyhand.agent.subagent.manager import (
+from laffyhand.core.subagent.manager import (
     SubagentManager,
     SubagentResult,
     build_subagent_state,
 )
-from laffyhand.agent.tools.permission import PermissionManager
-from laffyhand.agent.tools.registry import ToolRegistry
+from laffyhand.core.tools.permission import PermissionManager
+from laffyhand.core.tools.registry import ToolRegistry
 
 
 @pytest.fixture
@@ -159,7 +159,7 @@ class TestBuildSubagentState:
     def test_task_tool_not_in_filtered_registry(
         self, session_manager, tool_registry, parent_permission, agent_info
     ):
-        from laffyhand.agent.tools.task import TaskTool
+        from laffyhand.core.tools.task import TaskTool
 
         task_tool = MagicMock(spec=TaskTool)
         task_tool.name = "task"
@@ -336,7 +336,7 @@ class TestSubagentManager:
                     pass
             t = asyncio.create_task(_fake())
             task_id = f"{name}-task"
-            from laffyhand.agent.subagent.manager import _RunningSubagent
+            from laffyhand.core.subagent.manager import _RunningSubagent
             running = _RunningSubagent(
                 task_id=task_id,
                 session_id="child",

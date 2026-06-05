@@ -4,14 +4,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from laffyhand.agent.llm.specs.models import AssistantMessage, SystemMessage, UserMessage
-from laffyhand.agent.session import SessionManager, TitleConfig
-from laffyhand.agent.llm.specs.models import (
+from laffyhand.core.llm.specs.models import AssistantMessage, SystemMessage, UserMessage
+from laffyhand.core.session import SessionManager, TitleConfig
+from laffyhand.core.llm.specs.models import (
     StreamText,
     StreamFinish,
     StreamError,
 )
-from laffyhand.agent.schemas import (
+from laffyhand.core.schemas import (
     AgentState,
     CompactionConfig,
     SessionID,
@@ -25,7 +25,7 @@ from laffyhand.agent.schemas import (
 class TestGenerateTitle:
     @pytest.mark.anyio
     async def test_mode_off_returns_none(self, session_manager: SessionManager) -> None:
-        from laffyhand.agent.title import generate_title
+        from laffyhand.core.title import generate_title
 
         config = TitleConfig(mode="off")
         result = await generate_title(session_manager, "sid", MagicMock(), config)
@@ -35,7 +35,7 @@ class TestGenerateTitle:
     async def test_no_user_messages_returns_none(
         self, session_manager: SessionManager
     ) -> None:
-        from laffyhand.agent.title import generate_title
+        from laffyhand.core.title import generate_title
 
         session = session_manager.create(messages=[SystemMessage(content="sys")])
         config = TitleConfig(mode="auto")
@@ -44,7 +44,7 @@ class TestGenerateTitle:
 
     @pytest.mark.anyio
     async def test_generates_title(self, session_manager: SessionManager) -> None:
-        from laffyhand.agent.title import generate_title
+        from laffyhand.core.title import generate_title
 
         async def mock_stream(messages, **kwargs):
             yield StreamText(delta="My Title")
@@ -65,7 +65,7 @@ class TestGenerateTitle:
     async def test_stream_error_returns_none(
         self, session_manager: SessionManager
     ) -> None:
-        from laffyhand.agent.title import generate_title
+        from laffyhand.core.title import generate_title
 
         async def mock_stream(messages, **kwargs):
             yield StreamError(error="API error")
@@ -82,7 +82,7 @@ class TestGenerateTitle:
     async def test_empty_title_returns_none(
         self, session_manager: SessionManager
     ) -> None:
-        from laffyhand.agent.title import generate_title
+        from laffyhand.core.title import generate_title
 
         async def mock_stream(messages, **kwargs):
             yield StreamText(delta="")
@@ -105,7 +105,7 @@ class TestCompactOnOverflow:
     async def test_no_overflow_returns_false(
         self, session_manager: SessionManager
     ) -> None:
-        from laffyhand.agent.compaction import compact_on_overflow as _compact_on_overflow
+        from laffyhand.core.compaction import compact_on_overflow as _compact_on_overflow
 
         state = AgentState(
             messages=[UserMessage(content="hi")],
@@ -120,7 +120,7 @@ class TestCompactOnOverflow:
     async def test_overflow_with_session_manager(
         self, session_manager: SessionManager
     ) -> None:
-        from laffyhand.agent.compaction import compact_on_overflow as _compact_on_overflow
+        from laffyhand.core.compaction import compact_on_overflow as _compact_on_overflow
 
         async def mock_stream(messages, **kwargs):
             yield StreamText(delta="Summary of conversation.")
@@ -154,7 +154,7 @@ class TestCompactOnOverflow:
     async def test_overflow_without_session_manager_returns_false(
         self, session_manager: SessionManager
     ) -> None:
-        from laffyhand.agent.compaction import compact_on_overflow as _compact_on_overflow
+        from laffyhand.core.compaction import compact_on_overflow as _compact_on_overflow
 
         async def mock_stream(messages, **kwargs):
             yield StreamText(delta="Summary.")
@@ -184,7 +184,7 @@ class TestCompactOnOverflow:
     async def test_overflow_with_session_compact_fails(
         self, session_manager: SessionManager
     ) -> None:
-        from laffyhand.agent.compaction import compact_on_overflow as _compact_on_overflow
+        from laffyhand.core.compaction import compact_on_overflow as _compact_on_overflow
 
         async def mock_stream(messages, **kwargs):
             yield StreamError(error="LLM failed")

@@ -5,17 +5,17 @@ from unittest.mock import MagicMock, AsyncMock, patch
 
 import pytest
 
-from laffyhand.agent.agent import AgentInfo
-from laffyhand.agent.llm.specs.models import AssistantMessage, SystemMessage, UserMessage
-from laffyhand.agent.runtime import AgentRuntime, MAX_SUBAGENT_DEPTH
-from laffyhand.agent.schemas import (
+from laffyhand.core.agent import AgentInfo
+from laffyhand.core.llm.specs.models import AssistantMessage, SystemMessage, UserMessage
+from laffyhand.core.runtime import AgentRuntime, MAX_SUBAGENT_DEPTH
+from laffyhand.core.schemas import (
     AgentState,
     SessionID,
     SessionUsage,
 )
 from typing import Any
 
-from laffyhand.agent.tools.registry import ToolRegistry
+from laffyhand.core.tools.registry import ToolRegistry
 
 
 @pytest.fixture
@@ -497,7 +497,7 @@ class TestLoadSessionState:
 
     def test_load_session_state_repeated_calls(self, runtime, session_manager):
         """load_session_state can be called multiple times with the same id."""
-        from laffyhand.agent.session.models import Session as SessionModel
+        from laffyhand.core.session.models import Session as SessionModel
 
         session = SessionModel(provider="test", model="test")
         state = AgentState(
@@ -550,7 +550,7 @@ class TestForkSession:
 class TestAddMcpServer:
     @pytest.mark.anyio
     async def test_adds_and_registers_tools(self, runtime):
-        from laffyhand.agent.mcp.config import LocalMCPConfig
+        from laffyhand.core.mcp.config import LocalMCPConfig
 
         cfg = LocalMCPConfig(command=["echo", "hello"])
         tool_def = MagicMock()
@@ -568,7 +568,7 @@ class TestAddMcpServer:
 
     @pytest.mark.anyio
     async def test_raises_on_connection_failure(self, runtime):
-        from laffyhand.agent.mcp.config import LocalMCPConfig
+        from laffyhand.core.mcp.config import LocalMCPConfig
 
         cfg = LocalMCPConfig(command=["invalid-command"])
         runtime.mcp_service.connect_server = AsyncMock(
@@ -581,7 +581,7 @@ class TestAddMcpServer:
 class TestRemoveMcpServer:
     @pytest.mark.anyio
     async def test_unregisters_tools_and_disconnects(self, runtime):
-        from laffyhand.agent.mcp.config import LocalMCPConfig
+        from laffyhand.core.mcp.config import LocalMCPConfig
 
         runtime.mcp_service.disconnect = AsyncMock()
         tool_def = MagicMock()
@@ -641,7 +641,7 @@ class TestCreateSubagent:
                 child_state.messages.append(
                     AssistantMessage(content="final answer")
                 )
-                from laffyhand.agent.schemas import StepFinish
+                from laffyhand.core.schemas import StepFinish
 
                 yield StepFinish(index=1, reason="stop")
 
@@ -668,7 +668,7 @@ class TestCreateSubagent:
         with patch("laffyhand.agent.runtime.agent_loop") as mock_loop:
 
             async def mock_agent_loop(*args, **kwargs):
-                from laffyhand.agent.schemas import StepFinish
+                from laffyhand.core.schemas import StepFinish
 
                 yield StepFinish(index=1, reason="stop")
 
@@ -750,7 +750,7 @@ class TestCreateSubagent:
         with patch("laffyhand.agent.runtime.agent_loop") as mock_loop:
 
             async def mock_agent_loop(*args, **kwargs):
-                from laffyhand.agent.schemas import StepFinish
+                from laffyhand.core.schemas import StepFinish
 
                 yield StepFinish(index=1, reason="stop")
 
@@ -764,7 +764,7 @@ class TestCreateSubagent:
             )
 
         # Should have two TodoUpdate events: in_progress + completed
-        from laffyhand.agent.schemas import TodoUpdate as TodoUpdateEvent
+        from laffyhand.core.schemas import TodoUpdate as TodoUpdateEvent
 
         todo_events = [e for e in events if isinstance(e, TodoUpdateEvent)]
         assert len(todo_events) == 2, f"Expected 2 TodoUpdate events, got {len(todo_events)}: {events}"
@@ -797,7 +797,7 @@ class TestCreateSubagent:
         with patch("laffyhand.agent.runtime.agent_loop") as mock_loop:
 
             async def mock_agent_loop(*args, **kwargs):
-                from laffyhand.agent.schemas import StepFinish
+                from laffyhand.core.schemas import StepFinish
 
                 yield StepFinish(index=1, reason="stop")
 
@@ -810,7 +810,7 @@ class TestCreateSubagent:
                 todo_id=None,
             )
 
-        from laffyhand.agent.schemas import TodoUpdate as TodoUpdateEvent
+        from laffyhand.core.schemas import TodoUpdate as TodoUpdateEvent
 
         todo_events = [e for e in events if isinstance(e, TodoUpdateEvent)]
         assert len(todo_events) == 0, f"Expected 0 TodoUpdate events, got {len(todo_events)}"
@@ -848,7 +848,7 @@ class TestCreateSubagent:
                 todo_id=todo.id,
             )
 
-        from laffyhand.agent.schemas import TodoUpdate as TodoUpdateEvent
+        from laffyhand.core.schemas import TodoUpdate as TodoUpdateEvent
 
         todo_events = [e for e in events if isinstance(e, TodoUpdateEvent)]
         assert len(todo_events) == 1, f"Expected 1 TodoUpdate event (in_progress), got {len(todo_events)}: {events}"
@@ -904,7 +904,7 @@ class TestCreateSubagent:
         # Give the fire-and-forget task time to execute
         await asyncio.sleep(0)
 
-        from laffyhand.agent.schemas import TodoUpdate as TodoUpdateEvent
+        from laffyhand.core.schemas import TodoUpdate as TodoUpdateEvent
 
         todo_events = [e for e in events if isinstance(e, TodoUpdateEvent)]
         assert len(todo_events) == 1, f"Expected 1 TodoUpdate event from on_complete, got {len(todo_events)}: {events}"
@@ -971,7 +971,7 @@ class TestScheduleTitleGeneration:
 class TestDoGenerateTitle:
     @pytest.mark.anyio
     async def test_generates_title(self, runtime, session_manager):
-        from laffyhand.agent.llm.specs.models import StreamText, StreamFinish
+        from laffyhand.core.llm.specs.models import StreamText, StreamFinish
 
         async def mock_stream(messages, **kwargs):
             yield StreamText(delta="My Title")

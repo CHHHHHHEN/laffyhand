@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
-from laffyhand.agent.tools.web_fetch import WebFetchTool
+from laffyhand.core.tools.web_fetch import WebFetchTool
 
 
 def _fake_response(text: str, content_type: str = "text/plain") -> MagicMock:

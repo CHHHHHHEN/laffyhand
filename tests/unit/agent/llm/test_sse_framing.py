@@ -2,8 +2,8 @@ import json
 import unittest
 from collections.abc import AsyncIterator
 
-from laffyhand.agent.llm._sse_framing import SSEFraming
-from laffyhand.agent.llm.specs.models import Frame
+from laffyhand.core.llm._sse_framing import SSEFraming
+from laffyhand.core.llm.specs.models import Frame
 
 
 class _AsyncIter:

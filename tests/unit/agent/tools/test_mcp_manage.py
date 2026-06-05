@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from laffyhand.agent.tools.mcp_manage import (
+from laffyhand.core.tools.mcp_manage import (
     MCPConnectTool,
     MCPDisconnectTool,
     MCPListTool,

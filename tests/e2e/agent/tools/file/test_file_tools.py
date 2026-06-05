@@ -4,11 +4,11 @@ import unittest
 import tempfile
 from pathlib import Path
 
-from laffyhand.agent.tools.file.read import ReadTool
-from laffyhand.agent.tools.file.write import WriteTool
-from laffyhand.agent.tools.file.edit import EditTool
-from laffyhand.agent.tools.file.glob import GlobTool
-from laffyhand.agent.tools.file.grep import GrepTool
+from laffyhand.core.tools.file.read import ReadTool
+from laffyhand.core.tools.file.write import WriteTool
+from laffyhand.core.tools.file.edit import EditTool
+from laffyhand.core.tools.file.glob import GlobTool
+from laffyhand.core.tools.file.grep import GrepTool
 
 
 class TestFileToolsE2E(unittest.TestCase):

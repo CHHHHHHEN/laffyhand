@@ -15,7 +15,7 @@ from laffyhand.gateway.protocol import (
 )
 
 if TYPE_CHECKING:
-    from laffyhand.agent.runtime import AgentRuntime
+    from laffyhand.core.runtime import AgentRuntime
     from laffyhand.gateway.transport import Transport
 
 

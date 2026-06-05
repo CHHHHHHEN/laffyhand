@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from laffyhand.agent.llm.specs.models import (
+from laffyhand.core.llm.specs.models import (
     AssistantMessage,
     Message,
     SystemMessage,
     ToolMessage,
     UserMessage,
 )
-from laffyhand.agent.prune import PRUNE_PROTECT, prune
+from laffyhand.core.prune import PRUNE_PROTECT, prune
 
 
 def _tool(content: str, tool_call_id: str = "call_1") -> ToolMessage:

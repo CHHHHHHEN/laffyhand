@@ -1,7 +1,7 @@
 import unittest
 from pathlib import Path
 
-from laffyhand.agent.skill.models import SkillInfo, SkillNotFoundError
+from laffyhand.core.skill.models import SkillInfo, SkillNotFoundError
 
 
 class TestSkillInfo(unittest.TestCase):

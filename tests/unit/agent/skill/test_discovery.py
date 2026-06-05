@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from laffyhand.agent.skill.discovery import discover_skills
+from laffyhand.core.skill.discovery import discover_skills
 
 
 class TestDiscoverSkills(unittest.TestCase):

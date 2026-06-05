@@ -8,7 +8,7 @@ from typing import Any
 
 from loguru import logger
 
-from laffyhand.agent.runtime import AgentRuntime
+from laffyhand.core.runtime import AgentRuntime
 from laffyhand.gateway.protocol import (
     Request,
     Response,

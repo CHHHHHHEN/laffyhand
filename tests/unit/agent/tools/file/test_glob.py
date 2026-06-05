@@ -3,7 +3,7 @@ import time
 import unittest
 import tempfile
 from pathlib import Path
-from laffyhand.agent.tools.file.glob import GlobTool
+from laffyhand.core.tools.file.glob import GlobTool
 
 
 class TestGlobTool(unittest.TestCase):

@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from laffyhand.agent.mcp.config import LocalMCPConfig
-from laffyhand.agent.mcp.service import MCPService
+from laffyhand.core.mcp.config import LocalMCPConfig
+from laffyhand.core.mcp.service import MCPService
 
 
 pytestmark = pytest.mark.anyio

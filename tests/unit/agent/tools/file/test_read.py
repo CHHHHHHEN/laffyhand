@@ -2,7 +2,7 @@ import asyncio
 import unittest
 import tempfile
 from pathlib import Path
-from laffyhand.agent.tools.file.read import ReadTool
+from laffyhand.core.tools.file.read import ReadTool
 
 
 class TestReadTool(unittest.TestCase):

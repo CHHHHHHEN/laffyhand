@@ -5,20 +5,20 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from laffyhand.agent.llm.specs.models import AssistantMessage, SystemMessage, ToolMessage, UserMessage
-from laffyhand.agent.llm.specs.models import (
+from laffyhand.core.llm.specs.models import AssistantMessage, SystemMessage, ToolMessage, UserMessage
+from laffyhand.core.llm.specs.models import (
     StreamError,
     StreamFinish,
     StreamText,
     ToolCallContent,
 )
-from laffyhand.agent.schemas import (
+from laffyhand.core.schemas import (
     AgentState,
     CompactionConfig,
     SessionID,
     SessionUsage,
 )
-from laffyhand.agent.compaction import (
+from laffyhand.core.compaction import (
     compact_with_chain,
     is_overflow,
     select_tail,
@@ -26,12 +26,12 @@ from laffyhand.agent.compaction import (
     _select_compaction_targets,
     _is_summary_content,
 )
-from laffyhand.agent.token_utils import (
+from laffyhand.core.token_utils import (
     estimate_message_tokens,
     estimate_messages_tokens,
 )
-from laffyhand.agent.context import build_llm_context
-from laffyhand.agent.prune import prune, PRUNE_PROTECT
+from laffyhand.core.context import build_llm_context
+from laffyhand.core.prune import prune, PRUNE_PROTECT
 
 
 class TestEstimateMessageTokens(unittest.TestCase):

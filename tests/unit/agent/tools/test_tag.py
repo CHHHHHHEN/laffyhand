@@ -9,11 +9,11 @@ from pathlib import Path
 
 import pytest
 
-from laffyhand.agent.db.repository import FileTagRepo
-from laffyhand.agent.db.schema import create_tables
-from laffyhand.agent.db.repository.tag import FileTag
-from laffyhand.agent.tools.tag import TagTool, annotate_result, format_tag_summary, _normalize, _date_from_iso, _coerce_dict, _coerce_list
-from laffyhand.agent.db.repository.tag import _parse_json_dict, _parse_json_list
+from laffyhand.core.db.repository import FileTagRepo
+from laffyhand.core.db.schema import create_tables
+from laffyhand.core.db.repository.tag import FileTag
+from laffyhand.core.tools.tag import TagTool, annotate_result, format_tag_summary, _normalize, _date_from_iso, _coerce_dict, _coerce_list
+from laffyhand.core.db.repository.tag import _parse_json_dict, _parse_json_list
 
 
 @pytest.fixture
