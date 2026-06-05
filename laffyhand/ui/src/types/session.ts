@@ -89,6 +89,7 @@ export interface ActiveSubagent {
   summary?: string
   inputTokens: number
   outputTokens: number
+  events: SubagentEvent[]
 }
 
 export interface StreamChunk {

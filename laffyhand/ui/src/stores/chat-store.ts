@@ -477,6 +477,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         toolCount: 0,
         inputTokens: 0,
         outputTokens: 0,
+        events: [],
       }
       if (event.mode === "foreground") {
         return {
@@ -502,14 +503,15 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         if (sa.id !== id) return sa
         switch (event.kind) {
           case "text":
-            return { ...sa, text: sa.text + (event.content ?? "") }
+            return { ...sa, text: sa.text + (event.content ?? ""), events: [...sa.events, { kind: "text", content: event.content }] }
           case "reasoning":
-            return { ...sa, reasoning: sa.reasoning + (event.content ?? "") }
+            return { ...sa, reasoning: sa.reasoning + (event.content ?? ""), events: [...sa.events, { kind: "reasoning", content: event.content }] }
           case "tool":
             return {
               ...sa,
               tools: [...sa.tools, { name: event.tool_name ?? "", input: event.tool_input ?? "" }],
               toolCount: sa.toolCount + 1,
+              events: [...sa.events, { kind: "tool", toolName: event.tool_name, toolInput: event.tool_input }],
             }
           case "tool_result": {
             const tools = [...sa.tools]
@@ -520,10 +522,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
                 break
               }
             }
-            return { ...sa, tools }
+            return { ...sa, tools, events: [...sa.events, { kind: "tool_result", toolName: event.tool_name, content: event.content }] }
           }
           case "error":
-            return { ...sa, status: "error", text: sa.text + (event.content ?? "") }
+            return { ...sa, status: "error", text: sa.text + (event.content ?? ""), events: [...sa.events, { kind: "error", content: event.content }] }
           default:
             return sa
         }

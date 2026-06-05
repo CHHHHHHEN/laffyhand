@@ -141,31 +141,70 @@ export function SubagentCard({
             </div>
           )}
 
-          {subagent.reasoning && <ReasoningBlock text={subagent.reasoning} defaultExpanded />}
+          {/* Chronological event rendering */}
+          {subagent.events && subagent.events.length > 0 ? (
+            (() => {
+              let toolIdx = 0
+              return subagent.events.map((evt, i) => {
+                switch (evt.kind) {
+                  case "reasoning":
+                    return evt.content ? (
+                      <ReasoningBlock key={i} text={evt.content} defaultExpanded />
+                    ) : null
+                  case "text":
+                    return evt.content ? (
+                      <div key={i} className="leading-relaxed whitespace-pre-wrap text-sm text-[var(--text-base)]">
+                        {evt.content}
+                      </div>
+                    ) : null
+                  case "tool": {
+                    const tool = subagent.tools[toolIdx++]
+                    return tool ? <ToolResultBlock key={i} tool={tool} /> : null
+                  }
+                  case "tool_result":
+                    // Result already attached to the corresponding tool entry
+                    return null
+                  case "error":
+                    return evt.content ? (
+                      <div key={i} className="text-sm text-red-500">
+                        {evt.content}
+                      </div>
+                    ) : null
+                  default:
+                    return null
+                }
+              })
+            })()
+          ) : (
+            /* Legacy accumulator rendering (for subagents loaded from server data) */
+            <>
+              {subagent.reasoning && <ReasoningBlock text={subagent.reasoning} defaultExpanded />}
 
-          {subagent.text && (
-            <div className="leading-relaxed whitespace-pre-wrap text-sm text-[var(--text-base)]">
-              {subagent.text}
-            </div>
+              {subagent.text && (
+                <div className="leading-relaxed whitespace-pre-wrap text-sm text-[var(--text-base)]">
+                  {subagent.text}
+                </div>
+              )}
+
+              {subagent.tools.length > 0 && (
+                <div>
+                  <div className="text-[11px] uppercase tracking-wider text-[var(--text-faint)] font-medium mb-1.5">
+                    Tool calls · {subagent.tools.length}
+                  </div>
+                  <div className="space-y-1">
+                    {subagent.tools.map((tool, i) => (
+                      <ToolResultBlock key={i} tool={tool} />
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
           )}
 
           {isRunning && !subagent.text && !subagent.reasoning && (
             <div className="flex items-center gap-2 py-1">
               <Spinner size="sm" />
               <span className="text-sm text-[var(--text-muted)]">Thinking</span>
-            </div>
-          )}
-
-          {subagent.tools.length > 0 && (
-            <div>
-              <div className="text-[11px] uppercase tracking-wider text-[var(--text-faint)] font-medium mb-1.5">
-                Tool calls · {subagent.tools.length}
-              </div>
-              <div className="space-y-1">
-                {subagent.tools.map((tool, i) => (
-                  <ToolResultBlock key={i} tool={tool} />
-                ))}
-              </div>
             </div>
           )}
 

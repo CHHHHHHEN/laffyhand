@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest"
 import { render, screen, fireEvent } from "@testing-library/react"
 import { SubagentCard, SubagentTreeCard } from "./SubagentCard"
-import type { ActiveSubagent, SubagentTool } from "@/types/session"
+import type { ActiveSubagent, SubagentTool, SubagentEvent } from "@/types/session"
 import type { SubagentTreeNode } from "@/lib/subagentTree"
 
 function makeTool(overrides: Partial<SubagentTool> = {}): SubagentTool {
@@ -24,6 +24,7 @@ function makeSubagent(overrides: Partial<ActiveSubagent> = {}): ActiveSubagent {
     summary: undefined,
     inputTokens: 0,
     outputTokens: 0,
+    events: [],
     ...overrides,
   }
 }
@@ -212,6 +213,82 @@ describe("SubagentCard", () => {
       const { container } = render(<SubagentCard subagent={sub} depth={2} />)
       const inner = container.firstChild as HTMLElement
       expect(inner.style.marginLeft).toBe("32px")
+    })
+  })
+
+  // ── Event-based chronological rendering ──
+
+  describe("event rendering", () => {
+    it("renders events in chronological order", () => {
+      const events: SubagentEvent[] = [
+        { kind: "text", content: "First I search" },
+        { kind: "tool", toolName: "grep", toolInput: "pattern" },
+        { kind: "tool_result", content: "found it" },
+        { kind: "text", content: "Then I found the answer" },
+      ]
+      const sub = makeSubagent({
+        events,
+        text: "First I searchThen I found the answer",
+        tools: [makeTool({ name: "grep", input: "pattern", result: "found it" })],
+        toolCount: 1,
+      })
+      render(<SubagentCard subagent={sub} />)
+      const blocks = screen.getByText("First I search").closest("div")!.parentElement!
+      expect(blocks.textContent).toMatch(/First I search.*grep.*Then I found the answer/s)
+    })
+
+    it("renders reasoning events as reasoning blocks", () => {
+      const events: SubagentEvent[] = [
+        { kind: "reasoning", content: "Let me think..." },
+        { kind: "text", content: "Answer" },
+      ]
+      const sub = makeSubagent({ events, reasoning: "Let me think...", text: "Answer" })
+      render(<SubagentCard subagent={sub} />)
+      expect(screen.getByText("Let me think...")).toBeInTheDocument()
+      expect(screen.getByText("Answer")).toBeInTheDocument()
+    })
+
+    it("renders tool events with result inline", () => {
+      const events: SubagentEvent[] = [
+        { kind: "tool", toolName: "bash", toolInput: "ls" },
+        { kind: "tool_result", content: "file1.txt" },
+      ]
+      const sub = makeSubagent({
+        events,
+        tools: [makeTool({ name: "bash", input: "ls", result: "file1.txt" })],
+        toolCount: 1,
+      })
+      render(<SubagentCard subagent={sub} />)
+      expect(screen.getByText("bash")).toBeInTheDocument()
+      expect(screen.getByText("ls")).toBeInTheDocument()
+    })
+
+    it("renders error events with error styling", () => {
+      const events: SubagentEvent[] = [
+        { kind: "error", content: "Something went wrong" },
+      ]
+      const sub = makeSubagent({ events, status: "error" })
+      render(<SubagentCard subagent={sub} />)
+      const errorEl = screen.getByText("Something went wrong")
+      expect(errorEl.className).toContain("text-red-500")
+    })
+
+    it("skips tool_result events in rendering and attaches result to tool", () => {
+      const events: SubagentEvent[] = [
+        { kind: "tool", toolName: "grep", toolInput: "TODO" },
+        { kind: "tool_result", content: "result text" },
+      ]
+      const sub = makeSubagent({
+        events,
+        tools: [makeTool({ name: "grep", input: "TODO", result: "result text" })],
+        toolCount: 1,
+      })
+      render(<SubagentCard subagent={sub} />)
+      // The "Result" toggle button is visible (tool has a result)
+      expect(screen.getByText("Result")).toBeInTheDocument()
+      // Click to reveal tool result content
+      fireEvent.click(screen.getByText("Result"))
+      expect(screen.getByText("result text")).toBeInTheDocument()
     })
   })
 })
