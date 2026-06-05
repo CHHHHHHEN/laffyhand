@@ -62,8 +62,10 @@ class TestFileToolsE2E(unittest.TestCase):
             edit_tool.run(
                 {
                     "file_path": str(src / "utils.py"),
-                    "old_string": "def helper():\n    return 42",
-                    "new_string": "def helper():\n    return 43",
+                    "changes": [{
+                        "old_string": "def helper():\n    return 42",
+                        "new_string": "def helper():\n    return 43",
+                    }],
                 }
             )
         )
@@ -163,8 +165,7 @@ class TestFileToolsE2E(unittest.TestCase):
             edit_tool.run(
                 {
                     "file_path": str(self.root / "large.txt"),
-                    "old_string": "line10",
-                    "new_string": "line10: modified",
+                    "changes": [{"old_string": "line10", "new_string": "line10: modified"}],
                 }
             )
         )
@@ -203,8 +204,7 @@ class TestFileToolsE2E(unittest.TestCase):
             edit_tool.run(
                 {
                     "file_path": str(self.root / "some" / ".." / ".env"),
-                    "old_string": "",
-                    "new_string": "SECRET=xxx",
+                    "changes": [{"old_string": "x", "new_string": "SECRET=xxx"}],
                 }
             )
         )
@@ -291,8 +291,7 @@ class TestFileToolsE2E(unittest.TestCase):
             edit_tool.run(
                 {
                     "file_path": str(self.root / "crlf.txt"),
-                    "old_string": "line1",
-                    "new_string": "modified",
+                    "changes": [{"old_string": "line1", "new_string": "modified"}],
                 }
             )
         )

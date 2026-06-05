@@ -18,7 +18,10 @@ class TestEditTool(unittest.TestCase):
         f.write_text("foo\nbar\nbaz")
         tool = EditTool()
         result = asyncio.run(
-            tool.run({"file_path": str(f), "old_string": "bar", "new_string": "qux"})
+            tool.run({
+                "file_path": str(f),
+                "changes": [{"old_string": "bar", "new_string": "qux"}],
+            })
         )
         self.assertIn("Edited", result)
         self.assertEqual(f.read_text(), "foo\nqux\nbaz")
@@ -26,13 +29,10 @@ class TestEditTool(unittest.TestCase):
     def test_edit_file_not_found(self):
         tool = EditTool()
         result = asyncio.run(
-            tool.run(
-                {
-                    "file_path": str(self.root / "nope.txt"),
-                    "old_string": "a",
-                    "new_string": "b",
-                }
-            )
+            tool.run({
+                "file_path": str(self.root / "nope.txt"),
+                "changes": [{"old_string": "a", "new_string": "b"}],
+            })
         )
         self.assertIn("not found", result.lower())
 
@@ -41,7 +41,10 @@ class TestEditTool(unittest.TestCase):
         f.write_text("hello")
         tool = EditTool()
         result = asyncio.run(
-            tool.run({"file_path": str(f), "old_string": "zzz", "new_string": "xxx"})
+            tool.run({
+                "file_path": str(f),
+                "changes": [{"old_string": "zzz", "new_string": "xxx"}],
+            })
         )
         self.assertIn("not found", result)
 
@@ -50,7 +53,10 @@ class TestEditTool(unittest.TestCase):
         f.write_text("foo\nfoo\nfoo")
         tool = EditTool()
         result = asyncio.run(
-            tool.run({"file_path": str(f), "old_string": "foo", "new_string": "bar"})
+            tool.run({
+                "file_path": str(f),
+                "changes": [{"old_string": "foo", "new_string": "bar"}],
+            })
         )
         self.assertIn("Edited", result)
         self.assertEqual(f.read_text(), "bar\nfoo\nfoo")
@@ -60,61 +66,26 @@ class TestEditTool(unittest.TestCase):
         f.write_text("foo\nfoo\nfoo")
         tool = EditTool()
         result = asyncio.run(
-            tool.run(
-                {
-                    "file_path": str(f),
-                    "old_string": "foo",
-                    "new_string": "bar",
-                    "replaceAll": True,
-                }
-            )
+            tool.run({
+                "file_path": str(f),
+                "changes": [{"old_string": "foo", "new_string": "bar", "replaceAll": True}],
+            })
         )
         self.assertIn("3", result)
         self.assertEqual(f.read_text(), "bar\nbar\nbar")
-
-    def test_edit_old_string_empty_creates_file(self):
-        f = self.root / "new.txt"
-        tool = EditTool()
-        result = asyncio.run(
-            tool.run(
-                {
-                    "file_path": str(f),
-                    "old_string": "",
-                    "new_string": "hello",
-                }
-            )
-        )
-        self.assertIn("Created", result)
-        self.assertEqual(f.read_text(), "hello")
-
-    def test_edit_old_string_empty_prepends(self):
-        f = self.root / "existing.txt"
-        f.write_text("original")
-        tool = EditTool()
-        result = asyncio.run(
-            tool.run(
-                {
-                    "file_path": str(f),
-                    "old_string": "",
-                    "new_string": "prefix",
-                }
-            )
-        )
-        self.assertIn("Edited", result)
-        self.assertEqual(f.read_text(), "prefix\noriginal")
 
     def test_edit_whitespace_normalized_match(self):
         f = self.root / "test.txt"
         f.write_text("def foo():\n    print('hello')\n")
         tool = EditTool()
         result = asyncio.run(
-            tool.run(
-                {
-                    "file_path": str(f),
+            tool.run({
+                "file_path": str(f),
+                "changes": [{
                     "old_string": "def foo():\n    print('hello')",
                     "new_string": "def foo():\n    print('world')",
-                }
-            )
+                }],
+            })
         )
         self.assertIn("Edited", result)
         self.assertEqual(f.read_text(), "def foo():\n    print('world')\n")
@@ -124,13 +95,10 @@ class TestEditTool(unittest.TestCase):
         f.write_text("OLD=val")
         tool = EditTool()
         result = asyncio.run(
-            tool.run(
-                {
-                    "file_path": str(f),
-                    "old_string": "OLD=val",
-                    "new_string": "NEW=val",
-                }
-            )
+            tool.run({
+                "file_path": str(f),
+                "changes": [{"old_string": "OLD=val", "new_string": "NEW=val"}],
+            })
         )
         self.assertIn("Blocked", result)
 
@@ -139,13 +107,10 @@ class TestEditTool(unittest.TestCase):
         f.write_bytes(b"foo\r\nbar\r\n")
         tool = EditTool()
         result = asyncio.run(
-            tool.run(
-                {
-                    "file_path": str(f),
-                    "old_string": "foo",
-                    "new_string": "baz",
-                }
-            )
+            tool.run({
+                "file_path": str(f),
+                "changes": [{"old_string": "foo", "new_string": "baz"}],
+            })
         )
         self.assertIn("Edited", result)
         raw = f.read_bytes()
@@ -156,15 +121,15 @@ class TestEditTool(unittest.TestCase):
         f.write_text("hello\nworld")
         tool = EditTool()
         result = asyncio.run(
-            tool.run(
-                {
-                    "file_path": str(f),
+            tool.run({
+                "file_path": str(f),
+                "changes": [{
                     "old_string": "hello\\nworld",
                     "new_string": "hello\nWORLD",
-                }
-            )
+                }],
+            })
         )
-        self.assertIn("escape normalized", result)
+        self.assertIn("Edited", result)
         self.assertEqual(f.read_text(), "hello\nWORLD")
 
     def test_edit_trimmed_boundary_match(self):
@@ -172,27 +137,24 @@ class TestEditTool(unittest.TestCase):
         f.write_text("hello\nworld\n")
         tool = EditTool()
         result = asyncio.run(
-            tool.run(
-                {
-                    "file_path": str(f),
+            tool.run({
+                "file_path": str(f),
+                "changes": [{
                     "old_string": "  hello\nworld  ",
                     "new_string": "hi\nworld",
-                }
-            )
+                }],
+            })
         )
-        self.assertIn("trimmed boundary", result)
+        self.assertIn("Edited", result)
         self.assertEqual(f.read_text(), "hi\nworld\n")
 
     def test_edit_directory_rejected(self):
         tool = EditTool()
         result = asyncio.run(
-            tool.run(
-                {
-                    "file_path": str(self.root),
-                    "old_string": "x",
-                    "new_string": "y",
-                }
-            )
+            tool.run({
+                "file_path": str(self.root),
+                "changes": [{"old_string": "x", "new_string": "y"}],
+            })
         )
         self.assertIn("Cannot edit a directory", result)
 
@@ -206,13 +168,10 @@ class TestEditTool(unittest.TestCase):
             f.write_text("content")
             tool = EditTool()
             result = asyncio.run(
-                tool.run(
-                    {
-                        "file_path": "target.txt",
-                        "old_string": "content",
-                        "new_string": "modified",
-                    }
-                )
+                tool.run({
+                    "file_path": "target.txt",
+                    "changes": [{"old_string": "content", "new_string": "modified"}],
+                })
             )
             self.assertIn("Edited", result)
             self.assertEqual(f.read_text(), "modified")
@@ -228,7 +187,10 @@ class TestEditTool(unittest.TestCase):
         f.write_text("foo\nbar\nbaz\n")
         tool = EditTool()
         result = asyncio.run(
-            tool.run({"file_path": str(f), "old_string": "bar", "new_string": "qux"})
+            tool.run({
+                "file_path": str(f),
+                "changes": [{"old_string": "bar", "new_string": "qux"}],
+            })
         )
         self.assertIn("--- ", result)
         self.assertIn("+++ ", result)
@@ -243,42 +205,21 @@ class TestEditTool(unittest.TestCase):
         result = asyncio.run(
             tool.run({
                 "file_path": str(f),
-                "old_string": "foo",
-                "new_string": "bar",
-                "replaceAll": True,
+                "changes": [{"old_string": "foo", "new_string": "bar", "replaceAll": True}],
             })
         )
         self.assertIn("--- ", result)
         self.assertIn("+bar", result)
-
-    def test_edit_prepend_contains_diff(self):
-        f = self.root / "existing.txt"
-        f.write_text("original\n")
-        tool = EditTool()
-        result = asyncio.run(
-            tool.run({
-                "file_path": str(f),
-                "old_string": "",
-                "new_string": "prefix",
-            })
-        )
-        self.assertIn("--- ", result)
-        self.assertIn("+prefix", result)
-
-    def test_edit_create_has_no_diff(self):
-        f = self.root / "new.txt"
-        tool = EditTool()
-        result = asyncio.run(
-            tool.run({"file_path": str(f), "old_string": "", "new_string": "hello"})
-        )
-        self.assertNotIn("--- ", result)
 
     def test_edit_not_found_has_no_diff(self):
         f = self.root / "test.txt"
         f.write_text("hello")
         tool = EditTool()
         result = asyncio.run(
-            tool.run({"file_path": str(f), "old_string": "zzz", "new_string": "xxx"})
+            tool.run({
+                "file_path": str(f),
+                "changes": [{"old_string": "zzz", "new_string": "xxx"}],
+            })
         )
         self.assertNotIn("--- ", result)
 
@@ -291,12 +232,10 @@ class TestEditTool(unittest.TestCase):
         result = asyncio.run(
             tool.run({
                 "file_path": str(f),
-                "old_pattern": r"\d+",
-                "new_string": "NUM",
+                "changes": [{"old_pattern": r"\d+", "new_string": "NUM"}],
             })
         )
-        self.assertIn("regex", result)
-        self.assertIn("replaced 1", result)
+        self.assertIn("applied 1 change", result)
         self.assertEqual(f.read_text(), "fooNUM bar456 baz789")
 
     def test_edit_regex_replace_all(self):
@@ -306,12 +245,10 @@ class TestEditTool(unittest.TestCase):
         result = asyncio.run(
             tool.run({
                 "file_path": str(f),
-                "old_pattern": r"\d+",
-                "new_string": "NUM",
-                "replaceAll": True,
+                "changes": [{"old_pattern": r"\d+", "new_string": "NUM", "replaceAll": True}],
             })
         )
-        self.assertIn("replaced 3", result)
+        self.assertIn("applied 1 change", result)
         self.assertEqual(f.read_text(), "fooNUM barNUM bazNUM")
 
     def test_edit_regex_backreference(self):
@@ -321,8 +258,7 @@ class TestEditTool(unittest.TestCase):
         result = asyncio.run(
             tool.run({
                 "file_path": str(f),
-                "old_pattern": r"(hello) (world)",
-                "new_string": r"\2 \1",
+                "changes": [{"old_pattern": r"(hello) (world)", "new_string": r"\2 \1"}],
             })
         )
         self.assertIn("Edited", result)
@@ -335,11 +271,11 @@ class TestEditTool(unittest.TestCase):
         result = asyncio.run(
             tool.run({
                 "file_path": str(f),
-                "old_pattern": r"[invalid",
-                "new_string": "x",
+                "changes": [{"old_pattern": r"[invalid", "new_string": "x"}],
             })
         )
-        self.assertIn("Invalid regex", result)
+        self.assertIn("Change 1", result)
+        self.assertIn("invalid regex", result)
 
     def test_edit_regex_no_match(self):
         f = self.root / "test.txt"
@@ -348,11 +284,10 @@ class TestEditTool(unittest.TestCase):
         result = asyncio.run(
             tool.run({
                 "file_path": str(f),
-                "old_pattern": r"\d+",
-                "new_string": "x",
+                "changes": [{"old_pattern": r"\d+", "new_string": "x"}],
             })
         )
-        self.assertIn("Pattern not found", result)
+        self.assertIn("pattern not found", result)
 
     # ─── fuzzy replaceAll ────────────────────────────────────────
 
@@ -363,12 +298,10 @@ class TestEditTool(unittest.TestCase):
         result = asyncio.run(
             tool.run({
                 "file_path": str(f),
-                "old_string": "x y",
-                "new_string": "a b",
-                "replaceAll": True,
+                "changes": [{"old_string": "x y", "new_string": "a b", "replaceAll": True}],
             })
         )
-        self.assertIn("replaced 2", result)
+        self.assertIn("applied 1 change", result)
         # Both occurrences should be replaced: "x y" and "x    y"
         self.assertEqual(f.read_text(), "a b a b")
 
@@ -379,13 +312,10 @@ class TestEditTool(unittest.TestCase):
         result = asyncio.run(
             tool.run({
                 "file_path": str(f),
-                "old_string": "foo",
-                "new_string": "baz",
-                "replaceAll": True,
+                "changes": [{"old_string": "foo", "new_string": "baz", "replaceAll": True}],
             })
         )
-        self.assertNotIn("fuzzy", result)
-        self.assertIn("replaced 3", result)
+        self.assertIn("applied 1 change", result)
         self.assertEqual(f.read_text(), "baz bar baz bar baz")
 
     # ─── multi-edit (changes array) ────────────────────────────
