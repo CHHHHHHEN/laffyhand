@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, AsyncMock, patch
 
 import pytest
 
-from laffyhand.core.agent import AgentInfo
+from laffyhand.core.agent.agent import AgentInfo
 from laffyhand.core.llm.specs.models import SystemMessage, UserMessage
 from laffyhand.core.schemas import (
     AgentState,
@@ -216,7 +216,7 @@ class TestSubagentManager:
         llm = MagicMock()
 
         with patch(
-            "laffyhand.agent.subagent.manager.build_subagent_state"
+            "laffyhand.core.subagent.manager.build_subagent_state"
         ) as mock_build:
             mock_build.return_value = (
                 AgentState(
@@ -251,7 +251,7 @@ class TestSubagentManager:
         llm = MagicMock()
 
         with patch(
-            "laffyhand.agent.subagent.manager.build_subagent_state"
+            "laffyhand.core.subagent.manager.build_subagent_state"
         ) as mock_build:
             mock_build.return_value = (
                 AgentState(
@@ -296,7 +296,7 @@ class TestSubagentManager:
         llm = MagicMock()
 
         with patch(
-            "laffyhand.agent.subagent.manager.build_subagent_state"
+            "laffyhand.core.subagent.manager.build_subagent_state"
         ) as mock_build:
             mock_build.return_value = (
                 AgentState(

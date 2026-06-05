@@ -4,7 +4,7 @@ import tempfile
 from pathlib import Path
 from unittest import TestCase
 
-from laffyhand.core.agent import (
+from laffyhand.core.agent.agent import (
     AgentInfo,
     AgentRegistry,
     BUILTIN_AGENTS,

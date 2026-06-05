@@ -160,7 +160,7 @@ class TestGrepTool(unittest.TestCase):
             f"Expected b.py count 1 in lines: {lines}",
         )
 
-    @mock.patch("laffyhand.agent.tools.file.grep.rg_available", return_value=False)
+    @mock.patch("laffyhand.core.tools.file.grep.rg_available", return_value=False)
     def test_grep_python_fallback_content(self, mock_rg):
         (self.root / "a.py").write_text("foo\nbar\n")
         (self.root / "b.py").write_text("foo\nbaz\n")
@@ -177,7 +177,7 @@ class TestGrepTool(unittest.TestCase):
         self.assertIn("a.py", result)
         self.assertIn("b.py", result)
 
-    @mock.patch("laffyhand.agent.tools.file.grep.rg_available", return_value=False)
+    @mock.patch("laffyhand.core.tools.file.grep.rg_available", return_value=False)
     def test_grep_python_fallback_files_only(self, mock_rg):
         (self.root / "a.py").write_text("foo")
         (self.root / "b.py").write_text("bar")
@@ -194,7 +194,7 @@ class TestGrepTool(unittest.TestCase):
         self.assertIn("a.py", result)
         self.assertNotIn("b.py", result)
 
-    @mock.patch("laffyhand.agent.tools.file.grep.rg_available", return_value=False)
+    @mock.patch("laffyhand.core.tools.file.grep.rg_available", return_value=False)
     def test_grep_python_fallback_count(self, mock_rg):
         (self.root / "a.py").write_text("foo\nfoo\n")
         (self.root / "b.py").write_text("foo")
@@ -211,7 +211,7 @@ class TestGrepTool(unittest.TestCase):
         self.assertIn("2", result)
         self.assertIn("1", result)
 
-    @mock.patch("laffyhand.agent.tools.file.grep.rg_available", return_value=False)
+    @mock.patch("laffyhand.core.tools.file.grep.rg_available", return_value=False)
     def test_grep_python_fallback_no_match(self, mock_rg):
         (self.root / "test.py").write_text("hello")
         tool = GrepTool()

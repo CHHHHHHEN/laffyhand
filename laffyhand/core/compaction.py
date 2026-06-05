@@ -21,7 +21,7 @@ from laffyhand.core.schemas import (
 from laffyhand.core.token_utils import estimate_tokens, estimate_message_tokens, estimate_messages_tokens
 from laffyhand.core.llm.facade import LLM
 from laffyhand.core.truncation import truncate_output
-from laffyhand.core.agent import BUILTIN_AGENTS
+from laffyhand.core.agent.agent import BUILTIN_AGENTS
 
 if TYPE_CHECKING:
     from laffyhand.core.session import SessionManager

@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, AsyncMock, patch
 
 import pytest
 
-from laffyhand.core.agent import AgentInfo
+from laffyhand.core.agent.agent import AgentInfo
 from laffyhand.core.llm.specs.models import AssistantMessage, SystemMessage, UserMessage
 from laffyhand.core.runtime import AgentRuntime, MAX_SUBAGENT_DEPTH
 from laffyhand.core.schemas import (
@@ -634,7 +634,7 @@ class TestCreateSubagent:
         runtime._states[session.id] = state
         agent_info = AgentInfo(name="test", system_prompt="You are test.")
 
-        with patch("laffyhand.agent.runtime.agent_loop") as mock_loop:
+        with patch("laffyhand.core.runtime.agent_loop") as mock_loop:
 
             async def mock_agent_loop(*args, **kwargs):
                 child_state = args[0]
@@ -665,7 +665,7 @@ class TestCreateSubagent:
         runtime._states[session.id] = state
         agent_info = AgentInfo(name="test", system_prompt="You are test.")
 
-        with patch("laffyhand.agent.runtime.agent_loop") as mock_loop:
+        with patch("laffyhand.core.runtime.agent_loop") as mock_loop:
 
             async def mock_agent_loop(*args, **kwargs):
                 from laffyhand.core.schemas import StepFinish
@@ -747,7 +747,7 @@ class TestCreateSubagent:
 
         runtime._event_sinks[session.id] = event_sink
 
-        with patch("laffyhand.agent.runtime.agent_loop") as mock_loop:
+        with patch("laffyhand.core.runtime.agent_loop") as mock_loop:
 
             async def mock_agent_loop(*args, **kwargs):
                 from laffyhand.core.schemas import StepFinish
@@ -794,7 +794,7 @@ class TestCreateSubagent:
 
         runtime._event_sinks[session.id] = event_sink
 
-        with patch("laffyhand.agent.runtime.agent_loop") as mock_loop:
+        with patch("laffyhand.core.runtime.agent_loop") as mock_loop:
 
             async def mock_agent_loop(*args, **kwargs):
                 from laffyhand.core.schemas import StepFinish
@@ -927,7 +927,7 @@ class TestGenerateTitleForCurrent:
         runtime._states[session.id] = state
 
         with patch(
-            "laffyhand.agent.title.generate_title", new_callable=AsyncMock
+            "laffyhand.core.title.generate_title", new_callable=AsyncMock
         ) as mock_gen:
             mock_gen.return_value = "My Title"
             result = await runtime._do_generate_title(session.id)
@@ -990,7 +990,7 @@ class TestDoGenerateTitle:
     async def test_exception_logged(self, runtime, session_manager):
         runtime._llm_for_session = MagicMock(side_effect=Exception("mock error"))
         session = session_manager.create()
-        with patch("laffyhand.agent.runtime.logger.exception") as mock_log:
+        with patch("laffyhand.core.runtime.logger.exception") as mock_log:
             await runtime._do_generate_title(session.id)
             mock_log.assert_called_once()
 
