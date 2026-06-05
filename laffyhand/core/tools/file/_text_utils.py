@@ -1,3 +1,9 @@
+"""Line-ending detection and normalisation.
+
+Provides ``detect_line_ending()`` to auto-detect CRLF vs LF for a file,
+and ``normalize_newlines()`` to convert between the two.
+"""
+
 from pathlib import Path
 
 
