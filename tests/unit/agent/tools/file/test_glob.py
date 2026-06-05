@@ -40,8 +40,8 @@ class TestGlobTool(unittest.TestCase):
         tool = GlobTool()
         result = asyncio.run(tool.run({"pattern": "**/*.py", "path": str(self.root)}))
         lines = result.strip().split("\n")
-        # Should have 3 files
-        self.assertEqual(len(lines), 3)
+        # Header + 3 files
+        self.assertEqual(len(lines), 4)
 
     def test_glob_subdir(self):
         tool = GlobTool()
@@ -59,7 +59,7 @@ class TestGlobTool(unittest.TestCase):
         lines = [
             ln
             for ln in result.strip().split("\n")
-            if ln.strip() and not ln.startswith("[")
+            if ln.strip() and not ln.startswith("[") and not ln.startswith("---")
         ]
         self.assertLessEqual(len(lines), 100)
 

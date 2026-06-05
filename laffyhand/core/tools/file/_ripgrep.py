@@ -71,12 +71,12 @@ def _rg_cmd(*parts: str, include: str | None = None, exclude: str | None = None)
 # --- Commands -----------------------------------------------------------------
 
 
-async def glob(cwd: Path, pattern: str, include_ignored: bool = False) -> list[str] | None:
+async def glob(cwd: Path, pattern: str, include_ignored: bool = False, exclude: str | None = None) -> list[str] | None:
     """List files matching a glob pattern using ripgrep. Returns None on failure."""
     parts = ["--files", "--glob", pattern]
     if include_ignored:
         parts.append("--no-ignore")
-    result = await _rg_run(_rg_cmd(*parts), cwd, timeout=30)
+    result = await _rg_run(_rg_cmd(*parts, exclude=exclude), cwd, timeout=30)
     if result is not None:
         return result.splitlines()
     return None
