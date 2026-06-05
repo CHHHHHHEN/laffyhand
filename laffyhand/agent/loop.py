@@ -40,7 +40,7 @@ from laffyhand.agent.schemas import (
 
 from laffyhand.agent.compaction import compact_on_overflow
 from laffyhand.agent.context import build_llm_context
-from laffyhand.agent.tool_executor import ToolExecutor
+from laffyhand.agent.tool_executor import ToolExecutionResult, ToolExecutor
 from laffyhand.agent.llm.facade import LLM
 from laffyhand.agent.tools import ToolRegistry
 
@@ -263,12 +263,32 @@ async def agent_loop(
                 "session_id": agent_state.session_id,
                 "_claim_id": f"{agent_state.session_id}:preferences",
             }
-            for tc in tool_calls:
-                exec_result = await ToolExecutor.execute(
-                    tool_registry,
-                    tc,
-                    context=exec_context,
+
+            # Execute all tool calls in this turn in parallel
+            async def _exec_one(
+                _tc: ToolCallContent,
+            ) -> tuple[str, str, ToolExecutionResult]:
+                return (
+                    _tc.tool_call_id,
+                    _tc.tool_name,
+                    await ToolExecutor.execute(
+                        tool_registry,
+                        _tc,
+                        context=exec_context,
+                    ),
                 )
+
+            exec_results: list[tuple[str, str, ToolExecutionResult]] = (
+                await asyncio.gather(*[_exec_one(tc) for tc in tool_calls])
+            )
+
+            # Build a lookup for result ordering
+            result_by_tool_id: dict[str, ToolExecutionResult] = {}
+            for tc_id, tc_name, exec_result in exec_results:
+                result_by_tool_id[tc_id] = exec_result
+
+            for tc in tool_calls:
+                exec_result = result_by_tool_id[tc.tool_call_id]
                 agent_state.messages.append(exec_result.message)
                 if exec_result.is_error:
                     yield ToolError(

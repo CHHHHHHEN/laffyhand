@@ -2,7 +2,6 @@ import { useState, useMemo } from "react"
 import type { Message } from "@/types/session"
 import { AiAvatar, UserAvatar, ReasoningBlock, ToolCallCard, UsageBadge } from "./ChatComponents"
 import { MarkdownContent } from "./MarkdownContent"
-import { rpcClient } from "@/lib/rpc"
 import { buildSubagentTree } from "@/lib/subagentTree"
 import { SubagentTreeCard } from "./SubagentCard"
 
@@ -38,7 +37,6 @@ function CopyButton({ content }: { content: string }) {
 
 interface MessageBubbleProps {
   message: Message
-  onResolvePermission?: (messageId: string, denyReason?: string) => void
 }
 
 function SystemMessageBlock({ content }: { content: string }) {
@@ -90,106 +88,16 @@ function SubagentTreeSection({ subagents }: { subagents: Message["subagents"] })
   )
 }
 
-export function MessageBubble({ message, onResolvePermission }: MessageBubbleProps) {
+export function MessageBubble({ message }: MessageBubbleProps) {
   const isUser = message.role === "user"
-  const [denying, setDenying] = useState(false)
-  const [denyReasonInput, setDenyReasonInput] = useState("")
 
   if (message.role === "system") {
     return <SystemMessageBlock content={message.content} />
   }
 
-  if (message.role === "permission-request" && message.permissionInfo) {
-    const info = message.permissionInfo
-    return (
-      <div className="flex justify-center mb-6">
-        <div className="max-w-[85%] min-w-0 w-full">
-          <div className="bg-[var(--state-warning-bg)] border border-[var(--border-base)] rounded-lg px-4 py-3">
-            <div className="text-sm text-[var(--state-warning-fg)] mb-3 flex items-center gap-1.5">
-              <svg className="w-4 h-4 shrink-0 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
-              </svg>
-              <span>Allow <span className="font-semibold">{info.permission}</span> '<span className="font-mono text-xs">{info.pattern}</span>'?</span>
-            </div>
-            {info.resolved ? (
-              <div className="text-xs text-[var(--state-warning-fg)]">
-                {info.denyReason ? (
-                  <span><span className="font-semibold">Denied</span> &mdash; {info.denyReason}</span>
-                ) : (
-                  <span className="italic">Resolved</span>
-                )}
-              </div>
-            ) : denying ? (
-              <div className="flex flex-col gap-2">
-                <input
-                  type="text"
-                  value={denyReasonInput}
-                  onChange={(e) => setDenyReasonInput(e.target.value)}
-                  placeholder="Why are you denying? (optional)"
-                  className="w-full px-3 py-1.5 text-xs rounded-lg border border-[var(--border-strong)] bg-[var(--bg-base)] text-[var(--text-base)] placeholder-[var(--text-faint)] outline-none focus:border-[var(--accent)] transition-colors"
-                  autoFocus
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      const reason = denyReasonInput.trim() || undefined
-                      rpcClient.permissionRespond(info.requestId, "deny", reason)
-                      onResolvePermission?.(message.id, reason)
-                    }
-                  }}
-                />
-                <div className="flex gap-2 justify-end">
-                  <button
-                    onClick={async () => {
-                      await rpcClient.permissionRespond(info.requestId, "deny")
-                      onResolvePermission?.(message.id)
-                    }}
-                    className="px-3 py-1.5 text-xs rounded-lg border border-[var(--border-strong)] text-[var(--text-muted)] hover:bg-[var(--overlay-hover)] transition-colors cursor-pointer"
-                  >
-                    Skip
-                  </button>
-                  <button
-                    onClick={async () => {
-                      const reason = denyReasonInput.trim() || undefined
-                      await rpcClient.permissionRespond(info.requestId, "deny", reason)
-                      onResolvePermission?.(message.id, reason)
-                    }}
-                    className="px-3 py-1.5 text-xs rounded-lg bg-[var(--state-error-fg)] text-white hover:opacity-90 transition-opacity cursor-pointer"
-                  >
-                    Send Feedback
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="flex gap-2 justify-end">
-                <button
-                  onClick={() => setDenying(true)}
-                  className="px-3 py-1.5 text-xs rounded-lg border border-[var(--border-strong)] text-[var(--text-muted)] hover:bg-[var(--overlay-hover)] transition-colors cursor-pointer"
-                >
-                  Deny
-                </button>
-                <button
-                  onClick={async () => {
-                    await rpcClient.permissionRespond(info.requestId, "allow")
-                    onResolvePermission?.(message.id)
-                  }}
-                  className="px-3 py-1.5 text-xs rounded-lg bg-[var(--accent)] text-white hover:opacity-90 transition-opacity cursor-pointer"
-                >
-                  Allow Once
-                </button>
-                <button
-                  onClick={async () => {
-                    await rpcClient.permissionRespond(info.requestId, "always")
-                    onResolvePermission?.(message.id)
-                  }}
-                  className="px-3 py-1.5 text-xs rounded-lg bg-[var(--state-success-fg)] text-white hover:opacity-90 transition-opacity cursor-pointer"
-                >
-                  Always Allow
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    )
+  // Permission requests are rendered via PermissionBanner at the top of the chat area
+  if (message.role === "permission-request") {
+    return null
   }
 
   return (

@@ -888,6 +888,9 @@ class AgentRuntime:
         if state is None:
             return False
         state.interrupt_requested = True
+        # Cascade interrupt to all child (sub-agent) sessions
+        if self.subagent_manager is not None:
+            self.subagent_manager.cancel_session(session_id)
         logger.debug(f"Interrupt requested for session {session_id}")
         return True
 

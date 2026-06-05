@@ -1,7 +1,8 @@
-import { useEffect, useCallback } from "react"
+import { useEffect, useCallback, useMemo } from "react"
 import { useParams, useNavigate } from "react-router-dom"
 import { ChatInput } from "@/components/chat/ChatInput"
 import { MessageList } from "@/components/chat/MessageList"
+import { PermissionBanner } from "@/components/chat/PermissionBanner"
 import { useChat } from "@/hooks/use-chat"
 import { useCurrentSession } from "@/hooks/use-sessions"
 import { useChatStore } from "@/stores/chat-store"
@@ -27,6 +28,19 @@ export function ChatPage() {
   const sessionState = useChatStore((s) => (sessionId ? s.sessions[sessionId] : undefined))
   const isStreaming = sessionState?.isStreaming ?? false
   const messages = sessionState?.messages ?? []
+
+  const permissionRequests = useMemo(
+    () => messages.filter((m) => m.role === "permission-request"),
+    [messages],
+  )
+
+  const resolvePermissionRequest = useChatStore((s) => s.resolvePermissionRequest)
+  const handleResolvePermission = useCallback(
+    (messageId: string, denyReason?: string) => {
+      if (sessionId) resolvePermissionRequest(sessionId, messageId, denyReason)
+    },
+    [resolvePermissionRequest, sessionId],
+  )
 
   useEffect(() => {
     if (isError) {
@@ -91,6 +105,7 @@ export function ChatPage() {
         </div>
       )}
       <MessageList sessionId={sessionId} onRetry={retryLastMessage} />
+      <PermissionBanner requests={permissionRequests} onResolve={handleResolvePermission} />
       <ChatInput
         onSend={sendMessage}
         onInterrupt={interruptMessage}

@@ -65,7 +65,7 @@ export function SubagentCard({
   children?: React.ReactNode
   depth?: number
 }) {
-  const [expanded, setExpanded] = useState(subagent.status === "running")
+  const [expanded, setExpanded] = useState(true)
   const [showPrompt, setShowPrompt] = useState(false)
   const isRunning = subagent.status === "running"
   const isDone = subagent.status === "completed"

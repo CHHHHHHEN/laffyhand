@@ -24,16 +24,17 @@ class EditTool(BaseTool):
     name = "edit"
     path_params = ["file_path"]
     description = (
-        "Perform a string replacement in a file. Supports exact match, "
-        "fuzzy multi-line block matching, whitespace-normalized matching, "
+        "Perform one or more string replacements in a file. For editing multiple "
+        "different locations in a single file, use the **changes** array to apply "
+        "all replacements in one tool call — this is much faster than calling "
+        "edit repeatedly.\n\n"
+        "Supports exact match, fuzzy multi-line block matching, "
+        "whitespace-normalized matching, "
         "and regex-based replacement.\n\n"
         "Use **old_string** for literal text replacement (with fuzzy fallback). "
         "Use **old_pattern** for regex-based replacement. "
         "When **replaceAll** is true, all matching occurrences are replaced "
-        "(supports both exact and fuzzy matching).\n\n"
-        "Use **changes** to apply multiple edits in a single tool call. "
-        "Each entry in the array supports the same fields (old_string, "
-        "old_pattern, new_string, replaceAll) and is applied sequentially."
+        "(supports both exact and fuzzy matching)."
     )
 
     def _input_schema(self) -> dict[str, Any]:

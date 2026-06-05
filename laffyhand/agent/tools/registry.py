@@ -109,7 +109,10 @@ class ToolRegistry:
 
         timeout = getattr(tool, "timeout", 120)
         try:
-            result = await asyncio.wait_for(tool.run(params), timeout=timeout)
+            if timeout and timeout > 0:
+                result = await asyncio.wait_for(tool.run(params), timeout=timeout)
+            else:
+                result = await tool.run(params)
         except asyncio.TimeoutError:
             logger.warning(f"Tool '{name}' timed out after {timeout}s")
             return f"Error: Tool '{name}' timed out after {timeout}s. Try a more specific query or reduce scope."

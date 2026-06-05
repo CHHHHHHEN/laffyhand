@@ -6,6 +6,7 @@ from typing import Any
 
 from loguru import logger
 from laffyhand.agent.tools.base import BaseTool
+from laffyhand.agent.tools.file._gitignore import GitignoreFilter
 from laffyhand.agent.tools.file._ripgrep import (
     rg_available,
     grep as rg_grep,
@@ -430,6 +431,12 @@ class GrepTool(BaseTool):
                 indices = [i for i, line in enumerate(lines) if pattern.search(line)]
                 if indices:
                     result.append((fp, indices))
+
+            # Apply .gitignore filtering (matching GlobTool behavior)
+            gitignore = GitignoreFilter(root)
+            result = [
+                (fp, idx) for fp, idx in result if not gitignore.is_ignored(fp)
+            ]
 
             result.sort(key=lambda x: x[0].stat().st_mtime, reverse=True)
             return result

@@ -26,7 +26,6 @@ interface MessageListProps {
 
 export function MessageList({ sessionId, onRetry }: MessageListProps) {
   const sess = useChatStore((s) => (sessionId ? s.sessions[sessionId] : undefined))
-  const resolvePermissionRequest = useChatStore((s) => s.resolvePermissionRequest)
   const messages = sess?.messages ?? []
   const isStreaming = sess?.isStreaming ?? false
   const streamContent = sess?.streamContent ?? ""
@@ -38,11 +37,6 @@ export function MessageList({ sessionId, onRetry }: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null)
   const [isNearBottom, setIsNearBottom] = useState(true)
   const [showScrollBtn, setShowScrollBtn] = useState(false)
-
-  const handleResolvePermission = useCallback(
-    (messageId: string, denyReason?: string) => resolvePermissionRequest(sessionId, messageId, denyReason),
-    [resolvePermissionRequest, sessionId],
-  )
 
   const checkNearBottom = useCallback(() => {
     const el = containerRef.current
@@ -106,7 +100,7 @@ export function MessageList({ sessionId, onRetry }: MessageListProps) {
                     <span className="flex-1 h-px bg-[var(--border-muted)]" />
                   </div>
                 )}
-                <MessageBubble message={msg} onResolvePermission={handleResolvePermission} />
+                <MessageBubble message={msg} />
               </div>
             )
           })}

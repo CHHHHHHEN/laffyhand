@@ -169,6 +169,9 @@ class SubagentPermissions:
             if name in _SUBAGENT_EXCLUDED_TOOLS:
                 continue
             if permission.check(name):
+                # Sub-agent tools should not have timeout limits —
+                # exploration tasks like large codebase searches can exceed 120s
+                tool.timeout = 0
                 filtered.register_tool(tool)
         filtered.result_post_processor = registry.result_post_processor
         filtered.workspace = registry.workspace

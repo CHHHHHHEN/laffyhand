@@ -60,10 +60,10 @@ describe("SubagentCard", () => {
       expect(screen.getByText("working on it")).toBeInTheDocument()
     })
 
-    it("is collapsed by default when completed", () => {
+    it("is expanded by default when completed", () => {
       const sub = makeSubagent({ status: "completed", summary: "done" })
       render(<SubagentCard subagent={sub} />)
-      expect(screen.queryByText("done")).not.toBeInTheDocument()
+      expect(screen.getByText("done")).toBeInTheDocument()
     })
   })
 
@@ -71,14 +71,12 @@ describe("SubagentCard", () => {
     it("shows reasoning when present", () => {
       const sub = makeSubagent({ reasoning: "Let me analyze this" })
       render(<SubagentCard subagent={sub} />)
-      fireEvent.click(screen.getByText("explore"))
       expect(screen.getByText("Let me analyze this")).toBeInTheDocument()
     })
 
     it("shows text output when present", () => {
       const sub = makeSubagent({ text: "Found 42 matches" })
       render(<SubagentCard subagent={sub} />)
-      fireEvent.click(screen.getByText("explore"))
       expect(screen.getByText("Found 42 matches")).toBeInTheDocument()
     })
 
@@ -88,7 +86,6 @@ describe("SubagentCard", () => {
         toolCount: 1,
       })
       render(<SubagentCard subagent={sub} />)
-      fireEvent.click(screen.getByText("explore"))
       expect(screen.getByText("grep")).toBeInTheDocument()
       expect(screen.getByText("TODO")).toBeInTheDocument()
     })
@@ -99,7 +96,6 @@ describe("SubagentCard", () => {
         toolCount: 1,
       })
       render(<SubagentCard subagent={sub} />)
-      fireEvent.click(screen.getByText("explore"))
       fireEvent.click(screen.getByText("Result"))
       expect(screen.getByText("file1.ts:42")).toBeInTheDocument()
     })
@@ -110,7 +106,6 @@ describe("SubagentCard", () => {
         toolCount: 1,
       })
       render(<SubagentCard subagent={sub} />)
-      fireEvent.click(screen.getByText("explore"))
       fireEvent.click(screen.getByText("Result"))
       const errorText = screen.getByText("command not found")
       expect(errorText).toBeInTheDocument()
@@ -120,14 +115,12 @@ describe("SubagentCard", () => {
     it("shows summary when present", () => {
       const sub = makeSubagent({ summary: "Found 42 results" })
       render(<SubagentCard subagent={sub} />)
-      fireEvent.click(screen.getByText("explore"))
       expect(screen.getByText("Found 42 results")).toBeInTheDocument()
     })
 
     it("shows token usage when present", () => {
       const sub = makeSubagent({ inputTokens: 150, outputTokens: 75 })
       render(<SubagentCard subagent={sub} />)
-      fireEvent.click(screen.getByText("explore"))
       expect(screen.getByText((c) => c.includes("150"))).toBeInTheDocument()
       expect(screen.getByText((c) => c.includes("75"))).toBeInTheDocument()
     })
@@ -143,14 +136,12 @@ describe("SubagentCard", () => {
     it("shows prompt toggle when prompt is present", () => {
       const sub = makeSubagent({ prompt: "Find all bugs in the codebase" })
       render(<SubagentCard subagent={sub} />)
-      fireEvent.click(screen.getByText("explore"))
       expect(screen.getByText("Prompt")).toBeInTheDocument()
     })
 
     it("shows prompt content when toggled", () => {
       const sub = makeSubagent({ prompt: "Find all bugs in the codebase" })
       render(<SubagentCard subagent={sub} />)
-      fireEvent.click(screen.getByText("explore"))
       fireEvent.click(screen.getByText("Prompt"))
       expect(screen.getByText("Find all bugs in the codebase")).toBeInTheDocument()
     })
@@ -158,7 +149,6 @@ describe("SubagentCard", () => {
     it("hides prompt content when toggled again", () => {
       const sub = makeSubagent({ prompt: "Find all bugs in the codebase" })
       render(<SubagentCard subagent={sub} />)
-      fireEvent.click(screen.getByText("explore"))
       fireEvent.click(screen.getByText("Prompt"))
       expect(screen.getByText("Find all bugs in the codebase")).toBeInTheDocument()
       fireEvent.click(screen.getByText("Prompt"))
@@ -168,7 +158,6 @@ describe("SubagentCard", () => {
     it("does not show prompt toggle when prompt is absent", () => {
       const sub = makeSubagent({ prompt: undefined })
       render(<SubagentCard subagent={sub} />)
-      fireEvent.click(screen.getByText("explore"))
       expect(screen.queryByText("Prompt")).not.toBeInTheDocument()
     })
   })
@@ -180,7 +169,6 @@ describe("SubagentCard", () => {
         toolCount: 1,
       })
       render(<SubagentCard subagent={sub} />)
-      fireEvent.click(screen.getByText("explore"))
       expect(screen.getByText("Result")).toBeInTheDocument()
     })
 
@@ -190,7 +178,6 @@ describe("SubagentCard", () => {
         toolCount: 1,
       })
       render(<SubagentCard subagent={sub} />)
-      fireEvent.click(screen.getByText("explore"))
       expect(screen.queryByText("Result")).not.toBeInTheDocument()
     })
 
@@ -200,7 +187,6 @@ describe("SubagentCard", () => {
         toolCount: 1,
       })
       render(<SubagentCard subagent={sub} />)
-      fireEvent.click(screen.getByText("explore"))
       fireEvent.click(screen.getByText("Result"))
       expect(screen.getByText("detailed output")).toBeInTheDocument()
       fireEvent.click(screen.getByText("Hide"))
@@ -212,11 +198,11 @@ describe("SubagentCard", () => {
     it("toggles expanded state on header click", () => {
       const sub = makeSubagent({ summary: "hidden content" })
       render(<SubagentCard subagent={sub} />)
-      expect(screen.queryByText("hidden content")).not.toBeInTheDocument()
-      fireEvent.click(screen.getByText("explore"))
       expect(screen.getByText("hidden content")).toBeInTheDocument()
       fireEvent.click(screen.getByText("explore"))
       expect(screen.queryByText("hidden content")).not.toBeInTheDocument()
+      fireEvent.click(screen.getByText("explore"))
+      expect(screen.getByText("hidden content")).toBeInTheDocument()
     })
   })
 
@@ -269,18 +255,14 @@ describe("SubagentTreeCard", () => {
     expect(screen.getByText("Main task")).toBeInTheDocument()
   })
 
-  it("renders child subagents recursively after expanding root", () => {
+  it("renders child subagents recursively", () => {
     render(<SubagentTreeCard subagent={root} tree={flatTree} depth={0} />)
-    fireEvent.click(screen.getByText("Main task"))
     expect(screen.getByText("Sub task")).toBeInTheDocument()
-    fireEvent.click(screen.getByText("Sub task"))
     expect(screen.getByText("Grandchild task")).toBeInTheDocument()
   })
 
-  it("passes increased depth to children after expanding", () => {
+  it("passes increased depth to children", () => {
     const { container } = render(<SubagentTreeCard subagent={root} tree={flatTree} depth={0} />)
-    fireEvent.click(screen.getByText("Main task"))
-    fireEvent.click(screen.getByText("Sub task"))
 
     const allCards = container.querySelectorAll('[style*="margin-left"]')
     const margins = Array.from(allCards).map((el) => (el as HTMLElement).style.marginLeft)
