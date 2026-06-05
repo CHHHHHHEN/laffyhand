@@ -75,9 +75,9 @@ describe("Sidebar", () => {
     expect(screen.getByText("New Session")).toBeInTheDocument()
   })
 
-  it("renders fork button when session is selected", () => {
+  it("does not render fork button (replaced by /fork command)", () => {
     renderSidebar()
-    expect(screen.getByText("Fork")).toBeInTheDocument()
+    expect(screen.queryByText("Fork")).not.toBeInTheDocument()
   })
 
   it("renders session list", () => {
@@ -107,17 +107,6 @@ describe("Sidebar", () => {
     await vi.waitFor(() => {
       expect(mockUseSessions.createSession).toHaveBeenCalled()
       expect(mockNavigate).toHaveBeenCalledWith("/chat/new-session-id")
-    })
-  })
-
-  // ── Fork ──
-
-  it("forks session and navigates", async () => {
-    renderSidebar()
-    fireEvent.click(screen.getByText("Fork"))
-    await vi.waitFor(() => {
-      expect(mockUseSessions.forkSession).toHaveBeenCalled()
-      expect(mockNavigate).toHaveBeenCalledWith("/chat/forked-session-id")
     })
   })
 

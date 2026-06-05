@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { useNavigate, useParams } from "react-router-dom"
-import { useSessions, useAgents } from "@/hooks/use-sessions"
+import { useSessions } from "@/hooks/use-sessions"
 import { useSessionStore } from "@/stores/session-store"
 import { useChatStore } from "@/stores/chat-store"
 import { useUiStore } from "@/stores/ui-store"
@@ -10,7 +10,7 @@ import { rpcClient } from "@/lib/rpc"
 export function Sidebar() {
   const navigate = useNavigate()
   const { sessionId } = useParams()
-  const { sessions, isLoading, refetch, createSession, forkSession, deleteSession } = useSessions()
+  const { sessions, isLoading, refetch, createSession, deleteSession } = useSessions()
   const addActiveSession = useSessionStore((s) => s.addActiveSession)
   const removeActiveSession = useSessionStore((s) => s.removeActiveSession)
   const addSession = useChatStore((s) => s.addSession)
@@ -19,13 +19,10 @@ export function Sidebar() {
   const [search, setSearch] = useState("")
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState("")
-  const [showAgentSelect, setShowAgentSelect] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
 
-  const { agents } = useAgents()
   const defaultAgent = useUiStore((s) => s.defaultAgent)
-  const setDefaultAgent = useUiStore((s) => s.setDefaultAgent)
 
   const filteredSessions = (sessions ?? []).filter((s) =>
     !search || (s.title ?? s.id).toLowerCase().includes(search.toLowerCase()),
@@ -45,18 +42,6 @@ export function Sidebar() {
       navigate(`/chat/${id}`)
     } catch (err) {
       console.error("Failed to create session:", err)
-    }
-  }
-
-  const handleFork = async () => {
-    if (!sessionId) return
-    try {
-      const id = await forkSession()
-      addActiveSession(id)
-      addSession(id)
-      navigate(`/chat/${id}`)
-    } catch (err) {
-      console.error("Failed to fork session:", err)
     }
   }
 
@@ -108,45 +93,6 @@ export function Sidebar() {
           </svg>
           New Session
         </button>
-
-        <div className="flex items-center gap-1">
-          <button
-            onClick={handleFork}
-            disabled={!sessionId}
-            className="flex-1 px-2 py-1 text-sm rounded-md bg-[var(--bg-deep)] border border-[var(--border-base)] text-[var(--text-muted)] hover:text-[var(--text-base)] hover:bg-[var(--overlay-hover)] disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer select-none"
-          >
-            Fork
-          </button>
-          <div className="relative">
-            <button
-              onClick={() => setShowAgentSelect(!showAgentSelect)}
-              className="px-2 py-1 text-xs rounded-md border border-[var(--border-base)] text-[var(--text-muted)] hover:text-[var(--text-base)] hover:bg-[var(--overlay-hover)] transition-colors cursor-pointer select-none flex items-center gap-1"
-            >
-              <span className="truncate max-w-[60px]">{defaultAgent}</span>
-              <svg className={`w-3 h-3 transition-transform ${showAgentSelect ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
-            </button>
-            {showAgentSelect && (
-              <>
-                <div className="fixed inset-0 z-10" onClick={() => setShowAgentSelect(false)} />
-                <div className="absolute right-0 top-full mt-1 min-w-[120px] bg-[var(--bg-base)] border border-[var(--border-base)] rounded-md shadow-lg z-20 py-1">
-                  {agents.map((agent) => (
-                    <button
-                      key={agent.name}
-                      onClick={() => { setDefaultAgent(agent.name); setShowAgentSelect(false) }}
-                      className={`w-full text-left px-2.5 py-1.5 text-sm hover:bg-[var(--overlay-hover)] transition-colors cursor-pointer ${
-                        defaultAgent === agent.name ? "text-[var(--accent)]" : "text-[var(--text-muted)]"
-                      }`}
-                    >
-                      {agent.name}
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
-        </div>
 
         {/* Search */}
         <div className="relative">

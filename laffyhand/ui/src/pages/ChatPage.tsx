@@ -4,7 +4,7 @@ import { ChatInput } from "@/components/chat/ChatInput"
 import { MessageList } from "@/components/chat/MessageList"
 import { PermissionBanner } from "@/components/chat/PermissionBanner"
 import { useChat } from "@/hooks/use-chat"
-import { useCurrentSession } from "@/hooks/use-sessions"
+import { useCurrentSession, useAgents, useSessions } from "@/hooks/use-sessions"
 import { useChatStore } from "@/stores/chat-store"
 import { useSessionStore } from "@/stores/session-store"
 import { Spinner } from "@/components/ui/Spinner"
@@ -14,6 +14,8 @@ export function ChatPage() {
   const navigate = useNavigate()
   const { sendMessage, interruptMessage, steerMessage, queueMessage, cancelStream } = useChat()
   const { isLoading, session, isError } = useCurrentSession(sessionId)
+  const { agents } = useAgents()
+  const { forkSession } = useSessions()
 
   const setActiveSessionId = useSessionStore((s) => s.setActiveSessionId)
   const addActiveSession = useSessionStore((s) => s.addActiveSession)
@@ -58,6 +60,18 @@ export function ChatPage() {
       sendMessage(lastUserMsg.content)
     }
   }, [sendMessage, sessionId])
+
+  const handleFork = useCallback(async () => {
+    if (!sessionId) return
+    try {
+      const id = await forkSession()
+      useSessionStore.getState().addActiveSession(id)
+      useChatStore.getState().addSession(id)
+      navigate(`/chat/${id}`)
+    } catch (err) {
+      console.error("Failed to fork session:", err)
+    }
+  }, [sessionId, forkSession, navigate])
 
   useEffect(() => {
     const title = session?.title
@@ -112,6 +126,8 @@ export function ChatPage() {
         onSteer={steerMessage}
         onQueue={queueMessage}
         onCancel={cancelStream}
+        onFork={handleFork}
+        agents={agents}
         isStreaming={isStreaming}
       />
     </div>

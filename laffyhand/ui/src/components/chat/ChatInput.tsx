@@ -1,5 +1,12 @@
-import { useRef, useEffect, useState, type KeyboardEvent, type ChangeEvent } from "react"
+import { useRef, useEffect, useState, useMemo, type KeyboardEvent, type ChangeEvent } from "react"
 import { useUiStore, type BusyMode } from "@/stores/ui-store"
+import type { AgentInfo } from "@/types/rpc"
+
+const SLASH_COMMANDS = [
+  { command: "/fork", description: "Fork current session into a new one" },
+  { command: "/agent <name>", description: "Switch to a different agent type" },
+  { command: "/help", description: "Show available commands" },
+] as const
 
 interface ChatInputProps {
   onSend: (content: string) => void
@@ -7,6 +14,8 @@ interface ChatInputProps {
   onSteer?: (content: string) => void
   onQueue?: (content: string) => void
   onCancel?: () => void
+  onFork?: () => void
+  agents: AgentInfo[]
   isStreaming?: boolean
 }
 
@@ -28,21 +37,93 @@ const MODE_CONFIG: Record<BusyMode, { label: string; description: string; color:
   },
 }
 
-export function ChatInput({ onSend, onInterrupt, onSteer, onQueue, onCancel, isStreaming }: ChatInputProps) {
+export function ChatInput({ onSend, onInterrupt, onSteer, onQueue, onCancel, onFork, agents, isStreaming }: ChatInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const [inputValue, setInputValue] = useState("")
   const busyMode = useUiStore((s) => s.busyMode)
   const setBusyMode = useUiStore((s) => s.setBusyMode)
+  const defaultAgent = useUiStore((s) => s.defaultAgent)
+  const setDefaultAgent = useUiStore((s) => s.setDefaultAgent)
+  const [showCommands, setShowCommands] = useState(false)
+  const [selectedCmdIdx, setSelectedCmdIdx] = useState(0)
+  const [agentNotification, setAgentNotification] = useState<string | null>(null)
+
+  const filteredCommands = useMemo(() => {
+    if (!inputValue.startsWith("/")) return []
+    const partial = inputValue.toLowerCase()
+    return SLASH_COMMANDS.filter((c) => c.command.startsWith(partial))
+  }, [inputValue])
 
   useEffect(() => {
-    textareaRef.current?.focus()
-  }, [])
+    if (inputValue.startsWith("/")) {
+      setShowCommands(true)
+      setSelectedCmdIdx(0)
+    } else {
+      setShowCommands(false)
+    }
+  }, [inputValue])
+
+  let notificationTimer: ReturnType<typeof setTimeout> | null = null
+  const showNotification = (msg: string) => {
+    setAgentNotification(msg)
+    if (notificationTimer) clearTimeout(notificationTimer)
+    notificationTimer = setTimeout(() => setAgentNotification(null), 2000)
+  }
+
+  const cycleAgent = () => {
+    if (agents.length === 0) return
+    const idx = agents.findIndex((a) => a.name === defaultAgent)
+    const next = agents[(idx + 1) % agents.length]
+    setDefaultAgent(next.name)
+    showNotification(`Agent: ${defaultAgent} → ${next.name}`)
+  }
+
+  const executeSlashCommand = (content: string): boolean => {
+    const trimmed = content.trim()
+
+    if (trimmed === "/fork") {
+      onFork?.()
+      return true
+    }
+
+    const agentMatch = trimmed.match(/^\/agent\s+(.+)/)
+    if (agentMatch) {
+      const name = agentMatch[1]!.trim()
+      const match = agents.find(
+        (a) => a.name.toLowerCase() === name.toLowerCase(),
+      )
+      if (match) {
+        setDefaultAgent(match.name)
+        showNotification(`Switched to agent: ${match.name}`)
+      }
+      return true
+    }
+
+    if (trimmed === "/help") {
+      const cmdList = SLASH_COMMANDS.map(
+        (c) => `• ${c.command} — ${c.description}`,
+      ).join("\n")
+      showNotification(cmdList)
+      return true
+    }
+
+    return false
+  }
 
   const handleSubmit = () => {
     const textarea = textareaRef.current
     if (!textarea) return
     const content = textarea.value.trim()
     if (!content) return
+
+    if (content.startsWith("/")) {
+      if (executeSlashCommand(content)) {
+        textarea.value = ""
+        setInputValue("")
+        textarea.style.height = "auto"
+        return
+      }
+    }
 
     if (isStreaming) {
       switch (busyMode) {
@@ -65,6 +146,42 @@ export function ChatInput({ onSend, onInterrupt, onSteer, onQueue, onCancel, isS
   }
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Tab" && !e.shiftKey && !inputValue) {
+      e.preventDefault()
+      cycleAgent()
+      return
+    }
+
+    if (e.key === "Tab" && showCommands && filteredCommands.length > 0) {
+      e.preventDefault()
+      const cmd = filteredCommands[selectedCmdIdx]!
+      if (cmd.command.endsWith(">")) {
+        const prefix = cmd.command.split("<")[0]!
+        setInputValue(prefix)
+      } else {
+        setInputValue(cmd.command + " ")
+      }
+      return
+    }
+
+    if (e.key === "ArrowDown" && showCommands) {
+      e.preventDefault()
+      setSelectedCmdIdx((p) => Math.min(p + 1, filteredCommands.length - 1))
+      return
+    }
+
+    if (e.key === "ArrowUp" && showCommands) {
+      e.preventDefault()
+      setSelectedCmdIdx((p) => Math.max(p - 1, 0))
+      return
+    }
+
+    if (e.key === "Escape" && showCommands) {
+      e.preventDefault()
+      setShowCommands(false)
+      return
+    }
+
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault()
       handleSubmit()
@@ -80,8 +197,24 @@ export function ChatInput({ onSend, onInterrupt, onSteer, onQueue, onCancel, isS
     textarea.style.height = `${Math.min(textarea.scrollHeight, 200)}px`
   }
 
+  const handleCmdClick = (cmd: string) => {
+    if (cmd.endsWith(">")) {
+      setInputValue(cmd.split("<")[0]!)
+    } else {
+      setInputValue(cmd + " ")
+    }
+    textareaRef.current?.focus()
+  }
+
   return (
     <div className="border-t border-[var(--border-muted)] bg-[var(--bg-base)] px-4 py-3">
+      {/* Agent switch notification */}
+      {agentNotification && (
+        <div className="mb-2 px-3 py-1.5 text-xs rounded-md bg-[var(--accent-muted)] border border-[var(--border-muted)] text-[var(--text-base)]">
+          {agentNotification}
+        </div>
+      )}
+
       {/* Busy mode selector */}
       {isStreaming && (
         <div className="flex items-center gap-2 mb-2">
@@ -116,11 +249,31 @@ export function ChatInput({ onSend, onInterrupt, onSteer, onQueue, onCancel, isS
             ref={textareaRef}
             onChange={handleInputChange}
             onKeyDown={handleKeyDown}
-            placeholder="Type a message..."
+            placeholder="Type a message... (Tab to switch agent, / for commands)"
             rows={1}
             className="w-full resize-none rounded-lg border border-[var(--border-base)] bg-[var(--bg-deep)] px-3 py-2.5 text-sm text-[var(--text-base)] outline-none focus:border-[var(--accent)] focus:bg-[var(--bg-base)] transition-all placeholder:text-[var(--text-faint)]"
             style={{ fontFamily: "var(--font-sans)", fontWeight: 440 }}
           />
+
+          {/* Slash command suggestions */}
+          {showCommands && filteredCommands.length > 0 && (
+            <div className="absolute bottom-full left-0 right-0 mb-1 bg-[var(--bg-base)] border border-[var(--border-muted)] rounded-lg shadow-lg overflow-hidden">
+              {filteredCommands.map((cmd, i) => (
+                <button
+                  key={cmd.command}
+                  onClick={() => handleCmdClick(cmd.command)}
+                  className={`w-full text-left px-3 py-2 text-sm flex items-center justify-between transition-colors cursor-pointer ${
+                    i === selectedCmdIdx
+                      ? "bg-[var(--accent-muted)] text-[var(--accent)]"
+                      : "text-[var(--text-muted)] hover:bg-[var(--overlay-hover)]"
+                  }`}
+                >
+                  <span className="font-mono">{cmd.command}</span>
+                  <span className="text-xs text-[var(--text-faint)] ml-4">{cmd.description}</span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {isStreaming && onCancel && (
@@ -151,7 +304,9 @@ export function ChatInput({ onSend, onInterrupt, onSteer, onQueue, onCancel, isS
       </div>
 
       <div className="mt-1 px-1">
-        <span className="text-xs text-[var(--text-faint)]">Shift+Enter for new line</span>
+        <span className="text-xs text-[var(--text-faint)]">
+          Shift+Enter for new line · Tab to switch agent · / for commands
+        </span>
       </div>
     </div>
   )
