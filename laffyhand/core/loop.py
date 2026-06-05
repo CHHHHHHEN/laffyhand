@@ -40,7 +40,7 @@ from laffyhand.core.schemas import (
 
 from laffyhand.core.compaction import compact_on_overflow
 from laffyhand.core.context import build_llm_context
-from laffyhand.core.tool_executor import ToolExecutionResult, ToolExecutor
+from laffyhand.core.tools.tool_executor import ToolExecutionResult, ToolExecutor
 from laffyhand.core.llm.facade import LLM
 from laffyhand.core.tools import ToolRegistry
 

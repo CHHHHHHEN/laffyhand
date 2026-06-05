@@ -6,7 +6,7 @@ import pytest
 
 from laffyhand.core.llm.specs.models import ToolMessage
 from laffyhand.core.llm.specs.models import ToolCallContent
-from laffyhand.core.tool_executor import ToolExecutor, ToolExecutionResult
+from laffyhand.core.tools.tool_executor import ToolExecutor, ToolExecutionResult
 
 
 class TestToolExecutionResult:
