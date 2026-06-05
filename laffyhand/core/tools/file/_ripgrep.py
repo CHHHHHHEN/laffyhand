@@ -1,9 +1,20 @@
+"""Thin async wrappers around ripgrep subprocess calls.
+
+Provides ``glob``, ``grep``, ``grep_files`` and ``grep_count`` with a
+shared runner (``_rg_run``) that handles timeouts, error logging, and
+return-code interpretation consistently.
+"""
+
 import asyncio
 import shutil
 from collections.abc import Sequence
 from pathlib import Path
 
 from loguru import logger
+
+
+# --- Availability check -------------------------------------------------------
+
 
 _RG_CACHE: bool | None = None
 
@@ -43,13 +54,27 @@ async def _rg_run(
     return None
 
 
+# --- Command helpers ----------------------------------------------------------
+
+
+def _rg_cmd(*parts: str, include: str | None = None) -> list[str]:
+    """Build an ``rg`` command array with common flags."""
+    cmd = ["rg", *parts]
+    if include:
+        cmd.extend(["--glob", include])
+    cmd.append(".")
+    return cmd
+
+
+# --- Commands -----------------------------------------------------------------
+
+
 async def glob(cwd: Path, pattern: str, include_ignored: bool = False) -> list[str] | None:
     """List files matching a glob pattern using ripgrep. Returns None on failure."""
-    cmd = ["rg", "--files", "--glob", pattern]
+    parts = ["--files", "--glob", pattern]
     if include_ignored:
-        cmd.append("--no-ignore")
-    cmd.append(".")
-    result = await _rg_run(cmd, cwd, timeout=30)
+        parts.append("--no-ignore")
+    result = await _rg_run(_rg_cmd(*parts), cwd, timeout=30)
     if result is not None:
         return result.splitlines()
     return None
@@ -59,20 +84,10 @@ async def grep(
     cwd: Path, pattern: str, include: str | None = None, context: int = 0
 ) -> str | None:
     """Search file contents using ripgrep. Returns raw output or None on failure."""
-    cmd = [
-        "rg",
-        "--line-number",
-        "--no-heading",
-        "--color",
-        "never",
-        pattern,
-    ]
-    if include:
-        cmd.extend(["--glob", include])
+    parts = ["--line-number", "--no-heading", "--color", "never", pattern]
     if context:
-        cmd.extend(["-C", str(context)])
-    cmd.append(".")
-    result = await _rg_run(cmd, cwd)
+        parts.extend(["-C", str(context)])
+    result = await _rg_run(_rg_cmd(*parts, include=include), cwd)
     if result is not None:
         return result
     return None
@@ -80,17 +95,7 @@ async def grep(
 
 async def grep_files(cwd: Path, pattern: str, include: str | None = None) -> list[str] | None:
     """List files containing matches using ripgrep. Returns None on failure."""
-    cmd = [
-        "rg",
-        "--files-with-matches",
-        "--color",
-        "never",
-        pattern,
-    ]
-    if include:
-        cmd.extend(["--glob", include])
-    cmd.append(".")
-    result = await _rg_run(cmd, cwd)
+    result = await _rg_run(_rg_cmd("--files-with-matches", "--color", "never", pattern, include=include), cwd)
     if result is not None:
         return result.splitlines()
     return None
@@ -98,11 +103,7 @@ async def grep_files(cwd: Path, pattern: str, include: str | None = None) -> lis
 
 async def grep_count(cwd: Path, pattern: str, include: str | None = None) -> str | None:
     """Get per-file match counts using ripgrep. Returns raw output or None."""
-    cmd = ["rg", "--count", "--color", "never", pattern]
-    if include:
-        cmd.extend(["--glob", include])
-    cmd.append(".")
-    result = await _rg_run(cmd, cwd)
+    result = await _rg_run(_rg_cmd("--count", "--color", "never", pattern, include=include), cwd)
     if result is not None:
         return result
     return None
