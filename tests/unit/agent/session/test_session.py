@@ -5,6 +5,7 @@ import pytest
 from laffyhand.core.llm.specs.models import AssistantMessage, SystemMessage, ToolMessage, UserMessage
 from laffyhand.core.session import SessionManager
 from laffyhand.core.llm.specs.models import ToolCallContent
+from laffyhand.core.exceptions import SessionError
 from laffyhand.core.schemas import (
     AgentState,
     SessionUsage,
@@ -379,7 +380,7 @@ class TestFork:
         assert child_msgs[0].content == msgs[0].content
 
     def test_fork_nonexistent(self, session_manager: SessionManager) -> None:
-        with pytest.raises(ValueError, match="Source session not found"):
+        with pytest.raises(SessionError, match="Source session not found"):
             session_manager.fork("nonexistent")
 
 

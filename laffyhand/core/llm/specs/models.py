@@ -114,6 +114,8 @@ class ToolMessage(BaseModel):
     tool_call_id: str
     content: str
     is_error: bool = False
+    tool_name: str | None = None
+    args: str | None = None
 
 
 Message = Union[SystemMessage, UserMessage, AssistantMessage, ToolMessage]
