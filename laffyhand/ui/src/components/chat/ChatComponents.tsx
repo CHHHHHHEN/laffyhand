@@ -110,7 +110,7 @@ export function ToolCallCard({ toolCall }: { toolCall: ToolCall }) {
   const argStr = JSON.stringify(toolCall.arguments, null, 2)
   const displayInput = argStr
   const argLines = displayInput.split('\n').length
-  const [showAllArgs, setShowAllArgs] = useState(argLines <= 6)
+  const [showAllArgs, setShowAllArgs] = useState(false)
 
   const hasResult = toolCall.status === "completed" || toolCall.status === "error"
 
@@ -162,14 +162,12 @@ export function ToolCallCard({ toolCall }: { toolCall: ToolCall }) {
           <pre className={`mt-1.5 text-[var(--text-muted)] whitespace-pre-wrap break-all leading-relaxed ${showAllArgs ? "" : "line-clamp-3"}`}>
             {displayInput}
           </pre>
-          {argLines > 6 && (
-            <button
-              onClick={() => setShowAllArgs(!showAllArgs)}
-              className="mt-1 text-[10px] text-[var(--accent)] hover:opacity-80 transition-opacity cursor-pointer font-sans"
-            >
-              {showAllArgs ? "Show less" : `Show all (${argLines} lines)`}
-            </button>
-          )}
+          <button
+            onClick={() => setShowAllArgs(!showAllArgs)}
+            className="mt-1 text-[10px] text-[var(--accent)] hover:opacity-80 transition-opacity cursor-pointer font-sans"
+          >
+            {showAllArgs ? "Show less" : `Show all (${argLines} lines)`}
+          </button>
         </>
       )}
 
