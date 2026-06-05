@@ -35,7 +35,7 @@ from laffyhand.core.schemas import (
     ToolResult as StreamToolResult,
     ToolError as StreamToolError,
 )
-from laffyhand.core.agent.agent import AgentRegistry
+from laffyhand.core.agent import AgentRegistry
 from laffyhand.core.skill import SkillRegistry
 from laffyhand.core.session import SessionManager, TitleConfig
 from laffyhand.core.subagent.manager import SubagentManager, build_subagent_state
@@ -60,7 +60,7 @@ from laffyhand.core.llm.factory import build_route
 from laffyhand.core.llm.facade import LLM
 
 if TYPE_CHECKING:
-    from laffyhand.core.agent.agent import AgentInfo
+    from laffyhand.core.agent import AgentInfo
 
 from laffyhand.config import LaffyConfig
 

@@ -37,7 +37,7 @@ from laffyhand.core.schemas import (
 from laffyhand.core.tools.permission import SubagentPermissions
 
 if TYPE_CHECKING:
-    from laffyhand.core.agent.agent import AgentInfo
+    from laffyhand.core.agent import AgentInfo
     from laffyhand.core.llm.facade import LLM
     from laffyhand.core.session.manager import SessionManager
     from laffyhand.core.tools.registry import ToolRegistry

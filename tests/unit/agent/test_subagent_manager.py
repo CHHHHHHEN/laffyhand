@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, AsyncMock, patch
 
 import pytest
 
-from laffyhand.core.agent.agent import AgentInfo
+from laffyhand.core.agent import AgentInfo
 from laffyhand.core.llm.specs.models import SystemMessage, UserMessage
 from laffyhand.core.schemas import (
     AgentState,
