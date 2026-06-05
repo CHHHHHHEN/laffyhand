@@ -158,7 +158,7 @@ class TestNormalizeNewlines(unittest.TestCase):
         self.assertEqual(result, "")
 
 
-class TestAtomicWrite(unittest.TestCase):
+class TestAtomicWrite(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         self.tmpdir = tempfile.TemporaryDirectory()
         self.root = Path(self.tmpdir.name)
@@ -166,32 +166,32 @@ class TestAtomicWrite(unittest.TestCase):
     def tearDown(self):
         self.tmpdir.cleanup()
 
-    def test_write_new_file(self):
+    async def test_write_new_file(self):
         f = self.root / "test.txt"
-        atomic_write(f, "hello world")
+        await atomic_write(f, "hello world")
         self.assertTrue(f.exists())
         self.assertEqual(f.read_text(), "hello world")
 
-    def test_write_empty_content(self):
+    async def test_write_empty_content(self):
         f = self.root / "empty.txt"
-        atomic_write(f, "")
+        await atomic_write(f, "")
         self.assertTrue(f.exists())
         self.assertEqual(f.read_text(), "")
 
-    def test_creates_parent_dirs(self):
+    async def test_creates_parent_dirs(self):
         f = self.root / "a" / "b" / "c" / "test.txt"
-        atomic_write(f, "nested")
+        await atomic_write(f, "nested")
         self.assertTrue(f.exists())
         self.assertEqual(f.read_text(), "nested")
 
-    def test_overwrites_existing(self):
+    async def test_overwrites_existing(self):
         f = self.root / "test.txt"
-        atomic_write(f, "old")
-        atomic_write(f, "new")
+        await atomic_write(f, "old")
+        await atomic_write(f, "new")
         self.assertEqual(f.read_text(), "new")
 
-    def test_unicode_content(self):
+    async def test_unicode_content(self):
         f = self.root / "unicode.txt"
         content = "你好世界 🎉"
-        atomic_write(f, content)
+        await atomic_write(f, content)
         self.assertEqual(f.read_text(encoding="utf-8"), content)

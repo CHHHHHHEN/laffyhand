@@ -89,7 +89,7 @@ class WriteTool(BaseTool):
                     return reason or f"Write cancelled by user: {path}"
 
         try:
-            atomic_write(path, content)
+            await atomic_write(path, content)
         except OSError as e:
             logger.error(f"Write failed for {path}: {e}")
             return f"Write failed for {path}: internal error"

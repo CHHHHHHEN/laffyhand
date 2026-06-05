@@ -201,7 +201,7 @@ class EditTool(BaseTool):
 
         line_ending = detect_line_ending(path)
         content = normalize_newlines(content, line_ending)
-        atomic_write(path, content)
+        await atomic_write(path, content)
 
         additions, deletions = count_diff(original, content)
         logger.info(f"Edit: applied {len(changes)} change(s) to {path}")
@@ -215,7 +215,7 @@ class EditTool(BaseTool):
         return result
 
     async def _create_file(self, path: Path, content: str) -> str:
-        atomic_write(path, content)
+        await atomic_write(path, content)
         logger.info(f"Edit: created {path}")
         return f"Created {path} ({len(content)} chars)"
 
@@ -223,7 +223,7 @@ class EditTool(BaseTool):
         line_ending = detect_line_ending(path)
         new_content = prefix + "\n" + content
         new_content = normalize_newlines(new_content, line_ending)
-        atomic_write(path, new_content)
+        await atomic_write(path, new_content)
         logger.info(f"Edit: prepended to {path}")
         additions, deletions = count_diff("", prefix)
         result = f"Edited {path}: prepended (+{additions} lines)"
@@ -248,7 +248,7 @@ class EditTool(BaseTool):
             count = 1
 
         new_content = normalize_newlines(new_content, line_ending)
-        atomic_write(path, new_content)
+        await atomic_write(path, new_content)
         additions, deletions = count_diff(
             content if count == 1 else matches[0].group(), new
         )
@@ -266,7 +266,7 @@ class EditTool(BaseTool):
         if exact_count > 0 and len(fuzzy_matches) == exact_count:
             new_content = content.replace(old, new)
             new_content = normalize_newlines(new_content, line_ending)
-            atomic_write(path, new_content)
+            await atomic_write(path, new_content)
             additions, deletions = count_diff(old, new)
             logger.info(f"Edit: replaced {exact_count} occurrence(s) in {path}")
             result = f"Edited {path}: replaced {exact_count} occurrence(s) (+{additions} lines, -{deletions} lines)"
@@ -281,7 +281,7 @@ class EditTool(BaseTool):
         for start, end in reversed(fuzzy_matches):
             new_content = new_content[:start] + new + new_content[end:]
         new_content = normalize_newlines(new_content, line_ending)
-        atomic_write(path, new_content)
+        await atomic_write(path, new_content)
         additions, deletions = count_diff(old, new)
         label = "fuzzy" if exact_count == 0 else "mixed"
         logger.info(
@@ -305,7 +305,7 @@ class EditTool(BaseTool):
 
             new_content = content[:start] + new + content[end:]
             new_content = normalize_newlines(new_content, line_ending)
-            atomic_write(path, new_content)
+            await atomic_write(path, new_content)
 
             additions, deletions = count_diff(old, new)
             strategy = "exact" if matched_text == old else name
