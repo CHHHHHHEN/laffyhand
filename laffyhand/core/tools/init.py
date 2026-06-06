@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from laffyhand.core.mcp import MCPService
+    from laffyhand.core.memory.service import MemoryService
     from laffyhand.core.tools.registry import ToolRegistry
     from laffyhand.core.session.todo import TodoManager
     from laffyhand.core.skill import SkillRegistry
@@ -23,6 +24,7 @@ class ToolInitializer:
         agent_registry: AgentRegistry,
         subagent_orchestrator: SubagentOrchestrator,
         file_tag_repo: FileTagRepo,
+        memory_service: MemoryService | None = None,
     ) -> None:
         self._mcp_service = mcp_service
         self._tool_registry = tool_registry
@@ -31,6 +33,7 @@ class ToolInitializer:
         self._agent_registry = agent_registry
         self._subagent_orchestrator = subagent_orchestrator
         self._file_tag_repo = file_tag_repo
+        self._memory_service = memory_service
 
     async def register_all(self) -> None:
         from laffyhand.core.tools.file import ReadTool, ListDirTool, WriteTool, EditTool, GlobTool, GrepTool
@@ -74,6 +77,11 @@ class ToolInitializer:
 
         # Tag tool
         self._tool_registry.register_tool(TagTool(self._file_tag_repo))
+
+        # Memory tool
+        if self._memory_service is not None:
+            from laffyhand.core.tools.memory import MemoryTool
+            self._tool_registry.register_tool(MemoryTool(self._memory_service))
 
         # Post-process glob/read results with tag annotations
         repo = self._file_tag_repo

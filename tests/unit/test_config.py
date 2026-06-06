@@ -15,6 +15,7 @@ from laffyhand.config import (
     AgentConfig,
     PathsConfig,
     MCPConfig,
+    MemoryConfig,
     load_config,
     find_config,
     resolve_provider,
@@ -97,6 +98,18 @@ class TestConfigModels:
         cfg = PathsConfig()
         assert cfg.skills == []
         assert cfg.agents == []
+
+    def test_memory_config_defaults(self):
+        cfg = MemoryConfig()
+        assert cfg.enabled is True
+        assert cfg.max_length == 10000
+        assert cfg.path == "./Memory.md"
+
+    def test_memory_config_custom(self):
+        cfg = MemoryConfig(enabled=False, max_length=5000, path="/tmp/custom.md")
+        assert cfg.enabled is False
+        assert cfg.max_length == 5000
+        assert cfg.path == "/tmp/custom.md"
 
     def test_mcp_config_defaults(self):
         cfg = MCPConfig()

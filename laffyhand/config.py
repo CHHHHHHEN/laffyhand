@@ -48,6 +48,12 @@ class AgentConfig(BaseModel):
     max_concurrent_subagents: int = 2
 
 
+class MemoryConfig(BaseModel):
+    enabled: bool = True
+    max_length: int = 10000
+    path: str = "./Memory.md"
+
+
 class PathsConfig(BaseModel):
     skills: list[str] = Field(default_factory=list)
     agents: list[str] = Field(default_factory=list)
@@ -76,6 +82,7 @@ class LaffyConfig(BaseModel):
     agent: AgentConfig = AgentConfig()
     paths: PathsConfig = PathsConfig()
     mcp: MCPConfig = MCPConfig()
+    memory: MemoryConfig = MemoryConfig()
 
 
 def resolve_provider(

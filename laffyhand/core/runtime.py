@@ -30,6 +30,7 @@ from laffyhand.core.llm.facade import LLM
 from laffyhand.core.exceptions import ConfigError
 from laffyhand.core.events import AgentEvent
 from laffyhand.core._utils import build_env_block
+from laffyhand.core.memory.service import MemoryService
 from laffyhand.core.preference import PreferenceService
 from laffyhand.core.title import TitleService
 from laffyhand.core.workspace import WorkspaceService
@@ -98,6 +99,11 @@ class AgentRuntime:
             event_sink_provider=lambda sid: self._session_store.get_event_sink(sid),
         )
 
+        self._memory_service = MemoryService(
+            path=config.memory.path,
+            max_length=config.memory.max_length,
+        ) if config.memory.enabled else None
+
         self._tool_initializer = ToolInitializer(
             mcp_service=self.mcp_service,
             tool_registry=self.tool_registry,
@@ -106,6 +112,7 @@ class AgentRuntime:
             agent_registry=self.agent_registry,
             subagent_orchestrator=self.subagent_orchestrator,
             file_tag_repo=self._file_tag_repo,
+            memory_service=self._memory_service,
         )
 
         self.loop_orchestrator = LoopOrchestrator(
@@ -215,6 +222,11 @@ class AgentRuntime:
         preferences = await self._load_preferences()
         if preferences:
             parts.append(preferences)
+
+        if self._memory_service is not None:
+            memory_content = await self._memory_service.read()
+            parts.append(f"<memory>\n{memory_content.strip()}\n</memory>")
+            parts.append(self._memory_service.system_prompt)
 
         return "\n".join(parts)
 

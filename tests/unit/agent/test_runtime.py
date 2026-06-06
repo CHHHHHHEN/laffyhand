@@ -7,6 +7,7 @@ import pytest
 
 from laffyhand.core.agent import AgentInfo
 from laffyhand.core.llm.specs.models import AssistantMessage, SystemMessage, UserMessage
+from laffyhand.core.memory.service import MemoryService
 from laffyhand.core.runtime import AgentRuntime
 from laffyhand.core.subagent.orchestrator import MAX_SUBAGENT_DEPTH
 from laffyhand.core.schemas import (
@@ -105,6 +106,28 @@ class TestBuildSystemPrompt:
             mock_summary.return_value = "<skills>\n- **skill1**: desc\n</skills>"
             prompt = await runtime.build_system_prompt("Base.\n")
             assert "<skills>" in prompt
+
+    @pytest.mark.anyio
+    async def test_includes_memory_when_enabled(self, runtime, tmp_path):
+        memory_path = tmp_path / "Memory.md"
+        memory_path.write_text("# Memory\n1. test entry\n")
+        runtime._memory_service = MemoryService(
+            path=str(memory_path), max_length=1000,
+        )
+        with patch.object(runtime, "_load_preferences", AsyncMock(return_value="")):
+            prompt = await runtime.build_system_prompt("Base.\n")
+        assert "<memory>" in prompt
+        assert "1. test entry" in prompt
+        assert "## Memory System" in prompt
+        assert "What to Remember" in prompt
+
+    @pytest.mark.anyio
+    async def test_skips_memory_when_disabled(self, runtime):
+        runtime._memory_service = None
+        with patch.object(runtime, "_load_preferences", AsyncMock(return_value="")):
+            prompt = await runtime.build_system_prompt("Base.\n")
+        assert "<memory>" not in prompt
+        assert "## Memory System" not in prompt
 
 
 class TestPreferences:

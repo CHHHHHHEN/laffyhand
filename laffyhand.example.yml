@@ -48,6 +48,14 @@ paths:
   # Directories to scan for .agent.md files (optional)
   agents: []
 
+memory:
+  # Whether the memory system is enabled
+  enabled: true
+  # Maximum character length of Memory.md
+  max_length: 10000
+  # Path to the memory file (relative to cwd or absolute)
+  path: "./Memory.md"
+
 mcp:
   # MCP server configurations
   servers:
