@@ -194,7 +194,7 @@ export function ToolCallCard({ toolCall }: { toolCall: ToolCall }) {
           </button>
           {resultExpanded && (
             <div className="mt-1 space-y-1">
-              <pre className="whitespace-pre-wrap break-all text-[var(--text-muted)] leading-relaxed font-mono text-xs">
+              <pre className="overflow-x-auto whitespace-pre-wrap break-all text-[var(--text-muted)] leading-relaxed font-mono text-xs">
                 {resultParts.summary}
               </pre>
               {resultParts.diff && (

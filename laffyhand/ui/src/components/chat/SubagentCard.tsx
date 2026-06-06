@@ -25,14 +25,14 @@ function ToolResultBlock({ tool }: { tool: SubagentTool }) {
   const inputStr = tool.input.length > 120 ? tool.input.slice(0, 120) + "…" : tool.input
 
   return (
-    <div className="rounded border border-[var(--border-muted)] bg-[var(--bg-deep)]">
+    <div className="rounded border border-[var(--border-muted)] bg-[var(--bg-deep)] overflow-hidden">
       <div className="flex items-start gap-1.5 px-2 py-1.5 font-mono text-xs">
         <span className={`${tool.isError ? "text-red-500" : "text-blue-500"} shrink-0 mt-0.5`}>
           {tool.isError ? "✗" : "⚙"}
         </span>
         <div className="min-w-0 flex-1">
           <span className="font-medium text-[var(--text-base)]">{tool.name}</span>
-          <span className="text-[var(--text-faint)] ml-1.5 truncate block sm:inline">
+          <span className="text-[var(--text-faint)] ml-1.5 truncate block sm:inline-block max-w-full align-top">
             {inputStr}
           </span>
         </div>
@@ -47,7 +47,7 @@ function ToolResultBlock({ tool }: { tool: SubagentTool }) {
       </div>
       {hasResult && showResult && (
         <div className="border-t border-dashed border-[var(--border-muted)] px-2 py-1.5">
-          <pre className={`whitespace-pre-wrap break-all text-xs leading-relaxed font-mono ${tool.isError ? "text-red-500" : "text-[var(--text-muted)]"}`}>
+          <pre className={`overflow-x-auto whitespace-pre-wrap break-all text-xs leading-relaxed font-mono ${tool.isError ? "text-red-500" : "text-[var(--text-muted)]"}`}>
             {tool.result}
           </pre>
         </div>
