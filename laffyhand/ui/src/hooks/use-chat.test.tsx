@@ -148,7 +148,7 @@ describe("useChat", () => {
     expect(state.sessionUsage?.total_output).toBe(50)
   })
 
-  it("refreshes tasks and opens panel on todo-update event", async () => {
+  it("refreshes tasks on todo-update event but does not auto-open panel", async () => {
     mockChatStream.mockImplementation(
       async (
         _message: string,
@@ -161,8 +161,9 @@ describe("useChat", () => {
       },
     )
 
-    useUiStore.getState().setTodoPanelOpen(false)
-    expect(useUiStore.getState().todoPanelOpen).toBe(false)
+    // Panel is open by default; todo-update should not close it
+    useUiStore.getState().setTodoPanelOpen(true)
+    expect(useUiStore.getState().todoPanelOpen).toBe(true)
 
     const { result } = renderHook(() => useChat(), { wrapper: createWrapper() })
 
@@ -170,6 +171,7 @@ describe("useChat", () => {
       await result.current.sendMessage("hi")
     })
 
+    // Panel should remain unchanged after todo-update
     expect(useUiStore.getState().todoPanelOpen).toBe(true)
   })
 

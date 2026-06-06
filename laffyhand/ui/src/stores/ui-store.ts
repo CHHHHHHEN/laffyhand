@@ -46,7 +46,7 @@ function getInitialDefaultAgent(): string {
 
 export const useUiStore = create<UiState>((set) => ({
   sidebarOpen: true,
-  todoPanelOpen: false,
+  todoPanelOpen: true,
   busyMode: "interrupt",
   darkMode: getInitialDarkMode(),
   defaultAgent: getInitialDefaultAgent(),

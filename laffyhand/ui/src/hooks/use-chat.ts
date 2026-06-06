@@ -157,9 +157,6 @@ export function useChat() {
                   break
                 case "todo-update":
                   refreshTodo(sessionId)
-                  if (!useUiStore.getState().todoPanelOpen) {
-                    useUiStore.getState().setTodoPanelOpen(true)
-                  }
                   break
                 case "permission-request":
                   store.addPermissionRequest(sessionId, {

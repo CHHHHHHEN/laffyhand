@@ -6,6 +6,10 @@ describe("ui-store", () => {
     expect(useUiStore.getState().sidebarOpen).toBe(true)
   })
 
+  it("todoPanel is open by default", () => {
+    expect(useUiStore.getState().todoPanelOpen).toBe(true)
+  })
+
   it("toggles sidebar", () => {
     useUiStore.getState().toggleSidebar()
     expect(useUiStore.getState().sidebarOpen).toBe(false)
