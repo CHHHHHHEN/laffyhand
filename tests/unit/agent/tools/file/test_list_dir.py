@@ -1,8 +1,17 @@
+from __future__ import annotations
+
 import asyncio
 import unittest
 import tempfile
 from pathlib import Path
+from typing import TYPE_CHECKING, Any
+
+import pytest
+
 from laffyhand.core.tools.file.list_dir import ListDirTool
+
+if TYPE_CHECKING:
+    from laffyhand.core.db.repository import FileTagRepo
 
 
 class TestListDirTool(unittest.TestCase):
@@ -208,3 +217,84 @@ class TestListDirTool(unittest.TestCase):
         tool = ListDirTool()
         result = asyncio.run(tool.run({}))
         self.assertIn("required", result.lower())
+
+
+@pytest.fixture
+def tag_repo():
+    import sqlite3
+    from laffyhand.core.db.schema import create_tables
+    from laffyhand.core.db.repository import FileTagRepo
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys=ON")
+    create_tables(conn)
+    conn.commit()
+    return FileTagRepo(conn)
+
+
+class TestListDirTagAnnotations:
+    """Integration tests: ListDirTool output annotated with tags via ToolRegistry post-processor."""
+
+    @pytest.fixture(autouse=True)
+    def _setup(self, tmp_path: Path, tag_repo: FileTagRepo):
+        self.root = tmp_path
+        self.repo = tag_repo
+
+        (self.root / "app.py").write_text("def main():\n    pass\n")
+        (self.root / "utils.py").write_text("def helper():\n    return 42\n")
+        sub = self.root / "sub"
+        sub.mkdir()
+        (sub / "inner.py").write_text("x = 1\n")
+
+    def _run_via_registry(self, **kwargs: Any) -> str:
+        from laffyhand.core.tools.registry import ToolRegistry
+        from laffyhand.core.tools.tag import annotate_result
+
+        registry = ToolRegistry()
+        registry.register_tool(ListDirTool())
+
+        def _post_process(name: str, result: str, params: dict[str, Any]) -> str:
+            if name == "list_dir":
+                return annotate_result(name, result, params, self.repo)
+            return result
+
+        registry.result_post_processor = _post_process
+        params = {"directory_path": str(self.root)}
+        params.update(kwargs)
+        return asyncio.run(registry.run_tool("list_dir", params))
+
+    def test_annotates_tagged_file(self):
+        self.repo.upsert(str(self.root / "app.py"), message="Main application")
+        self.repo.commit()
+        result = self._run_via_registry()
+        assert "app.py" in result
+        assert "\U0001f516 Main application" in result
+
+    def test_annotates_nested_tagged_file(self):
+        self.repo.upsert(str(self.root / "sub" / "inner.py"), message="Inner module")
+        self.repo.commit()
+        result = self._run_via_registry(depth=2)
+        assert "inner.py" in result
+        assert "\U0001f516 Inner module" in result
+
+    def test_no_annotation_when_no_tags(self):
+        result = self._run_via_registry()
+        assert "\U0001f516" not in result
+
+    def test_show_tags_false_suppresses_annotation(self):
+        self.repo.upsert(str(self.root / "app.py"), message="Main application")
+        self.repo.commit()
+        result = self._run_via_registry(show_tags=False)
+        assert "\U0001f516" not in result
+        assert "app.py" in result
+
+    def test_annotates_only_tagged_files(self):
+        self.repo.upsert(str(self.root / "app.py"), message="Main application")
+        self.repo.commit()
+        result = self._run_via_registry()
+        assert "\U0001f516 Main application" in result
+        # utils.py has no tag, so no annotation after its line
+        for line in result.splitlines():
+            if "utils.py" in line:
+                assert "\U0001f516" not in line
