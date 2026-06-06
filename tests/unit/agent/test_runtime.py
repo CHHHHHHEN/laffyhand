@@ -51,7 +51,7 @@ class TestStateProperty:
             session_id=SessionID("s1"),
             usage=SessionUsage(context_size=1000),
         )
-        runtime._states["s1"] = state
+        runtime.session_store.set("s1", state)
         assert runtime.get_state("s1") is state
 
     def test_get_state_returns_none_for_missing(self, runtime):
@@ -63,7 +63,7 @@ class TestStateProperty:
             session_id=SessionID(""),
             usage=SessionUsage(context_size=0),
         )
-        runtime._states[""] = state
+        runtime.session_store.set("", state)
         assert runtime.get_state("") is state
 
 
@@ -474,7 +474,7 @@ class TestLoadSessionState:
             session_id=SessionID("mem-sess"),
             usage=SessionUsage(context_size=0),
         )
-        runtime._states["mem-sess"] = state
+        runtime.session_store.set("mem-sess", state)
         result = runtime.load_session_state("mem-sess")
         assert result is state
 
@@ -490,7 +490,7 @@ class TestLoadSessionState:
             session_id=SessionID(session_id),
             usage=SessionUsage(context_size=0),
         )
-        runtime._states[session_id] = state
+        runtime.session_store.set(session_id, state)
 
         result = runtime.load_session_state(session_id)
         assert result is state
@@ -507,14 +507,14 @@ class TestLoadSessionState:
             usage=SessionUsage(context_size=0),
         )
         runtime.session_manager.set_pending_meta(session.id, title="", cwd="", provider="", model="", agent_version="build")
-        runtime._states[session.id] = state
+        runtime.session_store.set(session.id, state)
 
         assert runtime.load_session_state(session.id) is state
         assert runtime.load_session_state(session.id) is state
 
         other = session_manager.create(messages=[UserMessage(content="other")])
         other_state = AgentState(messages=[], session_id=SessionID(other.id), usage=SessionUsage(context_size=0))
-        runtime._states[other.id] = other_state
+        runtime.session_store.set(other.id, other_state)
         assert runtime.load_session_state(other.id) is other_state
         assert runtime.load_session_state(session.id) is state
 
@@ -527,11 +527,11 @@ class TestForkSession:
             session_id=session.id,
             usage=SessionUsage(context_size=0),
         )
-        runtime._states[session.id] = state
+        runtime.session_store.set(session.id, state)
         child_id = runtime.fork_session(session.id)
         assert child_id is not None
         assert child_id != session.id
-        assert runtime._states[child_id].session_id == child_id
+        assert runtime.session_store.get(child_id).session_id == child_id
 
     def test_returns_none_when_no_state(self, runtime):
         result = runtime.fork_session("nonexistent")
@@ -543,7 +543,7 @@ class TestForkSession:
             session_id=SessionID(""),
             usage=SessionUsage(context_size=0),
         )
-        runtime._states[""] = state
+        runtime.session_store.set("", state)
         result = runtime.fork_session("")
         assert result is None
 
@@ -616,7 +616,7 @@ class TestCreateSubagent:
             session_id=session.id,
             usage=SessionUsage(context_size=0),
         )
-        runtime._states[session.id] = state
+        runtime.session_store.set(session.id, state)
         agent_info = AgentInfo(name="test", system_prompt="You are test.")
         with patch.object(
             session_manager, "get_depth", return_value=MAX_SUBAGENT_DEPTH + 1
@@ -632,7 +632,7 @@ class TestCreateSubagent:
             session_id=session.id,
             usage=SessionUsage(context_size=0),
         )
-        runtime._states[session.id] = state
+        runtime.session_store.set(session.id, state)
         agent_info = AgentInfo(name="test", system_prompt="You are test.")
 
         with patch("laffyhand.core.loop.agent_loop") as mock_loop:
@@ -663,7 +663,7 @@ class TestCreateSubagent:
             session_id=session.id,
             usage=SessionUsage(context_size=0),
         )
-        runtime._states[session.id] = state
+        runtime.session_store.set(session.id, state)
         agent_info = AgentInfo(name="test", system_prompt="You are test.")
 
         with patch("laffyhand.core.loop.agent_loop") as mock_loop:
@@ -686,7 +686,7 @@ class TestCreateSubagent:
             session_id=session.id,
             usage=SessionUsage(context_size=0),
         )
-        runtime._states[session.id] = state
+        runtime.session_store.set(session.id, state)
         agent_info = AgentInfo(name="test", system_prompt="You are test.")
 
         with patch.object(
@@ -713,7 +713,7 @@ class TestCreateSubagent:
             session_id=session.id,
             usage=SessionUsage(context_size=0),
         )
-        runtime._states[session.id] = state
+        runtime.session_store.set(session.id, state)
         agent_info = AgentInfo(name="test", system_prompt="You are test.")
 
         with patch.object(
@@ -735,7 +735,7 @@ class TestCreateSubagent:
             session_id=session.id,
             usage=SessionUsage(context_size=0),
         )
-        runtime._states[session.id] = state
+        runtime.session_store.set(session.id, state)
         agent_info = AgentInfo(name="test", system_prompt="You are test.")
 
         # Create a todo item via the runtime's todo_manager
@@ -746,7 +746,7 @@ class TestCreateSubagent:
         async def event_sink(event: Any) -> None:
             events.append(event)
 
-        runtime._event_sinks[session.id] = event_sink
+        runtime.session_store.set_event_sink(session.id, event_sink)
 
         with patch("laffyhand.core.loop.agent_loop") as mock_loop:
 
@@ -785,7 +785,7 @@ class TestCreateSubagent:
             session_id=session.id,
             usage=SessionUsage(context_size=0),
         )
-        runtime._states[session.id] = state
+        runtime.session_store.set(session.id, state)
         agent_info = AgentInfo(name="test", system_prompt="You are test.")
 
         events: list[Any] = []
@@ -793,7 +793,7 @@ class TestCreateSubagent:
         async def event_sink(event: Any) -> None:
             events.append(event)
 
-        runtime._event_sinks[session.id] = event_sink
+        runtime.session_store.set_event_sink(session.id, event_sink)
 
         with patch("laffyhand.core.loop.agent_loop") as mock_loop:
 
@@ -826,7 +826,7 @@ class TestCreateSubagent:
             session_id=session.id,
             usage=SessionUsage(context_size=0),
         )
-        runtime._states[session.id] = state
+        runtime.session_store.set(session.id, state)
         agent_info = AgentInfo(name="test", system_prompt="You are test.")
 
         todo = runtime.todo_manager.add_task(session.id, "test task")
@@ -836,7 +836,7 @@ class TestCreateSubagent:
         async def event_sink(event: Any) -> None:
             events.append(event)
 
-        runtime._event_sinks[session.id] = event_sink
+        runtime.session_store.set_event_sink(session.id, event_sink)
 
         with patch.object(
             runtime.subagent_manager, "spawn", new_callable=AsyncMock
@@ -869,7 +869,7 @@ class TestCreateSubagent:
             session_id=session.id,
             usage=SessionUsage(context_size=0),
         )
-        runtime._states[session.id] = state
+        runtime.session_store.set(session.id, state)
         agent_info = AgentInfo(name="test", system_prompt="You are test.")
 
         todo = runtime.todo_manager.add_task(session.id, "test task")
@@ -879,7 +879,7 @@ class TestCreateSubagent:
         async def event_sink(event: Any) -> None:
             events.append(event)
 
-        runtime._event_sinks[session.id] = event_sink
+        runtime.session_store.set_event_sink(session.id, event_sink)
 
         with patch.object(
             runtime.subagent_manager, "spawn", new_callable=AsyncMock
@@ -925,7 +925,7 @@ class TestGenerateTitleForCurrent:
             session_id=session.id,
             usage=SessionUsage(context_size=0),
         )
-        runtime._states[session.id] = state
+        runtime.session_store.set(session.id, state)
 
         with patch(
             "laffyhand.core.title.generate_title", new_callable=AsyncMock
@@ -1005,7 +1005,7 @@ class TestShutdown:
             session_id=session.id,
             usage=SessionUsage(context_size=0),
         )
-        runtime._states[session.id] = state
+        runtime.session_store.set(session.id, state)
         runtime.mcp_service.disconnect_all = AsyncMock()
         await runtime.shutdown()
         runtime.mcp_service.disconnect_all.assert_awaited_once()

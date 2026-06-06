@@ -361,7 +361,7 @@ async def handle_chat_stream(
     async def _permission_callback(permission: str, pattern: str) -> tuple[bool, str | None]:
         request_id = str(uuid.uuid4())
         event = asyncio.Event()
-        runtime.pending_permissions[request_id] = (event, permission, pattern, None, None)
+        runtime.session_store.pending_permissions[request_id] = (event, permission, pattern, None, None)
         try:
             pr = PermissionRequest(
                 request_id=request_id, permission=permission, pattern=pattern
@@ -373,12 +373,12 @@ async def handle_chat_stream(
             except asyncio.TimeoutError:
                 logger.warning(f"Permission request {request_id} timed out")
                 return (False, None)
-            _, _, _, result, reason = runtime.pending_permissions.get(
+            _, _, _, result, reason = runtime.session_store.pending_permissions.get(
                 request_id, (None, None, None, False, None)
             )
             return (bool(result), reason)
         finally:
-            runtime.pending_permissions.pop(request_id, None)
+            runtime.session_store.pending_permissions.pop(request_id, None)
 
     async def _event_sink(event: Any) -> None:
         notif = Notification(method="event", params=event.model_dump(exclude_none=True))
@@ -626,7 +626,7 @@ async def _ensure_session(
         session_id=SessionID(session.id),
         usage=SessionUsage(context_size=runtime.context_size),
     )
-    runtime._states[session.id] = state
+    runtime.session_store.set(session.id, state)
     runtime._schedule_title_generation(session.id, "on_create")
     return session.id
 
@@ -845,8 +845,8 @@ async def handle_session_set_config(
         model=model,
     ).id
     state.session_id = SessionID(new_session_id)
-    runtime._states[new_session_id] = state
-    runtime._states.pop(session_id, None)
+    runtime.session_store.set(new_session_id, state)
+    runtime.session_store.pop(session_id)
     return {"session_id": new_session_id}
 
 
@@ -858,13 +858,13 @@ async def handle_permission_respond(
     conn_id: str,
 ) -> dict[str, Any]:
     req_id: str = params.get("request_id", "")
-    if req_id not in runtime.pending_permissions:
+    if req_id not in runtime.session_store.pending_permissions:
         raise ValueError(f"Unknown or expired permission request: {req_id}")
     action: str = params.get("action", "")
     if action not in ("allow", "always", "deny"):
         raise ValueError(f"Invalid permission action: {action}")
     reason: str | None = params.get("reason")
-    event, permission, pattern, _, _ = runtime.pending_permissions[req_id]
+    event, permission, pattern, _, _ = runtime.session_store.pending_permissions[req_id]
     if action == "always":
         runtime.tool_registry.permission.add_rule(f"{permission}:{pattern}", "allow")
         result = True
@@ -872,7 +872,7 @@ async def handle_permission_respond(
         result = True
     else:
         result = False
-    runtime.pending_permissions[req_id] = (event, permission, pattern, result, reason)
+    runtime.session_store.pending_permissions[req_id] = (event, permission, pattern, result, reason)
     event.set()
     logger.info(
         f"Permission '{permission}:{pattern}' resolved: {action} (conn={conn_id})"

@@ -50,6 +50,18 @@ def runtime():
     r._generate_title = AsyncMock()
     r._schedule_title_generation = MagicMock()
     r.get_session_lock = MagicMock(return_value=MagicMock())
+
+    _state_backend = {}
+    _perm_backend = {}
+    r.pending_permissions = _perm_backend
+    r.get_state = MagicMock(side_effect=lambda sid: _state_backend.get(sid))
+
+    r.session_store = MagicMock()
+    r.session_store._states = _state_backend
+    r.session_store.set = MagicMock(side_effect=lambda sid, st: _state_backend.__setitem__(sid, st))
+    r.session_store.pop = MagicMock(side_effect=lambda sid: _state_backend.pop(sid, None))
+    r.session_store.get = MagicMock(side_effect=lambda sid: _state_backend.get(sid))
+    r.session_store.pending_permissions = _perm_backend
     return r
 
 
@@ -73,11 +85,6 @@ class TestHandleShutdown:
 class TestHandleSessionCreate:
     @pytest.mark.anyio
     async def test_creates_and_returns_session(self, runtime, transport):
-        runtime._states = {}
-        runtime.get_state = MagicMock(
-            side_effect=lambda sid: runtime._states.get(sid)
-        )
-
         result = await handle_session_create(runtime, {}, transport, 1, "c1")
 
         assert result["session_id"] is not None and isinstance(result["session_id"], str)
@@ -88,11 +95,6 @@ class TestHandleSessionCreate:
 
     @pytest.mark.anyio
     async def test_returns_session_id(self, runtime, transport):
-        runtime._states = {}
-        runtime.get_state = MagicMock(
-            side_effect=lambda sid: runtime._states.get(sid)
-        )
-
         result = await handle_session_create(runtime, {}, transport, 1, "c1")
         assert "session_id" in result
 
@@ -1011,6 +1013,7 @@ class TestHandlePermissionRespond:
     @pytest.fixture
     def runtime_with_pending(self, runtime):
         runtime.pending_permissions = {}
+        runtime.session_store.pending_permissions = runtime.pending_permissions
         runtime.tool_registry = MagicMock()
         runtime.tool_registry.permission = MagicMock()
         runtime.tool_registry.permission._rules = {}

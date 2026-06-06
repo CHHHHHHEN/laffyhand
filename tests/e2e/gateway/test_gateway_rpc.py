@@ -19,8 +19,8 @@ from laffyhand.gateway.handlers import register_all_handlers
 @pytest.fixture
 def runtime():
     r = MagicMock()
-    r._states = {}
-    r.get_state = MagicMock(side_effect=lambda sid: r._states.get(sid))
+    _state_backend = {}
+    r.get_state = MagicMock(side_effect=lambda sid: _state_backend.get(sid))
     r.context_size = 128000
     r.tool_registry.build_tool_definitions = AsyncMock(return_value=[])
     r.tool_registry.build_tool_prompt = MagicMock(return_value="")
@@ -31,6 +31,13 @@ def runtime():
     r._generate_title = AsyncMock()
     r._schedule_title_generation = MagicMock()
     r.get_session_lock = MagicMock(return_value=MagicMock())
+
+    r.session_store = MagicMock()
+    r.session_store._states = _state_backend
+    r.session_store.set = MagicMock(side_effect=lambda sid, st: _state_backend.__setitem__(sid, st))
+    r.session_store.pop = MagicMock(side_effect=lambda sid: _state_backend.pop(sid, None))
+    r.session_store.get = MagicMock(side_effect=lambda sid: _state_backend.get(sid))
+    r.session_store.contains = MagicMock(side_effect=lambda sid: sid in _state_backend)
     return r
 
 
@@ -67,8 +74,9 @@ async def _mock_run_agent_turn(**kwargs):
 async def test_initialize(transport_pair):
     server_t, client_t = transport_pair
     runtime = MagicMock()
-    runtime._states = {}
-    runtime.get_state = MagicMock(side_effect=lambda sid: runtime._states.get(sid))
+    runtime.session_store = MagicMock()
+    runtime.session_store._states = {}
+    runtime.get_state = MagicMock(side_effect=lambda sid: runtime.session_store._states.get(sid))
     gateway = GatewayServer(runtime, server_t)
 
     import asyncio
@@ -205,8 +213,9 @@ async def test_chat_stream_via_gateway(transport_pair):
     """End-to-end chat_stream: sends message, receives streamed notifications, then finish."""
     server_t, client_t = transport_pair
     runtime = MagicMock()
-    runtime._states = {}
-    runtime.get_state = MagicMock(side_effect=lambda sid: runtime._states.get(sid))
+    runtime.session_store = MagicMock()
+    runtime.session_store._states = {}
+    runtime.get_state = MagicMock(side_effect=lambda sid: runtime.session_store._states.get(sid))
     runtime.context_size = 128000
     runtime.tool_registry.build_tool_definitions = MagicMock(return_value=[])
     runtime.tool_registry.build_tool_prompt = MagicMock(return_value="")
@@ -235,7 +244,7 @@ async def test_chat_stream_via_gateway(transport_pair):
     state.step = 0
     state.pending_steer = None
     state.usage = usage_mock
-    runtime._states["sess-stream"] = state
+    runtime.session_store._states["sess-stream"] = state
 
     req = Request(id=1, method="chat/stream", params={"message": "hello", "session_id": "sess-stream"})
     await client_t.send(req.json())
@@ -301,8 +310,9 @@ async def test_usage_get_via_gateway(transport_pair):
     usage_mock.context_size = 8192
     state_mock = MagicMock()
     state_mock.usage = usage_mock
-    runtime._states = {"sess-1": state_mock}
-    runtime.get_state = MagicMock(side_effect=lambda sid: runtime._states.get(sid))
+    runtime.session_store = MagicMock()
+    runtime.session_store._states = {"sess-1": state_mock}
+    runtime.get_state = MagicMock(side_effect=lambda sid: runtime.session_store._states.get(sid))
 
     gateway = GatewayServer(runtime, server_t)
 
@@ -396,8 +406,9 @@ def _make_session_state(session_id: str) -> MagicMock:
 
 def _make_base_runtime() -> MagicMock:
     r = MagicMock()
-    r._states = {}
-    r.get_state = MagicMock(side_effect=lambda sid: r._states.get(sid))
+    r.session_store = MagicMock()
+    r.session_store._states = {}
+    r.get_state = MagicMock(side_effect=lambda sid: r.session_store._states.get(sid))
     r.context_size = 128000
     r.tool_registry.build_tool_definitions = MagicMock(return_value=[])
     r.tool_registry.build_tool_prompt = MagicMock(return_value="")
@@ -418,7 +429,7 @@ async def test_duplicate_stream_rejection(transport_pair):
     runtime = _make_base_runtime()
     agent = _ControllableAgent()
     runtime.run_agent_turn = agent.run
-    runtime._states["sess-a"] = _make_session_state("sess-a")
+    runtime.session_store._states["sess-a"] = _make_session_state("sess-a")
 
     gateway = GatewayServer(runtime, server_t)
     import asyncio
@@ -461,8 +472,8 @@ async def test_session_scoped_cancel(transport_pair):
     runtime = _make_base_runtime()
     agent = _ControllableAgent()
     runtime.run_agent_turn = agent.run
-    runtime._states["sess-a"] = _make_session_state("sess-a")
-    runtime._states["sess-b"] = _make_session_state("sess-b")
+    runtime.session_store._states["sess-a"] = _make_session_state("sess-a")
+    runtime.session_store._states["sess-b"] = _make_session_state("sess-b")
 
     gateway = GatewayServer(runtime, server_t)
     import asyncio

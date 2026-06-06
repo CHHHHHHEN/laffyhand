@@ -23,6 +23,7 @@ from laffyhand.core.schemas import (
     CompactionConfig,
     RetryConfig,
 )
+from laffyhand.core.session.state_store import SessionStateStore
 from laffyhand.core.events import (
     StepStart,
     TextStart,
@@ -427,8 +428,7 @@ class LoopOrchestrator:
         max_steps: int,
         preference_checker: Callable[[], Awaitable[str]] | None,
         title_scheduler: Callable[[str, str], None],
-        states: dict[str, AgentState],
-        event_sinks: dict[str, Callable[[Any], Awaitable[None]]],
+        session_store: SessionStateStore,
     ) -> None:
         self._session_manager = session_manager
         self._tool_registry = tool_registry
@@ -438,8 +438,7 @@ class LoopOrchestrator:
         self._max_steps = max_steps
         self._preference_checker = preference_checker
         self._title_scheduler = title_scheduler
-        self._states = states
-        self._event_sinks = event_sinks
+        self._session_store = session_store
         self._session_tasks: dict[str, asyncio.Task[None]] = {}
         self._session_event_queues: dict[str, asyncio.Queue[Any]] = {}
 
@@ -448,10 +447,10 @@ class LoopOrchestrator:
         session_id: str,
         event_sink: Callable[[Any], Awaitable[None]] | None = None,
     ):
-        state = self._states.get(session_id)
+        state = self._session_store.get(session_id)
         assert state is not None, f"state not found for session {session_id}"
         if event_sink is not None:
-            self._event_sinks[session_id] = event_sink
+            self._session_store.set_event_sink(session_id, event_sink)
         llm = self._llm_provider(session_id)
         try:
             async for event in agent_loop(
@@ -469,7 +468,7 @@ class LoopOrchestrator:
             ):
                 yield event
         finally:
-            self._event_sinks.pop(session_id, None)
+            self._session_store.pop_event_sink(session_id)
 
     def is_session_running(self, session_id: str) -> bool:
         return session_id in self._session_tasks and not self._session_tasks[session_id].done()
@@ -497,7 +496,7 @@ class LoopOrchestrator:
                 await queue.put(_TURN_DONE)
                 self._session_tasks.pop(session_id, None)
                 self._session_event_queues.pop(session_id, None)
-                self._event_sinks.pop(session_id, None)
+                self._session_store.pop_event_sink(session_id)
 
         task = asyncio.create_task(_run())
         self._session_tasks[session_id] = task
