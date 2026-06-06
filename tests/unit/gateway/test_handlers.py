@@ -27,9 +27,8 @@ from laffyhand.gateway.handlers import (
     handle_permission_respond,
     handle_tools_list,
     handle_tools_set_disabled,
-    _serialize_messages,
-    _next_msg_id,
 )
+from laffyhand.gateway.session_converters import _serialize_messages, _next_msg_id
 from laffyhand.core.llm.specs.models import (
     ToolCallContent,
     Usage,
