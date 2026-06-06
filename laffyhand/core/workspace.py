@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from laffyhand.config import LaffyConfig
+if TYPE_CHECKING:
+    from laffyhand.config import LaffyConfig
 
 
 class WorkspaceService:

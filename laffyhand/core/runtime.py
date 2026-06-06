@@ -47,8 +47,7 @@ from laffyhand.core.workspace import WorkspaceService
 
 if TYPE_CHECKING:
     from laffyhand.core.agent import AgentInfo
-
-from laffyhand.config import LaffyConfig
+    from laffyhand.config import LaffyConfig
 
 
 class AgentRuntime:
