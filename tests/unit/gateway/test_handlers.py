@@ -509,8 +509,11 @@ class TestNextMsgId:
     def test_incrementing(self):
         id1 = _next_msg_id()
         id2 = _next_msg_id()
-        # IDs should differ (counter increments)
         assert id1 != id2
+        # Extract counter suffix to verify monotonic increment
+        parts1 = id1.split("-")
+        parts2 = id2.split("-")
+        assert int(parts2[-1]) == int(parts1[-1]) + 1
 
 
 class TestHandleSessionLoadWithMessages:

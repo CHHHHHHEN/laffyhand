@@ -230,7 +230,8 @@ def tag_repo():
     conn.execute("PRAGMA foreign_keys=ON")
     create_tables(conn)
     conn.commit()
-    return FileTagRepo(conn)
+    yield FileTagRepo(conn)
+    conn.close()
 
 
 class TestListDirTagAnnotations:

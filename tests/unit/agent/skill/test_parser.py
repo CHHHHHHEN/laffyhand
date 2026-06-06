@@ -1,4 +1,3 @@
-import tempfile
 import unittest
 from pathlib import Path
 
@@ -7,6 +6,7 @@ from laffyhand.core.skill.parser import parse_skill_md
 
 class TestParseSkillMd(unittest.TestCase):
     def _write_skill(self, content: str) -> Path:
+        import tempfile
         f = Path(tempfile.mktemp(suffix=".md"))
         f.write_text(content, encoding="utf-8")
         self.addCleanup(f.unlink, missing_ok=True)

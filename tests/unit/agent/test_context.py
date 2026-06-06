@@ -182,7 +182,7 @@ class TestPrune(unittest.TestCase):
     def test_no_prune_under_threshold(self):
         msgs = [ToolMessage(tool_call_id="c1", content="small")]
         result = prune(msgs)
-        self.assertIs(result[0].content, "small")
+        self.assertEqual(result[0].content, "small")
         self.assertEqual(msgs[0].content, "small", "should not mutate original")
 
     def test_prune_large_tool_output(self):
@@ -236,7 +236,8 @@ class TestPrune(unittest.TestCase):
             if m.content.startswith("[Old tool result content cleared:")
         )
         self.assertGreater(pruned_count, 0)
-        self.assertLess(pruned_count, 3)
+        # Only 2 tool messages in the input, so at most 2 can be pruned
+        self.assertLessEqual(pruned_count, 2)
 
 
 class TestBuildLlmContext(unittest.TestCase):

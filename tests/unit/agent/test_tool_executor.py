@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -90,6 +90,10 @@ class TestToolExecutor:
             args=long_args,
         )
 
-        await registry.execute_tool_call(tool_call)
+        with patch("laffyhand.core.tools.registry.logger.warning") as mock_warn:
+            await registry.execute_tool_call(tool_call)
+            mock_warn.assert_called_once()
+            assert "big" in mock_warn.call_args[0][0]
+            assert len(mock_warn.call_args[0][0]) < len(long_args)  # truncated
 
         registry.run_tool.assert_not_called()

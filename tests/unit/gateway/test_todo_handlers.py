@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -42,7 +42,7 @@ def runtime():
 @pytest.fixture
 def transport():
     t = MagicMock()
-    t.send = MagicMock()
+    t.send = AsyncMock()
     return t
 
 

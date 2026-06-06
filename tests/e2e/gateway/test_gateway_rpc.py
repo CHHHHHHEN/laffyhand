@@ -203,6 +203,17 @@ async def test_session_lifecycle(runtime, transport_pair):
     raw = await asyncio.wait_for(client_t.recv(), timeout=2)
     resp = json.loads(raw)
     assert resp["id"] == 2
+    sessions = resp["result"]["sessions"]
+    assert len(sessions) == 1
+    assert sessions[0]["id"] == session_id
+    assert sessions[0]["status"] == "active"
+    assert sessions[0]["title"] == ""
+    assert sessions[0]["message_count"] == 0
+    assert sessions[0]["turn_count"] == 0
+    assert sessions[0]["input_tokens"] == 0
+    assert sessions[0]["output_tokens"] == 0
+    assert sessions[0]["created_at"] == "2025-01-01T00:00:00"
+    assert sessions[0]["updated_at"] == "2025-01-01T01:00:00"
 
     await _shutdown_gateway(client_t)
     await task
@@ -410,7 +421,7 @@ def _make_base_runtime() -> MagicMock:
     r.session_store._states = {}
     r.get_state = MagicMock(side_effect=lambda sid: r.session_store._states.get(sid))
     r.context_size = 128000
-    r.tool_registry.build_tool_definitions = MagicMock(return_value=[])
+    r.tool_registry.build_tool_definitions = AsyncMock(return_value=[])
     r.tool_registry.build_tool_prompt = MagicMock(return_value="")
     r.skill_registry.all = MagicMock(return_value=[])
     r.build_system_prompt = AsyncMock(return_value="You are helpful.")

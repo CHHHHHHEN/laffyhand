@@ -11,10 +11,11 @@ class TestGlobTool(unittest.TestCase):
         self.tmpdir = tempfile.TemporaryDirectory()
         self.root = Path(self.tmpdir.name)
         (self.root / "a.py").touch()
+        time.sleep(0.01)
         (self.root / "b.py").touch()
+        time.sleep(0.01)
         (self.root / "sub").mkdir()
         (self.root / "sub" / "c.py").touch()
-        time.sleep(0.01)
 
     def tearDown(self):
         self.tmpdir.cleanup()
@@ -40,8 +41,11 @@ class TestGlobTool(unittest.TestCase):
         tool = GlobTool()
         result = asyncio.run(tool.run({"pattern": "**/*.py", "path": str(self.root)}))
         lines = result.strip().split("\n")
-        # Header + 3 files
         self.assertEqual(len(lines), 4)
+        # Results sorted newest-first: c.py created last, then b.py, then a.py
+        self.assertEqual(lines[1], "sub/c.py")
+        self.assertEqual(lines[2], "b.py")
+        self.assertEqual(lines[3], "a.py")
 
     def test_glob_subdir(self):
         tool = GlobTool()

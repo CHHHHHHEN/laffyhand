@@ -205,15 +205,18 @@ class TestFileTagRepo:
     def test_delete_nonexistent(self, repo):
         assert repo.delete("/tmp/nope.py") is False
 
-    def test_delete_missing(self, repo):
-        repo.upsert("/tmp/exists.py", message="real")
-        repo.upsert("/tmp/ghost.py", message="gone")
+    def test_delete_missing(self, repo, tmp_path):
+        target = tmp_path / "exists.py"
+        target.write_text("real")
+        repo.upsert(str(target), message="real")
+        ghost = str(tmp_path / "ghost.py")
+        repo.upsert(ghost, message="gone")
         repo.commit()
         count = repo.delete_missing()
-        assert count >= 0  # depends on whether /tmp/ghost.py actually exists
+        assert count == 1
         remaining = repo.list_all()
         paths = {t.path for t in remaining}
-        assert "/tmp/ghost.py" not in paths
+        assert ghost not in paths
 
     def test_get_all_paths(self, repo):
         repo.upsert("/tmp/a.py", message="a")
@@ -508,12 +511,12 @@ class TestTagTool:
     def test_path_normalization(self, tool, temp_file):
         """Relative paths and absolute paths should map to same tag."""
         real = os.path.realpath(temp_file)
-        cwd = os.path.dirname(real)
+        tmpdir = os.path.dirname(real)
         fname = os.path.basename(real)
         rel = os.path.join(".", fname)
         old_cwd = os.getcwd()
         try:
-            os.chdir(cwd)
+            os.chdir(tmpdir)
             asyncio.run(
                 tool.run({"operation": "add", "file_path": rel, "message": "via relative path"})
             )
@@ -1025,7 +1028,9 @@ class TestUtils:
 
     def test_normalize_with_tilde(self, tmp_path):
         # realpath doesn't expand tilde, that's expected
-        pass
+        result = _normalize("~")
+        assert "~" in result
+        assert os.path.isabs(result)
 
     def test_date_from_iso(self):
         assert _date_from_iso("2026-06-04T12:34:56+00:00") == "2026-06-04"

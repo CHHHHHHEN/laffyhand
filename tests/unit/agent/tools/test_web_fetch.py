@@ -160,16 +160,14 @@ async def test_content_truncated_at_100k(tool: WebFetchTool) -> None:
     assert "Content truncated" in result
 
 
-@pytest.mark.anyio
-async def test_html_to_markdown_removes_scripts(tool: WebFetchTool) -> None:
+def test_html_to_markdown_removes_scripts(tool: WebFetchTool) -> None:
     html = "<script>alert(1)</script><p>text</p>"
     result = tool._html_to_markdown(html)
     assert "alert" not in result
     assert "text" in result
 
 
-@pytest.mark.anyio
-async def test_html_to_markdown_decodes_entities(tool: WebFetchTool) -> None:
+def test_html_to_markdown_decodes_entities(tool: WebFetchTool) -> None:
     html = "<p>foo &amp; bar &lt; baz</p>"
     result = tool._html_to_markdown(html)
     assert "foo & bar < baz" in result
