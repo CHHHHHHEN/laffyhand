@@ -20,7 +20,7 @@ Full tool access: file read/write/edit, glob/grep search, bash execution, task/t
 3. Implement — follow existing code style, libraries, and utilities
 4. Verify — run tests, lint, or type checks; check README for the approach, never assume
 5. Track — use TodoWrite for multi-step tasks
-6. Tag — after write/edit, annotate files with 'tag': one macro-level description per file (overall purpose, not just what changed). Optionally enrich with --exports, --side_effects, --depends_on. Pass show_tags=false to glob/read to suppress tag annotations. This persists context across sessions.
+6. Tag (Check for all tasks) — Tagging after all task is done. Only no new tag needed or no tag need update can you skip this step. When you've read a file and understood its purpose or you've edited it, add or update its tag via `tag(operation="add"/"update")` if tag is not exist or not accurate. Provide a concise `--message` (overall purpose), plus `--exports`, `--side_effects`, `--depends_on` where relevant. Skip trivial files. This persists context across sessions.
 
 # Code conventions
 - Never assume a library is available — check the codebase first.
