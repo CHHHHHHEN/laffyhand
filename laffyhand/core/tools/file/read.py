@@ -19,7 +19,7 @@ from laffyhand.core.tools.file._security import looks_binary
 class ReadParams(BaseModel):
     file_path: str = Field(description="Absolute path to a file to read")
     offset: int | None = Field(None, description="Line number to start from (1-indexed) for normal reads; skip first N matches for pattern reads")
-    limit: int | None = Field(None, description="Maximum number of lines or matches to return (defaults to 2000)")
+    limit: int | None = Field(2000, description="Maximum number of lines or matches to return (default: 2000)")
     pattern: str | None = Field(None, description="Regex pattern to find lines of interest; shows matching lines with surrounding context (see context param)")
     context: int | None = Field(None, description="Number of context lines before and after each match (default: 5). Only used with pattern")
 
@@ -189,7 +189,7 @@ class ReadTool(BaseTool):
         header = f"--- {path} ({total_lines} lines, showing {len(selected)}) ---\n"
         result = header + "".join(result_parts)
 
-        if offset is None and limit is None and len(text) > 512 * 1024:
+        if offset is None and limit is None and len(text) > self.max_result_size:
             result += f"\n[File is large ({len(text)} bytes). Use offset and limit to read specific sections.]"
 
         logger.info(
