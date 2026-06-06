@@ -4,7 +4,6 @@ import { useQueryClient } from "@tanstack/react-query"
 import { rpcClient } from "@/lib/rpc"
 import { useChatStore } from "@/stores/chat-store"
 import { useTodoStore } from "@/stores/todo-store"
-import { useUiStore } from "@/stores/ui-store"
 import type { TodoItem } from "@/types/session"
 import type { SessionUsage } from "@/types/rpc"
 
