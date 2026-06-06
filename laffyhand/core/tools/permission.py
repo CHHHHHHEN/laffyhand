@@ -20,8 +20,9 @@ request_callback: contextvars.ContextVar[
 
 
 class PermissionManager:
-    def __init__(self) -> None:
+    def __init__(self, parent: PermissionManager | None = None) -> None:
         self._rules: dict[str, Rule] = {}
+        self._parent = parent
         self.request_callback: Callable[[str, str], Awaitable[tuple[bool, str | None]]] | None = None
 
     def allow(self, tool_name: str) -> None:
@@ -30,22 +31,37 @@ class PermissionManager:
     def deny(self, tool_name: str) -> None:
         self._rules[tool_name] = "deny"
 
+    def _get_rule(self, key: str) -> str | None:
+        """Check self's rules first, then delegate to parent if not found."""
+        val = self._rules.get(key)
+        if val is not None:
+            return val
+        if self._parent is not None:
+            return self._parent._get_rule(key)
+        return None
+
     def get_rules(self) -> dict[str, Rule]:
-        return dict(self._rules)
+        merged = dict(self._rules)
+        if self._parent is not None:
+            parent_rules = self._parent.get_rules()
+            parent_rules.update(merged)
+            return parent_rules
+        return merged
 
     def add_rule(self, key: str, rule: Rule) -> None:
         self._rules[key] = rule
 
     def check(self, tool_name: str) -> bool:
-        result = self._rules.get(tool_name, "allow") == "allow"
+        result = self._get_rule(tool_name)
+        allowed = result != "deny" if result is not None else True
         logger.trace(
-            f"Permission check {tool_name}: {'allowed' if result else 'denied'}"
+            f"Permission check {tool_name}: {'allowed' if allowed else 'denied'}"
         )
-        return result
+        return allowed
 
     async def ask(self, permission: str, patterns: list[str]) -> tuple[bool, str | None]:
         """Interactive permission prompt. Returns (allowed, reason) where reason is populated on denial."""
-        blanket = self._rules.get(permission)
+        blanket = self._get_rule(permission)
         if blanket == "deny":
             logger.info(f"Permission '{permission}' denied by tool-level rule")
             return (False, None)
@@ -53,12 +69,11 @@ class PermissionManager:
             logger.info(f"Permission '{permission}' allowed by tool-level rule")
             return (True, None)
         for pattern in patterns:
-            rule = self._rules.get(f"{permission}:{pattern}")
+            rule = self._get_rule(f"{permission}:{pattern}")
             if rule == "deny":
                 logger.info(f"Permission '{permission}:{pattern}' denied by rule")
                 return (False, None)
             if rule == "allow":
-                logger.info(f"Permission '{permission}:{pattern}' allowed by rule")
                 continue
             callback = request_callback.get() or self.request_callback
             if callback is not None:
@@ -97,12 +112,13 @@ class PermissionManager:
         that has an explicit rule in *self._rules* (``"allow"`` or ``"deny"``).
 
         Checks the path itself first, then each parent directory up to root.
+        Delegates to parent if no rule found in self.
         Returns ``None`` when no ancestor has a rule.
         """
         needle = f"{permission}:"
         p = Path(path)
         for candidate in (p, *p.parents):
-            rule = self._rules.get(f"{needle}{candidate}")
+            rule = self._get_rule(f"{needle}{candidate}")
             if rule is not None:
                 return rule
         return None
@@ -139,11 +155,11 @@ class PermissionManager:
         # also add a rule for the parent directory so that sibling files
         # and subdirectories are automatically covered.
         rule_key = f"{permission}:{resolved}"
-        if result[0] and self._rules.get(rule_key) == "allow":
+        if result[0] and self._get_rule(rule_key) == "allow":
             parent = str(Path(resolved).parent)
             if parent != resolved:
                 parent_key = f"{permission}:{parent}"
-                if parent_key not in self._rules:
+                if self._get_rule(parent_key) is None:
                     self._rules[parent_key] = "allow"
                     logger.info(
                         f"Parent directory {parent_key} auto-allowed by rule propagation"
@@ -162,20 +178,15 @@ class SubagentPermissions:
         agent_permission: dict[str, Any],
         parent_session_permission: PermissionManager | None = None,
     ) -> PermissionManager:
-        combined = PermissionManager()
-        for name, rule in parent_permission.get_rules().items():
-            if rule == "allow":
-                combined.allow(name)
-            else:
-                combined.deny(name)
+        child = PermissionManager(parent=parent_permission)
         agent_deny = set(agent_permission.get("deny", []))
         for name in agent_deny:
-            combined.deny(name)
+            child.deny(name)
         if parent_session_permission is not None:
             for name, rule in parent_session_permission.get_rules().items():
                 if rule == "deny":
-                    combined.deny(name)
-        return combined
+                    child.deny(name)
+        return child
 
     @staticmethod
     def filter_registry(
