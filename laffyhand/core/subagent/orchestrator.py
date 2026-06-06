@@ -185,14 +185,14 @@ class SubagentOrchestrator:
         result_content = ""
         tool_call_count = 0
 
-        from laffyhand.core.loop import agent_loop
+        from laffyhand.core.loop import AgentTurn
 
-        async for event in agent_loop(
+        async for event in AgentTurn(
             child_state, llm, child_registry,
             compaction_config=CompactionConfig(tail_turns=self.compaction_config.tail_turns),
             max_steps=agent_info.max_steps,
             session_manager=self.session_manager,
-        ):
+        ).run():
             if event_sink:
                 tool_call_count += await map_event_to_subagent_delta(task_id, event, event_sink)
             if isinstance(event, StepFinish):

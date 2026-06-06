@@ -15,7 +15,7 @@ from laffyhand.core.schemas import (
     SessionUsage,
 )
 
-from laffyhand.core.loop import agent_loop
+from laffyhand.core.loop import AgentTurn
 from laffyhand.core.tools.base import BaseTool
 from laffyhand.core.tools.registry import ToolRegistry
 
@@ -86,7 +86,7 @@ class TestAgentLoopE2E(unittest.TestCase):
         )
         state = self._make_state()
         events = self._collect(
-            agent_loop(state, llm, self.registry, CompactionConfig(prune=False))
+            AgentTurn(state, llm, self.registry, CompactionConfig(prune=False)).run()
         )
         self.assertEqual(state.step, 1)
         self.assertEqual(state.turn_count, 1)
@@ -118,7 +118,7 @@ class TestAgentLoopE2E(unittest.TestCase):
         )
         state = self._make_state()
         events = self._collect(
-            agent_loop(state, llm, self.registry, CompactionConfig(prune=False))
+            AgentTurn(state, llm, self.registry, CompactionConfig(prune=False)).run()
         )
         self.assertEqual(state.step, 2)
         self.assertEqual(state.turn_count, 2)
@@ -140,9 +140,9 @@ class TestAgentLoopE2E(unittest.TestCase):
         llm = FakeLLM([tool_event, tool_event, tool_event])
         state = self._make_state()
         self._collect(
-            agent_loop(
+            AgentTurn(
                 state, llm, self.registry, CompactionConfig(prune=False), max_steps=2
-            )
+            ).run()
         )
         self.assertEqual(state.step, 3)
         self.assertEqual(state.turn_count, 2)
@@ -163,7 +163,7 @@ class TestAgentLoopE2E(unittest.TestCase):
         self.assertEqual(state.step, 0)
         self.assertEqual(state.turn_count, 0)
         self._collect(
-            agent_loop(state, llm, self.registry, CompactionConfig(prune=False))
+            AgentTurn(state, llm, self.registry, CompactionConfig(prune=False)).run()
         )
         self.assertEqual(state.step, 1)
         self.assertEqual(state.turn_count, 1)
@@ -194,7 +194,7 @@ class TestAgentLoopE2E(unittest.TestCase):
         )
         state = self._make_state()
         self._collect(
-            agent_loop(state, llm, self.registry, CompactionConfig(prune=False))
+            AgentTurn(state, llm, self.registry, CompactionConfig(prune=False)).run()
         )
         tool_msgs = [m for m in state.messages if isinstance(m, ToolMessage)]
         self.assertEqual(len(tool_msgs), 1)

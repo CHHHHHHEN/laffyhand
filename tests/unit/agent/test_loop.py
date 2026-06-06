@@ -11,7 +11,7 @@ from laffyhand.core.schemas import (
     SessionID,
     SessionUsage,
 )
-from laffyhand.core.loop import AgentTurn, TurnContext, agent_loop
+from laffyhand.core.loop import AgentTurn, TurnContext
 from laffyhand.core.llm.facade import LLM
 from laffyhand.core.tools.registry import ToolRegistry
 from laffyhand.core.tools.base import BaseTool
@@ -60,7 +60,7 @@ _ZERO_RETRY = RetryConfig(max_retries=0)
 
 
 class TestAgentLoopAssistantMessage(unittest.TestCase):
-    """agent_loop must always produce valid AssistantMessage with content or tool_calls."""
+    """AgentTurn.run() must always produce valid AssistantMessage with content or tool_calls."""
 
     def setUp(self):
         self.tool_registry = ToolRegistry(PermissionManager())
@@ -69,7 +69,7 @@ class TestAgentLoopAssistantMessage(unittest.TestCase):
     def _run_loop(self, llm_events: list, user_text: str = "hello",
                   retry_config: RetryConfig = _FAST_RETRY,
                   max_steps: int = 1):
-        """Run agent_loop with given LLM events and return state.messages + events."""
+        """Run AgentTurn with given LLM events and return state.messages + events."""
         llm = _MockLLM(llm_events)
         state = AgentState(
             messages=[
@@ -84,7 +84,7 @@ class TestAgentLoopAssistantMessage(unittest.TestCase):
 
         async def _collect():
             nonlocal events
-            async for event in agent_loop(
+            async for event in AgentTurn(
                 state,
                 llm,
                 self.tool_registry,
@@ -95,7 +95,7 @@ class TestAgentLoopAssistantMessage(unittest.TestCase):
                 ),
                 retry_config=retry_config,
                 max_steps=max_steps,
-            ):
+            ).run():
                 events.append(event)
             return state
 
@@ -214,11 +214,11 @@ class TestAgentLoopAssistantMessage(unittest.TestCase):
         events = []
         async def _collect():
             nonlocal events
-            async for event in agent_loop(
+            async for event in AgentTurn(
                 state, llm, self.tool_registry,
                 compaction_config=CompactionConfig(tail_turns=1, auto_continue=False, prune=False),
                 retry_config=_FAST_RETRY, max_steps=1,
-            ):
+            ).run():
                 events.append(event)
             return state
         result = asyncio.run(_collect())

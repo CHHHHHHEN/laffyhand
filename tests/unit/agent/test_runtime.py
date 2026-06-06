@@ -625,7 +625,7 @@ class TestCreateSubagent:
         assert "maximum sub-agent depth" in result
 
     @pytest.mark.anyio
-    async def test_foreground_runs_agent_loop(self, runtime, session_manager):
+    async def test_foreground_runs_agent_turn(self, runtime, session_manager):
         session = session_manager.create()
         state = AgentState(
             messages=[],
@@ -635,18 +635,24 @@ class TestCreateSubagent:
         runtime.session_store.set(session.id, state)
         agent_info = AgentInfo(name="test", system_prompt="You are test.")
 
-        with patch("laffyhand.core.loop.agent_loop") as mock_loop:
+        with patch("laffyhand.core.loop.AgentTurn") as mock_turn_cls:
+            mock_instance = MagicMock()
 
-            async def mock_agent_loop(*args, **kwargs):
+            def _make_instance(*args, **kwargs):
                 child_state = args[0]
                 child_state.messages.append(
                     AssistantMessage(content="final answer")
                 )
+                return mock_instance
+
+            mock_turn_cls.side_effect = _make_instance
+
+            async def _run_gen():
                 from laffyhand.core.events import StepFinish
 
                 yield StepFinish(index=1, reason="stop")
 
-            mock_loop.side_effect = mock_agent_loop
+            mock_instance.run.return_value = _run_gen()
 
             result = await runtime.create_subagent(session.id, agent_info, "Do the task")
 
@@ -666,14 +672,16 @@ class TestCreateSubagent:
         runtime.session_store.set(session.id, state)
         agent_info = AgentInfo(name="test", system_prompt="You are test.")
 
-        with patch("laffyhand.core.loop.agent_loop") as mock_loop:
+        with patch("laffyhand.core.loop.AgentTurn") as mock_turn_cls:
+            mock_instance = MagicMock()
 
-            async def mock_agent_loop(*args, **kwargs):
+            async def _run_gen():
                 from laffyhand.core.events import StepFinish
 
                 yield StepFinish(index=1, reason="stop")
 
-            mock_loop.side_effect = mock_agent_loop
+            mock_instance.run.return_value = _run_gen()
+            mock_turn_cls.return_value = mock_instance
 
             result = await runtime.create_subagent(session.id, agent_info, "Do it")
         assert "<task>" in result
@@ -748,14 +756,16 @@ class TestCreateSubagent:
 
         runtime.session_store.set_event_sink(session.id, event_sink)
 
-        with patch("laffyhand.core.loop.agent_loop") as mock_loop:
+        with patch("laffyhand.core.loop.AgentTurn") as mock_turn_cls:
+            mock_instance = MagicMock()
 
-            async def mock_agent_loop(*args, **kwargs):
+            async def _run_gen():
                 from laffyhand.core.events import StepFinish
 
                 yield StepFinish(index=1, reason="stop")
 
-            mock_loop.side_effect = mock_agent_loop
+            mock_instance.run.return_value = _run_gen()
+            mock_turn_cls.return_value = mock_instance
 
             await runtime.create_subagent(
                 session.id,
@@ -795,14 +805,16 @@ class TestCreateSubagent:
 
         runtime.session_store.set_event_sink(session.id, event_sink)
 
-        with patch("laffyhand.core.loop.agent_loop") as mock_loop:
+        with patch("laffyhand.core.loop.AgentTurn") as mock_turn_cls:
+            mock_instance = MagicMock()
 
-            async def mock_agent_loop(*args, **kwargs):
+            async def _run_gen():
                 from laffyhand.core.events import StepFinish
 
                 yield StepFinish(index=1, reason="stop")
 
-            mock_loop.side_effect = mock_agent_loop
+            mock_instance.run.return_value = _run_gen()
+            mock_turn_cls.return_value = mock_instance
 
             await runtime.create_subagent(
                 session.id,

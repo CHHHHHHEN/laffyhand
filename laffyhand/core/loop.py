@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator, Awaitable, Callable
-from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
+
+from pydantic import BaseModel
 
 from loguru import logger
 
@@ -153,11 +154,10 @@ class StreamEventConverter:
 # ── Turn context ─────────────────────────────────────────────
 
 
-@dataclass
-class TurnContext:
-    content_buf: list[str] = field(default_factory=list)
-    reasoning_buf: list[str] = field(default_factory=list)
-    tool_calls: list[ToolCallContent] = field(default_factory=list)
+class TurnContext(BaseModel):
+    content_buf: list[str] = []
+    reasoning_buf: list[str] = []
+    tool_calls: list[ToolCallContent] = []
     finish_reason: FinishReason | None = None
     usage: Usage | None = None
 
@@ -509,38 +509,6 @@ class AgentTurn:
         return False
 
 
-# ── Backward-compatible wrapper ────────────────────────────────
-
-
-async def agent_loop(
-    agent_state: AgentState,
-    llm: LLM,
-    tool_registry: ToolRegistry,
-    compaction_config: CompactionConfig = CompactionConfig(),
-    *,
-    retry_config: RetryConfig = RetryConfig(),
-    max_steps: int = 50,
-    session_manager: SessionManager | None = None,
-    subagent_manager: SubagentManager | None = None,
-    preference_checker: Callable[[], Awaitable[str]] | None = None,
-    on_compacted: Callable[[str], None] | None = None,
-) -> AsyncIterator[AgentEvent]:
-    turn = AgentTurn(
-        agent_state,
-        llm,
-        tool_registry,
-        compaction_config,
-        retry_config=retry_config,
-        max_steps=max_steps,
-        session_manager=session_manager,
-        subagent_manager=subagent_manager,
-        preference_checker=preference_checker,
-        on_compacted=on_compacted,
-    )
-    async for event in turn.run():
-        yield event
-
-
 # ── Orchestrator ────────────────────────────────────────────────
 
 _TURN_DONE = object()
@@ -585,7 +553,7 @@ class LoopOrchestrator:
             self._session_store.set_event_sink(session_id, event_sink)
         llm = self._llm_provider(session_id)
         try:
-            async for event in agent_loop(
+            async for event in AgentTurn(
                 state,
                 llm,
                 self._tool_registry,
@@ -597,7 +565,7 @@ class LoopOrchestrator:
                 on_compacted=lambda child_sid: self._title_scheduler(
                     child_sid, "on_compact"
                 ),
-            ):
+            ).run():
                 yield event
         finally:
             self._session_store.pop_event_sink(session_id)
@@ -652,6 +620,5 @@ __all__ = [
     "build_llm_context",
     "MessageStore",
     "StreamEventConverter",
-    "agent_loop",
     "LoopOrchestrator",
 ]

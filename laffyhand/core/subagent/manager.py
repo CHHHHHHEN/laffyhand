@@ -114,17 +114,17 @@ class SubagentManager:
                         )
                     )
 
-                    from laffyhand.core.loop import agent_loop
+                    from laffyhand.core.loop import AgentTurn
 
                     tool_call_count = 0
-                    async for event in agent_loop(
+                    async for event in AgentTurn(
                         child_state,
                         llm,
                         child_registry,
                         compaction_config=compaction_config or CompactionConfig(),
                         max_steps=agent_info.max_steps,
                         session_manager=session_manager,
-                    ):
+                    ).run():
                         tool_call_count += await map_event_to_subagent_delta(task_id, event, _relay_event)
 
                     assert child_state.session_id is not None
