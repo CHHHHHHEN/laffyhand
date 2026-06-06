@@ -129,3 +129,6 @@ class TestTaskTool:
     def test_name_and_description(self, task_tool):
         assert task_tool.name == "task"
         assert "sub-agent" in task_tool.description
+
+    def test_timeout_is_zero(self, task_tool):
+        assert task_tool.timeout == 0

@@ -21,6 +21,7 @@ if TYPE_CHECKING:
 class TaskTool(BaseTool):
     name = "task"
     description = "Delegate a task to a specialized sub-agent"
+    timeout = 0
 
     def __init__(
         self,

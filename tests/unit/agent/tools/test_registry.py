@@ -94,6 +94,33 @@ class TestRegistry(unittest.TestCase):
         self.assertIn("echo", prompt)
 
 
+class SlowTool(BaseTool):
+    """Tool with no timeout that simulates a long operation."""
+    name = "slow"
+    description = "Slow tool with no timeout"
+    timeout = 0
+    max_result_size = 100
+
+    def _input_schema(self) -> dict:
+        return {"type": "object", "properties": {}}
+
+    async def run(self, params: dict) -> str:
+        await asyncio.sleep(0.2)
+        return "slow-result"
+
+
+class TestToolTimeoutZero(unittest.TestCase):
+    """run_tool should not wrap tools with timeout=0 in asyncio.wait_for."""
+
+    def setUp(self):
+        self.registry = ToolRegistry()
+        self.registry.register_tool(SlowTool())
+
+    def test_slow_tool_with_timeout_zero_completes(self):
+        result = asyncio.run(self.registry.run_tool("slow", {}))
+        self.assertEqual(result, "slow-result")
+
+
 class CompoundTool(BaseTool):
     """A tool that uses an 'operation' parameter, similar to TagTool."""
     name = "compound"
