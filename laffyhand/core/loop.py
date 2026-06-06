@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator, Awaitable, Callable
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from loguru import logger
@@ -149,7 +150,366 @@ class StreamEventConverter:
         return events
 
 
-# ── Main agent loop ────────────────────────────────────────────
+# ── Turn context ─────────────────────────────────────────────
+
+
+@dataclass
+class TurnContext:
+    content_buf: list[str] = field(default_factory=list)
+    reasoning_buf: list[str] = field(default_factory=list)
+    tool_calls: list[ToolCallContent] = field(default_factory=list)
+    finish_reason: FinishReason | None = None
+    usage: Usage | None = None
+
+
+# ── Agent turn class ─────────────────────────────────────────
+
+
+class AgentTurn:
+    """Encapsulates one agent turn lifecycle.
+
+    Responsibilities: interrupt/step-gate checks, pre-turn compaction,
+    subagent/preference injection, LLM streaming with retry, assistant
+    message construction, tool execution, post-turn compaction, persistence.
+    """
+
+    def __init__(
+        self,
+        agent_state: AgentState,
+        llm: LLM,
+        tool_registry: ToolRegistry,
+        compaction_config: CompactionConfig = CompactionConfig(),
+        *,
+        retry_config: RetryConfig = RetryConfig(),
+        max_steps: int = 50,
+        session_manager: SessionManager | None = None,
+        subagent_manager: SubagentManager | None = None,
+        preference_checker: Callable[[], Awaitable[str]] | None = None,
+        on_compacted: Callable[[str], None] | None = None,
+    ) -> None:
+        self._agent_state = agent_state
+        self._llm = llm
+        self._tool_registry = tool_registry
+        self._compaction_config = compaction_config
+        self._retry_config = retry_config
+        self._max_steps = max_steps
+        self._session_manager = session_manager
+        self._subagent_manager = subagent_manager
+        self._preference_checker = preference_checker
+        self._on_compacted = on_compacted
+
+        self._context_size = agent_state.usage.context_size
+        self._compacted_this_step = False
+        self._store = MessageStore(session_manager, agent_state.session_id)
+        self._tc: TurnContext | None = None
+
+    async def run(self) -> AsyncIterator[AgentEvent]:
+        self._store.sync(len(self._agent_state.messages))
+
+        while True:
+            if self._check_interrupt():
+                break
+
+            self._agent_state.step += 1
+            self._compacted_this_step = False
+
+            if self._agent_state.step > self._max_steps:
+                logger.info(f"Reached max steps ({self._max_steps}), stopping")
+                break
+
+            if await self._compact_pre():
+                yield Compacting(data="Compacting conversation history...")
+                continue
+
+            await self._inject_subagent_results()
+            await self._inject_preferences()
+
+            step_index = self._agent_state.step
+            disabled_tools = self._agent_state.disabled_tools
+            tool_definitions = await self._tool_registry.build_tool_definitions(
+                exclude=disabled_tools,
+            )
+            llm_context = build_llm_context(self._agent_state, self._compaction_config)
+            logger.debug(
+                f"Sending {len(llm_context)} messages to LLM, {len(tool_definitions)} tools"
+            )
+
+            yield StepStart(index=step_index)
+
+            self._tc = None
+            async for ev in self._retry_llm(llm_context, tool_definitions, step_index):
+                yield ev
+
+            turn_ctx = self._tc
+            assert turn_ctx is not None
+
+            self._agent_state.turn_count += 1
+            logger.debug(
+                f"Turn {self._agent_state.turn_count} complete, finish_reason={turn_ctx.finish_reason}"
+            )
+
+            assistant_msg = self._build_assistant_message(turn_ctx)
+            self._agent_state.messages.append(assistant_msg)
+
+            if turn_ctx.usage is not None:
+                self._agent_state.usage.add(turn_ctx.usage)
+                yield UsageUpdate(
+                    session_usage=self._agent_state.usage.model_dump(),
+                )
+
+            if turn_ctx.finish_reason == "tool_calls" and turn_ctx.tool_calls:
+                async for ev in self._execute_tools(turn_ctx, step_index):
+                    yield ev
+                continue
+
+            yield StepFinish(
+                index=step_index,
+                reason=turn_ctx.finish_reason or "stop",
+                usage=turn_ctx.usage,
+            )
+
+            if turn_ctx.finish_reason is not None:
+                await self._store.flush(self._agent_state.messages)
+                if await self._compact_post():
+                    yield Compacting(data="Compacting conversation history...")
+                    if self._compaction_config.auto_continue:
+                        self._agent_state.messages.append(
+                            UserMessage(
+                                content="Continue if you have next steps, or stop and ask for clarification if you are unsure how to proceed.",
+                            )
+                        )
+                        await self._store.flush(self._agent_state.messages)
+                        yield Compacting(data="Continuing after compaction...")
+                        continue
+                break
+
+    # ── Step lifecycle methods ──────────────────────────────────
+
+    def _check_interrupt(self) -> bool:
+        if self._agent_state.interrupt_requested:
+            self._agent_state.interrupt_requested = False
+            logger.debug("Agent loop interrupted by user request")
+            return True
+        return False
+
+    async def _compact_pre(self) -> bool:
+        if (
+            self._agent_state.step > 1
+            and self._context_size
+            and not self._compacted_this_step
+            and await compact_on_overflow(
+                self._agent_state,
+                self._llm,
+                self._compaction_config,
+                self._session_manager,
+                on_compacted=self._on_compacted,
+            )
+        ):
+            self._store.sync(len(self._agent_state.messages))
+            self._compacted_this_step = True
+            return True
+        return False
+
+    async def _inject_subagent_results(self) -> None:
+        if self._subagent_manager is not None and self._agent_state.session_id:
+            bg_results = await self._subagent_manager.poll_results(
+                self._agent_state.session_id
+            )
+            for bg in bg_results:
+                content = bg.content or bg.error or "[No output]"
+                injected = UserMessage(
+                    content=(
+                        f"[Background task '{bg.agent_type}' (id: {bg.task_id[:8]}) completed]\n\n"
+                        f"{content}"
+                    ),
+                )
+                self._agent_state.messages.append(injected)
+                logger.info(f"Injected subagent result: {bg.task_id[:8]}")
+
+    async def _inject_preferences(self) -> None:
+        if self._preference_checker is not None:
+            new_prefs = await self._preference_checker()
+            if new_prefs:
+                wrapped = f"<system-reminder>\n{new_prefs}\n</system-reminder>"
+                self._agent_state.messages.append(
+                    UserMessage(content=wrapped),
+                )
+                logger.info("Injected new preferences via <system-reminder>")
+
+    # ── LLM streaming & retry ──────────────────────────────────
+
+    async def _retry_llm(
+        self,
+        context: list[Message],
+        tool_definitions: list[Any],
+        step_index: int,
+    ) -> AsyncIterator[AgentEvent]:
+        _retry_count = 0
+        while True:
+            converter = StreamEventConverter(step_index)
+
+            async for event in self._llm.stream(context, tools=tool_definitions):
+                for ev in converter.handle(event):
+                    yield ev
+
+            for ev in converter.end_segments():
+                yield ev
+
+            tc = self._decide_retry(converter, _retry_count)
+            if tc is not None:
+                self._tc = tc
+                return
+
+            _retry_count += 1
+            delay = exponential_backoff(
+                self._retry_config.base_delay,
+                _retry_count,
+                self._retry_config.max_delay,
+            )
+            logger.warning(
+                f"LLM stream error (attempt {_retry_count}/{self._retry_config.max_retries}), "
+                f"retrying in {delay:.1f}s"
+            )
+            await asyncio.sleep(delay)
+
+    def _decide_retry(
+        self,
+        converter: StreamEventConverter,
+        retry_count: int,
+    ) -> TurnContext | None:
+        if converter.finish_reason != "error":
+            return TurnContext(
+                content_buf=converter.content_buf,
+                reasoning_buf=converter.reasoning_buf,
+                tool_calls=converter.tool_calls,
+                finish_reason=converter.finish_reason,
+                usage=converter.usage,
+            )
+        if converter.content_buf or converter.tool_calls:
+            return TurnContext(
+                content_buf=converter.content_buf,
+                reasoning_buf=converter.reasoning_buf,
+                tool_calls=converter.tool_calls,
+                finish_reason=converter.finish_reason,
+                usage=converter.usage,
+            )
+        if retry_count >= self._retry_config.max_retries:
+            return TurnContext(
+                content_buf=converter.content_buf,
+                reasoning_buf=converter.reasoning_buf,
+                tool_calls=converter.tool_calls,
+                finish_reason=converter.finish_reason,
+                usage=converter.usage,
+            )
+        return None
+
+    # ── Assistant message construction ──────────────────────────
+
+    def _build_assistant_message(self, turn_ctx: TurnContext) -> AssistantMessage:
+        combined_content = "".join(turn_ctx.content_buf) if turn_ctx.content_buf else None
+        if combined_content is None and not turn_ctx.tool_calls:
+            if turn_ctx.finish_reason == "error":
+                combined_content = "[Error: LLM stream failed]"
+            elif turn_ctx.finish_reason == "length":
+                combined_content = "[Response truncated by token limit]"
+            elif turn_ctx.finish_reason == "content_filter":
+                combined_content = "[Response filtered by content policy]"
+            else:
+                combined_content = (
+                    "" if turn_ctx.reasoning_buf else "[Empty response]"
+                )
+
+        return AssistantMessage(
+            content=combined_content,
+            reasoning="".join(turn_ctx.reasoning_buf) if turn_ctx.reasoning_buf else None,
+            tool_calls=turn_ctx.tool_calls if turn_ctx.tool_calls else None,
+            tokens=turn_ctx.usage,
+        )
+
+    # ── Tool execution ──────────────────────────────────────────
+
+    async def _execute_tools(
+        self,
+        turn_ctx: TurnContext,
+        step_index: int,
+    ) -> AsyncIterator[AgentEvent]:
+        logger.debug(f"Executing {len(turn_ctx.tool_calls)} tool call(s)")
+        exec_context: dict[str, str | None] = {
+            "session_id": self._agent_state.session_id,
+            "_claim_id": f"{self._agent_state.session_id}:preferences",
+        }
+
+        async def _exec_one(
+            tc: ToolCallContent,
+        ) -> tuple[str, str, ToolExecutionResult]:
+            return (
+                tc.tool_call_id,
+                tc.tool_name,
+                await self._tool_registry.execute_tool_call(tc, context=exec_context),
+            )
+
+        exec_results: list[tuple[str, str, ToolExecutionResult]] = (
+            await asyncio.gather(*[_exec_one(tc) for tc in turn_ctx.tool_calls])
+        )
+
+        result_by_tool_id: dict[str, ToolExecutionResult] = {}
+        for tc_id, tc_name, exec_result in exec_results:
+            result_by_tool_id[tc_id] = exec_result
+
+        for tc in turn_ctx.tool_calls:
+            exec_result = result_by_tool_id[tc.tool_call_id]
+            self._agent_state.messages.append(exec_result.message)
+            if exec_result.is_error:
+                yield ToolError(
+                    id=tc.tool_call_id,
+                    name=tc.tool_name,
+                    message=exec_result.event_data,
+                )
+            else:
+                yield ToolResult(
+                    id=tc.tool_call_id,
+                    name=tc.tool_name,
+                    result=exec_result.event_data,
+                )
+                if tc.tool_name in ("todowrite", "task"):
+                    yield TodoUpdate()
+
+        if self._agent_state.pending_steer:
+            steer_text = self._agent_state.pending_steer
+            self._agent_state.pending_steer = None
+            self._agent_state.messages.append(
+                UserMessage(content=f"[User steers: {steer_text}]"),
+            )
+            logger.debug("Injected steer text as UserMessage")
+
+        yield StepFinish(
+            index=step_index,
+            reason=turn_ctx.finish_reason or "stop",
+            usage=turn_ctx.usage,
+        )
+        await self._store.flush(self._agent_state.messages)
+
+    # ── Post-turn compaction ────────────────────────────────────
+
+    async def _compact_post(self) -> bool:
+        if (
+            self._context_size
+            and not self._compacted_this_step
+            and await compact_on_overflow(
+                self._agent_state,
+                self._llm,
+                self._compaction_config,
+                self._session_manager,
+                on_compacted=self._on_compacted,
+            )
+        ):
+            self._store.sync(len(self._agent_state.messages))
+            self._compacted_this_step = True
+            return True
+        return False
+
+
+# ── Backward-compatible wrapper ────────────────────────────────
 
 
 async def agent_loop(
@@ -165,248 +525,20 @@ async def agent_loop(
     preference_checker: Callable[[], Awaitable[str]] | None = None,
     on_compacted: Callable[[str], None] | None = None,
 ) -> AsyncIterator[AgentEvent]:
-    context_size = agent_state.usage.context_size
-    _compacted_this_step = False
-    store = MessageStore(session_manager, agent_state.session_id)
-    store.sync(len(agent_state.messages))
-
-    while True:
-        if agent_state.interrupt_requested:
-            agent_state.interrupt_requested = False
-            logger.debug("Agent loop interrupted by user request")
-            break
-
-        agent_state.step += 1
-        _compacted_this_step = False
-        logger.debug(f"Agent loop step {agent_state.step}")
-
-        if agent_state.step > max_steps:
-            logger.info(f"Reached max steps ({max_steps}), stopping")
-            break
-
-        if agent_state.step > 1 and context_size and not _compacted_this_step:
-            if await compact_on_overflow(
-                agent_state,
-                llm,
-                compaction_config,
-                session_manager,
-                on_compacted=on_compacted,
-            ):
-                _compacted_this_step = True
-                store.sync(len(agent_state.messages))
-                yield Compacting(data="Compacting conversation history...")
-                continue
-
-        # ── Mid-turn injection: drain background subagent results ──
-        if subagent_manager is not None and agent_state.session_id:
-            bg_results = await subagent_manager.poll_results(agent_state.session_id)
-            for bg in bg_results:
-                content = bg.content or bg.error or "[No output]"
-                injected = UserMessage(
-                    content=(
-                        f"[Background task '{bg.agent_type}' (id: {bg.task_id[:8]}) completed]\n\n"
-                        f"{content}"
-                    ),
-                )
-                agent_state.messages.append(injected)
-                logger.info(f"Injected subagent result: {bg.task_id[:8]}")
-
-        # ── Preference injection: detect new/changed AGENTS.md ──
-        if preference_checker is not None:
-            new_prefs = await preference_checker()
-            if new_prefs:
-                wrapped = f"<system-reminder>\n{new_prefs}\n</system-reminder>"
-                agent_state.messages.append(UserMessage(content=wrapped))
-                logger.info("Injected new preferences via <system-reminder>")
-
-        step_index = agent_state.step
-        disabled_tools = agent_state.disabled_tools
-        tool_definitions = await tool_registry.build_tool_definitions(exclude=disabled_tools)
-        llm_context = build_llm_context(agent_state, compaction_config)
-        logger.debug(
-            f"Sending {len(llm_context)} messages to LLM, {len(tool_definitions)} tools"
-        )
-
-        yield StepStart(index=step_index)
-
-        # ── Step-level retry loop ────────────────────────────────────
-        _retry_count = 0
-        _final_content: list[str] = []
-        _final_reasoning: list[str] = []
-        _final_tool_calls: list[ToolCallContent] = []
-        _final_finish_reason: FinishReason | None = None
-        _final_usage: Usage | None = None
-
-        while True:
-            converter = StreamEventConverter(step_index)
-
-            async for event in llm.stream(llm_context, tools=tool_definitions):
-                for ev in converter.handle(event):
-                    yield ev
-
-            for ev in converter.end_segments():
-                yield ev
-
-            # Decide whether to retry, commit partial, or commit error
-            if converter.finish_reason != "error":
-                _final_content = converter.content_buf
-                _final_reasoning = converter.reasoning_buf
-                _final_tool_calls = converter.tool_calls
-                _final_finish_reason = converter.finish_reason
-                _final_usage = converter.usage
-                break
-
-            if converter.content_buf or converter.tool_calls:
-                _final_content = converter.content_buf
-                _final_reasoning = converter.reasoning_buf
-                _final_tool_calls = converter.tool_calls
-                _final_finish_reason = converter.finish_reason
-                _final_usage = converter.usage
-                break
-
-            if _retry_count >= retry_config.max_retries:
-                _final_content = converter.content_buf
-                _final_reasoning = converter.reasoning_buf
-                _final_tool_calls = converter.tool_calls
-                _final_finish_reason = converter.finish_reason
-                _final_usage = converter.usage
-                break
-
-            _retry_count += 1
-            delay = exponential_backoff(retry_config.base_delay, _retry_count, retry_config.max_delay)
-            logger.warning(
-                f"LLM stream error (attempt {_retry_count}/{retry_config.max_retries}), "
-                f"retrying in {delay:.1f}s"
-            )
-            await asyncio.sleep(delay)
-
-        content_buf = _final_content
-        reasoning_buf = _final_reasoning
-        tool_calls = _final_tool_calls
-        finish_reason = _final_finish_reason
-        usage = _final_usage
-
-        agent_state.turn_count += 1
-        logger.debug(
-            f"Turn {agent_state.turn_count} complete, finish_reason={finish_reason}"
-        )
-
-        # Ensure AssistantMessage always has content or tool_calls — the API rejects
-        # assistant messages where both are absent (e.g. after a stream error).
-        combined_content = "".join(content_buf) if content_buf else None
-        if combined_content is None and not tool_calls:
-            if finish_reason == "error":
-                combined_content = "[Error: LLM stream failed]"
-            elif finish_reason == "length":
-                combined_content = "[Response truncated by token limit]"
-            elif finish_reason == "content_filter":
-                combined_content = "[Response filtered by content policy]"
-            else:
-                combined_content = "" if reasoning_buf else "[Empty response]"
-
-        assistant_msg = AssistantMessage(
-            content=combined_content,
-            reasoning="".join(reasoning_buf) if reasoning_buf else None,
-            tool_calls=tool_calls if tool_calls else None,
-            tokens=usage,
-        )
-        agent_state.messages.append(assistant_msg)
-        if usage is not None:
-            agent_state.usage.add(usage)
-            yield UsageUpdate(session_usage=agent_state.usage.model_dump())
-
-        if finish_reason == "tool_calls" and tool_calls:
-            logger.debug(f"Executing {len(tool_calls)} tool call(s)")
-            exec_context = {
-                "session_id": agent_state.session_id,
-                "_claim_id": f"{agent_state.session_id}:preferences",
-            }
-
-            # Execute all tool calls in this turn in parallel
-            async def _exec_one(
-                _tc: ToolCallContent,
-            ) -> tuple[str, str, ToolExecutionResult]:
-                return (
-                    _tc.tool_call_id,
-                    _tc.tool_name,
-                    await tool_registry.execute_tool_call(
-                        _tc,
-                        context=exec_context,
-                    ),
-                )
-
-            exec_results: list[tuple[str, str, ToolExecutionResult]] = (
-                await asyncio.gather(*[_exec_one(tc) for tc in tool_calls])
-            )
-
-            # Build a lookup for result ordering
-            result_by_tool_id: dict[str, ToolExecutionResult] = {}
-            for tc_id, tc_name, exec_result in exec_results:
-                result_by_tool_id[tc_id] = exec_result
-
-            for tc in tool_calls:
-                exec_result = result_by_tool_id[tc.tool_call_id]
-                agent_state.messages.append(exec_result.message)
-                if exec_result.is_error:
-                    yield ToolError(
-                        id=tc.tool_call_id,
-                        name=tc.tool_name,
-                        message=exec_result.event_data,
-                    )
-                else:
-                    yield ToolResult(
-                        id=tc.tool_call_id,
-                        name=tc.tool_name,
-                        result=exec_result.event_data,
-                    )
-                    if tc.tool_name in ("todowrite", "task"):
-                        yield TodoUpdate()
-
-            # Inject pending steer as a separate UserMessage —
-            # never mutate an existing ToolMessage (preserves original for replay)
-            if agent_state.pending_steer:
-                steer_text = agent_state.pending_steer
-                agent_state.pending_steer = None
-                agent_state.messages.append(
-                    UserMessage(content=f"[User steers: {steer_text}]")
-                )
-                logger.debug("Injected steer text as UserMessage")
-
-            yield StepFinish(
-                index=step_index, reason=finish_reason or "stop", usage=usage
-            )
-
-            await store.flush(agent_state.messages)
-            continue
-
-        yield StepFinish(index=step_index, reason=finish_reason or "stop", usage=usage)
-
-        if finish_reason is not None:
-            await store.flush(agent_state.messages)
-            if (
-                context_size
-                and not _compacted_this_step
-                and await compact_on_overflow(
-                    agent_state,
-                    llm,
-                    compaction_config,
-                    session_manager,
-                    on_compacted=on_compacted,
-                )
-            ):
-                _compacted_this_step = True
-                store.sync(len(agent_state.messages))
-                yield Compacting(data="Compacting conversation history...")
-                if compaction_config.auto_continue:
-                    agent_state.messages.append(
-                        UserMessage(
-                            content="Continue if you have next steps, or stop and ask for clarification if you are unsure how to proceed.",
-                        )
-                    )
-                    await store.flush(agent_state.messages)
-                    yield Compacting(data="Continuing after compaction...")
-                    continue
-            break
+    turn = AgentTurn(
+        agent_state,
+        llm,
+        tool_registry,
+        compaction_config,
+        retry_config=retry_config,
+        max_steps=max_steps,
+        session_manager=session_manager,
+        subagent_manager=subagent_manager,
+        preference_checker=preference_checker,
+        on_compacted=on_compacted,
+    )
+    async for event in turn.run():
+        yield event
 
 
 # ── Orchestrator ────────────────────────────────────────────────
@@ -515,6 +647,8 @@ class LoopOrchestrator:
 
 
 __all__ = [
+    "AgentTurn",
+    "TurnContext",
     "build_llm_context",
     "MessageStore",
     "StreamEventConverter",

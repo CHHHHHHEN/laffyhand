@@ -11,7 +11,7 @@ from laffyhand.core.schemas import (
     SessionID,
     SessionUsage,
 )
-from laffyhand.core.loop import agent_loop
+from laffyhand.core.loop import AgentTurn, TurnContext, agent_loop
 from laffyhand.core.llm.facade import LLM
 from laffyhand.core.tools.registry import ToolRegistry
 from laffyhand.core.tools.base import BaseTool
@@ -285,3 +285,99 @@ class TestAgentLoopAssistantMessage(unittest.TestCase):
         )
         self.assertEqual(len(msgs), 1)
         self.assertEqual(msgs[0].content, "[Empty response]")
+
+
+class TestAgentTurn(unittest.TestCase):
+    """AgentTurn class can be used directly as a drop-in for agent_loop()."""
+
+    def setUp(self):
+        self.tool_registry = ToolRegistry(PermissionManager())
+        self.tool_registry.register_tool(_NoopTool())
+
+    def _run_turn(self, llm_events: list, user_text: str = "hello",
+                  retry_config: RetryConfig = _FAST_RETRY,
+                  max_steps: int = 1):
+        llm = _MockLLM(llm_events)
+        state = AgentState(
+            messages=[
+                SystemMessage(content="You are a test assistant."),
+                UserMessage(content=user_text),
+            ],
+            session_id=SessionID("test"),
+            usage=SessionUsage(context_size=100_000),
+        )
+        events = []
+
+        async def _collect():
+            nonlocal events
+            turn = AgentTurn(
+                state,
+                llm,
+                self.tool_registry,
+                compaction_config=CompactionConfig(
+                    tail_turns=1,
+                    auto_continue=False,
+                    prune=False,
+                ),
+                retry_config=retry_config,
+                max_steps=max_steps,
+            )
+            async for event in turn.run():
+                events.append(event)
+            return state
+
+        result = asyncio.run(_collect())
+        assistant_msgs = [m for m in result.messages if isinstance(m, AssistantMessage)]
+        return assistant_msgs, events
+
+    def test_agent_turn_text_response(self):
+        from laffyhand.core.llm.specs.models import StreamText, StreamFinish
+
+        msgs, events = self._run_turn([
+            StreamText(delta="Hello from AgentTurn."),
+            StreamFinish(finish_reason="stop", usage=Usage(input_tokens=10, output_tokens=5)),
+        ])
+        self.assertEqual(len(msgs), 1)
+        self.assertEqual(msgs[0].content, "Hello from AgentTurn.")
+        self.assertIn("StepStart", [type(e).__name__ for e in events])
+
+    def test_agent_turn_tool_calls(self):
+        from laffyhand.core.llm.specs.models import StreamToolCall, StreamFinish
+
+        msgs, events = self._run_turn([
+            StreamToolCall(tool_call_id="c1", tool_name="noop", args="{}"),
+            StreamFinish(finish_reason="tool_calls", usage=Usage(input_tokens=10, output_tokens=5)),
+        ])
+        self.assertEqual(len(msgs), 1)
+        self.assertIsNone(msgs[0].content)
+        self.assertEqual(len(msgs[0].tool_calls), 1)
+        self.assertEqual(msgs[0].tool_calls[0].tool_name, "noop")
+
+    def test_agent_turn_error_finish(self):
+        from laffyhand.core.llm.specs.models import StreamError, StreamFinish
+
+        msgs, events = self._run_turn([
+            StreamError(error="API failure"),
+            StreamFinish(finish_reason="error", usage=Usage(input_tokens=10, output_tokens=0)),
+        ])
+        self.assertEqual(len(msgs), 1)
+        self.assertIn("Error", msgs[0].content)
+
+    def test_agent_turn_turn_context_direct_usage(self):
+        ctx = TurnContext(
+            content_buf=["hello"],
+            reasoning_buf=["thinking"],
+            finish_reason="stop",
+            usage=Usage(input_tokens=10, output_tokens=5),
+        )
+        self.assertEqual("".join(ctx.content_buf), "hello")
+        self.assertEqual(ctx.finish_reason, "stop")
+        self.assertIsNotNone(ctx.usage)
+
+    def test_agent_turn_empty_fields(self):
+        ctx = TurnContext()
+        self.assertEqual(ctx.content_buf, [])
+        self.assertEqual(ctx.reasoning_buf, [])
+        self.assertEqual(ctx.tool_calls, [])
+        self.assertIsNone(ctx.finish_reason)
+        self.assertIsNone(ctx.usage)
