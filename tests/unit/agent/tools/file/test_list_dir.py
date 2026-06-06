@@ -298,3 +298,52 @@ class TestListDirTagAnnotations:
         for line in result.splitlines():
             if "utils.py" in line:
                 assert "\U0001f516" not in line
+
+    # ── Directory tag annotation ────────────────────────────────
+
+    def test_annotates_tagged_subdirectory(self):
+        """A subdirectory with a tag should show annotation in list_dir."""
+        sub = self.root / "sub"
+        self.repo.upsert(str(sub), message="Sub package")
+        self.repo.commit()
+        result = self._run_via_registry(depth=2)
+        assert "sub/" in result
+        assert "\U0001f516 Sub package" in result
+
+    def test_annotates_tagged_subdirectory_and_file_inside(self):
+        """Tagged directory and tagged file inside should both get annotations."""
+        sub = self.root / "sub"
+        inner = sub / "inner.py"
+        self.repo.upsert(str(sub), message="Sub package")
+        self.repo.upsert(str(inner), message="Inner module")
+        self.repo.commit()
+        result = self._run_via_registry(depth=2)
+        assert "\U0001f516 Sub package" in result
+        assert "\U0001f516 Inner module" in result
+
+    def test_subdirectory_without_tag_not_annotated(self):
+        """Subdirectory without a tag should not show any annotation."""
+        result = self._run_via_registry(depth=2)
+        assert "sub/" in result
+        for line in result.splitlines():
+            if "sub/" in line:
+                assert "\U0001f516" not in line
+
+    def test_show_tags_false_suppresses_subdirectory_annotation(self):
+        """show_tags=false should suppress directory tag annotation."""
+        sub = self.root / "sub"
+        self.repo.upsert(str(sub), message="Sub package")
+        self.repo.commit()
+        result = self._run_via_registry(depth=2, show_tags=False)
+        assert "sub/" in result
+        assert "\U0001f516" not in result
+
+    def test_root_directory_tag_stored_correctly(self):
+        """The root directory being listed can have its own tag stored.
+        The header line itself is not annotated (it's not an entry),
+        but the tag is retrievable."""
+        self.repo.upsert(str(self.root), message="Root package")
+        self.repo.commit()
+        tag = self.repo.get(str(self.root))
+        assert tag is not None
+        assert tag.message == "Root package"

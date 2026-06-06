@@ -18,7 +18,7 @@ from laffyhand.core.tools.base import BaseTool
 
 
 class TagBatchItem(BaseModel):
-    file_path: str = Field(description="Absolute path to the file")
+    file_path: str = Field(description="Absolute path to the file or directory")
     message: str = Field(description="Macro-level semantic description of the file's overall purpose")
     exports: dict[str, str] | None = Field(None, description="Exported symbols as a dict: {\"ClassName\": \"class\", \"func\": \"function\"}")
     side_effects: str | None = Field(None, description="Description of import-time side effects")
@@ -27,14 +27,14 @@ class TagBatchItem(BaseModel):
 
 class TagParams(BaseModel):
     operation: str = Field(description="Operation to perform")
-    file_path: str | None = Field(None, description="File path to tag (for add/update)")
+    file_path: str | None = Field(None, description="File or directory path to tag (for add/update)")
     message: str | None = Field(None, description="Macro-level semantic description of the file's overall purpose, not just what was changed")
     exports: dict[str, str] | None = Field(None, description="Exported symbols as a dict: {\"ClassName\": \"class\", \"func_name\": \"function\", \"CONST\": \"constant\"} (for add/update)")
     side_effects: str | None = Field(None, description="Description of import-time side effects, e.g. 'registers signal handlers on import' (for add/update)")
     depends_on: list[str] | None = Field(None, description="List of external module dependencies this file relies on (for add/update)")
     key: str | None = Field(None, description="Custom key for key-value pair (use with --value)")
     value: str | None = Field(None, description="Value for the custom key (use with --key)")
-    path: str | None = Field(None, description="Directory path to list or filter by")
+    path: str | None = Field(None, description="Path (file or directory) to list or filter by")
     status: str | None = Field(None, description="Filter tags by status (for list operation)")
     tags: list[TagBatchItem] | None = Field(None, description="List of tags for batch operation")
     delete: bool | None = Field(default=False, description="When pruning, set to true to permanently delete stale tags instead of marking them")
@@ -45,7 +45,7 @@ if TYPE_CHECKING:
 
 _STALE_NOTE = (
     "Note: Tags are maintained by AI agents. "
-    "Each file can have only one tag. "
+    "Each file or directory can have only one tag. "
     "Use 'tag add' (first-time or major update) or 'tag update' (incremental). "
     "If this information is stale, run "
     "'tag update --file_path <path> --message <updated description>' to update it."
@@ -140,9 +140,14 @@ def _annotate_read(result: str, params: dict[str, Any], repo: FileTagRepo) -> st
             clean_name = entry_name.rstrip("/")
 
             if entry_name.endswith("/"):
-                # Directory entry — push onto stack for subsequent children
-                path_stack.append((indent, path_stack[-1][1] / clean_name))
-                annotated.append(line)
+                # Directory entry — look up tag, push onto stack for subsequent children
+                dir_path = path_stack[-1][1] / clean_name
+                path_stack.append((indent, dir_path))
+                tag = repo.get(str(dir_path))
+                if tag:
+                    annotated.append(f"{line} {format_tag_summary(tag)}")
+                else:
+                    annotated.append(line)
             else:
                 # File entry — resolve against the current directory path
                 full_path = path_stack[-1][1] / clean_name
@@ -168,8 +173,8 @@ class TagTool(BaseTool):
         "  - ``batch`` — add/update multiple files at once (``tags`` array).\n"
         "  - ``list`` — show tags (optionally filter by ``path`` or ``status``).\n"
         "  - ``prune`` — mark or delete tags for missing files.\n\n"
-        "Each file path can have exactly ONE tag. "
-        "Use holistic descriptions of the file's overall purpose, "
+        "Each file or directory path can have exactly ONE tag. "
+        "Use holistic descriptions of the item's overall purpose, "
         "not just what changed in the last edit.\n"
         "Structured metadata: ``exports`` (dict), ``side_effects`` (str), "
         "``depends_on`` (list).\n\n"
@@ -346,6 +351,12 @@ class TagTool(BaseTool):
             if os.path.isfile(real):
                 tag = self._repo.get(real)
                 tags = [tag] if tag else []
+            elif os.path.isdir(real):
+                # Show directory's own tag first, then children
+                dir_tag = self._repo.get(real)
+                prefix = os.path.join(real, "") if not real.endswith(os.sep) else real
+                children = self._repo.list_by_prefix(prefix)
+                tags = ([dir_tag] if dir_tag else []) + children
             else:
                 prefix = os.path.join(real, "") if not real.endswith(os.sep) else real
                 tags = self._repo.list_by_prefix(prefix)

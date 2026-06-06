@@ -57,11 +57,8 @@ def temp_dir():
     os.makedirs(Path(tmpdir) / "subdir", exist_ok=True)
     (Path(tmpdir) / "subdir" / "helper.py").write_text("def helper(): pass\n")
     yield tmpdir
-    for p in Path(tmpdir).rglob("*"):
-        if p.is_file():
-            os.unlink(p)
-    os.rmdir(Path(tmpdir) / "subdir")
-    os.rmdir(tmpdir)
+    import shutil
+    shutil.rmtree(tmpdir, ignore_errors=True)
 
 
 # ── FileTagRepo tests ──────────────────────────────────────────
@@ -535,7 +532,7 @@ class TestTagTool:
         result = asyncio.run(
             tool.run({"operation": "add", "file_path": temp_file, "message": "test"})
         )
-        assert "Each file can have only one tag" in result
+        assert "Each file or directory can have only one tag" in result
         assert "Tags are maintained by AI agents" in result
 
 
@@ -664,6 +661,87 @@ class TestTagTool:
         assert tag is not None
         assert tag.exports == {"handle_request": "function"}
         assert tag.side_effects == "sets up routes"
+
+
+# ── Directory tag tests ─────────────────────────────────────────
+
+
+class TestDirectoryTag:
+    """Tests for tagging directories."""
+
+    def test_add_directory_tag(self, tool, temp_dir):
+        result = asyncio.run(
+            tool.run({"operation": "add", "file_path": temp_dir, "message": "package directory"})
+        )
+        assert "Tagged" in result
+        assert "package directory" in result
+        tag = tool._repo.get(os.path.realpath(temp_dir))
+        assert tag is not None
+        assert tag.message == "package directory"
+        assert tag.status == "active"
+
+    def test_update_directory_tag(self, tool, temp_dir):
+        asyncio.run(tool.run({"operation": "add", "file_path": temp_dir, "message": "old desc"}))
+        result = asyncio.run(
+            tool.run({"operation": "update", "file_path": temp_dir, "message": "new desc"})
+        )
+        assert "Updated tag" in result
+        assert "old desc \u2192 new desc" in result
+        tag = tool._repo.get(os.path.realpath(temp_dir))
+        assert tag is not None
+        assert tag.message == "new desc"
+
+    def test_list_shows_directory_self_tag(self, tool, temp_dir):
+        """list --path <dir> should include the directory's own tag."""
+        asyncio.run(tool.run({"operation": "add", "file_path": temp_dir, "message": "my package"}))
+        result = asyncio.run(tool.run({"operation": "list", "path": temp_dir}))
+        assert "my package" in result
+
+    def test_list_shows_directory_and_children(self, tool, temp_dir):
+        """list --path <dir> should show the dir's own tag before children tags."""
+        api_py = Path(temp_dir) / "api.py"
+        asyncio.run(tool.run({"operation": "add", "file_path": temp_dir, "message": "my package"}))
+        asyncio.run(tool.run({"operation": "add", "file_path": str(api_py), "message": "API handler"}))
+        result = asyncio.run(tool.run({"operation": "list", "path": temp_dir}))
+        assert "my package" in result
+        assert "API handler" in result
+
+    def test_list_directory_no_self_tag_shows_children_only(self, tool, temp_dir):
+        """Directory with no tag of its own should only show children."""
+        api_py = Path(temp_dir) / "api.py"
+        asyncio.run(tool.run({"operation": "add", "file_path": str(api_py), "message": "API handler"}))
+        result = asyncio.run(tool.run({"operation": "list", "path": temp_dir}))
+        # Dir itself has no tag, so only the child tag appears
+        assert "API handler" in result
+        assert "Found 1 tag(s)" in result
+
+    def test_batch_directory(self, tool, temp_dir):
+        result = asyncio.run(
+            tool.run({
+                "operation": "batch",
+                "tags": [
+                    {"file_path": temp_dir, "message": "package dir"},
+                ],
+            })
+        )
+        assert "Batch processed 1 tag(s)" in result
+        assert "package dir" in result
+        tag = tool._repo.get(os.path.realpath(temp_dir))
+        assert tag is not None
+        assert tag.message == "package dir"
+
+    def test_prune_directory_tag(self, tool, temp_dir):
+        """prune should handle directory tags correctly (os.path.exists works for dirs)."""
+        asyncio.run(tool.run({"operation": "add", "file_path": temp_dir, "message": "will be removed"}))
+        # Remove the directory
+        import shutil
+        shutil.rmtree(temp_dir)
+        result = asyncio.run(tool.run({"operation": "prune"}))
+        assert "Marked" in result
+        assert "stale" in result
+        tag = tool._repo.get(os.path.realpath(temp_dir))
+        assert tag is not None
+        assert tag.status == "stale"
 
 
 # ── Annotation tests ───────────────────────────────────────────
@@ -862,6 +940,79 @@ class TestAnnotation:
         annotated = annotate_result("read", read_result, params, repo)
         assert "\U0001f516" not in annotated
 
+    # ── Directory annotation in list_dir ────────────────────────
+
+    def test_annotate_read_directory_self_tag(self, repo, temp_dir):
+        """A tagged directory should have its tag retrievable."""
+        repo.upsert(str(temp_dir), message="source package")
+        repo.commit()
+        assert repo.get(str(temp_dir)) is not None
+
+    def test_annotate_read_directory_entry_tagged(self, repo, temp_dir):
+        """A subdirectory entry with a tag should show annotation."""
+        sub = Path(temp_dir) / "sub"
+        sub.mkdir()
+        repo.upsert(str(sub), message="sub package")
+        repo.commit()
+
+        read_result = (
+            f"Contents of {temp_dir} (depth=2):\n"
+            f"  api.py (1 lines)\n"
+            f"  sub/\n"
+        )
+        params = {"file_path": temp_dir}
+        annotated = annotate_result("list_dir", read_result, params, repo)
+        assert "\U0001f516 sub package" in annotated
+        assert "sub/" in annotated
+
+    def test_annotate_read_directory_entry_no_tag(self, repo, temp_dir):
+        """A subdirectory without a tag should not be annotated."""
+        sub = Path(temp_dir) / "sub"
+        sub.mkdir()
+
+        read_result = (
+            f"Contents of {temp_dir} (depth=2):\n"
+            f"  api.py (1 lines)\n"
+            f"  sub/\n"
+        )
+        params = {"file_path": temp_dir}
+        annotated = annotate_result("list_dir", read_result, params, repo)
+        assert "sub/" in annotated
+        assert "\U0001f516" not in annotated
+
+    def test_annotate_read_tracked_children_after_tagged_directory(self, repo, temp_dir):
+        """Files inside a tagged subdirectory should still be resolved correctly."""
+        sub = Path(temp_dir) / "sub"
+        sub.mkdir()
+        inner = sub / "inner.py"
+        repo.upsert(str(sub), message="sub package")
+        repo.upsert(str(inner), message="inner module")
+        repo.commit()
+
+        read_result = (
+            f"Contents of {temp_dir} (depth=3):\n"
+            f"  sub/\n"
+            f"    inner.py (1 lines)\n"
+        )
+        params = {"file_path": temp_dir}
+        annotated = annotate_result("list_dir", read_result, params, repo)
+        assert "\U0001f516 sub package" in annotated
+        assert "\U0001f516 inner module" in annotated
+
+    def test_annotate_read_directory_show_tags_false(self, repo, temp_dir):
+        """show_tags=false should suppress directory tag annotation."""
+        sub = Path(temp_dir) / "sub"
+        sub.mkdir()
+        repo.upsert(str(sub), message="sub package")
+        repo.commit()
+
+        read_result = (
+            f"Contents of {temp_dir} (depth=2):\n"
+            f"  sub/\n"
+        )
+        params = {"file_path": temp_dir, "show_tags": False}
+        annotated = annotate_result("list_dir", read_result, params, repo)
+        assert "\U0001f516" not in annotated
 
 # ── Utility tests ──────────────────────────────────────────────
 
