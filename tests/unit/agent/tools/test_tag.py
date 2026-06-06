@@ -717,7 +717,7 @@ class TestAnnotation:
             f"  subdir/"
         )
         params = {"file_path": temp_dir}
-        annotated = annotate_result("read", read_result, params, repo)
+        annotated = annotate_result("list_dir", read_result, params, repo)
 
         assert "\U0001f516 API handler" in annotated
         assert "\U0001f516 DB layer" in annotated
@@ -739,7 +739,7 @@ class TestAnnotation:
             f"    helper.py (1 lines)\n"
         )
         params = {"file_path": temp_dir}
-        annotated = annotate_result("read", read_result, params, repo)
+        annotated = annotate_result("list_dir", read_result, params, repo)
 
         assert "\U0001f516 API handler" in annotated
         assert "\U0001f516 Helper module" in annotated
@@ -757,7 +757,7 @@ class TestAnnotation:
             f"      deep.py (1 lines)\n"
         )
         params = {"file_path": temp_dir}
-        annotated = annotate_result("read", read_result, params, repo)
+        annotated = annotate_result("list_dir", read_result, params, repo)
 
         assert "\U0001f516 Deeply nested module" in annotated
 
@@ -776,7 +776,7 @@ class TestAnnotation:
             f"    __init__.py (1 lines)\n"
         )
         params = {"file_path": temp_dir}
-        annotated = annotate_result("read", read_result, params, repo)
+        annotated = annotate_result("list_dir", read_result, params, repo)
 
         assert "\U0001f516 Root package init" in annotated
         assert "\U0001f516 Subpackage init" in annotated
@@ -797,7 +797,7 @@ class TestAnnotation:
             f"    __init__.py (1 lines)\n"
         )
         params = {"file_path": temp_dir}
-        annotated = annotate_result("read", read_result, params, repo)
+        annotated = annotate_result("list_dir", read_result, params, repo)
 
         assert "\U0001f516 CLI package init" in annotated
         assert "\U0001f516 Lib package init" in annotated
@@ -805,13 +805,13 @@ class TestAnnotation:
     def test_annotate_read_no_tags(self, repo, temp_dir):
         read_result = f"Contents of {temp_dir} (total 1 entries):\n  api.py (1 lines)"
         params = {"file_path": temp_dir}
-        annotated = annotate_result("read", read_result, params, repo)
+        annotated = annotate_result("list_dir", read_result, params, repo)
         assert annotated == read_result
 
     def test_annotate_read_not_a_directory_listing(self, repo):
         read_result = "def foo():\n    pass"
         params = {"file_path": "/tmp/some_file.py"}
-        annotated = annotate_result("read", read_result, params, repo)
+        annotated = annotate_result("list_dir", read_result, params, repo)
         assert annotated == read_result
 
     def test_annotate_other_tool(self, repo):

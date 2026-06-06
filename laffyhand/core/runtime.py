@@ -171,7 +171,7 @@ class AgentRuntime:
         repo = self._file_tag_repo
 
         def _post_process(name: str, result: str, params: dict) -> str:
-            if name in ("glob", "read", "list_dir"):
+            if name in ("glob", "list_dir"):
                 return annotate_result(name, result, params, repo)
             return result
 

@@ -93,7 +93,7 @@ def annotate_result(
         return result
     if tool_name == "glob":
         return _annotate_glob(result, params, repo)
-    if tool_name in ("read", "list_dir"):
+    if tool_name == "list_dir":
         return _annotate_read(result, params, repo)
     return result
 
