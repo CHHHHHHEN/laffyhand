@@ -23,7 +23,7 @@ function refreshTodo(sessionId: string) {
       completedAt: t.completedAt,
       taskToolId: t.taskToolId,
     }))
-    useTodoStore.getState().setTasks(tasks)
+    useTodoStore.getState().setSessionTasks(sessionId, tasks)
   }).catch(() => {})
 }
 

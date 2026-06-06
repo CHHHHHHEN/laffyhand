@@ -1,13 +1,18 @@
 import { useMemo } from "react"
 import { useTodoStore } from "@/stores/todo-store"
 import { useUiStore } from "@/stores/ui-store"
+import { useSessionStore } from "@/stores/session-store"
 import { TodoColumn } from "./TodoColumn"
-import type { TodoStatus } from "@/types/session"
+import type { TodoItem, TodoStatus } from "@/types/session"
 
 const COLUMNS: TodoStatus[] = ["blocked", "pending", "in_progress", "completed", "cancelled"]
+const EMPTY_TASKS: TodoItem[] = []
 
 export function TodoPanel() {
-  const tasks = useTodoStore((s) => s.tasks)
+  const activeSessionId = useSessionStore((s) => s.activeSessionId)
+  const tasks = useTodoStore((s) =>
+    activeSessionId ? (s.taskMap[activeSessionId] ?? EMPTY_TASKS) : EMPTY_TASKS,
+  )
   const todoPanelOpen = useUiStore((s) => s.todoPanelOpen)
   const setTodoPanelOpen = useUiStore((s) => s.setTodoPanelOpen)
 

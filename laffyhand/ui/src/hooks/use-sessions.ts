@@ -186,7 +186,7 @@ export function useCurrentSession(sessionId: string | undefined) {
           completedAt: t.completedAt,
           taskToolId: t.taskToolId,
         }))
-        useTodoStore.getState().setTasks(tasks)
+        useTodoStore.getState().setSessionTasks(sessionId, tasks)
       }).catch(() => {})
     }
   }, [session, sessionId, addSession, loadMessages, setSessionInfoAction])

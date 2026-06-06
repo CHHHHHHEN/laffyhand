@@ -21,11 +21,13 @@ export function AppShell() {
   const sidebarOpen = useUiStore((s) => s.sidebarOpen)
   const toggleSidebar = useUiStore((s) => s.toggleSidebar)
   const toggleTodoPanel = useUiStore((s) => s.toggleTodoPanel)
-  const taskCount = useTodoStore((s) => s.tasks.length)
+  const activeSessionId = useSessionStore((s) => s.activeSessionId)
+  const taskCount = useTodoStore((s) =>
+    activeSessionId ? (s.taskMap[activeSessionId] ?? []).length : 0,
+  )
   const darkMode = useUiStore((s) => s.darkMode)
   const toggleDarkMode = useUiStore((s) => s.toggleDarkMode)
 
-  const activeSessionId = useSessionStore((s) => s.activeSessionId)
   const sessionState = useChatStore((s) => activeSessionId ? s.sessions[activeSessionId] : undefined)!
   const isStreaming = sessionState?.isStreaming ?? false
   const model = sessionState?.model ?? ""

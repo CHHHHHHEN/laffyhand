@@ -3,12 +3,15 @@ import { render, screen, fireEvent, act } from "@testing-library/react"
 import { TodoPanel } from "./TodoPanel"
 import { useTodoStore } from "@/stores/todo-store"
 import { useUiStore } from "@/stores/ui-store"
+import { useSessionStore } from "@/stores/session-store"
 import type { TodoItem } from "@/types/session"
+
+const SESSION_ID = "sess-1"
 
 function makeTask(overrides: Partial<TodoItem> = {}): TodoItem {
   return {
     id: "t1",
-    sessionId: "sess-1",
+    sessionId: SESSION_ID,
     content: "Test task",
     status: "pending",
     priority: "medium",
@@ -24,13 +27,14 @@ function makeTask(overrides: Partial<TodoItem> = {}): TodoItem {
 
 beforeEach(() => {
   useUiStore.getState().setTodoPanelOpen(true)
-  useTodoStore.setState({ tasks: [] })
+  useTodoStore.setState({ taskMap: {} })
+  useSessionStore.getState().setActiveSessionId(SESSION_ID)
 })
 
 describe("TodoPanel", () => {
   it("renders header with total count", () => {
     act(() => { useUiStore.getState().setTodoPanelOpen(true) })
-    useTodoStore.getState().setTasks([
+    useTodoStore.getState().setSessionTasks(SESSION_ID, [
       makeTask({ id: "a" }),
       makeTask({ id: "b" }),
     ])
@@ -42,7 +46,7 @@ describe("TodoPanel", () => {
 
   it("groups tasks into correct columns by status", () => {
     act(() => { useUiStore.getState().setTodoPanelOpen(true) })
-    useTodoStore.getState().setTasks([
+    useTodoStore.getState().setSessionTasks(SESSION_ID, [
       makeTask({ id: "a", content: "Blocked task", status: "blocked" }),
       makeTask({ id: "b", content: "Pending task", status: "pending" }),
       makeTask({ id: "c", content: "Running task", status: "in_progress" }),
@@ -74,9 +78,22 @@ describe("TodoPanel", () => {
 
   it("does not render content when panel is closed", () => {
     useUiStore.getState().setTodoPanelOpen(false)
-    useTodoStore.getState().addTask(makeTask({ content: "Hidden task" }))
+    useTodoStore.getState().addTask(SESSION_ID, makeTask({ content: "Hidden task" }))
     render(<TodoPanel />)
     expect(screen.queryByText("Hidden task")).not.toBeInTheDocument()
+  })
+
+  it("renders tasks only for the active session", () => {
+    act(() => { useUiStore.getState().setTodoPanelOpen(true) })
+    useTodoStore.getState().setSessionTasks(SESSION_ID, [
+      makeTask({ id: "a", content: "Session 1 task" }),
+    ])
+    useTodoStore.getState().setSessionTasks("sess-other", [
+      makeTask({ id: "b", content: "Other session task" }),
+    ])
+    render(<TodoPanel />)
+    expect(screen.getByText("Session 1 task")).toBeInTheDocument()
+    expect(screen.queryByText("Other session task")).not.toBeInTheDocument()
   })
 
   it("renders all five column labels", () => {
