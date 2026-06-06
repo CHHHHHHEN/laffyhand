@@ -1,4 +1,4 @@
-import { useMemo } from "react"
+import { useMemo, useCallback, useRef, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
 import { useSessionStore } from "@/stores/session-store"
 import { useChatStore } from "@/stores/chat-store"
@@ -21,10 +21,40 @@ export function SessionTabs() {
     }))
   }, [activeSessionIds, sessions, allSessionStates])
 
+  const scrollRef = useRef<HTMLDivElement>(null)
+
+  const onWheel = useCallback((e: React.WheelEvent) => {
+    if (!scrollRef.current) return
+    const el = scrollRef.current
+    const atStart = el.scrollLeft === 0
+    const atEnd = el.scrollLeft + el.clientWidth >= el.scrollWidth
+
+    // Only intercept when there's actually overflow to scroll
+    if (el.scrollWidth <= el.clientWidth) return
+
+    // If scrolling left at the start or right at the end, let the parent scroll
+    if ((e.deltaY < 0 && atStart) || (e.deltaY > 0 && atEnd)) return
+
+    e.preventDefault()
+    el.scrollLeft += e.deltaY
+  }, [])
+
+  // Ensure overflow has some height even with hidden y-scrollbar
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const needsScroll = el.scrollWidth > el.clientWidth
+    el.style.setProperty("--scroll-shown", needsScroll ? "1" : "0")
+  })
+
   if (tabs.length === 0) return null
 
   return (
-    <div className="flex items-center gap-0 px-1 pt-0.5 bg-[var(--bg-base)] border-b border-[var(--border-muted)] overflow-x-auto shrink-0">
+    <div
+      ref={scrollRef}
+      onWheel={onWheel}
+      className="flex items-center gap-0 px-1 pt-0.5 bg-[var(--bg-base)] border-b border-[var(--border-muted)] overflow-x-auto overflow-y-hidden shrink-0"
+    >
       {tabs.map((tab) => (
         <div
           key={tab.id}
