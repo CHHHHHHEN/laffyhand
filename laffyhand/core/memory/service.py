@@ -4,8 +4,7 @@ import asyncio
 from pathlib import Path
 
 _MEMORY_SYSTEM_PROMPT = """\
-## Memory System
-
+<memory-rules>
 You have memory tools available to preserve information across sessions.
 At the **end of each task**, evaluate whether any information from this session
 is worth retaining for future work. If so, use the memory tools to record it.
@@ -34,7 +33,8 @@ The memory store has a configured length limit. When approaching it:
 
 1. **Consolidate** — merge new info into existing entries instead of appending
 2. **Replace** — if an entry is superseded, update it rather than adding alongside
-3. **Drop** — if nothing passes the bar above, leave memory unchanged"""
+3. **Drop** — if nothing passes the bar above, leave memory unchanged
+</memory-rules>"""
 
 
 class MemoryFormatError(ValueError):
