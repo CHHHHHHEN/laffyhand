@@ -93,14 +93,16 @@ class PermissionManager:
         return (True, None)
 
     def _check_parent_rules(self, permission: str, path: str) -> str | None:
-        """Walk up parent directories of *path* and return the nearest ancestor
+        """Walk up *path* (including itself) and return the nearest ancestor
         that has an explicit rule in *self._rules* (``"allow"`` or ``"deny"``).
 
+        Checks the path itself first, then each parent directory up to root.
         Returns ``None`` when no ancestor has a rule.
         """
         needle = f"{permission}:"
-        for parent in Path(path).parents:
-            rule = self._rules.get(f"{needle}{parent}")
+        p = Path(path)
+        for candidate in (p, *p.parents):
+            rule = self._rules.get(f"{needle}{candidate}")
             if rule is not None:
                 return rule
         return None
@@ -116,7 +118,9 @@ class PermissionManager:
             return (True, None)
         logger.info(f"Path {resolved} is outside workspace {workspace}")
 
-        permission = f"{tool_name}_outside_workspace"
+        # All file-tool outside-workspace checks share a single permission name
+        # so that an "always allow" for one tool (e.g. read) also covers others
+        permission = "outside_workspace"
         parent_rule = self._check_parent_rules(permission, resolved)
         if parent_rule == "allow":
             logger.info(
@@ -129,7 +133,23 @@ class PermissionManager:
             )
             return (False, None)
 
-        return await self.ask(permission, [resolved])
+        result = await self.ask(permission, [resolved])
+
+        # When the user chose "always allow" (rule stored for exact path),
+        # also add a rule for the parent directory so that sibling files
+        # and subdirectories are automatically covered.
+        rule_key = f"{permission}:{resolved}"
+        if result[0] and self._rules.get(rule_key) == "allow":
+            parent = str(Path(resolved).parent)
+            if parent != resolved:
+                parent_key = f"{permission}:{parent}"
+                if parent_key not in self._rules:
+                    self._rules[parent_key] = "allow"
+                    logger.info(
+                        f"Parent directory {parent_key} auto-allowed by rule propagation"
+                    )
+
+        return result
 
 
 _SUBAGENT_EXCLUDED_TOOLS: frozenset[str] = frozenset({"task"})
