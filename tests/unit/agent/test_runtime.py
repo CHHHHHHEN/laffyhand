@@ -118,7 +118,7 @@ class TestBuildSystemPrompt:
             prompt = await runtime.build_system_prompt("Base.\n")
         assert "<memory>" in prompt
         assert "1. test entry" in prompt
-        assert "## Memory System" in prompt
+        assert "<memory-rules>" in prompt
         assert "What to Remember" in prompt
 
     @pytest.mark.anyio
@@ -127,7 +127,67 @@ class TestBuildSystemPrompt:
         with patch.object(runtime, "_load_preferences", AsyncMock(return_value="")):
             prompt = await runtime.build_system_prompt("Base.\n")
         assert "<memory>" not in prompt
-        assert "## Memory System" not in prompt
+        assert "<memory-rules>" not in prompt
+
+
+class TestUpdateSessionsWorkspaceEnv:
+    def test_replaces_env_block_in_active_sessions(self, runtime, tmp_path):
+        old_ws = "/old/workspace"
+        new_ws = str(tmp_path)
+        old_env = f"<env>\nWorking directory: /cwd\nWorkspace: {old_ws}\nPlatform: linux\nCurrent time: 2024-01-01T00:00:00+00:00\n</env>"
+        new_sid = "sess-1"
+        state = AgentState(
+            messages=[SystemMessage(content=f"<soul>\nBe helpful.\n</soul>\n{old_env}\n<tools>\nread\n</tools>")],
+            session_id=SessionID(new_sid),
+            usage=SessionUsage(context_size=runtime.context_size),
+        )
+        sid2 = "sess-2"
+        state2 = AgentState(
+            messages=[SystemMessage(content=f"<soul>\nBe smart.\n</soul>\n{old_env}\n<tools>\nwrite\n</tools>")],
+            session_id=SessionID(sid2),
+            usage=SessionUsage(context_size=runtime.context_size),
+        )
+        runtime.session_store.set(new_sid, state)
+        runtime.session_store.set(sid2, state2)
+
+        runtime.update_sessions_workspace_env(new_ws)
+
+        assert new_ws in state.messages[0].content
+        assert old_ws not in state.messages[0].content
+        assert "<env>" in state.messages[0].content
+        assert "</env>" in state.messages[0].content
+        assert "Working directory:" in state.messages[0].content
+
+        assert new_ws in state2.messages[0].content
+        assert old_ws not in state2.messages[0].content
+
+    def test_skips_sessions_without_env_block(self, runtime):
+        state = AgentState(
+            messages=[SystemMessage(content="<soul>\nBe helpful.\n</soul>")],
+            session_id=SessionID("sess-1"),
+            usage=SessionUsage(context_size=runtime.context_size),
+        )
+        runtime.session_store.set("sess-1", state)
+        original = state.messages[0].content
+
+        runtime.update_sessions_workspace_env("/new/workspace")
+
+        assert state.messages[0].content == original
+
+    def test_skips_empty_session_list(self, runtime):
+        # Should not raise
+        runtime.update_sessions_workspace_env("/new/workspace")
+
+    def test_skips_non_system_first_message(self, runtime):
+        state = AgentState(
+            messages=[UserMessage(content="hi")],
+            session_id=SessionID("sess-1"),
+            usage=SessionUsage(context_size=runtime.context_size),
+        )
+        runtime.session_store.set("sess-1", state)
+        runtime.update_sessions_workspace_env("/new/workspace")
+        # No crash, unchanged
+        assert state.messages[0].content == "hi"
 
 
 class TestPreferences:

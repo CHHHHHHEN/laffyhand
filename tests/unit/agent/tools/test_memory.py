@@ -163,7 +163,7 @@ class TestMemoryService:
 
     def test_system_prompt_property(self, service):
         prompt = service.system_prompt
-        assert "## Memory System" in prompt
+        assert "<memory-rules>" in prompt
         assert "What to Remember" in prompt
         assert "What NOT to Remember" in prompt
         assert "When Capacity Is Limited" in prompt

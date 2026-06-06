@@ -27,6 +27,7 @@ from laffyhand.gateway.handlers import (
     handle_permission_respond,
     handle_tools_list,
     handle_tools_set_disabled,
+    handle_workspace_set,
 )
 from laffyhand.gateway.session_converters import _serialize_messages, _next_msg_id
 from laffyhand.core.llm.specs.models import (
@@ -1236,6 +1237,32 @@ class TestHandleMCPRemoveServer:
     async def test_requires_name(self, runtime, transport):
         with pytest.raises(ValueError, match="name is required"):
             await handle_mcp_remove_server(runtime, {}, transport, 1, "c1")
+
+
+class TestHandleWorkspaceSet:
+    @pytest.mark.anyio
+    async def test_updates_workspace_and_sessions(self, runtime, transport, tmp_path):
+        resolved = str(tmp_path)
+        result = await handle_workspace_set(
+            runtime, {"workspace": resolved}, transport, 1, "c1"
+        )
+        assert result["workspace"] == resolved
+        assert runtime.tool_registry.workspace == resolved
+        runtime.update_sessions_workspace_env.assert_called_once_with(resolved)
+
+    @pytest.mark.anyio
+    async def test_requires_workspace(self, runtime, transport):
+        result = await handle_workspace_set(
+            runtime, {"workspace": ""}, transport, 1, "c1"
+        )
+        assert "error" in result
+
+    @pytest.mark.anyio
+    async def test_requires_existing_directory(self, runtime, transport):
+        result = await handle_workspace_set(
+            runtime, {"workspace": "/nonexistent/path"}, transport, 1, "c1"
+        )
+        assert "error" in result
 
 
 def _async_gen(items):

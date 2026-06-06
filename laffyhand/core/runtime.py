@@ -130,6 +130,23 @@ class AgentRuntime:
 
 
 
+    def update_sessions_workspace_env(self, new_workspace: str) -> None:
+        """Replace the <env> block in all active sessions' system messages."""
+        new_env_block = build_env_block(new_workspace)
+        for _sid, state in self._session_store.items():
+            if not state.messages:
+                continue
+            first = state.messages[0]
+            if not isinstance(first, SystemMessage):
+                continue
+            old = first.content
+            start = old.find("<env>\n")
+            end = old.find("\n</env>")
+            if start == -1 or end == -1:
+                continue
+            end += len("\n</env>")
+            first.content = old[:start] + new_env_block + old[end:]
+
     def _build_llm(self, provider: str, model: str) -> LLM:
         from laffyhand.config import resolve_provider
 

@@ -67,5 +67,6 @@ async def handle_workspace_set(
     if not os.path.isdir(resolved):
         return {"error": f"workspace path does not exist: {workspace}"}
     runtime.tool_registry.workspace = resolved
+    runtime.update_sessions_workspace_env(resolved)
     logger.info(f"Workspace set to {resolved} (conn={conn_id})")
     return {"workspace": resolved}
