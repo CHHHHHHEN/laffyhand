@@ -19,7 +19,7 @@ from laffyhand.core.events import (
 )
 from laffyhand.core.llm.specs.models import SystemMessage, UserMessage
 from laffyhand.core.schemas import AgentState, SessionID, SessionUsage
-from laffyhand.core._utils import build_env_block
+from laffyhand.core.agent import assemble_subagent_prompt
 from laffyhand.core.tools.permission import SubagentPermissions
 
 if TYPE_CHECKING:
@@ -29,7 +29,7 @@ if TYPE_CHECKING:
     from laffyhand.core.tools.permission import PermissionManager
 
 
-def build_subagent_state(
+async def build_subagent_state(
     session_manager: SessionManager,
     parent_session_id: str,
     agent_info: AgentInfo,
@@ -55,11 +55,11 @@ def build_subagent_state(
         agent_info.system_prompt or "You are a helpful sub-agent. Complete the assigned task."
     )
 
-    env_block = build_env_block(child_registry.workspace)
-
-    system_prompt = f"<soul>\n{system_content.strip()}\n</soul>"
-    system_prompt += f"\n{env_block}"
-    system_prompt += f"\n{child_registry.build_tool_prompt()}"
+    system_prompt = await assemble_subagent_prompt(
+        system_content,
+        workspace=child_registry.workspace,
+        tool_registry=child_registry,
+    )
 
     system_msg = SystemMessage(content=system_prompt)
     user_msg = UserMessage(content=prompt)

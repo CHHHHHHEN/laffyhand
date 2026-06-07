@@ -85,11 +85,12 @@ class TestSubagentResult:
 
 
 class TestBuildSubagentState:
-    def test_creates_child_session(
+    @pytest.mark.anyio
+    async def test_creates_child_session(
         self, session_manager, tool_registry, parent_permission, agent_info
     ):
         parent = session_manager.create()
-        child_state, child_registry = build_subagent_state(
+        child_state, child_registry = await build_subagent_state(
             session_manager,
             parent.id,
             agent_info,
@@ -100,11 +101,12 @@ class TestBuildSubagentState:
         assert child_state.session_id is not None
         assert child_state.session_id != parent.id
 
-    def test_state_contains_system_and_user_messages(
+    @pytest.mark.anyio
+    async def test_state_contains_system_and_user_messages(
         self, session_manager, tool_registry, parent_permission, agent_info
     ):
         parent = session_manager.create()
-        child_state, _ = build_subagent_state(
+        child_state, _ = await build_subagent_state(
             session_manager,
             parent.id,
             agent_info,
@@ -122,12 +124,13 @@ class TestBuildSubagentState:
         assert isinstance(child_state.messages[1], UserMessage)
         assert child_state.messages[1].content == "Do the thing"
 
-    def test_default_prompt_when_none(
+    @pytest.mark.anyio
+    async def test_default_prompt_when_none(
         self, session_manager, tool_registry, parent_permission
     ):
         info = AgentInfo(name="minimal", system_prompt="")
         parent = session_manager.create()
-        child_state, _ = build_subagent_state(
+        child_state, _ = await build_subagent_state(
             session_manager,
             parent.id,
             info,
@@ -139,11 +142,12 @@ class TestBuildSubagentState:
         assert "<env>" in child_state.messages[0].content
         assert "<tools>" in child_state.messages[0].content
 
-    def test_permission_filters_registry(
+    @pytest.mark.anyio
+    async def test_permission_filters_registry(
         self, session_manager, tool_registry, parent_permission, agent_info
     ):
         parent = session_manager.create()
-        _, child_registry = build_subagent_state(
+        _, child_registry = await build_subagent_state(
             session_manager,
             parent.id,
             agent_info,
@@ -155,7 +159,8 @@ class TestBuildSubagentState:
         assert child_registry.permission.check("read") is True
         assert child_registry.permission.check("write") is False
 
-    def test_task_tool_not_in_filtered_registry(
+    @pytest.mark.anyio
+    async def test_task_tool_not_in_filtered_registry(
         self, session_manager, tool_registry, parent_permission, agent_info
     ):
         from laffyhand.core.tools.task import TaskTool
@@ -164,7 +169,7 @@ class TestBuildSubagentState:
         task_tool.name = "task"
         tool_registry.register_tool(task_tool)
         parent = session_manager.create()
-        _, child_registry = build_subagent_state(
+        _, child_registry = await build_subagent_state(
             session_manager,
             parent.id,
             agent_info,
@@ -174,11 +179,12 @@ class TestBuildSubagentState:
         )
         assert child_registry._tools.get("task") is None
 
-    def test_session_usage_zero_context(
+    @pytest.mark.anyio
+    async def test_session_usage_zero_context(
         self, session_manager, tool_registry, parent_permission, agent_info
     ):
         parent = session_manager.create()
-        child_state, _ = build_subagent_state(
+        child_state, _ = await build_subagent_state(
             session_manager,
             parent.id,
             agent_info,

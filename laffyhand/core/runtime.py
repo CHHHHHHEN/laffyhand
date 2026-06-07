@@ -32,6 +32,7 @@ from laffyhand.core.events import AgentEvent
 from laffyhand.core._utils import build_env_block
 from laffyhand.core.memory.service import MemoryService
 from laffyhand.core.preference import PreferenceService
+from laffyhand.core.agent import assemble_system_prompt
 from laffyhand.core.title import TitleService
 from laffyhand.core.workspace import WorkspaceService
 
@@ -207,9 +208,6 @@ class AgentRuntime:
 
     # ── Preference delegation ────────────────────────────────────
 
-    async def _load_preferences(self) -> str:
-        return await self.preference_service.load_preferences()
-
     async def poll_new_preferences(self) -> str:
         return await self.preference_service.poll_new_preferences()
 
@@ -226,26 +224,15 @@ class AgentRuntime:
         self.preference_service.clear_preference_claims(message_id)
 
     async def build_system_prompt(self, base_prompt: str, disabled_tools: set[str] | None = None) -> str:
-        parts: list[str] = []
-        parts.append(f"<soul>\n{base_prompt.strip()}\n</soul>")
-
-        parts.append(build_env_block(self.tool_registry.workspace))
-
-        parts.append(self.tool_registry.build_tool_prompt(exclude=disabled_tools or set()))
-
-        if self.skill_registry.all():
-            parts.append(self.skill_registry.build_skills_summary())
-
-        preferences = await self._load_preferences()
-        if preferences:
-            parts.append(preferences)
-
-        if self._memory_service is not None:
-            memory_content = await self._memory_service.read()
-            parts.append(f"<memory>\n{memory_content.strip()}\n</memory>")
-            parts.append(self._memory_service.system_prompt)
-
-        return "\n".join(parts)
+        return await assemble_system_prompt(
+            base_prompt,
+            workspace=self.tool_registry.workspace,
+            disabled_tools=disabled_tools,
+            tool_registry=self.tool_registry,
+            skill_registry=self.skill_registry,
+            preference_service=self.preference_service,
+            memory_service=self._memory_service,
+        )
 
     def fork_session(self, session_id: str) -> str | None:
         return self._session_store.fork(session_id, self.session_manager)

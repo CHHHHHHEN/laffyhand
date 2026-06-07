@@ -165,7 +165,7 @@ class SubagentOrchestrator:
         subagent_depth: int = 0,
         description: str = "",
     ) -> str:
-        child_state, child_registry = build_subagent_state(
+        child_state, child_registry = await build_subagent_state(
             self.session_manager, parent_session_id, agent_info, prompt,
             self.tool_registry.permission, self.tool_registry,
         )

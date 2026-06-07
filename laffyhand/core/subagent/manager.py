@@ -75,7 +75,7 @@ class SubagentManager:
     ) -> str:
         if task_id is None:
             task_id = uuid.uuid4().hex[:12]
-        child_state, child_registry = build_subagent_state(
+        child_state, child_registry = await build_subagent_state(
             session_manager,
             parent_session_id,
             agent_info,

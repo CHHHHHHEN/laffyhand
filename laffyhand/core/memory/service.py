@@ -15,15 +15,14 @@ Record faithfully — do not fabricate, distort, or infer beyond what was actual
 Prefer information that is **stable, general, and reusable**:
 
 - facts or patterns likely to benefit future sessions
-- information not derivable from the conversation or codebase alone
 - cross-cutting context that would be costly to rediscover
+- future mistakes that might be repeated
 
 ### What NOT to Remember
 
 Skip information that is **transient, context-bound, or already evident**:
 
-- content that only makes sense within the current task
-- information easily re-derived from the codebase or existing artifacts
+- content that only makes sense within the current Session
 - your own reasoning steps or intermediate output
 - anything already captured (check before writing)
 
