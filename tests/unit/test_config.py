@@ -14,7 +14,7 @@ from laffyhand.config import (
     LogConfig,
     AgentConfig,
     PathsConfig,
-    MCPConfig,
+    MCPServerConfig,
     MemoryConfig,
     load_config,
     find_config,
@@ -111,8 +111,8 @@ class TestConfigModels:
         assert cfg.max_length == 5000
         assert cfg.path == "/tmp/custom.md"
 
-    def test_mcp_config_defaults(self):
-        cfg = MCPConfig()
+    def test_mcp_server_config_defaults(self):
+        cfg = MCPServerConfig()
         assert cfg.servers == {}
 
     def test_laffy_config_defaults(self):

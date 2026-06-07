@@ -7,8 +7,6 @@ from typing import Annotated, Any, Literal
 import yaml
 from pydantic import BaseModel, Field, model_validator
 
-from laffyhand.core.mcp.config import LocalMCPConfig, RemoteMCPConfig
-
 
 class ModelConfig(BaseModel):
     name: str
@@ -60,7 +58,25 @@ class PathsConfig(BaseModel):
     workspace: str = ""
 
 
-class MCPConfig(BaseModel):
+class LocalMCPConfig(BaseModel):
+    type: Literal["local"] = "local"
+    command: list[str]
+    env: dict[str, str] = {}
+    timeout: int = 300
+
+
+class RemoteMCPConfig(BaseModel):
+    type: Literal["remote"] = "remote"
+    url: str
+    transport: Literal["sse", "streamable-http"] | None = None
+    headers: dict[str, str] = {}
+    timeout: int = 300
+
+
+MCPConfig = LocalMCPConfig | RemoteMCPConfig
+
+
+class MCPServerConfig(BaseModel):
     servers: dict[
         str, Annotated[LocalMCPConfig | RemoteMCPConfig, Field(discriminator="type")]
     ] = Field(default_factory=dict)
@@ -81,7 +97,7 @@ class LaffyConfig(BaseModel):
     logging: LogConfig = LogConfig()
     agent: AgentConfig = AgentConfig()
     paths: PathsConfig = PathsConfig()
-    mcp: MCPConfig = MCPConfig()
+    mcp: MCPServerConfig = MCPServerConfig()
     memory: MemoryConfig = MemoryConfig()
 
 

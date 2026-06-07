@@ -12,7 +12,7 @@ from laffyhand.core.schemas import (
     SessionUsage,
 )
 from laffyhand.core.subagent.manager import (
-    SubagentManager,
+    SubagentTaskRunner,
     SubagentResult,
     build_subagent_state,
 )
@@ -56,7 +56,7 @@ def agent_info():
 
 @pytest.fixture
 def subagent_manager():
-    return SubagentManager(max_concurrent=2)
+    return SubagentTaskRunner(max_concurrent=2)
 
 
 class TestSubagentResult:
@@ -195,7 +195,7 @@ class TestBuildSubagentState:
         assert child_state.usage.context_size == 0
 
 
-class TestSubagentManager:
+class TestSubagentTaskRunner:
     @pytest.mark.anyio
     async def test_active_count_starts_zero(self, subagent_manager):
         assert subagent_manager.active_count() == 0

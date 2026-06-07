@@ -45,7 +45,7 @@ class _RunningSubagent:
     status: SubagentStatus = "pending"
 
 
-class SubagentManager:
+class SubagentTaskRunner:
     def __init__(
         self,
         max_concurrent: int = 2,

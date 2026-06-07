@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from laffyhand.core.agent import AgentInfo
     from laffyhand.core.session.manager import SessionManager
     from laffyhand.core.session.todo import TodoManager
-    from laffyhand.core.subagent.manager import SubagentManager
+    from laffyhand.core.subagent.manager import SubagentTaskRunner
     from laffyhand.core.tools.registry import ToolRegistry
     from laffyhand.core.llm.facade import LLM
 
@@ -35,7 +35,7 @@ class SubagentOrchestrator:
         self,
         session_manager: SessionManager,
         tool_registry: ToolRegistry,
-        subagent_manager: SubagentManager,
+        subagent_manager: SubagentTaskRunner,
         llm_provider: Callable[[str], LLM],
         compaction_config: CompactionConfig,
         todo_manager: TodoManager | None = None,

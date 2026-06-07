@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
-
 from laffyhand.core.agent.prompt.context import PromptContext
 from laffyhand.core.agent.prompt.section import PromptSection
 
@@ -25,11 +23,6 @@ class PromptBuilder:
     def add(self, section: PromptSection) -> PromptBuilder:
         """Append one section to the layout."""
         self._sections.append(section)
-        return self
-
-    def add_all(self, sections: Sequence[PromptSection]) -> PromptBuilder:
-        """Append multiple sections in order."""
-        self._sections.extend(sections)
         return self
 
     async def build(self) -> str:

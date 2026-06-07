@@ -41,9 +41,6 @@ class SessionStateStore:
     def items(self) -> list[tuple[str, AgentState]]:
         return list(self._states.items())
 
-    def contains(self, session_id: str) -> bool:
-        return session_id in self._states
-
     def clear(self) -> None:
         self._states.clear()
 

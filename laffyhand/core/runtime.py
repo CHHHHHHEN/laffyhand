@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
-from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -18,7 +17,7 @@ from laffyhand.core.agent import AgentRegistry
 from laffyhand.core.skill import SkillRegistry
 from laffyhand.core.session import SessionManager, TitleConfig
 from laffyhand.core.session.state_store import SessionStateStore
-from laffyhand.core.subagent import SubagentManager, SubagentOrchestrator, SessionContext
+from laffyhand.core.subagent import SubagentTaskRunner, SubagentOrchestrator, SessionContext
 from laffyhand.core.tools.registry import ToolRegistry
 from laffyhand.core.tools.init import ToolInitializer
 from laffyhand.core.session.todo import TodoManager
@@ -67,7 +66,7 @@ class AgentRuntime:
             llm_provider=self._llm_for_session,
         )
         self.max_steps = config.agent.max_steps
-        self.subagent_manager = SubagentManager(
+        self.subagent_manager = SubagentTaskRunner(
             max_concurrent=config.agent.max_concurrent_subagents,
         )
         try:
@@ -170,18 +169,6 @@ class AgentRuntime:
 
     def get_session_lock(self, session_id: str) -> asyncio.Lock:
         return self._session_store.get_lock(session_id)
-
-    @asynccontextmanager
-    async def use_session(self, session_id: str) -> AsyncIterator[tuple[AgentState, SessionContext]]:
-        """Context manager: holds the per-session lock and provides (state, ctx).
-
-        Usage:
-            async with runtime.use_session(sid) as (state, ctx):
-                state.messages.append(...)
-                ctx.subagent_id = ...
-        """
-        async with self._session_store.use(session_id) as (state, ctx):
-            yield (state, ctx)
 
     def get_session_context(self, session_id: str) -> SessionContext | None:
         return self._session_store.get_session_context(session_id)

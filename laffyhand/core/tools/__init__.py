@@ -10,7 +10,6 @@ __all__ = [
     "ToolRegistry",
     "PermissionManager",
     "ToolExecutionResult",
-    "ToolExecutionResult",
     "TodoTool",
     "SkillTool",
     "TagTool",
