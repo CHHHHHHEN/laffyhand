@@ -33,7 +33,7 @@ from laffyhand.core.db.models.session import (
     utcnow,
 )
 
-from laffyhand.core.db.models.todo import TodoItem, TodoPriority, TodoStatus
+from laffyhand.core.db.models.todo import TodoItem, TodoStatus
 
 from laffyhand.core.db.models.tag import FileTag
 
@@ -64,7 +64,6 @@ __all__ = [
     "TokenCache",
     "TokenDetail",
     "TodoItem",
-    "TodoPriority",
     "TodoStatus",
     "ToolState",
     "ToolStateCompleted",

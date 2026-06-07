@@ -26,12 +26,6 @@ const columnStyles: Record<TodoStatus, { label: string; headerClass: string; con
     containerClass: "bg-green-50/50 dark:bg-green-950/15",
     icon: "✓",
   },
-  cancelled: {
-    label: "Cancelled",
-    headerClass: "text-gray-400 dark:text-gray-500",
-    containerClass: "bg-gray-50/30 dark:bg-gray-900/20",
-    icon: "✕",
-  },
 }
 
 interface TodoColumnProps {

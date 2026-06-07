@@ -14,7 +14,6 @@ function makeTask(overrides: Partial<TodoItem> = {}): TodoItem {
     sessionId: SESSION_ID,
     content: "Test task",
     status: "pending",
-    priority: "medium",
     dependsOn: [],
     blockedBy: [],
     createdAt: "2025-01-01T00:00:00",
@@ -51,14 +50,12 @@ describe("TodoPanel", () => {
       makeTask({ id: "b", content: "Pending task", status: "pending" }),
       makeTask({ id: "c", content: "Running task", status: "in_progress" }),
       makeTask({ id: "d", content: "Done task", status: "completed" }),
-      makeTask({ id: "e", content: "Cancelled task", status: "cancelled" }),
     ])
     render(<TodoPanel />)
     expect(screen.getByText("Blocked task")).toBeInTheDocument()
     expect(screen.getByText("Pending task")).toBeInTheDocument()
     expect(screen.getByText("Running task")).toBeInTheDocument()
     expect(screen.getByText("Done task")).toBeInTheDocument()
-    expect(screen.getByText("Cancelled task")).toBeInTheDocument()
   })
 
   it("shows 0 count when no tasks", () => {
@@ -96,13 +93,12 @@ describe("TodoPanel", () => {
     expect(screen.queryByText("Other session task")).not.toBeInTheDocument()
   })
 
-  it("renders all five column labels", () => {
+  it("renders all four column labels", () => {
     act(() => { useUiStore.getState().setTodoPanelOpen(true) })
     render(<TodoPanel />)
     expect(screen.getByText(/Blocked/)).toBeInTheDocument()
     expect(screen.getByText(/Pending/)).toBeInTheDocument()
     expect(screen.getByText(/In Progress/)).toBeInTheDocument()
     expect(screen.getByText(/Completed/)).toBeInTheDocument()
-    expect(screen.getByText(/Cancelled/)).toBeInTheDocument()
   })
 })

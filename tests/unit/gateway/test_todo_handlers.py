@@ -11,7 +11,6 @@ def _make_task(
     task_id: str,
     content: str = "test",
     status: str = "pending",
-    priority: str = "medium",
     depends_on: list[str] | None = None,
     blocked_by: list[str] | None = None,
 ):
@@ -21,7 +20,6 @@ def _make_task(
     task.session_id = "sess-1"
     task.content = content
     task.status = status
-    task.priority = priority
     task.depends_on = depends_on or []
     task.created_at.isoformat.return_value = "2025-01-01T00:00:00"
     task.updated_at.isoformat.return_value = "2025-01-01T01:00:00"
@@ -107,7 +105,6 @@ class TestHandleTodoList:
             "t1",
             content="test task",
             status="completed",
-            priority="high",
             depends_on=["dep1"],
         )
         runtime.todo_manager.get_tasks.return_value = [task]
@@ -119,7 +116,6 @@ class TestHandleTodoList:
         assert t["sessionId"] == "sess-1"
         assert t["content"] == "test task"
         assert t["status"] == "completed"
-        assert t["priority"] == "high"
         assert t["dependsOn"] == ["dep1"]
         assert t["blockedBy"] == []
         assert t["createdAt"] == "2025-01-01T00:00:00"
@@ -170,18 +166,16 @@ class TestHandleTodoUpdate:
             )
 
     @pytest.mark.anyio
-    async def test_updates_priority_and_content(self, runtime, transport):
+    async def test_updates_content(self, runtime, transport):
         runtime.todo_manager.update_task.return_value = _make_task(
             "t1",
             content="new content",
-            priority="high",
         )
         result = await handle_todo_update(
             runtime,
             {
                 "task_id": "t1",
                 "content": "new content",
-                "priority": "high",
                 "session_id": "sess-1",
             },
             transport,
@@ -189,4 +183,3 @@ class TestHandleTodoUpdate:
             "c1",
         )
         assert result["content"] == "new content"
-        assert result["priority"] == "high"

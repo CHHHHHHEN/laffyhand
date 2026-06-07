@@ -32,23 +32,21 @@ def mgr(db):
 
 class TestTodoManagerCRUD:
     def test_add_and_get_task(self, mgr):
-        item = mgr.add_task("sess-1", "do stuff", priority="high")
+        item = mgr.add_task("sess-1", "do stuff")
         assert item.id
         assert item.content == "do stuff"
-        assert item.priority == "high"
         assert item.status == "pending"
 
         got = mgr.get_task(item.id)
         assert got is not None
         assert got.content == "do stuff"
-        assert got.priority == "high"
 
     def test_add_tasks_bulk(self, mgr):
         items = mgr.add_tasks(
             "sess-1",
             [
-                TodoCreate(content="Task A", priority="high"),
-                TodoCreate(content="Task B", priority="low"),
+                TodoCreate(content="Task A"),
+                TodoCreate(content="Task B"),
             ],
         )
         assert len(items) == 2
@@ -72,16 +70,15 @@ class TestTodoManagerCRUD:
         assert len(pending) == 1
         assert pending[0].id == t1.id
 
-    def test_update_task_content_and_priority(self, mgr):
+    def test_update_task_content(self, mgr):
         item = mgr.add_task("sess-1", "original")
         mgr.update_task(
-            item.id, "sess-1", TodoUpdate(content="updated", priority="low")
+            item.id, "sess-1", TodoUpdate(content="updated")
         )
 
         got = mgr.get_task(item.id)
         assert got is not None
         assert got.content == "updated"
-        assert got.priority == "low"
 
     def test_update_task_sets_completed_at_on_completion(self, mgr):
         item = mgr.add_task("sess-1", "finish me")
@@ -171,8 +168,8 @@ class TestTodoManagerCustomID:
         items = mgr.add_tasks(
             "sess-1",
             [
-                TodoCreate(id="t1", content="Task 1", priority="high"),
-                TodoCreate(id="t2", content="Task 2", priority="low", depends_on=["t1"]),
+                TodoCreate(id="t1", content="Task 1"),
+                TodoCreate(id="t2", content="Task 2", depends_on=["t1"]),
             ],
         )
         assert len(items) == 2
@@ -265,7 +262,7 @@ class TestTodoManagerDAG:
         items = mgr.add_tasks(
             "sess-1",
             [
-                TodoCreate(content="Root", priority="high"),
+                TodoCreate(content="Root"),
                 TodoCreate(content="Child", depends_on=[]),
             ],
         )
@@ -300,7 +297,7 @@ class TestTodoManagerDAG:
         with pytest.raises(ValueError, match="does not exist"):
             mgr.add_task("sess-1", "orphan", depends_on=["ghost"])
 
-    def test_completed_and_cancelled_tasks_never_blocked(self, mgr):
+    def test_completed_tasks_never_blocked(self, mgr):
         parent = mgr.add_task("sess-1", "parent")
         child = mgr.add_task("sess-1", "child", depends_on=[parent.id])
 
@@ -308,11 +305,6 @@ class TestTodoManagerDAG:
         tasks = mgr.get_tasks("sess-1")
         child_task = next(t for t in tasks if t.id == child.id)
         assert child_task.status == "completed"
-
-        mgr.update_task(child.id, "sess-1", TodoUpdate(status="cancelled"))
-        tasks = mgr.get_tasks("sess-1")
-        child_task = next(t for t in tasks if t.id == child.id)
-        assert child_task.status == "cancelled"
 
 
 class TestTodoManagerTaskTool:

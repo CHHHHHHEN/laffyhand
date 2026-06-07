@@ -9,7 +9,6 @@ function makeTask(overrides: Partial<TodoItem> = {}): TodoItem {
     sessionId: "sess-1",
     content: "Test task",
     status: "pending",
-    priority: "medium",
     dependsOn: [],
     blockedBy: [],
     createdAt: "2025-01-01T00:00:00",
@@ -47,9 +46,8 @@ describe("TodoCard", () => {
     expect(screen.queryByText(/blocked by|depends on/)).not.toBeInTheDocument()
   })
 
-  it("renders high priority with red class", () => {
-    const { container } = render(<TodoCard task={makeTask({ priority: "high" })} />)
-    const dot = container.querySelector(".text-red-500")
-    expect(dot).toBeTruthy()
+  it("renders blocked status icon", () => {
+    const { container } = render(<TodoCard task={makeTask({ status: "blocked" })} />)
+    expect(container.textContent).toContain("⊘")
   })
 })

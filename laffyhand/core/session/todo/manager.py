@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Any, Optional
 
 import sqlite3
 
-from laffyhand.core.db.models import TodoItem, TodoPriority, TodoStatus, generate_id, utcnow
+from laffyhand.core.db.models import TodoItem, TodoStatus, generate_id, utcnow
 from laffyhand.core.session.todo.models import TodoCreate, TodoUpdate
 from laffyhand.core.db.repository.common import _ts
 
@@ -66,7 +66,6 @@ class TodoManager:
         self,
         session_id: str,
         content: str,
-        priority: TodoPriority = "medium",
         depends_on: Optional[list[str]] = None,
         metadata: Optional[dict[str, Any]] = None,
         id: Optional[str] = None,
@@ -80,7 +79,6 @@ class TodoManager:
             id=item_id,
             session_id=session_id,
             content=content,
-            priority=priority,
             depends_on=depends_on or [],
             metadata=metadata or {},
         )
@@ -118,7 +116,6 @@ class TodoManager:
                 id=item_id,
                 session_id=session_id,
                 content=t.content,
-                priority=t.priority,
                 depends_on=t.depends_on,
             )
             if item.depends_on:
@@ -151,8 +148,6 @@ class TodoManager:
 
         if updates.content is not None:
             item.content = updates.content
-        if updates.priority is not None:
-            item.priority = updates.priority
         if updates.depends_on is not None:
             existing = self._repo.get_by_session(session_id)
             self._validate_depends(updates.depends_on, existing, task_id=item.id)
@@ -237,9 +232,9 @@ class TodoManager:
     def cleanup_tasks(
         self, session_id: str, statuses: Optional[list[str]] = None
     ) -> int:
-        """Delete tasks matching given statuses (default: completed, cancelled)."""
+        """Delete tasks matching given statuses (default: completed)."""
         if statuses is None:
-            statuses = ["completed", "cancelled"]
+            statuses = ["completed"]
         tasks = self._repo.get_by_session(session_id)
         ids = [t.id for t in tasks if t.status in statuses]
         return self.delete_tasks(ids)
@@ -267,7 +262,7 @@ class TodoManager:
             ]
             if blocked_by:
                 t.metadata["blocked_by"] = blocked_by
-                if t.status not in ("completed", "cancelled"):
+                if t.status != "completed":
                     t.status = "blocked"
 
     def _validate_depends(

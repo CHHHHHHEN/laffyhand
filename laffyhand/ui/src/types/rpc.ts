@@ -188,7 +188,6 @@ export interface TodoItemData {
   sessionId: string
   content: string
   status: string
-  priority: string
   dependsOn: string[]
   blockedBy: string[]
   createdAt: string

@@ -26,7 +26,6 @@ async def handle_todo_list(
                 "sessionId": t.session_id,
                 "content": t.content,
                 "status": t.status,
-                "priority": t.priority,
                 "dependsOn": t.depends_on,
                 "createdAt": t.created_at.isoformat(),
                 "updatedAt": t.updated_at.isoformat(),
@@ -57,7 +56,6 @@ async def handle_todo_update(
 
     updates = TodoUpdateModel(
         status=params.get("status"),
-        priority=params.get("priority"),
         content=params.get("content"),
     )
     item = runtime.todo_manager.update_task(task_id, session_id, updates)
@@ -68,7 +66,6 @@ async def handle_todo_update(
         "sessionId": item.session_id,
         "content": item.content,
         "status": item.status,
-        "priority": item.priority,
         "dependsOn": item.depends_on,
         "createdAt": item.created_at.isoformat(),
         "updatedAt": item.updated_at.isoformat(),

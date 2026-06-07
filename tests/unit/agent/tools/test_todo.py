@@ -50,14 +50,12 @@ class TestTodoTool:
                 {
                     "operation": "add",
                     "content": "test task",
-                    "priority": "high",
                     "session_id": session_id,
                 }
             )
         )
         result = asyncio.run(tool.run({"operation": "read", "session_id": session_id}))
         assert "test task" in result
-        assert "high" in result
 
     def test_add_requires_content(self, tool, session_id):
         result = asyncio.run(tool.run({"operation": "add", "session_id": session_id}))
@@ -125,7 +123,7 @@ class TestTodoTool:
         )
         assert "not found" in result
 
-    def test_update_with_content_and_priority(self, tool, session_id):
+    def test_update_with_content(self, tool, session_id):
         asyncio.run(
             tool.run({"operation": "add", "content": "old", "session_id": session_id})
         )
@@ -137,12 +135,11 @@ class TestTodoTool:
                     "operation": "update",
                     "id": task_id,
                     "content": "new content",
-                    "priority": "high",
                     "session_id": session_id,
                 }
             )
         )
-        assert "high" in result
+        assert "new content" in result
 
     def test_delete(self, tool, session_id):
         asyncio.run(
@@ -240,7 +237,6 @@ class TestTodoTool:
                     "operation": "add",
                     "content": "task1",
                     "session_id": session_id,
-                    "priority": "high",
                 }
             )
         )

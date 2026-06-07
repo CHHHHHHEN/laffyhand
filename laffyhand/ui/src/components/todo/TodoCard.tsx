@@ -1,22 +1,9 @@
 import type { TodoItem } from "@/types/session"
 
-const priorityColors: Record<string, string> = {
-  high: "text-red-500 dark:text-red-400",
-  medium: "text-yellow-500 dark:text-yellow-400",
-  low: "text-gray-400 dark:text-gray-500",
-}
-
-const priorityBars: Record<string, string> = {
-  high: "bg-red-400 dark:bg-red-500",
-  medium: "bg-yellow-400 dark:bg-yellow-500",
-  low: "bg-gray-300 dark:bg-gray-600",
-}
-
 const statusIcons: Record<string, string> = {
   pending: "○",
   in_progress: "◉",
   completed: "✓",
-  cancelled: "✕",
   blocked: "⊘",
 }
 
@@ -27,13 +14,11 @@ interface TodoCardProps {
 export function TodoCard({ task }: TodoCardProps) {
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700/60 px-3 py-2.5 text-xs shadow-sm hover:border-gray-300 dark:hover:border-gray-600 hover:shadow-md transition-all duration-150 relative overflow-hidden">
-      {/* Priority bar */}
-      <span className={`absolute left-0 top-0 bottom-0 w-0.5 ${priorityBars[task.priority] ?? "bg-gray-300 dark:bg-gray-600"}`} />
       <div className="flex items-start justify-between gap-2 pl-1.5">
         <span className={`text-gray-800 dark:text-gray-200 break-words flex-1 leading-relaxed ${task.status === "completed" ? "line-through opacity-60" : ""}`}>
           {task.content}
         </span>
-        <span className={`shrink-0 font-semibold text-sm ${priorityColors[task.priority] ?? ""}`}>
+        <span className="shrink-0 font-semibold text-sm text-gray-500 dark:text-gray-400">
           {statusIcons[task.status] ?? "○"}
         </span>
       </div>

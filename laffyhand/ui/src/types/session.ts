@@ -10,15 +10,13 @@ export interface Session {
 
 export type SessionStatus = "active" | "archived" | "deleted"
 
-export type TodoStatus = "pending" | "in_progress" | "completed" | "cancelled" | "blocked"
-export type TodoPriority = "high" | "medium" | "low"
+export type TodoStatus = "pending" | "in_progress" | "completed" | "blocked"
 
 export interface TodoItem {
   id: string
   sessionId: string
   content: string
   status: TodoStatus
-  priority: TodoPriority
   dependsOn: string[]
   blockedBy: string[]
   createdAt: string

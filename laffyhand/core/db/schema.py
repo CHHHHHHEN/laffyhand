@@ -33,9 +33,7 @@ _MIGRATIONS: dict[int, str] = {
             session_id      TEXT NOT NULL REFERENCES session(id) ON DELETE CASCADE,
             content         TEXT NOT NULL,
             status          TEXT NOT NULL DEFAULT 'pending'
-                CHECK (status IN ('pending','in_progress','completed','cancelled','blocked')),
-            priority        TEXT NOT NULL DEFAULT 'medium'
-                CHECK (priority IN ('high','medium','low')),
+                CHECK (status IN ('pending','in_progress','completed','blocked')),
             depends_on      TEXT NOT NULL DEFAULT '[]',
             created_at      TEXT NOT NULL,
             updated_at      TEXT NOT NULL,

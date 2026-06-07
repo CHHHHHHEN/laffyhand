@@ -10,7 +10,6 @@ function makeTask(overrides: Partial<TodoItem> = {}): TodoItem {
     sessionId: SESSION_ID,
     content: "Test task",
     status: "pending",
-    priority: "medium",
     dependsOn: [],
     blockedBy: [],
     createdAt: "2025-01-01T00:00:00",
@@ -110,14 +109,12 @@ describe("todo-store", () => {
     expect(useTodoStore.getState().taskMap[SESSION_ID]).toHaveLength(1)
   })
 
-  it("updateTask can change multiple fields", () => {
+  it("updateTask can change status", () => {
     useTodoStore.getState().addTask(SESSION_ID, makeTask({ id: "t1" }))
     useTodoStore.getState().updateTask(SESSION_ID, "t1", {
       status: "in_progress",
-      priority: "high",
     })
     const task = useTodoStore.getState().taskMap[SESSION_ID]![0]!
     expect(task.status).toBe("in_progress")
-    expect(task.priority).toBe("high")
   })
 })

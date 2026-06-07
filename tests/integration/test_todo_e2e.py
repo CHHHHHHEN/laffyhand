@@ -58,7 +58,6 @@ class TestTodoE2E:
                 {
                     "operation": "add",
                     "content": "Research",
-                    "priority": "high",
                     "session_id": SID,
                 }
             )

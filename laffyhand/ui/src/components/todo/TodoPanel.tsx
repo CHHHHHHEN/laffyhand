@@ -5,7 +5,7 @@ import { useSessionStore } from "@/stores/session-store"
 import { TodoColumn } from "./TodoColumn"
 import type { TodoItem, TodoStatus } from "@/types/session"
 
-const COLUMNS: TodoStatus[] = ["blocked", "pending", "in_progress", "completed", "cancelled"]
+const COLUMNS: TodoStatus[] = ["blocked", "pending", "in_progress", "completed"]
 const EMPTY_TASKS: TodoItem[] = []
 
 export function TodoPanel() {
@@ -18,7 +18,7 @@ export function TodoPanel() {
 
   const grouped = useMemo(() => {
     const map: Record<TodoStatus, typeof tasks> = {
-      blocked: [], pending: [], in_progress: [], completed: [], cancelled: [],
+      blocked: [], pending: [], in_progress: [], completed: [],
     }
     for (const t of tasks) {
       const bucket = map[t.status] ?? map.pending

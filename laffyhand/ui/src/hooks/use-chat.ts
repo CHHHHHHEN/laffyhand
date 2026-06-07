@@ -14,7 +14,6 @@ function refreshTodo(sessionId: string) {
       sessionId: t.sessionId,
       content: t.content,
       status: t.status as TodoItem["status"],
-      priority: t.priority as TodoItem["priority"],
       dependsOn: t.dependsOn,
       blockedBy: t.blockedBy,
       createdAt: t.createdAt,

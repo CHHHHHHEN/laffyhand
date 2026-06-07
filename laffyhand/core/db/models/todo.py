@@ -10,8 +10,7 @@ from pydantic import BaseModel, Field
 from laffyhand.core.db.models.session import generate_id, utcnow
 
 
-TodoStatus = Literal["pending", "in_progress", "completed", "cancelled", "blocked"]
-TodoPriority = Literal["high", "medium", "low"]
+TodoStatus = Literal["pending", "in_progress", "completed", "blocked"]
 
 
 class TodoItem(BaseModel):
@@ -19,7 +18,6 @@ class TodoItem(BaseModel):
     session_id: str = Field(description="所属会话 ID")
     content: str = Field(description="待办内容")
     status: TodoStatus = Field(default="pending", description="状态")
-    priority: TodoPriority = Field(default="medium", description="优先级")
     depends_on: list[str] = Field(
         default_factory=list, description="依赖的待办 ID 列表"
     )

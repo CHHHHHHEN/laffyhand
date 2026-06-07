@@ -63,15 +63,14 @@ class TodoRepo:
     def insert(self, item: TodoItem) -> None:
         self._conn.execute(
             """INSERT INTO todo
-               (id, session_id, content, status, priority, depends_on,
+               (id, session_id, content, status, depends_on,
                 created_at, updated_at, completed_at, task_tool_id, metadata)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 item.id,
                 item.session_id,
                 item.content,
                 item.status,
-                item.priority,
                 _serialize_json(item.depends_on),
                 _ts(item.created_at),
                 _ts(item.updated_at),
@@ -84,13 +83,12 @@ class TodoRepo:
     def update(self, item: TodoItem) -> None:
         self._conn.execute(
             """UPDATE todo SET
-                content=?, status=?, priority=?, depends_on=?,
+                content=?, status=?, depends_on=?,
                 updated_at=?, completed_at=?, task_tool_id=?, metadata=?
                WHERE id=?""",
             (
                 item.content,
                 item.status,
-                item.priority,
                 _serialize_json(item.depends_on),
                 _ts(item.updated_at),
                 _ts(item.completed_at) if item.completed_at else None,
@@ -140,7 +138,6 @@ class TodoRepo:
             session_id=row["session_id"],
             content=row["content"],
             status=row["status"],
-            priority=row["priority"],
             depends_on=_deserialize_str_list(row["depends_on"]),
             created_at=_from_ts(row["created_at"]) or utcnow(),
             updated_at=_from_ts(row["updated_at"]) or utcnow(),

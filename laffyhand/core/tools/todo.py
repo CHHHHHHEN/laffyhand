@@ -1,7 +1,7 @@
 """Todo tool — manage a session-level task list with DAG dependency tracking.
 
 Supports read, add, update, delete, plan (batch-create with deps),
-and cleanup (remove completed/cancelled) operations.
+and cleanup (remove completed) operations.
 """
 
 from __future__ import annotations
@@ -18,7 +18,6 @@ class PlanTaskParams(BaseModel):
         None, description="Optional custom short ID for plan references"
     )
     content: str = Field(description="Task description")
-    priority: str | None = Field(None, description="Priority (default: medium)")
     depends_on: list[str] | None = Field(
         None, description="Task IDs this task depends on"
     )
@@ -37,7 +36,6 @@ class TodoParams(BaseModel):
     )
     content: str | None = Field(None, description="Task description (required for add)")
     status: str | None = Field(None, description="New status (for update)")
-    priority: str | None = Field(None, description="Priority (default: medium)")
     depends_on: list[str] | None = Field(
         None, description="Task IDs this task depends on (for add/plan)"
     )
@@ -78,7 +76,7 @@ class TodoTool(BaseTool):
             "update: change task status/priority/content/depends. "
             "delete: remove task(s) by id(s). "
             "plan: batch create with dependencies. "
-            "cleanup: remove completed/cancelled tasks."
+            "cleanup: remove completed tasks."
         )
         schema["properties"]["operation"]["enum"] = [
             "read",
@@ -94,7 +92,6 @@ class TodoTool(BaseTool):
                 "pending",
                 "in_progress",
                 "completed",
-                "cancelled",
             ]
         TodoTool._TODO_SCHEMA = schema
         return schema
@@ -115,7 +112,7 @@ class TodoTool(BaseTool):
                 blocked = t.metadata.get("blocked_by", [])
                 blocked_str = f" [blocked by: {', '.join(blocked)}]" if blocked else ""
                 lines.append(
-                    f"  {t.id} [{t.status}] {t.priority}: {t.content}{blocked_str}"
+                    f"  {t.id} [{t.status}] {t.content}{blocked_str}"
                 )
             return "\n".join(lines)
 
@@ -127,7 +124,6 @@ class TodoTool(BaseTool):
                 TodoCreate(
                     id=t.get("id"),
                     content=t.get("content", ""),
-                    priority=t.get("priority", "medium"),
                     depends_on=t.get("depends_on", []),
                 )
                 for t in raw_tasks
@@ -147,7 +143,6 @@ class TodoTool(BaseTool):
                 item = self._todo_manager.add_task(
                     session_id,
                     content=content,
-                    priority=params.get("priority", "medium"),
                     depends_on=params.get("depends_on"),
                     id=params.get("id"),
                 )
@@ -161,13 +156,11 @@ class TodoTool(BaseTool):
             if not task_ids and not task_id:
                 return "Error: id or ids is required for update"
             status = params.get("status")
-            priority = params.get("priority")
             content = params.get("content")
             depends_on = params.get("depends_on")
             updates = TodoUpdate(
                 content=content,
                 status=status,
-                priority=priority,
                 depends_on=depends_on,
             )
             if task_ids:
@@ -177,7 +170,7 @@ class TodoTool(BaseTool):
                 if not updated_list:
                     return "Error: no tasks found to update"
                 return f"Updated {len(updated_list)} task(s): " + ", ".join(
-                    f"#{t.id} → status={t.status}, priority={t.priority}"
+                    f"#{t.id} → status={t.status}"
                     for t in updated_list
                 )
             else:
@@ -185,7 +178,7 @@ class TodoTool(BaseTool):
                 updated = self._todo_manager.update_task(task_id, session_id, updates)
                 if updated is None:
                     return f"Error: task #{task_id} not found"
-                return f"Updated todo #{task_id} → status={updated.status}, priority={updated.priority}"
+                return f"Updated todo #{task_id} → status={updated.status}, content={updated.content}"
 
         if op == "delete":
             task_ids = params.get("ids")
@@ -206,7 +199,7 @@ class TodoTool(BaseTool):
         if op == "cleanup":
             count = self._todo_manager.cleanup_tasks(session_id)
             if count == 0:
-                return "No completed or cancelled tasks to clean up."
-            return f"Cleaned up {count} completed/cancelled task(s)."
+                return "No completed tasks to clean up."
+            return f"Cleaned up {count} completed task(s)."
 
         return f"Unknown operation: {op}"

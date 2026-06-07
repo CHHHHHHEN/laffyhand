@@ -9,7 +9,6 @@ function makeTask(overrides: Partial<TodoItem> = {}): TodoItem {
     sessionId: "sess-1",
     content: "Test task",
     status: "pending",
-    priority: "medium",
     dependsOn: [],
     blockedBy: [],
     createdAt: "2025-01-01T00:00:00",
@@ -44,11 +43,8 @@ describe("TodoColumn", () => {
     expect(screen.getByText(/\(0\)/)).toBeInTheDocument()
   })
 
-  it("displays correct label for each status", () => {
-    const { rerender } = render(<TodoColumn status="completed" tasks={[]} />)
+  it("displays correct label for completed status", () => {
+    render(<TodoColumn status="completed" tasks={[]} />)
     expect(screen.getByText(/Completed/)).toBeInTheDocument()
-
-    rerender(<TodoColumn status="cancelled" tasks={[]} />)
-    expect(screen.getByText(/Cancelled/)).toBeInTheDocument()
   })
 })
