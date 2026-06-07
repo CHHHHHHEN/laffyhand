@@ -3,8 +3,7 @@ from __future__ import annotations
 import sqlite3
 from typing import Optional
 
-from laffyhand.core.session.todo.models import TodoItem
-from laffyhand.core.session.models import utcnow
+from laffyhand.core.db.models import TodoItem, utcnow
 from laffyhand.core.db.repository.common import (
     _from_ts,
     _serialize_json,

@@ -1,10 +1,30 @@
 from __future__ import annotations
 
+import importlib.resources
 import sqlite3
 
 from loguru import logger
 
 SCHEMA_VERSION = 11
+
+_SQL_FILES = [
+    "schema_version.sql",
+    "session.sql",
+    "messages.sql",
+    "todo.sql",
+    "file_tag.sql",
+]
+
+
+def _load_core_ddl() -> str:
+    parts: list[str] = []
+    for name in _SQL_FILES:
+        raw = importlib.resources.files(__package__).joinpath("sql", name).read_text()
+        parts.append(raw.strip())
+    return "\n\n".join(parts) + "\n"
+
+
+CORE_DDL = _load_core_ddl()
 
 _MIGRATIONS: dict[int, str] = {
     11: """
@@ -99,94 +119,6 @@ _MIGRATIONS: dict[int, str] = {
         WHERE NOT EXISTS (SELECT 1 FROM session_message sm WHERE sm.session_id = m.session_id);
     """,
 }
-
-CORE_DDL = """
-CREATE TABLE IF NOT EXISTS _schema_version (
-    version INTEGER PRIMARY KEY
-);
-
-CREATE TABLE IF NOT EXISTS session (
-    id              TEXT PRIMARY KEY,
-    status          TEXT NOT NULL DEFAULT 'active'
-        CHECK(status IN ('active','completed','archived')),
-    title           TEXT NOT NULL DEFAULT '',
-    cwd             TEXT NOT NULL DEFAULT '',
-    provider        TEXT NOT NULL,
-    model           TEXT NOT NULL,
-    agent_version   TEXT NOT NULL DEFAULT '',
-    turn_count      INTEGER NOT NULL DEFAULT 0,
-    step_count      INTEGER NOT NULL DEFAULT 0,
-    input_tokens    INTEGER NOT NULL DEFAULT 0,
-    output_tokens   INTEGER NOT NULL DEFAULT 0,
-    reasoning_tokens INTEGER NOT NULL DEFAULT 0,
-    cache_read_tokens INTEGER NOT NULL DEFAULT 0,
-    cache_write_tokens INTEGER NOT NULL DEFAULT 0,
-    cost            INTEGER NOT NULL DEFAULT 0,
-    parent_id       TEXT REFERENCES session(id),
-    fork_id         TEXT REFERENCES session(id),
-    message_count   INTEGER NOT NULL DEFAULT 0,
-    summary         TEXT,
-    metadata        TEXT NOT NULL DEFAULT '{}'
-        CHECK(JSON_VALID(metadata)),
-    created_at      TEXT NOT NULL,
-    updated_at      TEXT NOT NULL,
-    ended_at        TEXT
-);
-
-CREATE TABLE IF NOT EXISTS session_message (
-    id              TEXT PRIMARY KEY,
-    session_id      TEXT NOT NULL REFERENCES session(id) ON DELETE CASCADE,
-    type            TEXT NOT NULL,
-    time_created    INTEGER NOT NULL,
-    time_updated    INTEGER NOT NULL,
-    data            TEXT NOT NULL
-);
-
-CREATE INDEX IF NOT EXISTS idx_session_message_session ON session_message(session_id, time_created);
-CREATE INDEX IF NOT EXISTS idx_session_message_type ON session_message(session_id, type);
-CREATE INDEX IF NOT EXISTS idx_session_status ON session(status, updated_at);
-CREATE INDEX IF NOT EXISTS idx_session_created ON session(created_at DESC);
-
-CREATE TABLE IF NOT EXISTS todo (
-    id              TEXT NOT NULL,
-    session_id      TEXT NOT NULL REFERENCES session(id) ON DELETE CASCADE,
-    content         TEXT NOT NULL,
-    status          TEXT NOT NULL DEFAULT 'pending'
-        CHECK (status IN ('pending','in_progress','completed','cancelled','blocked')),
-    priority        TEXT NOT NULL DEFAULT 'medium'
-        CHECK (priority IN ('high','medium','low')),
-    depends_on      TEXT NOT NULL DEFAULT '[]',
-    created_at      TEXT NOT NULL,
-    updated_at      TEXT NOT NULL,
-    completed_at    TEXT,
-    task_tool_id    TEXT,
-    metadata        TEXT NOT NULL DEFAULT '{}'
-        CHECK (JSON_VALID(metadata)),
-    PRIMARY KEY (session_id, id)
-);
-
-CREATE INDEX IF NOT EXISTS idx_todo_session ON todo(session_id, status);
-
-CREATE INDEX IF NOT EXISTS idx_session_parent ON session(parent_id);
-CREATE INDEX IF NOT EXISTS idx_session_parent_status ON session(parent_id, status);
-CREATE INDEX IF NOT EXISTS idx_session_fork ON session(fork_id);
-CREATE INDEX IF NOT EXISTS idx_todo_task_tool ON todo(task_tool_id);
-
-CREATE TABLE IF NOT EXISTS file_tag (
-    path            TEXT PRIMARY KEY,
-    message         TEXT NOT NULL DEFAULT '',
-    tags            TEXT NOT NULL DEFAULT '{}'
-        CHECK (JSON_VALID(tags)),
-    updated_at      TEXT NOT NULL,
-    status          TEXT NOT NULL DEFAULT 'active'
-        CHECK (status IN ('active','stale')),
-    exports         TEXT NOT NULL DEFAULT '{}'
-        CHECK (JSON_VALID(exports)),
-    side_effects    TEXT NOT NULL DEFAULT '',
-    depends_on      TEXT NOT NULL DEFAULT '[]'
-        CHECK (JSON_VALID(depends_on))
-);
-"""
 
 
 def create_tables(conn: sqlite3.Connection) -> None:

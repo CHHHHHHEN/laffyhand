@@ -11,7 +11,7 @@ import pytest
 
 from laffyhand.core.db.repository import FileTagRepo
 from laffyhand.core.db.schema import create_tables
-from laffyhand.core.db.repository.tag import FileTag
+from laffyhand.core.db.models import FileTag
 from laffyhand.core.tools.tag import TagTool, annotate_result, format_tag_summary, _normalize, _date_from_iso, _coerce_dict, _coerce_list
 from laffyhand.core.db.repository.tag import _parse_json_dict, _parse_json_list
 

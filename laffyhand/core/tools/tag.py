@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
 from laffyhand.core._utils import coerce_json_dict, coerce_json_list
-from laffyhand.core.db.repository.tag import FileTag
+from laffyhand.core.db.models import FileTag
 from laffyhand.core.tools.base import BaseTool
 
 

@@ -10,7 +10,7 @@ from laffyhand.core.llm.specs.models import (
     Usage,
     UserMessage,
 )
-from laffyhand.core.session.models import (
+from laffyhand.core.db.models import (
     AssistantContent,
     AssistantData,
     AssistantReasoningPart,
@@ -27,9 +27,10 @@ from laffyhand.core.session.models import (
     ToolStateCompleted,
     ToolStatePending,
     UserData,
+    generate_id,
+    utcnow,
 )
 from laffyhand.core.llm.specs.models import ModelID, ProviderID
-from laffyhand.core.session.models import generate_id, utcnow
 
 
 def message_to_session_message(msg: Message, session_id: str) -> SessionMessage:

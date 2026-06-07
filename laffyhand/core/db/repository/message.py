@@ -6,7 +6,7 @@ from typing import Optional, cast
 
 from pydantic import BaseModel
 
-from laffyhand.core.session.models import (
+from laffyhand.core.db.models import (
     AgentSwitchedData,
     AssistantData,
     CompactionData,

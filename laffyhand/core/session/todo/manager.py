@@ -4,14 +4,8 @@ from typing import TYPE_CHECKING, Any, Optional
 
 import sqlite3
 
-from laffyhand.core.session.todo.models import (
-    TodoCreate,
-    TodoItem,
-    TodoUpdate,
-    TodoPriority,
-    TodoStatus,
-)
-from laffyhand.core.session.models import generate_id, utcnow
+from laffyhand.core.db.models import TodoItem, TodoPriority, TodoStatus, generate_id, utcnow
+from laffyhand.core.session.todo.models import TodoCreate, TodoUpdate
 from laffyhand.core.db.repository.common import _ts
 
 if TYPE_CHECKING:

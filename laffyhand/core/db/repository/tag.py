@@ -5,20 +5,8 @@ import os
 import sqlite3
 from datetime import datetime, timezone
 
-from pydantic import BaseModel
-
 from laffyhand.core._utils import coerce_json_dict, coerce_json_list
-
-
-class FileTag(BaseModel):
-    path: str
-    message: str
-    tags: dict[str, str]
-    updated_at: str
-    status: str = "active"
-    exports: dict[str, str] = {}
-    side_effects: str = ""
-    depends_on: list[str] = []
+from laffyhand.core.db.models import FileTag
 
 
 def _parse_json_dict(raw: str | None) -> dict[str, str]:

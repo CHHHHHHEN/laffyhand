@@ -13,7 +13,7 @@ from laffyhand.core.llm.specs.models import (
     UserMessage,
 )
 from laffyhand.core.llm.specs.models import ModelID, ProviderID
-from laffyhand.core.session.models import Session, utcnow
+from laffyhand.core.db.models import Session, utcnow
 from laffyhand.core.session.converters import (
     message_to_session_message,
     session_message_to_message,
