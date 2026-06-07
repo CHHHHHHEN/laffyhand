@@ -68,9 +68,8 @@ class SessionManager:
         cwd: str = "",
         provider: str = "",
         model: str = "",
-        agent_version: str = "",
+        agent_name: str = "",
         parent_id: str | None = None,
-        fork_id: str | None = None,
         messages: list[Message] | None = None,
     ) -> Session:
         session = Session(
@@ -78,9 +77,8 @@ class SessionManager:
             cwd=cwd,
             provider=ProviderID(provider) if provider else ProviderID(""),
             model=ModelID(model) if model else ModelID(""),
-            agent_version=agent_version,
+            agent_name=agent_name,
             parent_id=parent_id,
-            fork_id=fork_id,
         )
         self._sessions.insert(session)
         if messages:
@@ -110,7 +108,7 @@ class SessionManager:
             if meta.get("provider")
             else ProviderID(""),
             model=ModelID(meta.get("model", "")) if meta.get("model") else ModelID(""),
-            agent_version=meta.get("agent_version", ""),
+            agent_name=meta.get("agent_name", ""),
         )
         self._sessions.insert(session)
         self._conn.commit()
@@ -132,8 +130,8 @@ class SessionManager:
         self._sessions.update(session)
         self._conn.commit()
 
-    def complete(self, session_id: str, summary: str | None = None) -> None:
-        self._sessions.complete(session_id, summary=summary)
+    def complete(self, session_id: str) -> None:
+        self._sessions.complete(session_id)
         self._conn.commit()
 
     def archive(self, session_id: str) -> None:
@@ -251,7 +249,6 @@ class SessionManager:
                 reasoning_tokens=state.usage.total_reasoning,
                 cache_read_tokens=state.usage.total_cache_read,
                 cache_write_tokens=state.usage.total_cache_write,
-                cost=state.usage.cost,
                 message_count=max(state_count, existing),
             )
             self._end(began)
@@ -286,7 +283,7 @@ class SessionManager:
                 total_reasoning=session.reasoning_tokens,
                 total_cache_read=session.cache_read_tokens,
                 total_cache_write=session.cache_write_tokens,
-                cost=session.cost,
+                cost=0,
             ),
         )
 
@@ -328,11 +325,11 @@ class SessionManager:
             cwd=parent.cwd if parent else "",
             provider=parent.provider if parent else "",
             model=parent.model if parent else "",
-            agent_version=parent.agent_version if parent else "",
+            agent_name=parent.agent_name if parent else "",
             parent_id=parent_id,
             messages=tail_all,
         )
-        self._sessions.complete(parent_id, summary=summary_content)
+        self._sessions.complete(parent_id)
         self._conn.commit()
         logger.info(f"Compacted {parent_id} -> {child.id}")
         return child
@@ -349,8 +346,7 @@ class SessionManager:
             cwd=parent.cwd,
             provider=parent.provider,
             model=parent.model,
-            agent_version=parent.agent_version,
-            fork_id=session_id,
+            agent_name=parent.agent_name,
             messages=messages,
         )
         logger.info(f"Forked {session_id} -> {child.id}")
@@ -367,7 +363,7 @@ class SessionManager:
             cwd=parent.cwd if parent else "",
             provider=parent.provider if parent else "",
             model=model or (parent.model if parent else ""),
-            agent_version=parent.agent_version if parent else "",
+            agent_name=parent.agent_name if parent else "",
             parent_id=parent_id,
             messages=messages,
         )

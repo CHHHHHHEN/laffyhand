@@ -108,7 +108,7 @@ async def test_session_compaction_chain_persistence(db_path):
 
     parent_after = sm.get(parent.id)
     assert parent_after is not None
-    assert parent_after.status == "completed"
+    assert parent_after.status == "archived"
 
     child_loaded = sm.get(child.id)
     assert child_loaded is not None

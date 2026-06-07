@@ -34,7 +34,7 @@ async def _ensure_session(
         cwd=params.get("cwd", os.getcwd()),
         provider=params.get("provider", ""),
         model=params.get("model", ""),
-        agent_version=agent_name,
+        agent_name=agent_name,
     )
     runtime.session_manager.set_pending_meta(
         session.id,
@@ -42,7 +42,7 @@ async def _ensure_session(
         cwd=session.cwd,
         provider=str(session.provider) if session.provider else "",
         model=str(session.model) if session.model else "",
-        agent_version=session.agent_version,
+        agent_name=session.agent_name,
     )
     state = AgentState(
         messages=[system_message],
@@ -87,7 +87,7 @@ async def handle_session_list(
                 "status": s.status,
                 "title": s.title,
                 "model": s.model,
-                "agent": s.agent_version,
+                "agent": s.agent_name,
                 "provider": s.provider,
                 "message_count": s.message_count,
                 "turn_count": s.turn_count,
@@ -122,7 +122,7 @@ async def handle_session_load(
         "session_id": state.session_id,
         "title": session.title if session else None,
         "model": session.model if session else "",
-        "agent": session.agent_version if session else "",
+        "agent": session.agent_name if session else "",
         "messages_count": len(state.messages),
         "turn_count": state.turn_count,
         "usage": state.usage.model_dump() if state.usage else None,
@@ -179,7 +179,7 @@ async def handle_session_search(
                 "id": s.id,
                 "status": s.status,
                 "title": s.title,
-                "agent": s.agent_version,
+                "agent": s.agent_name,
                 "message_count": s.message_count,
                 "turn_count": s.turn_count,
                 "input_tokens": s.input_tokens,

@@ -266,14 +266,14 @@ class TestListDirTagAnnotations:
         return asyncio.run(registry.run_tool("list_dir", params))
 
     def test_annotates_tagged_file(self):
-        self.repo.upsert(str(self.root / "app.py"), message="Main application")
+        self.repo.upsert(str(self.root / "app.py"), content="Main application")
         self.repo.commit()
         result = self._run_via_registry()
         assert "app.py" in result
         assert "\U0001f516 Main application" in result
 
     def test_annotates_nested_tagged_file(self):
-        self.repo.upsert(str(self.root / "sub" / "inner.py"), message="Inner module")
+        self.repo.upsert(str(self.root / "sub" / "inner.py"), content="Inner module")
         self.repo.commit()
         result = self._run_via_registry(depth=2)
         assert "inner.py" in result
@@ -284,14 +284,14 @@ class TestListDirTagAnnotations:
         assert "\U0001f516" not in result
 
     def test_show_tags_false_suppresses_annotation(self):
-        self.repo.upsert(str(self.root / "app.py"), message="Main application")
+        self.repo.upsert(str(self.root / "app.py"), content="Main application")
         self.repo.commit()
         result = self._run_via_registry(show_tags=False)
         assert "\U0001f516" not in result
         assert "app.py" in result
 
     def test_annotates_only_tagged_files(self):
-        self.repo.upsert(str(self.root / "app.py"), message="Main application")
+        self.repo.upsert(str(self.root / "app.py"), content="Main application")
         self.repo.commit()
         result = self._run_via_registry()
         assert "\U0001f516 Main application" in result
@@ -305,7 +305,7 @@ class TestListDirTagAnnotations:
     def test_annotates_tagged_subdirectory(self):
         """A subdirectory with a tag should show annotation in list_dir."""
         sub = self.root / "sub"
-        self.repo.upsert(str(sub), message="Sub package")
+        self.repo.upsert(str(sub), content="Sub package")
         self.repo.commit()
         result = self._run_via_registry(depth=2)
         assert "sub/" in result
@@ -315,8 +315,8 @@ class TestListDirTagAnnotations:
         """Tagged directory and tagged file inside should both get annotations."""
         sub = self.root / "sub"
         inner = sub / "inner.py"
-        self.repo.upsert(str(sub), message="Sub package")
-        self.repo.upsert(str(inner), message="Inner module")
+        self.repo.upsert(str(sub), content="Sub package")
+        self.repo.upsert(str(inner), content="Inner module")
         self.repo.commit()
         result = self._run_via_registry(depth=2)
         assert "\U0001f516 Sub package" in result
@@ -333,7 +333,7 @@ class TestListDirTagAnnotations:
     def test_show_tags_false_suppresses_subdirectory_annotation(self):
         """show_tags=false should suppress directory tag annotation."""
         sub = self.root / "sub"
-        self.repo.upsert(str(sub), message="Sub package")
+        self.repo.upsert(str(sub), content="Sub package")
         self.repo.commit()
         result = self._run_via_registry(depth=2, show_tags=False)
         assert "sub/" in result
@@ -343,8 +343,8 @@ class TestListDirTagAnnotations:
         """The root directory being listed can have its own tag stored.
         The header line itself is not annotated (it's not an entry),
         but the tag is retrievable."""
-        self.repo.upsert(str(self.root), message="Root package")
+        self.repo.upsert(str(self.root), content="Root package")
         self.repo.commit()
         tag = self.repo.get(str(self.root))
         assert tag is not None
-        assert tag.message == "Root package"
+        assert tag.content == "Root package"

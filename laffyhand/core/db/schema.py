@@ -5,7 +5,7 @@ import sqlite3
 
 from loguru import logger
 
-SCHEMA_VERSION = 11
+SCHEMA_VERSION = 13
 
 _SQL_FILES = [
     "schema_version.sql",
@@ -27,6 +27,22 @@ def _load_core_ddl() -> str:
 CORE_DDL = _load_core_ddl()
 
 _MIGRATIONS: dict[int, str] = {
+    13: """
+        -- Migrate session: rename agent_version -> agent_name
+        ALTER TABLE session RENAME COLUMN agent_version TO agent_name;
+    """,
+    12: """
+        -- Migrate file_tag: rename message -> content, drop unused columns (if old schema)
+        CREATE TABLE IF NOT EXISTS file_tag_v2 (
+            path        TEXT PRIMARY KEY,
+            content     TEXT NOT NULL,
+            updated_at  TEXT NOT NULL
+        );
+        INSERT INTO file_tag_v2 (path, content, updated_at)
+            SELECT path, COALESCE(message, ''), updated_at FROM file_tag;
+        DROP TABLE file_tag;
+        ALTER TABLE file_tag_v2 RENAME TO file_tag;
+    """,
     11: """
         CREATE TABLE IF NOT EXISTS todo_v2 (
             id              TEXT NOT NULL,
@@ -48,23 +64,6 @@ _MIGRATIONS: dict[int, str] = {
         ALTER TABLE todo_v2 RENAME TO todo;
         CREATE INDEX IF NOT EXISTS idx_todo_session ON todo(session_id, status);
         CREATE INDEX IF NOT EXISTS idx_todo_task_tool ON todo(task_tool_id);
-    """,
-    10: """
-        ALTER TABLE file_tag ADD COLUMN exports TEXT NOT NULL DEFAULT '{}' CHECK (JSON_VALID(exports));
-        ALTER TABLE file_tag ADD COLUMN side_effects TEXT NOT NULL DEFAULT '';
-        ALTER TABLE file_tag ADD COLUMN depends_on TEXT NOT NULL DEFAULT '[]' CHECK (JSON_VALID(depends_on));
-    """,
-    9: """
-        ALTER TABLE file_tag ADD COLUMN status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','stale'));
-    """,
-    8: """
-        CREATE TABLE IF NOT EXISTS file_tag (
-            path        TEXT PRIMARY KEY,
-            message     TEXT NOT NULL DEFAULT '',
-            tags        TEXT NOT NULL DEFAULT '{}'
-                CHECK (JSON_VALID(tags)),
-            updated_at  TEXT NOT NULL
-        );
     """,
     7: """
         ALTER TABLE session ADD COLUMN cost INTEGER NOT NULL DEFAULT 0;

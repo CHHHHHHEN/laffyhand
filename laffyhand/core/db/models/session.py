@@ -209,7 +209,7 @@ class SessionMessage(BaseModel):
 # ── Session ─────────────────────────────────────────────────────
 
 
-SessionStatus = Literal["active", "completed", "archived"]
+SessionStatus = Literal["active", "archived"]
 
 
 class Session(BaseModel):
@@ -219,7 +219,7 @@ class Session(BaseModel):
     cwd: str = Field(default="", description="工作目录")
     provider: ProviderID = Field(description="LLM 提供商 ID")
     model: ModelID = Field(description="LLM 模型 ID")
-    agent_version: str = Field(default="", description="Agent 版本")
+    agent_name: str = Field(default="", description="Agent 名称")
     turn_count: int = Field(default=0, description="对话轮次数")
     step_count: int = Field(default=0, description="循环步数")
     input_tokens: int = Field(default=0, description="累积输入 Token")
@@ -227,12 +227,8 @@ class Session(BaseModel):
     reasoning_tokens: int = Field(default=0, description="累积推理 Token")
     cache_read_tokens: int = Field(default=0, description="累积缓存读取 Token")
     cache_write_tokens: int = Field(default=0, description="累积缓存写入 Token")
-    cost: int = Field(default=0, description="累积消耗（微美分）")
     parent_id: Optional[str] = Field(default=None, description="父会话 ID，用于压缩链")
-    fork_id: Optional[str] = Field(default=None, description="分叉源会话 ID")
     message_count: int = Field(default=0, description="消息数")
-    summary: Optional[str] = Field(default=None, description="会话摘要")
     metadata: Dict[str, Any] = Field(default_factory=dict, description="扩展元数据")
     created_at: datetime = Field(default_factory=utcnow, description="创建时间")
     updated_at: datetime = Field(default_factory=utcnow, description="最后更新时间")
-    ended_at: Optional[datetime] = Field(default=None, description="完成/归档时间")

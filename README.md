@@ -10,7 +10,7 @@
 Laffyhand is a general purpose AI agent. It can complete programming tasks, search the internet for information, make plans and follow them to achieve goals, parse documents and store them in a vector knowledge base, and have personal memory.
 
 <div align="center">
-  <img src="docs/screenshot.png" alt="Laffyhand UI Screenshot" width="800">
+  <img src="assets/screenshot.png" alt="Laffyhand UI Screenshot" width="800">
 </div>
 
 ## Quick Start

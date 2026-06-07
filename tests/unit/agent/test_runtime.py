@@ -537,7 +537,7 @@ class TestCompleteSession:
         runtime.session_manager.complete(session.id)
         fetched = session_manager.get(session.id)
         assert fetched is not None
-        assert fetched.status == "completed"
+        assert fetched.status == "archived"
 
     def test_noop_for_nonexistent(self, runtime):
         runtime.session_manager.complete("nonexistent")

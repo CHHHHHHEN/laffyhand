@@ -63,12 +63,10 @@ class TestSessionCRUD:
 
     def test_complete(self, session_manager: SessionManager) -> None:
         session = session_manager.create()
-        session_manager.complete(session.id, summary="Done!")
+        session_manager.complete(session.id)
         fetched = session_manager.get(session.id)
         assert fetched is not None
-        assert fetched.status == "completed"
-        assert fetched.summary == "Done!"
-        assert fetched.ended_at is not None
+        assert fetched.status == "archived"
 
     def test_archive(self, session_manager: SessionManager) -> None:
         session = session_manager.create()
@@ -97,12 +95,8 @@ class TestSessionCRUD:
 
     def test_delete_with_forked_sessions(self, session_manager: SessionManager) -> None:
         orig = session_manager.create()
-        fork = session_manager.create(fork_id=orig.id)
         session_manager.delete(orig.id)
         assert session_manager.get(orig.id) is None
-        f = session_manager.get(fork.id)
-        assert f is not None
-        assert f.fork_id is None
 
     def test_update(self, session_manager: SessionManager) -> None:
         session = session_manager.create(title="old")
@@ -361,8 +355,7 @@ class TestCompactionChain:
         assert child.status == "active"
         parent_fetched = session_manager.get(parent.id)
         assert parent_fetched is not None
-        assert parent_fetched.status == "completed"
-        assert parent_fetched.summary == "Summarized conversation."
+        assert parent_fetched.status == "archived"
         child_msgs = session_manager.get_messages(child.id)
         assert len(child_msgs) == len(system) + 1 + len(tail)
         assert child_msgs[1].content == "Summarized conversation."
@@ -373,7 +366,6 @@ class TestFork:
         msgs = make_messages()
         parent = session_manager.create(title="Original", messages=msgs)
         child = session_manager.fork(parent.id)
-        assert child.fork_id == parent.id
         assert child.status == "active"
         child_msgs = session_manager.get_messages(child.id)
         assert len(child_msgs) == len(msgs)
@@ -565,8 +557,7 @@ class TestAdvancedCRUD:
         session_manager.complete(session.id)
         fetched = session_manager.get(session.id)
         assert fetched is not None
-        assert fetched.status == "completed"
-        assert fetched.summary is None
+        assert fetched.status == "archived"
 
     def test_complete_already_completed(self, session_manager: SessionManager) -> None:
         session = session_manager.create()
@@ -574,7 +565,7 @@ class TestAdvancedCRUD:
         session_manager.complete(session.id)  # should not raise
         fetched = session_manager.get(session.id)
         assert fetched is not None
-        assert fetched.status == "completed"
+        assert fetched.status == "archived"
 
     def test_delete_nonexistent(self, session_manager: SessionManager) -> None:
         session_manager.delete("nonexistent")  # should not raise
@@ -618,7 +609,6 @@ class TestAdvancedCRUD:
         parent = session_manager.create(title="Original", messages=msgs)
         child = session_manager.fork(parent.id, title="Forked")
         assert child.title == "Forked"
-        assert child.fork_id == parent.id
 
 
 class TestSchema:

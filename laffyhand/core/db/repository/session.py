@@ -31,7 +31,7 @@ class SessionRepo:
             if "provider" in row.keys()
             else ProviderID(""),
             model=ModelID(row["model"]),
-            agent_version=row["agent_version"],
+            agent_name=row["agent_name"],
             turn_count=row["turn_count"],
             step_count=row["step_count"],
             input_tokens=row["input_tokens"],
@@ -42,26 +42,23 @@ class SessionRepo:
             if "cache_write_tokens" in row.keys()
             else 0,
             parent_id=row["parent_id"],
-            fork_id=row["fork_id"],
             message_count=row["message_count"],
-            summary=row["summary"],
             metadata=_deserialize_metadata(row["metadata"] or "{}"),
             created_at=_from_ts(row["created_at"]) or utcnow(),
             updated_at=_from_ts(row["updated_at"]) or utcnow(),
-            ended_at=_from_ts(row["ended_at"]) if row["ended_at"] else None,
         )
 
     def insert(self, session: Session) -> None:
         self._conn.execute(
             """INSERT INTO session (
-                id, status, title, cwd, provider, model, agent_version,
+                id, status, title, cwd, provider, model, agent_name,
                 turn_count, step_count,
                 input_tokens, output_tokens, reasoning_tokens,
-                cache_read_tokens, cache_write_tokens, cost,
-                parent_id, fork_id,
-                message_count, summary, metadata,
-                created_at, updated_at, ended_at
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                cache_read_tokens, cache_write_tokens,
+                parent_id,
+                message_count, metadata,
+                created_at, updated_at
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 session.id,
                 session.status,
@@ -69,7 +66,7 @@ class SessionRepo:
                 session.cwd,
                 session.provider,
                 session.model,
-                session.agent_version,
+                session.agent_name,
                 session.turn_count,
                 session.step_count,
                 session.input_tokens,
@@ -77,15 +74,11 @@ class SessionRepo:
                 session.reasoning_tokens,
                 session.cache_read_tokens,
                 session.cache_write_tokens,
-                session.cost,
                 session.parent_id,
-                session.fork_id,
                 session.message_count,
-                session.summary,
                 _serialize_metadata(session.metadata),
                 _ts(session.created_at),
                 _ts(session.updated_at),
-                _ts(session.ended_at),
             ),
         )
 
@@ -119,19 +112,19 @@ class SessionRepo:
     def update(self, session: Session) -> None:
         session.updated_at = utcnow()
         self._conn.execute(
-            """UPDATE session SET status=?, title=?, cwd=?, model=?, agent_version=?,
+            """UPDATE session SET status=?, title=?, cwd=?, model=?, agent_name=?,
                 turn_count=?, step_count=?,
                 input_tokens=?, output_tokens=?, reasoning_tokens=?,
-                cache_read_tokens=?, cache_write_tokens=?, cost=?,
-                message_count=?, summary=?, metadata=?,
-                updated_at=?, ended_at=?
+                cache_read_tokens=?, cache_write_tokens=?,
+                message_count=?, metadata=?,
+                updated_at=?
             WHERE id=?""",
             (
                 session.status,
                 session.title,
                 session.cwd,
                 session.model,
-                session.agent_version,
+                session.agent_name,
                 session.turn_count,
                 session.step_count,
                 session.input_tokens,
@@ -139,35 +132,26 @@ class SessionRepo:
                 session.reasoning_tokens,
                 session.cache_read_tokens,
                 session.cache_write_tokens,
-                session.cost,
                 session.message_count,
-                session.summary,
                 _serialize_metadata(session.metadata),
                 _ts(session.updated_at),
-                _ts(session.ended_at),
                 session.id,
             ),
         )
 
-    def complete(self, session_id: str, summary: Optional[str] = None) -> None:
+    def complete(self, session_id: str) -> None:
         now = utcnow()
         self._conn.execute(
-            "UPDATE session SET status='completed', summary=?, ended_at=?, updated_at=? WHERE id=?",
-            (summary, _ts(now), _ts(now), session_id),
+            "UPDATE session SET status='archived', updated_at=? WHERE id=?",
+            (_ts(now), session_id),
         )
 
     def archive(self, session_id: str) -> None:
-        self._conn.execute(
-            "UPDATE session SET status='archived', updated_at=? WHERE id=?",
-            (_ts(utcnow()), session_id),
-        )
+        self.complete(session_id)
 
     def delete(self, session_id: str) -> None:
         self._conn.execute(
             "UPDATE session SET parent_id=NULL WHERE parent_id=?", (session_id,)
-        )
-        self._conn.execute(
-            "UPDATE session SET fork_id=NULL WHERE fork_id=?", (session_id,)
         )
         self._conn.execute("DELETE FROM session WHERE id=?", (session_id,))
 
@@ -185,13 +169,12 @@ class SessionRepo:
         reasoning_tokens: int = 0,
         cache_read_tokens: int = 0,
         cache_write_tokens: int = 0,
-        cost: int = 0,
         message_count: int = 0,
     ) -> None:
         self._conn.execute(
             """UPDATE session SET turn_count=?, step_count=?,
                 input_tokens=?, output_tokens=?, reasoning_tokens=?,
-                cache_read_tokens=?, cache_write_tokens=?, cost=?,
+                cache_read_tokens=?, cache_write_tokens=?,
                 message_count=?, updated_at=?
             WHERE id=?""",
             (
@@ -202,7 +185,6 @@ class SessionRepo:
                 reasoning_tokens,
                 cache_read_tokens,
                 cache_write_tokens,
-                cost,
                 message_count,
                 _ts(utcnow()),
                 session_id,
@@ -269,7 +251,6 @@ class SessionRepo:
         result = cast(str, row["id"])
         depth = cast(int, row["depth"])
         if depth >= max_depth:
-            # Hit the recursion limit — check if there are deeper active children
             further = self._conn.execute(
                 "SELECT 1 FROM session WHERE parent_id=? AND status='active' LIMIT 1",
                 (result,),
