@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any
 from loguru import logger
 
 from laffyhand.core.llm.specs.models import SystemMessage
-from laffyhand.core.schemas import AgentState, SessionID
+from laffyhand.core.models import AgentState, SessionID
 from laffyhand.core.subagent import SessionContext
 from laffyhand.core.exceptions import SessionError
 
@@ -55,7 +55,8 @@ class SessionStateStore:
 
     @asynccontextmanager
     async def use(
-        self, session_id: str,
+        self,
+        session_id: str,
     ) -> AsyncIterator[tuple[AgentState, SessionContext]]:
         state = self._states.get(session_id)
         if state is None:
@@ -82,19 +83,28 @@ class SessionStateStore:
 
     # ── Event sinks ───────────────────────────────────────────
 
-    def set_event_sink(self, session_id: str, sink: Callable[[Any], Awaitable[None]]) -> None:
+    def set_event_sink(
+        self, session_id: str, sink: Callable[[Any], Awaitable[None]]
+    ) -> None:
         self._event_sinks[session_id] = sink
 
-    def pop_event_sink(self, session_id: str) -> Callable[[Any], Awaitable[None]] | None:
+    def pop_event_sink(
+        self, session_id: str
+    ) -> Callable[[Any], Awaitable[None]] | None:
         return self._event_sinks.pop(session_id, None)
 
-    def get_event_sink(self, session_id: str) -> Callable[[Any], Awaitable[None]] | None:
+    def get_event_sink(
+        self, session_id: str
+    ) -> Callable[[Any], Awaitable[None]] | None:
         return self._event_sinks.get(session_id)
 
     # ── Session lifecycle ─────────────────────────────────────
 
     def load(
-        self, session_id: str, session_manager: SessionManager, context_size: int,
+        self,
+        session_id: str,
+        session_manager: SessionManager,
+        context_size: int,
     ) -> AgentState | None:
         if session_id in self._states:
             return self._states[session_id]
@@ -104,7 +114,9 @@ class SessionStateStore:
         system_message = loaded.messages[0] if loaded.messages else None
         if system_message and isinstance(system_message, SystemMessage):
             compressed = session_manager.load_compressed_state(
-                session_id, system_message, context_size,
+                session_id,
+                system_message,
+                context_size,
             )
             if compressed is not None:
                 loaded = compressed
@@ -114,7 +126,9 @@ class SessionStateStore:
         return loaded
 
     def fork(
-        self, session_id: str, session_manager: SessionManager,
+        self,
+        session_id: str,
+        session_manager: SessionManager,
     ) -> str | None:
         state = self._states.get(session_id)
         if state is None or not state.session_id:

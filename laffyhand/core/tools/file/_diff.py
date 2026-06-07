@@ -18,8 +18,12 @@ from pydantic import BaseModel, Field
 class DiffConfig(BaseModel):
     """Controls how diffs are displayed."""
 
-    max_lines: int = Field(default=50, description="Maximum lines to show before truncation")
-    truncate: bool = Field(default=True, description="Set to False to disable truncation")
+    max_lines: int = Field(
+        default=50, description="Maximum lines to show before truncation"
+    )
+    truncate: bool = Field(
+        default=True, description="Set to False to disable truncation"
+    )
 
 
 class DiffResult(BaseModel):

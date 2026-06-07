@@ -34,14 +34,37 @@ class GrepParams(BaseModel):
     """
 
     pattern: str = Field(description="Regex pattern to search for (required)")
-    path: str = Field(description="Directory to search recursively, or a single file. Absolute path recommended — use the workspace root from <env>.")
-    include: str | None = Field(None, description="Glob pattern — only files matching this are scanned (e.g. *.py for Python files)")
-    exclude: str | None = Field(None, description="Glob pattern — matching files are skipped (e.g. test_*.py to exclude tests)")
-    include_ignored: bool = Field(False, description="If true, also search files that match .gitignore patterns")
-    output_mode: Literal["content", "files_only", "count"] = Field("content", description="content (default): matching lines with context; files_only: file paths only; count: per-file match counts")
-    context: int = Field(0, description="Lines of context before and after each match (0 = matching line only)", ge=0)
-    offset: int = Field(0, description="Number of initial results to skip (for pagination)", ge=0)
-    limit: int = Field(_MAX_RESULTS, description=f"Maximum results to return (default {_MAX_RESULTS})", ge=1)
+    path: str = Field(
+        description="Directory to search recursively, or a single file. Absolute path recommended — use the workspace root from <env>."
+    )
+    include: str | None = Field(
+        None,
+        description="Glob pattern — only files matching this are scanned (e.g. *.py for Python files)",
+    )
+    exclude: str | None = Field(
+        None,
+        description="Glob pattern — matching files are skipped (e.g. test_*.py to exclude tests)",
+    )
+    include_ignored: bool = Field(
+        False, description="If true, also search files that match .gitignore patterns"
+    )
+    output_mode: Literal["content", "files_only", "count"] = Field(
+        "content",
+        description="content (default): matching lines with context; files_only: file paths only; count: per-file match counts",
+    )
+    context: int = Field(
+        0,
+        description="Lines of context before and after each match (0 = matching line only)",
+        ge=0,
+    )
+    offset: int = Field(
+        0, description="Number of initial results to skip (for pagination)", ge=0
+    )
+    limit: int = Field(
+        _MAX_RESULTS,
+        description=f"Maximum results to return (default {_MAX_RESULTS})",
+        ge=1,
+    )
 
 
 def _truncate_line(line: str) -> str:
@@ -98,15 +121,25 @@ class GrepTool(BaseTool):
             return await self._search_single_file(root, pattern, context, offset, limit)
 
         return await self._search_directory(
-            root, pattern, include, exclude, include_ignored, output_mode, context, offset, limit,
+            root,
+            pattern,
+            include,
+            exclude,
+            include_ignored,
+            output_mode,
+            context,
+            offset,
+            limit,
         )
 
     # --- Helpers ---------------------------------------------------------------
 
     @staticmethod
-    def _paginate(items: list[str], offset: int, limit: int, label: str = "matches") -> str:
+    def _paginate(
+        items: list[str], offset: int, limit: int, label: str = "matches"
+    ) -> str:
         """Slice *items* with offset/limit, join with newlines, add summary."""
-        selected = items[offset:offset + limit]
+        selected = items[offset : offset + limit]
         if not selected:
             return ""
         result = "\n".join(selected)
@@ -133,7 +166,12 @@ class GrepTool(BaseTool):
         return result
 
     async def _search_single_file(
-        self, path: Path, pattern: re.Pattern[str], context: int, offset: int, limit: int
+        self,
+        path: Path,
+        pattern: re.Pattern[str],
+        context: int,
+        offset: int,
+        limit: int,
     ) -> str:
         if not path.is_file():
             return f"Not a file: {path}"
@@ -145,7 +183,13 @@ class GrepTool(BaseTool):
 
         # Try ripgrep first for performance
         if rg_available():
-            raw = await rg_grep(path.parent, pattern_str, include=path.name, context=context, include_ignored=True)
+            raw = await rg_grep(
+                path.parent,
+                pattern_str,
+                include=path.name,
+                context=context,
+                include_ignored=True,
+            )
             if raw is not None:
                 lines = [ln.removeprefix("./") for ln in raw.splitlines() if ln.strip()]
                 if not lines:
@@ -179,7 +223,7 @@ class GrepTool(BaseTool):
             return f"No matches for `{pattern.pattern}` in {path}"
 
         total_matches = len(match_indices)
-        selected_indices = match_indices[offset:offset + limit]
+        selected_indices = match_indices[offset : offset + limit]
 
         file_label = str(path)
         result_lines: list[str] = []
@@ -219,15 +263,29 @@ class GrepTool(BaseTool):
 
         if rg_available():
             result = await self._rg_search(
-                root, pattern_str, include, exclude, include_ignored,
-                output_mode, context, offset, limit,
+                root,
+                pattern_str,
+                include,
+                exclude,
+                include_ignored,
+                output_mode,
+                context,
+                offset,
+                limit,
             )
             if result is not None:
                 return result
 
         return await self._py_search(
-            root, pattern, include, exclude, include_ignored,
-            output_mode, context, offset, limit,
+            root,
+            pattern,
+            include,
+            exclude,
+            include_ignored,
+            output_mode,
+            context,
+            offset,
+            limit,
         )
 
     async def _rg_search(
@@ -244,7 +302,13 @@ class GrepTool(BaseTool):
     ) -> str | None:
         """Try ripgrep; return ``None`` to signal fallback to Python."""
         if output_mode == "files_only":
-            raw_files = await rg_grep_files(root, pattern_str, include, include_ignored=include_ignored, exclude=exclude)
+            raw_files = await rg_grep_files(
+                root,
+                pattern_str,
+                include,
+                include_ignored=include_ignored,
+                exclude=exclude,
+            )
             if raw_files is None:
                 return None
             files = [f.removeprefix("./") for f in raw_files]
@@ -253,9 +317,22 @@ class GrepTool(BaseTool):
             return self._paginate(files, offset, limit, "files")
 
         if output_mode == "count":
-            raw_str = await rg_grep_count(root, pattern_str, include, include_ignored=include_ignored, exclude=exclude)
+            raw_str = await rg_grep_count(
+                root,
+                pattern_str,
+                include,
+                include_ignored=include_ignored,
+                exclude=exclude,
+            )
         else:
-            raw_str = await rg_grep(root, pattern_str, include, context, include_ignored=include_ignored, exclude=exclude)
+            raw_str = await rg_grep(
+                root,
+                pattern_str,
+                include,
+                context,
+                include_ignored=include_ignored,
+                exclude=exclude,
+            )
         if raw_str is None:
             return None
 
@@ -287,17 +364,27 @@ class GrepTool(BaseTool):
         limit: int,
     ) -> str:
         pattern_str = pattern.pattern
-        logger.debug(f"Grep: Python fallback {output_mode} for `{pattern_str}` in {root}")
+        logger.debug(
+            f"Grep: Python fallback {output_mode} for `{pattern_str}` in {root}"
+        )
         stop_early = output_mode == "files_only"
-        files_with_matches = await self._collect_matches(root, pattern, include, exclude, include_ignored, stop_early)
+        files_with_matches = await self._collect_matches(
+            root, pattern, include, exclude, include_ignored, stop_early
+        )
 
         if output_mode == "files_only":
             paths = [str(f.relative_to(root)) for f, _ in files_with_matches]
-            return self._paginate(paths, offset, limit, "files") or f"No matches for `{pattern_str}`"
+            return (
+                self._paginate(paths, offset, limit, "files")
+                or f"No matches for `{pattern_str}`"
+            )
 
         if output_mode == "count":
             lines = [f"{f.relative_to(root)}: {len(m)}" for f, m in files_with_matches]
-            return self._paginate(lines, offset, limit, "files") or f"No matches for `{pattern_str}`"
+            return (
+                self._paginate(lines, offset, limit, "files")
+                or f"No matches for `{pattern_str}`"
+            )
 
         # content mode
         flat_matches: list[tuple[Path, int]] = [
@@ -306,7 +393,7 @@ class GrepTool(BaseTool):
         if not flat_matches:
             return f"No matches for `{pattern_str}`"
 
-        selected = flat_matches[offset:offset + limit]
+        selected = flat_matches[offset : offset + limit]
 
         lines_cache: dict[str, list[str]] = {}
         result_lines: list[str] = []
@@ -338,8 +425,12 @@ class GrepTool(BaseTool):
         return result
 
     async def _collect_matches(
-        self, root: Path, pattern: re.Pattern[str], include: str | None,
-        exclude: str | None = None, include_ignored: bool = False,
+        self,
+        root: Path,
+        pattern: re.Pattern[str],
+        include: str | None,
+        exclude: str | None = None,
+        include_ignored: bool = False,
         stop_early: bool = False,
     ) -> list[tuple[Path, list[int]]]:
         """Scan files and return (file_path, [match_line_index, ...]) pairs.
@@ -374,7 +465,9 @@ class GrepTool(BaseTool):
                     if any(pattern.search(line) for line in lines):
                         result.append((fp, []))
                 else:
-                    indices = [i for i, line in enumerate(lines) if pattern.search(line)]
+                    indices = [
+                        i for i, line in enumerate(lines) if pattern.search(line)
+                    ]
                     if indices:
                         result.append((fp, indices))
 

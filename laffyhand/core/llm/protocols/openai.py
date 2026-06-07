@@ -3,10 +3,10 @@ from pydantic import BaseModel, Field as F
 from loguru import logger
 
 from laffyhand.core.llm.specs.models import (
-    AssistantMessage, 
-    LLMRequest, 
+    AssistantMessage,
+    LLMRequest,
     Frame,
-    ProviderRequest, 
+    ProviderRequest,
     Message,
     ToolCallAccumulator,
 )
@@ -72,7 +72,9 @@ class OpenAIToolDefinition(BaseModel):
     function: OpenAIToolFunction
 
 
-OpenAIRequestMessage = Union[OpenAISystemMessage, OpenAIUserMessage, OpenAIAssistantMessage, OpenAIToolMessage]
+OpenAIRequestMessage = Union[
+    OpenAISystemMessage, OpenAIUserMessage, OpenAIAssistantMessage, OpenAIToolMessage
+]
 
 
 class OpenAICompletionRequest(ProviderRequest):
@@ -136,7 +138,6 @@ class OpenAIChatChunk(BaseModel):
     usage: Optional["OpenAIChatUsage"] = None
 
 
-
 class OpenAIChatUsageDetails(BaseModel):
     cached_tokens: Optional[int] = None
     cache_write_tokens: Optional[int] = None
@@ -151,6 +152,7 @@ class OpenAIChatUsage(BaseModel):
     completion_tokens: Optional[int] = None
     prompt_tokens_details: Optional[OpenAIChatUsageDetails] = None
     completion_tokens_details: Optional[OpenAIChatCompletionDetails] = None
+
 
 # ─── OpenAI Protocol ─────────────────────────────────────────────
 
@@ -192,7 +194,9 @@ class OpenAIProtocol(Protocol):
                 tool_calls = [
                     OpenAIRequestToolCall(
                         id=tc.tool_call_id,
-                        function=OpenAIRequestToolCallFunction(name=tc.tool_name, arguments=tc.args),
+                        function=OpenAIRequestToolCallFunction(
+                            name=tc.tool_name, arguments=tc.args
+                        ),
                     )
                     for tc in msg.tool_calls
                 ]
@@ -220,7 +224,9 @@ class OpenAIProtocol(Protocol):
             messages=messages,
             stream=True,
             stream_options={"include_usage": True},
-            tools=self._tool_definitions_to_openai(request.tools) if request.tools else None,
+            tools=self._tool_definitions_to_openai(request.tools)
+            if request.tools
+            else None,
         )
 
     @staticmethod
@@ -273,7 +279,7 @@ class OpenAIProtocol(Protocol):
                 for idx in sorted(self._tool_call_acc):
                     acc = self._tool_call_acc.pop(idx)
                     events.append(
-                        StreamToolCall(
+StreamToolCall(
                             tool_call_id=acc.tool_call_id,
                             tool_name=acc.tool_name,
                             args=acc.args,

@@ -36,7 +36,14 @@ class ToolInitializer:
         self._memory_service = memory_service
 
     async def register_all(self) -> None:
-        from laffyhand.core.tools.file import ReadTool, ListDirTool, WriteTool, EditTool, GlobTool, GrepTool
+        from laffyhand.core.tools.file import (
+            ReadTool,
+            ListDirTool,
+            WriteTool,
+            EditTool,
+            GlobTool,
+            GrepTool,
+        )
         from laffyhand.core.tools.bash import BashTool
         from laffyhand.core.tools.web_fetch import WebFetchTool
         from laffyhand.core.tools.todo import TodoTool
@@ -81,6 +88,7 @@ class ToolInitializer:
         # Memory tool
         if self._memory_service is not None:
             from laffyhand.core.tools.memory import MemoryTool
+
             self._tool_registry.register_tool(MemoryTool(self._memory_service))
 
         # Post-process glob/read results with tag annotations

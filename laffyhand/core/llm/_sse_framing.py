@@ -20,9 +20,7 @@ class SSEFraming(Framing):
 
     _DONE = _DoneSentinel()
 
-    async def frames(
-        self, response: AsyncIterable[bytes]
-    ) -> AsyncIterator[Frame]:
+    async def frames(self, response: AsyncIterable[bytes]) -> AsyncIterator[Frame]:
         buffer = ""
         async for chunk in response:
             buffer += chunk.decode("utf-8", errors="replace")

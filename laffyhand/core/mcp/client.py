@@ -9,7 +9,7 @@ from mcp.client.stdio import stdio_client
 from mcp.client.streamable_http import streamable_http_client
 from mcp.types import CallToolResult, TextContent
 
-from laffyhand.core.mcp.config import MCPConfig, LocalMCPConfig, RemoteMCPConfig
+from laffyhand.config import MCPConfig, LocalMCPConfig, RemoteMCPConfig
 from laffyhand.core.exceptions import MCPError
 
 

@@ -30,17 +30,29 @@ class ChangeParams(BaseModel):
     """One edit item — requires ``new_string`` plus ``old_string``
     (literal match) or ``old_pattern`` (regex)."""
 
-    old_string: str | None = Field(None, description="Literal text to find. Provide either this or old_pattern.")
-    old_pattern: str | None = Field(None, description="Regex pattern to find. Provide either this or old_string.")
-    new_string: str = Field(description="Replacement text. Supports ``\\1`` backreferences with old_pattern.")
-    replaceAll: bool | None = Field(default=False, description="Replace all occurrences (false = first match only)")
+    old_string: str | None = Field(
+        None, description="Literal text to find. Provide either this or old_pattern."
+    )
+    old_pattern: str | None = Field(
+        None, description="Regex pattern to find. Provide either this or old_string."
+    )
+    new_string: str = Field(
+        description="Replacement text. Supports ``\\1`` backreferences with old_pattern."
+    )
+    replaceAll: bool | None = Field(
+        default=False, description="Replace all occurrences (false = first match only)"
+    )
 
 
 class EditParams(BaseModel):
     """Required: ``file_path`` (target file) + ``changes`` (one or more edits)."""
 
-    file_path: str = Field(description="Path to the file to edit. Absolute path recommended; relative paths resolve from cwd.")
-    changes: list[ChangeParams] = Field(description="Edits applied sequentially — each sees the previous change's result. Every item needs new_string + old_string or old_pattern.")
+    file_path: str = Field(
+        description="Path to the file to edit. Absolute path recommended; relative paths resolve from cwd."
+    )
+    changes: list[ChangeParams] = Field(
+        description="Edits applied sequentially — each sees the previous change's result. Every item needs new_string + old_string or old_pattern."
+    )
 
 
 _EDIT_SCHEMA_CACHE: dict[str, Any] | None = None
@@ -97,7 +109,11 @@ class EditTool(BaseTool):
     # --- Write + diff helper ---------------------------------------------------
 
     async def _write_and_report(
-        self, path: Path, old_content: str, new_content: str, summary: str,
+        self,
+        path: Path,
+        old_content: str,
+        new_content: str,
+        summary: str,
     ) -> str:
         """Write *new_content*, compute diff, and return a formatted result."""
         await atomic_write(path, new_content)
@@ -125,7 +141,11 @@ class EditTool(BaseTool):
             try:
                 change = ChangeParams.model_validate(change_dict)
             except ValidationError as e:
-                missing = [f"'{err['loc'][0]}'" for err in e.errors() if err['type'] == 'missing']
+                missing = [
+                    f"'{err['loc'][0]}'"
+                    for err in e.errors()
+                    if err["type"] == "missing"
+                ]
                 if missing:
                     return f"Change {i + 1}: {', '.join(missing)} is required"
                 return f"Change {i + 1}: invalid parameters"
@@ -174,6 +194,6 @@ class EditTool(BaseTool):
         line_ending = detect_line_ending(path)
         content = normalize_newlines(content, line_ending)
         logger.info(f"Edit: applied {len(changes)} change(s) to {path}")
-        return await self._write_and_report(path, original, content, f"Edited {path}: applied {len(changes)} change(s)")
-
-
+        return await self._write_and_report(
+            path, original, content, f"Edited {path}: applied {len(changes)} change(s)"
+        )

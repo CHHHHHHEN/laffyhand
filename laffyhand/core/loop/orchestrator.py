@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any
 from loguru import logger
 
 from laffyhand.core.loop.turn import AgentTurn
-from laffyhand.core.schemas import CompactionConfig
+from laffyhand.core.models import CompactionConfig
 from laffyhand.core.session.state_store import SessionStateStore
 
 if TYPE_CHECKING:
@@ -77,7 +77,10 @@ class LoopOrchestrator:
             self._session_store.pop_event_sink(session_id)
 
     def is_session_running(self, session_id: str) -> bool:
-        return session_id in self._session_tasks and not self._session_tasks[session_id].done()
+        return (
+            session_id in self._session_tasks
+            and not self._session_tasks[session_id].done()
+        )
 
     async def start_background_agent_turn(
         self,

@@ -33,8 +33,8 @@ async def handle_mcp_add_server(
     name: str = params.get("name", "")
     if not name:
         raise ValueError("name is required")
-    from laffyhand.core.mcp.config import LocalMCPConfig, RemoteMCPConfig
-    from laffyhand.core.mcp.config import MCPConfig as MCPCfg
+    from laffyhand.config import LocalMCPConfig, RemoteMCPConfig
+    from laffyhand.config import MCPConfig as MCPCfg
 
     server_type: str = params.get("type", "local")
     if server_type == "local":

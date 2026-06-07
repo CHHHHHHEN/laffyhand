@@ -1,23 +1,27 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
 from typing import TYPE_CHECKING, Callable
 
 from loguru import logger
 
 from laffyhand.core.llm.specs.models import SystemMessage, ToolMessage, UserMessage
 from laffyhand.core.llm.specs.models import (
-    AssistantMessage,
     Message,
 )
-from laffyhand.core.schemas import (
-    AgentState,
-    CompactionConfig,
-    SessionID,
+from laffyhand.core.models import AgentState, CompactionConfig, SessionID
+from laffyhand.core._utils import (
+    estimate_message_tokens,
+    estimate_messages_tokens,
+    estimate_tokens,
 )
-from laffyhand.core._utils import estimate_tokens, estimate_message_tokens, estimate_messages_tokens, truncate_output
-from laffyhand.core.llm.facade import LLM, stream_text
-from laffyhand.core.agent import get_builtin
+from laffyhand.core.llm.facade import LLM
+from laffyhand.core.compaction._summarize import (
+    _is_summary_content,
+    _summary_depth,
+    _summarize,
+    _SUMMARY_TAG_OPEN,
+    _SUMMARY_TAG_CLOSE,
+)
 
 if TYPE_CHECKING:
     from laffyhand.core.session import SessionManager
@@ -95,96 +99,6 @@ def select_tail(
     return head, tail
 
 
-SUMMARY_PROMPT_TEMPLATE = """Please summarize the following conversation history:
-
-{head_text}
-
----
-
-Provide a concise structured summary covering:
-- Goal: What is the user trying to achieve?
-- Progress: What has been done so far?
-- Key Decisions: Important choices made.
-- Relevant Files: Files created, read, or modified.
-- Next Steps: What remains to be done."""
-
-
-_SUMMARY_TAG_OPEN = "<summary>"
-_SUMMARY_TAG_CLOSE = "</summary>"
-
-
-def _is_summary_content(content: str) -> bool:
-    s = content.strip()
-    return s.startswith(_SUMMARY_TAG_OPEN) and s.endswith(_SUMMARY_TAG_CLOSE)
-
-
-def _summary_depth(messages: list[Message], max_depth: int = 3) -> int:
-    depth = 0
-    for m in messages:
-        content = ""
-        if isinstance(m, SystemMessage):
-            content = m.content or ""
-        elif isinstance(m, UserMessage):
-            content = m.content or ""
-        if _is_summary_content(content):
-            depth += 1
-    return depth
-
-
-def build_summary_text(messages: Sequence[Message], tool_truncate: int = 500) -> str:
-    lines = []
-    for msg in messages:
-        if isinstance(msg, SystemMessage) and _is_summary_content(msg.content):
-            inner = (
-                msg.content.strip()
-                .removeprefix(_SUMMARY_TAG_OPEN)
-                .removesuffix(_SUMMARY_TAG_CLOSE)
-                .strip()
-            )
-            lines.append(f"[Previous Summary]:\n{inner}")
-        elif isinstance(msg, UserMessage) and _is_summary_content(msg.content):
-            inner = (
-                msg.content.strip()
-                .removeprefix(_SUMMARY_TAG_OPEN)
-                .removesuffix(_SUMMARY_TAG_CLOSE)
-                .strip()
-            )
-            lines.append(f"[Previous Summary]:\n{inner}")
-        elif isinstance(msg, SystemMessage):
-            lines.append(f"[System]: {msg.content}")
-        elif isinstance(msg, UserMessage):
-            lines.append(f"[User]: {msg.content}")
-        elif isinstance(msg, AssistantMessage):
-            if msg.content:
-                lines.append(f"[Assistant]: {msg.content}")
-            if msg.reasoning:
-                lines.append(f"[Reasoning]: {msg.reasoning}")
-            if msg.tool_calls:
-                for tc in msg.tool_calls:
-                    lines.append(f"[Tool Call: {tc.tool_name}]: {tc.args}")
-        elif isinstance(msg, ToolMessage):
-            lines.append(
-                f"[Tool Result - {msg.tool_call_id}]: {truncate_output(msg.content, tool_truncate)}"
-            )
-    return "\n".join(lines)
-
-
-async def _summarize(
-    llm: LLM, head: Sequence[Message], tool_truncate: int = 500
-) -> str | None:
-    head_text = build_summary_text(head, tool_truncate=tool_truncate)
-    summary_prompt = SUMMARY_PROMPT_TEMPLATE.format(head_text=head_text)
-
-    info = get_builtin("compaction")
-    system_prompt = info.system_prompt if info else ""
-    summary_messages: list[Message] = [
-        SystemMessage(content=system_prompt),
-        UserMessage(content=summary_prompt),
-    ]
-
-    return await stream_text(llm, summary_messages)
-
-
 def _select_compaction_targets(
     messages: list[Message],
     config: CompactionConfig,
@@ -243,7 +157,11 @@ async def compact_with_chain(
         return None
 
     logger.info(f"Chain compaction summary generated ({len(summary)} chars)")
-    return f"{_SUMMARY_TAG_OPEN}\n{summary.strip()}\n{_SUMMARY_TAG_CLOSE}", original_system, tail
+    return (
+        f"{_SUMMARY_TAG_OPEN}\n{summary.strip()}\n{_SUMMARY_TAG_CLOSE}",
+        original_system,
+        tail,
+    )
 
 
 async def compact_on_overflow(
@@ -253,9 +171,13 @@ async def compact_on_overflow(
     session_manager: SessionManager | None = None,
     on_compacted: Callable[[str], None] | None = None,
 ) -> bool:
-    tokens = agent_state.usage.curr_context_usage or estimate_messages_tokens(agent_state.messages)
+    tokens = agent_state.usage.curr_context_usage or estimate_messages_tokens(
+        agent_state.messages
+    )
     context_size = agent_state.usage.context_size
-    reserved = compaction_config.reserved or min(compaction_config.reserved_buffer, context_size // 4)
+    reserved = compaction_config.reserved or min(
+        compaction_config.reserved_buffer, context_size // 4
+    )
     if not is_overflow(tokens, context_size, reserved):
         logger.debug(f"No compaction needed: {tokens} tokens within context limit")
         return False
@@ -282,12 +204,3 @@ async def compact_on_overflow(
     if on_compacted is not None:
         on_compacted(child.id)
     return True
-
-
-__all__ = [
-    "is_overflow",
-    "select_tail",
-    "build_summary_text",
-    "compact_with_chain",
-    "compact_on_overflow",
-]

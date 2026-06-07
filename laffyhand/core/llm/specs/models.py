@@ -83,9 +83,7 @@ class StreamError(BaseModel):
     error: str
 
 
-LLMEvent = Union[
-    StreamText, StreamReasoning, StreamToolCall, StreamFinish, StreamError
-]
+LLMEvent = Union[StreamText, StreamReasoning, StreamToolCall, StreamFinish, StreamError]
 
 
 # ─── Messages ───────────────────────────────────────────────────
@@ -119,6 +117,7 @@ class ToolMessage(BaseModel):
 
 
 Message = Union[SystemMessage, UserMessage, AssistantMessage, ToolMessage]
+
 
 class LLMRequest(BaseModel):
     model: ModelID

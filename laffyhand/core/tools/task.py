@@ -9,9 +9,16 @@ from laffyhand.core.tools.base import BaseTool
 class TaskParams(BaseModel):
     subagent_type: str = Field(description="Which sub-agent to delegate to")
     prompt: str = Field(description="Detailed task description for the sub-agent")
-    description: str | None = Field(None, description="Short 3-5 word summary of the task")
-    background: bool | None = Field(default=False, description="Run in background (non-blocking)")
-    todo_id: str | None = Field(None, description="Link to a TODO task ID (auto-updates status)")
+    description: str | None = Field(
+        None, description="Short 3-5 word summary of the task"
+    )
+    background: bool | None = Field(
+        default=False, description="Run in background (non-blocking)"
+    )
+    todo_id: str | None = Field(
+        None, description="Link to a TODO task ID (auto-updates status)"
+    )
+
 
 if TYPE_CHECKING:
     from laffyhand.core.agent import AgentRegistry
@@ -63,7 +70,11 @@ class TaskTool(BaseTool):
             return f"Error: unknown sub-agent '{subagent_type}'"
 
         result = await self._orchestrator.create_subagent(
-            parent_session_id, agent_info, prompt,
-            description=description, background=background, todo_id=todo_id,
+            parent_session_id,
+            agent_info,
+            prompt,
+            description=description,
+            background=background,
+            todo_id=todo_id,
         )
         return result

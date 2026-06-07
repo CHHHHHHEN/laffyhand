@@ -1,14 +1,11 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
 
 from loguru import logger
 
 from laffyhand.core._utils import estimate_tokens
 from laffyhand.core.llm.specs.models import Message, ToolMessage
-
-if TYPE_CHECKING:
-    from laffyhand.core.schemas import CompactionConfig
+from laffyhand.core.models import CompactionConfig
 
 
 def prune(
@@ -18,7 +15,6 @@ def prune(
     config: CompactionConfig | None = None,
 ) -> list[Message]:
     if config is None:
-        from laffyhand.core.schemas import CompactionConfig
         config = CompactionConfig()
 
     prune_protect = config.prune_protect
@@ -66,6 +62,3 @@ def prune(
         )
     logger.info(f"Pruned {pruned} tokens from tool outputs")
     return result
-
-
-__all__ = ["prune"]

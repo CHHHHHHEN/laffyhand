@@ -4,7 +4,7 @@ import os
 from typing import TYPE_CHECKING, Any
 
 from laffyhand.core.llm.specs.models import SystemMessage
-from laffyhand.core.schemas import AgentState, SessionID, SessionUsage
+from laffyhand.core.models import AgentState, SessionID, SessionUsage
 from laffyhand.gateway.session_converters import _serialize_messages
 
 if TYPE_CHECKING:

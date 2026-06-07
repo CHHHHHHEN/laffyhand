@@ -27,10 +27,19 @@ def _is_within_root(target: Path, root: Path) -> bool:
 
 
 class GlobParams(BaseModel):
-    pattern: str = Field(description="Glob pattern to match (e.g. **/*.py, src/**/*.ts)")
-    path: str = Field(description="Directory to search. Absolute path recommended — use the workspace root from <env>.")
-    exclude: str | None = Field(None, description="Glob pattern — matching files are skipped (e.g. __pycache__/**)")
-    include_ignored: bool = Field(False, description="If true, also include files that match .gitignore patterns")
+    pattern: str = Field(
+        description="Glob pattern to match (e.g. **/*.py, src/**/*.ts)"
+    )
+    path: str = Field(
+        description="Directory to search. Absolute path recommended — use the workspace root from <env>."
+    )
+    exclude: str | None = Field(
+        None,
+        description="Glob pattern — matching files are skipped (e.g. __pycache__/**)",
+    )
+    include_ignored: bool = Field(
+        False, description="If true, also include files that match .gitignore patterns"
+    )
 
 
 class GlobTool(BaseTool):
@@ -63,7 +72,9 @@ class GlobTool(BaseTool):
         matches: list[Path] = []
 
         if rg_available():
-            rg_results = await rg_glob(root, pattern, include_ignored=include_ignored, exclude=exclude)
+            rg_results = await rg_glob(
+                root, pattern, include_ignored=include_ignored, exclude=exclude
+            )
             if rg_results is not None:
                 for p in rg_results:
                     if not p:
@@ -74,7 +85,9 @@ class GlobTool(BaseTool):
                         continue
                     if p_obj.is_file():
                         matches.append(p_obj)
-                logger.debug(f"Glob: ripgrep returned {len(matches)} results for {pattern} in {root}")
+                logger.debug(
+                    f"Glob: ripgrep returned {len(matches)} results for {pattern} in {root}"
+                )
 
         if not matches:
             for p in glob_module.glob(pattern, root_dir=root, recursive=True):
@@ -90,7 +103,9 @@ class GlobTool(BaseTool):
             if not include_ignored and matches:
                 gitignore = GitignoreFilter(root)
                 matches = gitignore.filter(matches)
-            logger.debug(f"Glob: Python glob returned {len(matches)} results for {pattern} in {root}")
+            logger.debug(
+                f"Glob: Python glob returned {len(matches)} results for {pattern} in {root}"
+            )
 
         if not matches:
             return f"No files found matching `{pattern}` in {root}"

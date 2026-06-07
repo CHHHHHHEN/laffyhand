@@ -1,8 +1,7 @@
 from __future__ import annotations
 
+from laffyhand.core.compaction._summarize import _is_summary_content, _summary_depth
 from laffyhand.core.compaction import (
-    _is_summary_content,
-    _summary_depth,
     build_summary_text,
     is_overflow,
     select_tail,
@@ -15,7 +14,7 @@ from laffyhand.core.llm.specs.models import (
     ToolMessage,
     UserMessage,
 )
-from laffyhand.core.schemas import CompactionConfig
+from laffyhand.core.models import CompactionConfig
 
 
 # ── is_overflow ──────────────────────────────────────────────

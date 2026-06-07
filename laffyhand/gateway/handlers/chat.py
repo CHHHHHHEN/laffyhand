@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
-from laffyhand.core.events import (
+from laffyhand.core.models import (
     Finish,
     PermissionRequest,
     StepFinish,

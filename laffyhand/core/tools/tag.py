@@ -19,25 +19,62 @@ from laffyhand.core.tools.base import BaseTool
 
 class TagBatchItem(BaseModel):
     file_path: str = Field(description="Absolute path to the file or directory")
-    message: str = Field(description="Macro-level semantic description of the file's overall purpose")
-    exports: dict[str, str] | None = Field(None, description="Exported symbols as a dict: {\"ClassName\": \"class\", \"func\": \"function\"}")
-    side_effects: str | None = Field(None, description="Description of import-time side effects")
-    depends_on: list[str] | None = Field(None, description="List of external module dependencies")
+    message: str = Field(
+        description="Macro-level semantic description of the file's overall purpose"
+    )
+    exports: dict[str, str] | None = Field(
+        None,
+        description='Exported symbols as a dict: {"ClassName": "class", "func": "function"}',
+    )
+    side_effects: str | None = Field(
+        None, description="Description of import-time side effects"
+    )
+    depends_on: list[str] | None = Field(
+        None, description="List of external module dependencies"
+    )
 
 
 class TagParams(BaseModel):
     operation: str = Field(description="Operation to perform")
-    file_path: str | None = Field(None, description="File or directory path to tag (for add/update)")
-    message: str | None = Field(None, description="Macro-level semantic description of the file's overall purpose, not just what was changed")
-    exports: dict[str, str] | None = Field(None, description="Exported symbols as a dict: {\"ClassName\": \"class\", \"func_name\": \"function\", \"CONST\": \"constant\"} (for add/update)")
-    side_effects: str | None = Field(None, description="Description of import-time side effects, e.g. 'registers signal handlers on import' (for add/update)")
-    depends_on: list[str] | None = Field(None, description="List of external module dependencies this file relies on (for add/update)")
-    key: str | None = Field(None, description="Custom key for key-value pair (use with --value)")
-    value: str | None = Field(None, description="Value for the custom key (use with --key)")
-    path: str | None = Field(None, description="Path (file or directory) to list or filter by")
-    status: str | None = Field(None, description="Filter tags by status (for list operation)")
-    tags: list[TagBatchItem] | None = Field(None, description="List of tags for batch operation")
-    delete: bool | None = Field(default=False, description="When pruning, set to true to permanently delete stale tags instead of marking them")
+    file_path: str | None = Field(
+        None, description="File or directory path to tag (for add/update)"
+    )
+    message: str | None = Field(
+        None,
+        description="Macro-level semantic description of the file's overall purpose, not just what was changed",
+    )
+    exports: dict[str, str] | None = Field(
+        None,
+        description='Exported symbols as a dict: {"ClassName": "class", "func_name": "function", "CONST": "constant"} (for add/update)',
+    )
+    side_effects: str | None = Field(
+        None,
+        description="Description of import-time side effects, e.g. 'registers signal handlers on import' (for add/update)",
+    )
+    depends_on: list[str] | None = Field(
+        None,
+        description="List of external module dependencies this file relies on (for add/update)",
+    )
+    key: str | None = Field(
+        None, description="Custom key for key-value pair (use with --value)"
+    )
+    value: str | None = Field(
+        None, description="Value for the custom key (use with --key)"
+    )
+    path: str | None = Field(
+        None, description="Path (file or directory) to list or filter by"
+    )
+    status: str | None = Field(
+        None, description="Filter tags by status (for list operation)"
+    )
+    tags: list[TagBatchItem] | None = Field(
+        None, description="List of tags for batch operation"
+    )
+    delete: bool | None = Field(
+        default=False,
+        description="When pruning, set to true to permanently delete stale tags instead of marking them",
+    )
+
 
 if TYPE_CHECKING:
     from laffyhand.core.db.repository.tag import FileTagRepo
@@ -106,7 +143,9 @@ def _annotate_glob(result: str, params: dict[str, Any], repo: FileTagRepo) -> st
         if not line or line.startswith("["):
             annotated.append(line)
             continue
-        resolved = Path(line).resolve() if line.startswith("/") else (root / line).resolve()
+        resolved = (
+            Path(line).resolve() if line.startswith("/") else (root / line).resolve()
+        )
         tag = repo.get(str(resolved))
         if tag:
             annotated.append(f"{line} {format_tag_summary(tag)}")
@@ -195,7 +234,13 @@ class TagTool(BaseTool):
         schema = TagParams.model_json_schema()
         schema.pop("title", None)
         schema.pop("$defs", None)
-        schema["properties"]["operation"]["enum"] = ["add", "update", "batch", "list", "prune"]
+        schema["properties"]["operation"]["enum"] = [
+            "add",
+            "update",
+            "batch",
+            "list",
+            "prune",
+        ]
         if "status" in schema["properties"]:
             schema["properties"]["status"]["enum"] = ["active", "stale"]
         TagTool._TAG_SCHEMA = schema
@@ -247,7 +292,9 @@ class TagTool(BaseTool):
             if new_exports is None:
                 if existing.exports:
                     keys = ", ".join(sorted(existing.exports.keys()))
-                    changes.append(f"  exports: preserved ({len(existing.exports)} symbols: {keys})")
+                    changes.append(
+                        f"  exports: preserved ({len(existing.exports)} symbols: {keys})"
+                    )
                 else:
                     changes.append("  exports: (none)")
             elif existing.exports != new_exports:
@@ -263,7 +310,9 @@ class TagTool(BaseTool):
                 changes.append("  side_effects: unchanged")
             if new_depends_on is None:
                 if existing.depends_on:
-                    changes.append(f"  depends_on: preserved ({len(existing.depends_on)} deps)")
+                    changes.append(
+                        f"  depends_on: preserved ({len(existing.depends_on)} deps)"
+                    )
             elif existing.depends_on != new_depends_on:
                 changes.append(f"  depends_on: updated ({len(new_depends_on)} deps)")
             else:
@@ -289,9 +338,17 @@ class TagTool(BaseTool):
         exports = _coerce_dict(params.get("exports"))
         side_effects = params.get("side_effects")
         depends_on = _coerce_list(params.get("depends_on"))
-        has_structured = any(x is not None for x in (message, exports, side_effects, depends_on))
+        has_structured = any(
+            x is not None for x in (message, exports, side_effects, depends_on)
+        )
         if has_structured:
-            self._repo.upsert(real, message=message, exports=exports, side_effects=side_effects, depends_on=depends_on)
+            self._repo.upsert(
+                real,
+                message=message,
+                exports=exports,
+                side_effects=side_effects,
+                depends_on=depends_on,
+            )
         elif key is not None:
             self._repo.upsert(real, key=key, value=value)
         else:
@@ -312,7 +369,14 @@ class TagTool(BaseTool):
                 changes.append("  side_effects: updated")
             if depends_on is not None and existing.depends_on != depends_on:
                 changes.append("  depends_on: updated")
-        return f"Updated tag for {real}\n" + "\n".join(changes) + "\n" + _format_tag_detail(tag) + "\n" + _STALE_NOTE
+        return (
+            f"Updated tag for {real}\n"
+            + "\n".join(changes)
+            + "\n"
+            + _format_tag_detail(tag)
+            + "\n"
+            + _STALE_NOTE
+        )
 
     def _batch(self, params: dict[str, Any]) -> str:
         tags = params.get("tags", [])
@@ -323,7 +387,9 @@ class TagTool(BaseTool):
             file_path = entry.get("file_path")
             message = entry.get("message", "")
             if not file_path or not message:
-                results.append(f"Skipped entry {entry}: file_path and message are required")
+                results.append(
+                    f"Skipped entry {entry}: file_path and message are required"
+                )
                 continue
             real = _normalize(file_path)
             if os.path.exists(real):
@@ -394,8 +460,12 @@ class TagTool(BaseTool):
 
 def _format_tag_detail(tag: FileTag) -> str:
     lines = [f"  {tag.path}"]
-    stale = " \u26a0\ufe0f STALE (file no longer exists)" if tag.status == "stale" else ""
-    lines.append(f"    \U0001f516 {tag.message} ({_date_from_iso(tag.updated_at)}){stale}")
+    stale = (
+        " \u26a0\ufe0f STALE (file no longer exists)" if tag.status == "stale" else ""
+    )
+    lines.append(
+        f"    \U0001f516 {tag.message} ({_date_from_iso(tag.updated_at)}){stale}"
+    )
     if tag.exports:
         lines.append("    exports:")
         for name, typ in tag.exports.items():

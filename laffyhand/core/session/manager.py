@@ -6,13 +6,21 @@ from collections.abc import Sequence
 
 from loguru import logger
 
-from laffyhand.core.llm.specs.models import AssistantMessage, Message, SystemMessage, UserMessage
+from laffyhand.core.llm.specs.models import (
+    AssistantMessage,
+    Message,
+    SystemMessage,
+    UserMessage,
+)
 from laffyhand.core.llm.specs.models import ModelID, ProviderID
 from laffyhand.core.session.models import Session, utcnow
-from laffyhand.core.session.converters import message_to_session_message, session_message_to_message
+from laffyhand.core.session.converters import (
+    message_to_session_message,
+    session_message_to_message,
+)
 from laffyhand.core.db.repository import SessionRepo, MessageRepo
 from laffyhand.core.db.schema import create_tables
-from laffyhand.core.schemas import AgentState, SessionID, SessionUsage
+from laffyhand.core.models import AgentState, SessionID, SessionUsage
 from laffyhand.core.exceptions import SessionError
 
 
@@ -66,10 +74,13 @@ class SessionManager:
         messages: list[Message] | None = None,
     ) -> Session:
         session = Session(
-            title=title, cwd=cwd,
+            title=title,
+            cwd=cwd,
             provider=ProviderID(provider) if provider else ProviderID(""),
             model=ModelID(model) if model else ModelID(""),
-            agent_version=agent_version, parent_id=parent_id, fork_id=fork_id,
+            agent_version=agent_version,
+            parent_id=parent_id,
+            fork_id=fork_id,
         )
         self._sessions.insert(session)
         if messages:
@@ -95,7 +106,9 @@ class SessionManager:
             id=session_id,
             title=meta.get("title", ""),
             cwd=meta.get("cwd", ""),
-            provider=ProviderID(meta.get("provider", "")) if meta.get("provider") else ProviderID(""),
+            provider=ProviderID(meta.get("provider", ""))
+            if meta.get("provider")
+            else ProviderID(""),
             model=ModelID(meta.get("model", "")) if meta.get("model") else ModelID(""),
             agent_version=meta.get("agent_version", ""),
         )
@@ -110,7 +123,9 @@ class SessionManager:
     def get_active(self) -> Session | None:
         return self._sessions.get_active()
 
-    def list_sessions(self, status: str | None = None, limit: int = 20, offset: int = 0) -> list[Session]:
+    def list_sessions(
+        self, status: str | None = None, limit: int = 20, offset: int = 0
+    ) -> list[Session]:
         return self._sessions.list_sessions(status=status, limit=limit, offset=offset)
 
     def update(self, session: Session) -> None:
@@ -192,8 +207,15 @@ class SessionManager:
     def get_message_count(self, session_id: str) -> int:
         return self._messages.count_by_session(session_id)
 
-    def get_messages(self, session_id: str, offset: int = 0, limit: int | None = None) -> list[Message]:
-        return [session_message_to_message(sm) for sm in self._messages.get_by_session(session_id, offset=offset, limit=limit)]
+    def get_messages(
+        self, session_id: str, offset: int = 0, limit: int | None = None
+    ) -> list[Message]:
+        return [
+            session_message_to_message(sm)
+            for sm in self._messages.get_by_session(
+                session_id, offset=offset, limit=limit
+            )
+        ]
 
     # ── State persistence ─────────────────────────────────────
 
@@ -239,7 +261,11 @@ class SessionManager:
 
     def _reconstruct_curr_context(self, messages: list[Message]) -> int:
         for msg in reversed(messages):
-            if isinstance(msg, AssistantMessage) and msg.tokens and msg.tokens.input_tokens:
+            if (
+                isinstance(msg, AssistantMessage)
+                and msg.tokens
+                and msg.tokens.input_tokens
+            ):
                 return msg.tokens.input_tokens
         return 0
 
@@ -249,11 +275,14 @@ class SessionManager:
             return None
         messages = self.get_messages(session_id)
         return AgentState(
-            messages=messages, turn_count=session.turn_count, step=session.step_count,
+            messages=messages,
+            turn_count=session.turn_count,
+            step=session.step_count,
             session_id=SessionID(session.id),
             usage=SessionUsage(
                 curr_context_usage=self._reconstruct_curr_context(messages),
-                total_input=session.input_tokens, total_output=session.output_tokens,
+                total_input=session.input_tokens,
+                total_output=session.output_tokens,
                 total_reasoning=session.reasoning_tokens,
                 total_cache_read=session.cache_read_tokens,
                 total_cache_write=session.cache_write_tokens,
@@ -261,7 +290,9 @@ class SessionManager:
             ),
         )
 
-    def load_compressed_state(self, session_id: str, system_message: SystemMessage, context_size: int = 0) -> AgentState | None:
+    def load_compressed_state(
+        self, session_id: str, system_message: SystemMessage, context_size: int = 0
+    ) -> AgentState | None:
         tip = self.get_compression_tip(session_id)
         loaded = self.load_state(tip)
         if loaded is None:
@@ -287,12 +318,19 @@ class SessionManager:
         tail_messages: Sequence[Message],
     ) -> Session:
         parent = self._sessions.get(parent_id)
-        tail_all = list(system_messages) + [UserMessage(content=summary_content.strip())] + list(tail_messages)
+        tail_all = (
+            list(system_messages)
+            + [UserMessage(content=summary_content.strip())]
+            + list(tail_messages)
+        )
         child = self.create(
-            title=parent.title if parent else "", cwd=parent.cwd if parent else "",
-            provider=parent.provider if parent else "", model=parent.model if parent else "",
+            title=parent.title if parent else "",
+            cwd=parent.cwd if parent else "",
+            provider=parent.provider if parent else "",
+            model=parent.model if parent else "",
             agent_version=parent.agent_version if parent else "",
-            parent_id=parent_id, messages=tail_all,
+            parent_id=parent_id,
+            messages=tail_all,
         )
         self._sessions.complete(parent_id, summary=summary_content)
         self._conn.commit()
@@ -307,9 +345,12 @@ class SessionManager:
             raise SessionError(f"Source session not found: {session_id}")
         messages = self.get_messages(session_id)
         child = self.create(
-            title=title or parent.title or "", cwd=parent.cwd,
-            provider=parent.provider, model=parent.model,
-            agent_version=parent.agent_version, fork_id=session_id,
+            title=title or parent.title or "",
+            cwd=parent.cwd,
+            provider=parent.provider,
+            model=parent.model,
+            agent_version=parent.agent_version,
+            fork_id=session_id,
             messages=messages,
         )
         logger.info(f"Forked {session_id} -> {child.id}")
@@ -317,14 +358,18 @@ class SessionManager:
 
     # ── Subagent session ──────────────────────────────────────
 
-    def create_child(self, parent_id: str, model: str = "", messages: list[Message] | None = None) -> Session:
+    def create_child(
+        self, parent_id: str, model: str = "", messages: list[Message] | None = None
+    ) -> Session:
         parent = self._sessions.get(parent_id)
         child = self.create(
-            title="", cwd=parent.cwd if parent else "",
+            title="",
+            cwd=parent.cwd if parent else "",
             provider=parent.provider if parent else "",
             model=model or (parent.model if parent else ""),
             agent_version=parent.agent_version if parent else "",
-            parent_id=parent_id, messages=messages,
+            parent_id=parent_id,
+            messages=messages,
         )
         logger.debug(f"Child session created: {child.id} (parent={parent_id})")
         return child

@@ -12,7 +12,7 @@ from laffyhand.core.llm.specs.models import (
     StreamText,
     ToolCallContent,
 )
-from laffyhand.core.schemas import (
+from laffyhand.core.models import (
     AgentState,
     CompactionConfig,
     SessionID,
@@ -23,15 +23,15 @@ from laffyhand.core.compaction import (
     is_overflow,
     select_tail,
     build_summary_text,
-    _select_compaction_targets,
-    _is_summary_content,
+    prune,
 )
+from laffyhand.core.compaction.chain import _select_compaction_targets
+from laffyhand.core.compaction._summarize import _is_summary_content
 from laffyhand.core._utils import (
     estimate_message_tokens,
     estimate_messages_tokens,
 )
 from laffyhand.core.loop import build_llm_context
-from laffyhand.core.prune import prune
 
 
 PRUNE_PROTECT = CompactionConfig().prune_protect

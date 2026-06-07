@@ -9,9 +9,12 @@ from typing import TYPE_CHECKING, Any, Literal
 from loguru import logger
 
 from laffyhand.core.llm.specs.models import AssistantMessage
-from laffyhand.core.schemas import CompactionConfig
-from laffyhand.core.events import SubAgentStart, SubAgentEnd
-from laffyhand.core.subagent._shared import build_subagent_state, map_event_to_subagent_delta
+from laffyhand.core.models import CompactionConfig
+from laffyhand.core.models import SubAgentStart, SubAgentEnd
+from laffyhand.core.subagent._shared import (
+    build_subagent_state,
+    map_event_to_subagent_delta,
+)
 
 if TYPE_CHECKING:
     from laffyhand.core.agent import AgentInfo
@@ -125,7 +128,9 @@ class SubagentTaskRunner:
                         max_steps=agent_info.max_steps,
                         session_manager=session_manager,
                     ).run():
-                        tool_call_count += await map_event_to_subagent_delta(task_id, event, _relay_event)
+                        tool_call_count += await map_event_to_subagent_delta(
+                            task_id, event, _relay_event
+                        )
 
                     assert child_state.session_id is not None
                     session_manager.save_state(child_state.session_id, child_state)

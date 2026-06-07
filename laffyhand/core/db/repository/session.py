@@ -28,7 +28,9 @@ class SessionRepo:
             status=row["status"],
             title=row["title"],
             cwd=row["cwd"],
-            provider=ProviderID(row["provider"]) if "provider" in row.keys() else ProviderID(""),
+            provider=ProviderID(row["provider"])
+            if "provider" in row.keys()
+            else ProviderID(""),
             model=ModelID(row["model"]),
             agent_version=row["agent_version"],
             turn_count=row["turn_count"],
@@ -37,7 +39,9 @@ class SessionRepo:
             output_tokens=row["output_tokens"],
             reasoning_tokens=row["reasoning_tokens"],
             cache_read_tokens=row["cache_read_tokens"],
-            cache_write_tokens=row["cache_write_tokens"] if "cache_write_tokens" in row.keys() else 0,
+            cache_write_tokens=row["cache_write_tokens"]
+            if "cache_write_tokens" in row.keys()
+            else 0,
             parent_id=row["parent_id"],
             fork_id=row["fork_id"],
             message_count=row["message_count"],
@@ -60,20 +64,36 @@ class SessionRepo:
                 created_at, updated_at, ended_at
             ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
-                session.id, session.status, session.title, session.cwd,
-                session.provider, session.model, session.agent_version,
-                session.turn_count, session.step_count,
-                session.input_tokens, session.output_tokens, session.reasoning_tokens,
-                session.cache_read_tokens, session.cache_write_tokens, session.cost,
-                session.parent_id, session.fork_id,
-                session.message_count, session.summary,
+                session.id,
+                session.status,
+                session.title,
+                session.cwd,
+                session.provider,
+                session.model,
+                session.agent_version,
+                session.turn_count,
+                session.step_count,
+                session.input_tokens,
+                session.output_tokens,
+                session.reasoning_tokens,
+                session.cache_read_tokens,
+                session.cache_write_tokens,
+                session.cost,
+                session.parent_id,
+                session.fork_id,
+                session.message_count,
+                session.summary,
                 _serialize_metadata(session.metadata),
-                _ts(session.created_at), _ts(session.updated_at), _ts(session.ended_at),
+                _ts(session.created_at),
+                _ts(session.updated_at),
+                _ts(session.ended_at),
             ),
         )
 
     def get(self, session_id: str) -> Optional[Session]:
-        row = self._conn.execute("SELECT * FROM session WHERE id=?", (session_id,)).fetchone()
+        row = self._conn.execute(
+            "SELECT * FROM session WHERE id=?", (session_id,)
+        ).fetchone()
         return self._row_to_session(row) if row else None
 
     def get_active(self) -> Optional[Session]:
@@ -82,7 +102,9 @@ class SessionRepo:
         ).fetchone()
         return self._row_to_session(row) if row else None
 
-    def list_sessions(self, status: Optional[str] = None, limit: int = 20, offset: int = 0) -> list[Session]:
+    def list_sessions(
+        self, status: Optional[str] = None, limit: int = 20, offset: int = 0
+    ) -> list[Session]:
         if status:
             rows = self._conn.execute(
                 "SELECT * FROM session WHERE status=? AND parent_id IS NULL ORDER BY created_at DESC LIMIT ? OFFSET ?",
@@ -106,13 +128,24 @@ class SessionRepo:
                 updated_at=?, ended_at=?
             WHERE id=?""",
             (
-                session.status, session.title, session.cwd, session.model, session.agent_version,
-                session.turn_count, session.step_count,
-                session.input_tokens, session.output_tokens, session.reasoning_tokens,
-                session.cache_read_tokens, session.cache_write_tokens, session.cost,
-                session.message_count, session.summary,
+                session.status,
+                session.title,
+                session.cwd,
+                session.model,
+                session.agent_version,
+                session.turn_count,
+                session.step_count,
+                session.input_tokens,
+                session.output_tokens,
+                session.reasoning_tokens,
+                session.cache_read_tokens,
+                session.cache_write_tokens,
+                session.cost,
+                session.message_count,
+                session.summary,
                 _serialize_metadata(session.metadata),
-                _ts(session.updated_at), _ts(session.ended_at),
+                _ts(session.updated_at),
+                _ts(session.ended_at),
                 session.id,
             ),
         )
@@ -131,8 +164,12 @@ class SessionRepo:
         )
 
     def delete(self, session_id: str) -> None:
-        self._conn.execute("UPDATE session SET parent_id=NULL WHERE parent_id=?", (session_id,))
-        self._conn.execute("UPDATE session SET fork_id=NULL WHERE fork_id=?", (session_id,))
+        self._conn.execute(
+            "UPDATE session SET parent_id=NULL WHERE parent_id=?", (session_id,)
+        )
+        self._conn.execute(
+            "UPDATE session SET fork_id=NULL WHERE fork_id=?", (session_id,)
+        )
         self._conn.execute("DELETE FROM session WHERE id=?", (session_id,))
 
     def set_title(self, session_id: str, title: str) -> None:
@@ -158,9 +195,19 @@ class SessionRepo:
                 cache_read_tokens=?, cache_write_tokens=?, cost=?,
                 message_count=?, updated_at=?
             WHERE id=?""",
-            (turn_count, step_count, input_tokens, output_tokens,
-             reasoning_tokens, cache_read_tokens, cache_write_tokens,
-             cost, message_count, _ts(utcnow()), session_id),
+            (
+                turn_count,
+                step_count,
+                input_tokens,
+                output_tokens,
+                reasoning_tokens,
+                cache_read_tokens,
+                cache_write_tokens,
+                cost,
+                message_count,
+                _ts(utcnow()),
+                session_id,
+            ),
         )
 
     def get_depth(self, session_id: str, max_depth: int = 1000) -> int:
@@ -192,12 +239,15 @@ class SessionRepo:
         return [self._row_to_session(r) for r in rows]
 
     def get_parent(self, session_id: str) -> Optional[str]:
-        row = self._conn.execute("SELECT parent_id FROM session WHERE id=?", (session_id,)).fetchone()
+        row = self._conn.execute(
+            "SELECT parent_id FROM session WHERE id=?", (session_id,)
+        ).fetchone()
         return row["parent_id"] if row else None
 
     def get_children(self, session_id: str) -> list[Session]:
         rows = self._conn.execute(
-            "SELECT * FROM session WHERE parent_id=? ORDER BY created_at", (session_id,),
+            "SELECT * FROM session WHERE parent_id=? ORDER BY created_at",
+            (session_id,),
         ).fetchall()
         return [self._row_to_session(r) for r in rows]
 

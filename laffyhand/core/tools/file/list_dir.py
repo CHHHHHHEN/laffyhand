@@ -17,10 +17,20 @@ from laffyhand.core.tools.file._security import looks_binary
 
 class ListDirParams(BaseModel):
     directory_path: str = Field(description="Absolute path to a directory to list")
-    depth: int | None = Field(None, description="Directory listing depth. 1 = flat, 2 = one level deep (default), etc.")
-    offset: int | None = Field(None, description="Entry number to start from (1-indexed)")
-    limit: int | None = Field(None, description="Maximum number of top-level entries to return")
-    include_ignored: bool | None = Field(default=False, description="If true, include files that match .gitignore patterns (default: false)")
+    depth: int | None = Field(
+        None,
+        description="Directory listing depth. 1 = flat, 2 = one level deep (default), etc.",
+    )
+    offset: int | None = Field(
+        None, description="Entry number to start from (1-indexed)"
+    )
+    limit: int | None = Field(
+        None, description="Maximum number of top-level entries to return"
+    )
+    include_ignored: bool | None = Field(
+        default=False,
+        description="If true, include files that match .gitignore patterns (default: false)",
+    )
 
 
 class ListDirTool(BaseTool):
@@ -39,7 +49,10 @@ class ListDirTool(BaseTool):
         return ListDirParams.model_json_schema()
 
     def _format_entry(
-        self, entry: Path, indent: int, depth: int,
+        self,
+        entry: Path,
+        indent: int,
+        depth: int,
         gitignore: GitignoreFilter | None = None,
     ) -> list[str]:
         prefix = "  " * indent
@@ -79,7 +92,11 @@ class ListDirTool(BaseTool):
         return lines
 
     def _list_directory(
-        self, path: Path, offset: int | None, limit: int | None, depth: int = 2,
+        self,
+        path: Path,
+        offset: int | None,
+        limit: int | None,
+        depth: int = 2,
         include_ignored: bool = False,
     ) -> str:
         if depth <= 0:

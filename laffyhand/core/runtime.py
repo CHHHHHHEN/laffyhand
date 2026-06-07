@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any
 from loguru import logger
 
 from laffyhand.core.llm.specs.models import ModelID, ProviderID, SystemMessage
-from laffyhand.core.schemas import (
+from laffyhand.core.models import (
     AgentState,
     CompactionConfig,
     SessionID,
@@ -17,7 +17,11 @@ from laffyhand.core.agent import AgentRegistry
 from laffyhand.core.skill import SkillRegistry
 from laffyhand.core.session import SessionManager, TitleConfig
 from laffyhand.core.session.state_store import SessionStateStore
-from laffyhand.core.subagent import SubagentTaskRunner, SubagentOrchestrator, SessionContext
+from laffyhand.core.subagent import (
+    SubagentTaskRunner,
+    SubagentOrchestrator,
+    SessionContext,
+)
 from laffyhand.core.tools.registry import ToolRegistry
 from laffyhand.core.tools.init import ToolInitializer
 from laffyhand.core.session.todo import TodoManager
@@ -27,7 +31,7 @@ from laffyhand.core.loop import LoopOrchestrator
 from laffyhand.core.llm.factory import build_route
 from laffyhand.core.llm.facade import LLM
 from laffyhand.core.exceptions import ConfigError
-from laffyhand.core.events import AgentEvent
+from laffyhand.core.models import AgentEvent
 from laffyhand.core._utils import build_env_block
 from laffyhand.core.memory.service import MemoryService
 from laffyhand.core.preference import PreferenceService
@@ -99,10 +103,14 @@ class AgentRuntime:
             event_sink_provider=lambda sid: self._session_store.get_event_sink(sid),
         )
 
-        self._memory_service = MemoryService(
-            path=config.memory.path,
-            max_length=config.memory.max_length,
-        ) if config.memory.enabled else None
+        self._memory_service = (
+            MemoryService(
+                path=config.memory.path,
+                max_length=config.memory.max_length,
+            )
+            if config.memory.enabled
+            else None
+        )
 
         self._tool_initializer = ToolInitializer(
             mcp_service=self.mcp_service,
@@ -127,8 +135,6 @@ class AgentRuntime:
             session_store=self._session_store,
         )
         self.preference_service = PreferenceService()
-
-
 
     def update_sessions_workspace_env(self, new_workspace: str) -> None:
         """Replace the <env> block in all active sessions' system messages."""
@@ -155,7 +161,9 @@ class AgentRuntime:
             provider_cfg.type, provider_cfg.base_url, provider_cfg.api_key
         )
         logger.info(f"Built LLM: provider={provider_key}, model={model}")
-        return LLM(model=ModelID(model), provider=ProviderID(provider_cfg.type), route=route)
+        return LLM(
+            model=ModelID(model), provider=ProviderID(provider_cfg.type), route=route
+        )
 
     async def init_tools(self) -> None:
         await self._tool_initializer.register_all()
@@ -205,12 +213,16 @@ class AgentRuntime:
         *,
         root: str | None = None,
     ) -> list[dict[str, str]]:
-        return self.preference_service.resolve_preferences(file_path, message_id, root=root)
+        return self.preference_service.resolve_preferences(
+            file_path, message_id, root=root
+        )
 
     def clear_preference_claims(self, message_id: str) -> None:
         self.preference_service.clear_preference_claims(message_id)
 
-    async def build_system_prompt(self, base_prompt: str, disabled_tools: set[str] | None = None) -> str:
+    async def build_system_prompt(
+        self, base_prompt: str, disabled_tools: set[str] | None = None
+    ) -> str:
         return await assemble_system_prompt(
             base_prompt,
             workspace=self.tool_registry.workspace,
@@ -243,7 +255,9 @@ class AgentRuntime:
 
     def load_session_state(self, session_id: str) -> AgentState | None:
         """Load session state from in-memory cache or DB into the store."""
-        return self._session_store.load(session_id, self.session_manager, self.context_size)
+        return self._session_store.load(
+            session_id, self.session_manager, self.context_size
+        )
 
     def _llm_for_session(self, session_id: str) -> LLM:
         from laffyhand.config import resolve_provider, resolve_model
@@ -272,7 +286,9 @@ class AgentRuntime:
         session_id: str,
         event_sink: Callable[[Any], Awaitable[None]] | None = None,
     ) -> AsyncIterator[AgentEvent]:
-        async for event in self.loop_orchestrator.run_agent_turn(session_id, event_sink=event_sink):
+        async for event in self.loop_orchestrator.run_agent_turn(
+            session_id, event_sink=event_sink
+        ):
             yield event
 
     async def compact_session(self, session_id: str) -> str | None:
@@ -315,7 +331,9 @@ class AgentRuntime:
         session_id: str,
         event_sink: Callable[[Any], Awaitable[None]] | None = None,
     ) -> asyncio.Queue:
-        return await self.loop_orchestrator.start_background_agent_turn(session_id, event_sink=event_sink)
+        return await self.loop_orchestrator.start_background_agent_turn(
+            session_id, event_sink=event_sink
+        )
 
     def cancel_background_agent_turn(self, session_id: str) -> None:
         self.loop_orchestrator.cancel_background_agent_turn(session_id)
@@ -330,8 +348,12 @@ class AgentRuntime:
         todo_id: str | None = None,
     ) -> str:
         return await self.subagent_orchestrator.create_subagent(
-            parent_session_id, agent_info, prompt,
-            description=description, background=background, todo_id=todo_id,
+            parent_session_id,
+            agent_info,
+            prompt,
+            description=description,
+            background=background,
+            todo_id=todo_id,
         )
 
     def _should_generate_title(self, session_id: str, trigger: str) -> bool:

@@ -38,14 +38,20 @@ class FilePart(BaseModel):
 
 class UserData(BaseModel):
     text: str = Field(description="用户消息文本")
-    files: List[FilePart] = Field(default_factory=list, description="通过 @ 指定文件的对应内容")
+    files: List[FilePart] = Field(
+        default_factory=list, description="通过 @ 指定文件的对应内容"
+    )
     agents: List[str] = Field(default_factory=list, description="通过 @ 指定的 Agent")
-    references: List[str] = Field(default_factory=list, description="通过 @ 指定的文件路径")
+    references: List[str] = Field(
+        default_factory=list, description="通过 @ 指定的文件路径"
+    )
 
 
 class MessageTime(BaseModel):
     created: int = Field(description="创建时间（Unix 时间戳）")
-    completed: Optional[int] = Field(default=None, description="完成时间（Unix 时间戳）")
+    completed: Optional[int] = Field(
+        default=None, description="完成时间（Unix 时间戳）"
+    )
 
 
 class TokenCache(BaseModel):
@@ -107,7 +113,9 @@ class ToolStateError(BaseModel):
     error: str = Field(description="错误信息")
 
 
-ToolState = Union[ToolStatePending, ToolStateRunning, ToolStateCompleted, ToolStateError]
+ToolState = Union[
+    ToolStatePending, ToolStateRunning, ToolStateCompleted, ToolStateError
+]
 
 
 class AssistantToolPart(BaseModel):
@@ -128,7 +136,9 @@ AssistantContent = Union[AssistantTextPart, AssistantReasoningPart, AssistantToo
 class AssistantData(BaseModel):
     agent: str = Field(description="agent 名称")
     model: Model = Field(description="回复模型")
-    content: Sequence[AssistantContent] = Field(default_factory=list, description="按时间顺序排列的消息内容数组")
+    content: Sequence[AssistantContent] = Field(
+        default_factory=list, description="按时间顺序排列的消息内容数组"
+    )
     snapshot: MessageSnapshot = Field(description="快照信息")
     finish: str = Field(default="stop", description="结束原因")
     cost: int = Field(description="消耗（微美分）")
@@ -138,6 +148,7 @@ class AssistantData(BaseModel):
 
 class SyntheticData(BaseModel):
     """由系统插入的消息，如上下文压缩后插入的总结文本"""
+
     session_id: str = Field(description="源会话 ID")
     text: str = Field(description="合成消息文本")
 
@@ -231,7 +242,9 @@ class Session(BaseModel):
 
 
 class TitleConfig(BaseModel):
-    mode: Literal["off", "on_create", "on_compact", "auto"] = Field(default="auto", description="标题生成模式")
+    mode: Literal["off", "on_create", "on_compact", "auto"] = Field(
+        default="auto", description="标题生成模式"
+    )
     model: Optional[ModelID] = Field(default=None, description="覆盖 LLM 模型")
     prompt: str = Field(
         default="Generate a concise title (max 8 words) for this coding conversation. "

@@ -11,7 +11,7 @@ from laffyhand.core.llm.specs.models import (
     StreamFinish,
     StreamError,
 )
-from laffyhand.core.schemas import (
+from laffyhand.core.models import (
     AgentState,
     CompactionConfig,
     SessionID,

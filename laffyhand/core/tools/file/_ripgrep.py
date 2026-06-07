@@ -43,12 +43,12 @@ async def _rg_run(
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-        stdout, stderr = await asyncio.wait_for(
-            proc.communicate(), timeout=timeout
-        )
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
         if proc.returncode in (0, 1):
             return stdout.decode()
-        logger.debug(f"ripgrep exited with code {proc.returncode}: {stderr.decode()[:200]}")
+        logger.debug(
+            f"ripgrep exited with code {proc.returncode}: {stderr.decode()[:200]}"
+        )
     except (asyncio.TimeoutError, FileNotFoundError, OSError) as e:
         logger.debug(f"ripgrep failed: {e}")
     return None
@@ -57,7 +57,9 @@ async def _rg_run(
 # --- Command helpers ----------------------------------------------------------
 
 
-def _rg_cmd(*parts: str, include: str | None = None, exclude: str | None = None) -> list[str]:
+def _rg_cmd(
+    *parts: str, include: str | None = None, exclude: str | None = None
+) -> list[str]:
     """Build an ``rg`` command array with common flags."""
     cmd = ["rg", *parts]
     if include:
@@ -71,7 +73,9 @@ def _rg_cmd(*parts: str, include: str | None = None, exclude: str | None = None)
 # --- Commands -----------------------------------------------------------------
 
 
-async def glob(cwd: Path, pattern: str, include_ignored: bool = False, exclude: str | None = None) -> list[str] | None:
+async def glob(
+    cwd: Path, pattern: str, include_ignored: bool = False, exclude: str | None = None
+) -> list[str] | None:
     """List files matching a glob pattern using ripgrep. Returns None on failure."""
     parts = ["--files", "--glob", pattern]
     if include_ignored:
@@ -83,8 +87,12 @@ async def glob(cwd: Path, pattern: str, include_ignored: bool = False, exclude: 
 
 
 async def grep(
-    cwd: Path, pattern: str, include: str | None = None, context: int = 0,
-    include_ignored: bool = False, exclude: str | None = None,
+    cwd: Path,
+    pattern: str,
+    include: str | None = None,
+    context: int = 0,
+    include_ignored: bool = False,
+    exclude: str | None = None,
 ) -> str | None:
     """Search file contents using ripgrep. Returns raw output or None on failure."""
     parts = ["--line-number", "--no-heading", "--color", "never", pattern]
@@ -99,8 +107,11 @@ async def grep(
 
 
 async def grep_files(
-    cwd: Path, pattern: str, include: str | None = None,
-    include_ignored: bool = False, exclude: str | None = None,
+    cwd: Path,
+    pattern: str,
+    include: str | None = None,
+    include_ignored: bool = False,
+    exclude: str | None = None,
 ) -> list[str] | None:
     """List files containing matches using ripgrep. Returns None on failure."""
     parts = ["--files-with-matches", "--color", "never", pattern]
@@ -113,8 +124,11 @@ async def grep_files(
 
 
 async def grep_count(
-    cwd: Path, pattern: str, include: str | None = None,
-    include_ignored: bool = False, exclude: str | None = None,
+    cwd: Path,
+    pattern: str,
+    include: str | None = None,
+    include_ignored: bool = False,
+    exclude: str | None = None,
 ) -> str | None:
     """Get per-file match counts using ripgrep. Returns raw output or None."""
     parts = ["--count", "--color", "never", pattern]

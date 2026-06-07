@@ -18,10 +18,21 @@ from laffyhand.core.tools.file._security import looks_binary
 
 class ReadParams(BaseModel):
     file_path: str = Field(description="Absolute path to a file to read")
-    offset: int | None = Field(None, description="Line number to start from (1-indexed) for normal reads; skip first N matches for pattern reads")
-    limit: int | None = Field(2000, description="Maximum number of lines or matches to return (default: 2000)")
-    pattern: str | None = Field(None, description="Regex pattern to find lines of interest; shows matching lines with surrounding context (see context param)")
-    context: int | None = Field(None, description="Number of context lines before and after each match (default: 5). Only used with pattern")
+    offset: int | None = Field(
+        None,
+        description="Line number to start from (1-indexed) for normal reads; skip first N matches for pattern reads",
+    )
+    limit: int | None = Field(
+        2000, description="Maximum number of lines or matches to return (default: 2000)"
+    )
+    pattern: str | None = Field(
+        None,
+        description="Regex pattern to find lines of interest; shows matching lines with surrounding context (see context param)",
+    )
+    context: int | None = Field(
+        None,
+        description="Number of context lines before and after each match (default: 5). Only used with pattern",
+    )
 
 
 class ReadTool(BaseTool):

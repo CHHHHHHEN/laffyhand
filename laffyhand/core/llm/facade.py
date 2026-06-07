@@ -3,7 +3,13 @@ from typing import Optional
 
 from loguru import logger
 from laffyhand.core.llm.specs.models import LLMRequest, Message, ModelID, ProviderID
-from laffyhand.core.llm.specs.models import LLMEvent, StreamError, StreamFinish, StreamText, ToolDefinition
+from laffyhand.core.llm.specs.models import (
+    LLMEvent,
+    StreamError,
+    StreamFinish,
+    StreamText,
+    ToolDefinition,
+)
 from laffyhand.core.llm._route import Route
 
 

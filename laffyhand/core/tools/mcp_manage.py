@@ -6,7 +6,7 @@ import urllib.parse
 
 from loguru import logger
 
-from laffyhand.core.mcp.config import LocalMCPConfig, RemoteMCPConfig
+from laffyhand.config import LocalMCPConfig, RemoteMCPConfig
 from laffyhand.core.mcp.service import MCPWrappedTool
 from laffyhand.core.tools.base import BaseTool
 

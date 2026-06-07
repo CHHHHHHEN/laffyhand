@@ -128,10 +128,12 @@ class PreferenceService:
             claims.add(sp)
             content = md_path.read_text(encoding="utf-8").strip()
             if content:
-                results.append({
-                    "filepath": sp,
-                    "content": f"Instructions from: {sp}\n{content}",
-                })
+                results.append(
+                    {
+                        "filepath": sp,
+                        "content": f"Instructions from: {sp}\n{content}",
+                    }
+                )
         return results
 
     def clear_preference_claims(self, message_id: str) -> None:

@@ -10,7 +10,7 @@ from laffyhand.core.llm.specs.models import (
     StreamText,
     StreamFinish,
 )
-from laffyhand.core.schemas import (
+from laffyhand.core.models import (
     AgentState,
     SessionUsage,
 )

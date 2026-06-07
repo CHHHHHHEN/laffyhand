@@ -6,7 +6,7 @@ from loguru import logger
 
 from laffyhand.core._utils import exponential_backoff
 from laffyhand.core.mcp.client import MCPClient, MCPToolDef
-from laffyhand.core.mcp.config import MCPConfig, LocalMCPConfig
+from laffyhand.config import MCPConfig, LocalMCPConfig
 from laffyhand.core.tools.base import BaseTool
 from laffyhand.core.exceptions import MCPError
 

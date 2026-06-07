@@ -4,7 +4,7 @@ from collections.abc import AsyncIterator
 
 from laffyhand.core.llm.specs.models import AssistantMessage, SystemMessage, UserMessage
 from laffyhand.core.llm.specs.models import Usage
-from laffyhand.core.schemas import (
+from laffyhand.core.models import (
     AgentState,
     CompactionConfig,
     RetryConfig,

@@ -14,21 +14,37 @@ from laffyhand.core.tools.base import BaseTool
 
 
 class PlanTaskParams(BaseModel):
-    id: str | None = Field(None, description="Optional custom short ID for plan references")
+    id: str | None = Field(
+        None, description="Optional custom short ID for plan references"
+    )
     content: str = Field(description="Task description")
     priority: str | None = Field(None, description="Priority (default: medium)")
-    depends_on: list[str] | None = Field(None, description="Task IDs this task depends on")
+    depends_on: list[str] | None = Field(
+        None, description="Task IDs this task depends on"
+    )
 
 
 class TodoParams(BaseModel):
-    operation: str = Field(description="Operation to perform: read, add, update, delete, plan, cleanup")
-    id: str | None = Field(None, description="Task ID: required for update/delete single task; optional for add to specify a custom short ID")
-    ids: list[str] | None = Field(None, description="Multiple task IDs (for batch delete/update)")
+    operation: str = Field(
+        description="Operation to perform: read, add, update, delete, plan, cleanup"
+    )
+    id: str | None = Field(
+        None,
+        description="Task ID: required for update/delete single task; optional for add to specify a custom short ID",
+    )
+    ids: list[str] | None = Field(
+        None, description="Multiple task IDs (for batch delete/update)"
+    )
     content: str | None = Field(None, description="Task description (required for add)")
     status: str | None = Field(None, description="New status (for update)")
     priority: str | None = Field(None, description="Priority (default: medium)")
-    depends_on: list[str] | None = Field(None, description="Task IDs this task depends on (for add/plan)")
-    tasks: list[PlanTaskParams] | None = Field(None, description="List of tasks for plan operation")
+    depends_on: list[str] | None = Field(
+        None, description="Task IDs this task depends on (for add/plan)"
+    )
+    tasks: list[PlanTaskParams] | None = Field(
+        None, description="List of tasks for plan operation"
+    )
+
 
 if TYPE_CHECKING:
     from laffyhand.core.session.todo import TodoManager
@@ -39,7 +55,7 @@ class TodoTool(BaseTool):
     description = (
         "Manage a session-level task list with DAG dependency tracking. "
         "Use 'add' with an optional 'id' field to specify a custom short ID "
-        "(e.g. \"step1\") instead of an auto-generated long ID. "
+        '(e.g. "step1") instead of an auto-generated long ID. '
         "Custom IDs make depends_on references human-readable."
     )
 
@@ -64,10 +80,22 @@ class TodoTool(BaseTool):
             "plan: batch create with dependencies. "
             "cleanup: remove completed/cancelled tasks."
         )
-        schema["properties"]["operation"]["enum"] = ["read", "add", "update", "delete", "plan", "cleanup"]
+        schema["properties"]["operation"]["enum"] = [
+            "read",
+            "add",
+            "update",
+            "delete",
+            "plan",
+            "cleanup",
+        ]
         schema["properties"]["operation"]["description"] = op_desc
         if "status" in schema["properties"]:
-            schema["properties"]["status"]["enum"] = ["pending", "in_progress", "completed", "cancelled"]
+            schema["properties"]["status"]["enum"] = [
+                "pending",
+                "in_progress",
+                "completed",
+                "cancelled",
+            ]
         TodoTool._TODO_SCHEMA = schema
         return schema
 

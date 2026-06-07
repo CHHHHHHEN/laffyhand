@@ -6,11 +6,19 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from laffyhand.core.events import StepFinish, SubAgentEnd, SubAgentStart, TodoUpdate as TodoUpdateEvent
+from laffyhand.core.models import (
+    StepFinish,
+    SubAgentEnd,
+    SubAgentStart,
+    TodoUpdate as TodoUpdateEvent,
+)
 from laffyhand.core.llm.specs.models import AssistantMessage
-from laffyhand.core.schemas import CompactionConfig
+from laffyhand.core.models import CompactionConfig
 from laffyhand.core.session.todo import TodoStatus, TodoUpdate as TodoStatusUpdate
-from laffyhand.core.subagent._shared import build_subagent_state, map_event_to_subagent_delta
+from laffyhand.core.subagent._shared import (
+    build_subagent_state,
+    map_event_to_subagent_delta,
+)
 
 if TYPE_CHECKING:
     from laffyhand.core.agent import AgentInfo
@@ -40,7 +48,8 @@ class SubagentOrchestrator:
         compaction_config: CompactionConfig,
         todo_manager: TodoManager | None = None,
         *,
-        event_sink_provider: Callable[[str], Callable[[Any], Awaitable[None]] | None] | None = None,
+        event_sink_provider: Callable[[str], Callable[[Any], Awaitable[None]] | None]
+        | None = None,
     ) -> None:
         self.session_manager = session_manager
         self.tool_registry = tool_registry
@@ -83,9 +92,15 @@ class SubagentOrchestrator:
 
         if todo_id and self.todo_manager:
             self.todo_manager.update_task(
-                todo_id, parent_session_id, TodoStatusUpdate(status="in_progress"),
+                todo_id,
+                parent_session_id,
+                TodoStatusUpdate(status="in_progress"),
             )
-            sink = event_sink or (self._event_sink_provider(parent_session_id) if self._event_sink_provider else None)
+            sink = event_sink or (
+                self._event_sink_provider(parent_session_id)
+                if self._event_sink_provider
+                else None
+            )
             if sink:
                 await sink(TodoUpdateEvent())
 
@@ -96,9 +111,15 @@ class SubagentOrchestrator:
                 if todo_id and self.todo_manager:
                     status: TodoStatus = "completed" if success else "pending"
                     self.todo_manager.update_task(
-                        todo_id, parent_session_id, TodoStatusUpdate(status=status),
+                        todo_id,
+                        parent_session_id,
+                        TodoStatusUpdate(status=status),
                     )
-                    sink = event_sink or (self._event_sink_provider(parent_session_id) if self._event_sink_provider else None)
+                    sink = event_sink or (
+                        self._event_sink_provider(parent_session_id)
+                        if self._event_sink_provider
+                        else None
+                    )
                     if sink:
                         asyncio.ensure_future(sink(TodoUpdateEvent()))
 
@@ -112,7 +133,12 @@ class SubagentOrchestrator:
                 session_manager=self.session_manager,
                 compaction_config=self.compaction_config,
                 on_complete=_on_complete,
-                event_sink=event_sink or (self._event_sink_provider(parent_session_id) if self._event_sink_provider else None),
+                event_sink=event_sink
+                or (
+                    self._event_sink_provider(parent_session_id)
+                    if self._event_sink_provider
+                    else None
+                ),
                 task_id=task_id,
                 parent_subagent_id=parent_subagent_id,
                 subagent_depth=subagent_depth,
@@ -127,8 +153,15 @@ class SubagentOrchestrator:
 
         try:
             result = await self._run_foreground(
-                parent_session_id, agent_info, prompt,
-                event_sink=event_sink or (self._event_sink_provider(parent_session_id) if self._event_sink_provider else None),
+                parent_session_id,
+                agent_info,
+                prompt,
+                event_sink=event_sink
+                or (
+                    self._event_sink_provider(parent_session_id)
+                    if self._event_sink_provider
+                    else None
+                ),
                 task_id=task_id,
                 parent_subagent_id=parent_subagent_id,
                 subagent_depth=subagent_depth,
@@ -140,9 +173,15 @@ class SubagentOrchestrator:
 
         if todo_id and self.todo_manager:
             self.todo_manager.update_task(
-                todo_id, parent_session_id, TodoStatusUpdate(status="completed"),
+                todo_id,
+                parent_session_id,
+                TodoStatusUpdate(status="completed"),
             )
-            sink = event_sink or (self._event_sink_provider(parent_session_id) if self._event_sink_provider else None)
+            sink = event_sink or (
+                self._event_sink_provider(parent_session_id)
+                if self._event_sink_provider
+                else None
+            )
             if sink:
                 await sink(TodoUpdateEvent())
 
@@ -166,8 +205,12 @@ class SubagentOrchestrator:
         description: str = "",
     ) -> str:
         child_state, child_registry = await build_subagent_state(
-            self.session_manager, parent_session_id, agent_info, prompt,
-            self.tool_registry.permission, self.tool_registry,
+            self.session_manager,
+            parent_session_id,
+            agent_info,
+            prompt,
+            self.tool_registry.permission,
+            self.tool_registry,
         )
 
         llm = self._llm_provider(parent_session_id)
@@ -175,10 +218,13 @@ class SubagentOrchestrator:
         if event_sink:
             await event_sink(
                 SubAgentStart(
-                    id=task_id, parent_id=parent_subagent_id,
+                    id=task_id,
+                    parent_id=parent_subagent_id,
                     agent_type=agent_info.name,
                     description=description or prompt[:80],
-                    prompt=prompt, mode="foreground", depth=subagent_depth,
+                    prompt=prompt,
+                    mode="foreground",
+                    depth=subagent_depth,
                 )
             )
 
@@ -188,13 +234,19 @@ class SubagentOrchestrator:
         from laffyhand.core.loop import AgentTurn
 
         async for event in AgentTurn(
-            child_state, llm, child_registry,
-            compaction_config=CompactionConfig(tail_turns=self.compaction_config.tail_turns),
+            child_state,
+            llm,
+            child_registry,
+            compaction_config=CompactionConfig(
+                tail_turns=self.compaction_config.tail_turns
+            ),
             max_steps=agent_info.max_steps,
             session_manager=self.session_manager,
         ).run():
             if event_sink:
-                tool_call_count += await map_event_to_subagent_delta(task_id, event, event_sink)
+                tool_call_count += await map_event_to_subagent_delta(
+                    task_id, event, event_sink
+                )
             if isinstance(event, StepFinish):
                 for msg in reversed(child_state.messages):
                     if isinstance(msg, AssistantMessage) and msg.content:
@@ -212,10 +264,14 @@ class SubagentOrchestrator:
         if event_sink:
             step_usage = child_state.usage
             await event_sink(
-                SubAgentEnd(id=task_id, status="completed", summary=result[:200],
-                            tool_count=tool_call_count,
-                            input_tokens=step_usage.total_input,
-                            output_tokens=step_usage.total_output)
+                SubAgentEnd(
+                    id=task_id,
+                    status="completed",
+                    summary=result[:200],
+                    tool_count=tool_call_count,
+                    input_tokens=step_usage.total_input,
+                    output_tokens=step_usage.total_output,
+                )
             )
 
         return f"<task>\n{result}\n</task>"

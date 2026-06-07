@@ -20,16 +20,17 @@ from laffyhand.core.llm.specs.models import (
     Usage,
     LLMEvent,
 )
-from laffyhand.core.schemas import (
+from laffyhand.core.models import (
     AgentState,
     CompactionConfig,
     RetryConfig,
 )
-from laffyhand.core.events import (
+from laffyhand.core.models import (
     StepStart,
     TextStart,
     TextDelta,
     TextEnd,
+    ToolCall,
     ReasoningStart,
     ReasoningDelta,
     ReasoningEnd,
@@ -44,7 +45,7 @@ from laffyhand.core.events import (
 
 from laffyhand.core._utils import exponential_backoff
 from laffyhand.core.compaction import compact_on_overflow
-from laffyhand.core.prune import prune
+from laffyhand.core.compaction import prune
 from laffyhand.core.tools.registry import ToolExecutionResult
 from laffyhand.core.llm.facade import LLM
 from laffyhand.core.tools import ToolRegistry
@@ -89,7 +90,7 @@ class MessageStore:
 
     async def flush(self, messages: list[Message]) -> None:
         if self._session_manager is not None and self._session_id:
-            new_msgs = messages[self._stored_count:]
+            new_msgs = messages[self._stored_count :]
             if new_msgs:
                 self._session_manager.store_messages(self._session_id, new_msgs)
                 self._stored_count = len(messages)
@@ -132,7 +133,13 @@ class StreamEventConverter:
                 args=event.args,
             )
             self.tool_calls.append(tc)
-            events.append(event)
+            events.append(
+                ToolCall(
+                    tool_call_id=event.tool_call_id,
+                    tool_name=event.tool_name,
+                    args=event.args,
+                )
+            )
         elif isinstance(event, StreamFinish):
             self.finish_reason = event.finish_reason
             self.usage = event.usage
@@ -405,7 +412,9 @@ class AgentTurn:
     # ── Assistant message construction ──────────────────────────
 
     def _build_assistant_message(self, turn_ctx: TurnContext) -> AssistantMessage:
-        combined_content = "".join(turn_ctx.content_buf) if turn_ctx.content_buf else None
+        combined_content = (
+            "".join(turn_ctx.content_buf) if turn_ctx.content_buf else None
+        )
         if combined_content is None and not turn_ctx.tool_calls:
             if turn_ctx.finish_reason == "error":
                 combined_content = "[Error: LLM stream failed]"
@@ -414,13 +423,13 @@ class AgentTurn:
             elif turn_ctx.finish_reason == "content_filter":
                 combined_content = "[Response filtered by content policy]"
             else:
-                combined_content = (
-                    "" if turn_ctx.reasoning_buf else "[Empty response]"
-                )
+                combined_content = "" if turn_ctx.reasoning_buf else "[Empty response]"
 
         return AssistantMessage(
             content=combined_content,
-            reasoning="".join(turn_ctx.reasoning_buf) if turn_ctx.reasoning_buf else None,
+            reasoning="".join(turn_ctx.reasoning_buf)
+            if turn_ctx.reasoning_buf
+            else None,
             tool_calls=turn_ctx.tool_calls if turn_ctx.tool_calls else None,
             tokens=turn_ctx.usage,
         )
@@ -447,8 +456,8 @@ class AgentTurn:
                 await self._tool_registry.execute_tool_call(tc, context=exec_context),
             )
 
-        exec_results: list[tuple[str, str, ToolExecutionResult]] = (
-            await asyncio.gather(*[_exec_one(tc) for tc in turn_ctx.tool_calls])
+        exec_results: list[tuple[str, str, ToolExecutionResult]] = await asyncio.gather(
+            *[_exec_one(tc) for tc in turn_ctx.tool_calls]
         )
 
         result_by_tool_id: dict[str, ToolExecutionResult] = {}

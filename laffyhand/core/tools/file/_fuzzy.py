@@ -144,9 +144,11 @@ def block_anchor_match(content: str, old: str) -> tuple[int, int] | None:
     def _match_span(start: int, end: int) -> tuple[int, int]:
         """Compute character span without trailing newline of last line."""
         match_start = sum(len(lines[k]) for k in range(start))
-        match_end = match_start + sum(
-            len(lines[k]) for k in range(start, end)
-        ) + len(lines[end].rstrip("\n\r"))
+        match_end = (
+            match_start
+            + sum(len(lines[k]) for k in range(start, end))
+            + len(lines[end].rstrip("\n\r"))
+        )
         return (match_start, match_end)
 
     # Single candidate — relaxed

@@ -6,7 +6,7 @@ import pytest
 
 from laffyhand.core.agent import AgentInfo
 from laffyhand.core.llm.specs.models import SystemMessage, UserMessage
-from laffyhand.core.schemas import (
+from laffyhand.core.models import (
     AgentState,
     SessionID,
     SessionUsage,

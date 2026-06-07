@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any
 
-from laffyhand.core.events import (
+from laffyhand.core.models import (
     Compacting,
     ReasoningDelta,
     ReasoningEnd,
@@ -18,7 +18,7 @@ from laffyhand.core.events import (
     ToolResult,
 )
 from laffyhand.core.llm.specs.models import SystemMessage, UserMessage
-from laffyhand.core.schemas import AgentState, SessionID, SessionUsage
+from laffyhand.core.models import AgentState, SessionID, SessionUsage
 from laffyhand.core.agent import assemble_subagent_prompt
 from laffyhand.core.tools.permission import SubagentPermissions
 
@@ -52,7 +52,8 @@ async def build_subagent_state(
     )
 
     system_content = (
-        agent_info.system_prompt or "You are a helpful sub-agent. Complete the assigned task."
+        agent_info.system_prompt
+        or "You are a helpful sub-agent. Complete the assigned task."
     )
 
     system_prompt = await assemble_subagent_prompt(
@@ -82,12 +83,35 @@ async def map_event_to_subagent_delta(
     elif isinstance(event, ReasoningDelta):
         await sink(SubAgentDelta(id=task_id, kind="reasoning", content=event.text))
     elif isinstance(event, ToolCall):
-        await sink(SubAgentDelta(id=task_id, kind="tool", tool_name=event.tool_name, tool_input=event.args))
+        await sink(
+            SubAgentDelta(
+                id=task_id,
+                kind="tool",
+                tool_name=event.tool_name,
+                tool_input=event.args,
+            )
+        )
         return 1
     elif isinstance(event, ToolResult):
-        await sink(SubAgentDelta(id=task_id, kind="tool_result", tool_name=event.name, content=event.result))
+        await sink(
+            SubAgentDelta(
+                id=task_id,
+                kind="tool_result",
+                tool_name=event.name,
+                content=event.result,
+            )
+        )
     elif isinstance(event, ToolError):
-        await sink(SubAgentDelta(id=task_id, kind="tool_result", tool_name=event.name, content=event.message))
-    elif isinstance(event, (StepStart, TextStart, TextEnd, ReasoningStart, ReasoningEnd, Compacting)):
+        await sink(
+            SubAgentDelta(
+                id=task_id,
+                kind="tool_result",
+                tool_name=event.name,
+                content=event.message,
+            )
+        )
+    elif isinstance(
+        event, (StepStart, TextStart, TextEnd, ReasoningStart, ReasoningEnd, Compacting)
+    ):
         await sink(event)
     return 0

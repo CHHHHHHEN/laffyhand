@@ -37,7 +37,9 @@ class TodoRepo:
         ).fetchone()
         return self._row_to_todo(row) if row else None
 
-    def get_by_session_and_id(self, session_id: str, task_id: str) -> Optional[TodoItem]:
+    def get_by_session_and_id(
+        self, session_id: str, task_id: str
+    ) -> Optional[TodoItem]:
         row = self._conn.execute(
             "SELECT * FROM todo WHERE session_id = ? AND id = ?",
             (session_id, task_id),

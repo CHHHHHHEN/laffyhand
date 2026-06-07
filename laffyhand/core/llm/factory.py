@@ -18,8 +18,7 @@ def build_route(provider_type: str, base_url: str, api_key: str) -> Route:
     else:
         supported = sorted(p.provider_id for p in _PROTOCOLS)
         raise ValueError(
-            f"Unsupported provider type {provider_type!r}. "
-            f"Supported: {supported}"
+            f"Unsupported provider type {provider_type!r}. Supported: {supported}"
         )
     logger.debug(f"Building route: type={provider_type}, base_url={base_url}")
     return Route(

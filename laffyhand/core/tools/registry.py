@@ -73,7 +73,9 @@ class ToolRegistry:
         self.permission = permission or PermissionManager()
         self._on_build_defs: list[Callable[[], None]] = []
         self._lock = threading.Lock()
-        self.result_post_processor: Callable[[str, str, dict[str, Any]], str] | None = None
+        self.result_post_processor: Callable[[str, str, dict[str, Any]], str] | None = (
+            None
+        )
         self.workspace: str | None = None
 
     def on_build_defs(self, callback: Callable[[], None]) -> None:
@@ -105,7 +107,8 @@ class ToolRegistry:
             return dict(self._tools)
 
     async def build_tool_definitions(
-        self, exclude: set[str] | None = None,
+        self,
+        exclude: set[str] | None = None,
     ) -> list[ToolDefinition]:
         with self._lock:
             if self._dirty:
@@ -227,11 +230,20 @@ class ToolRegistry:
                 raw = params.get(param_name)
                 if raw is None:
                     continue
-                values: list[str] = [raw] if isinstance(raw, str) else (raw if isinstance(raw, list) else [])
+                values: list[str] = (
+                    [raw]
+                    if isinstance(raw, str)
+                    else (raw if isinstance(raw, list) else [])
+                )
                 for p in values:
-                    ok, reason = await self.permission.require_path(name, p, self.workspace)
+                    ok, reason = await self.permission.require_path(
+                        name, p, self.workspace
+                    )
                     if not ok:
-                        return reason or f"Error: Access to '{p}' outside workspace was denied."
+                        return (
+                            reason
+                            or f"Error: Access to '{p}' outside workspace was denied."
+                        )
 
         params = await tool.before_run(params)
 

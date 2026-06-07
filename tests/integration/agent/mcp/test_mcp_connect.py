@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from laffyhand.core.mcp.config import LocalMCPConfig
+from laffyhand.config import LocalMCPConfig
 from laffyhand.core.mcp.service import MCPService
 
 

@@ -7,8 +7,8 @@ from laffyhand.core.llm.specs.models import (
     ToolMessage,
     UserMessage,
 )
-from laffyhand.core.prune import prune
-from laffyhand.core.schemas import CompactionConfig
+from laffyhand.core.compaction import prune
+from laffyhand.core.models import CompactionConfig
 
 
 PRUNE_PROTECT = CompactionConfig().prune_protect

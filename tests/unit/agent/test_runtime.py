@@ -10,7 +10,7 @@ from laffyhand.core.llm.specs.models import AssistantMessage, SystemMessage, Use
 from laffyhand.core.memory.service import MemoryService
 from laffyhand.core.runtime import AgentRuntime
 from laffyhand.core.subagent.orchestrator import MAX_SUBAGENT_DEPTH
-from laffyhand.core.schemas import (
+from laffyhand.core.models import (
     AgentState,
     SessionID,
     SessionUsage,
@@ -634,7 +634,7 @@ class TestForkSession:
 class TestAddMcpServer:
     @pytest.mark.anyio
     async def test_adds_and_registers_tools(self, runtime):
-        from laffyhand.core.mcp.config import LocalMCPConfig
+        from laffyhand.config import LocalMCPConfig
 
         cfg = LocalMCPConfig(command=["echo", "hello"])
         tool_def = MagicMock()
@@ -652,7 +652,7 @@ class TestAddMcpServer:
 
     @pytest.mark.anyio
     async def test_raises_on_connection_failure(self, runtime):
-        from laffyhand.core.mcp.config import LocalMCPConfig
+        from laffyhand.config import LocalMCPConfig
 
         cfg = LocalMCPConfig(command=["invalid-command"])
         runtime.mcp_service.connect_server = AsyncMock(
@@ -665,7 +665,7 @@ class TestAddMcpServer:
 class TestRemoveMcpServer:
     @pytest.mark.anyio
     async def test_unregisters_tools_and_disconnects(self, runtime):
-        from laffyhand.core.mcp.config import LocalMCPConfig
+        from laffyhand.config import LocalMCPConfig
 
         runtime.mcp_service.disconnect = AsyncMock()
         tool_def = MagicMock()
@@ -731,7 +731,7 @@ class TestCreateSubagent:
             mock_turn_cls.side_effect = _make_instance
 
             async def _run_gen():
-                from laffyhand.core.events import StepFinish
+                from laffyhand.core.models import StepFinish
 
                 yield StepFinish(index=1, reason="stop")
 
@@ -759,7 +759,7 @@ class TestCreateSubagent:
             mock_instance = MagicMock()
 
             async def _run_gen():
-                from laffyhand.core.events import StepFinish
+                from laffyhand.core.models import StepFinish
 
                 yield StepFinish(index=1, reason="stop")
 
@@ -843,7 +843,7 @@ class TestCreateSubagent:
             mock_instance = MagicMock()
 
             async def _run_gen():
-                from laffyhand.core.events import StepFinish
+                from laffyhand.core.models import StepFinish
 
                 yield StepFinish(index=1, reason="stop")
 
@@ -858,7 +858,7 @@ class TestCreateSubagent:
             )
 
         # Should have two TodoUpdate events: in_progress + completed
-        from laffyhand.core.events import TodoUpdate as TodoUpdateEvent
+        from laffyhand.core.models import TodoUpdate as TodoUpdateEvent
 
         todo_events = [e for e in events if isinstance(e, TodoUpdateEvent)]
         assert len(todo_events) == 2, f"Expected 2 TodoUpdate events, got {len(todo_events)}: {events}"
@@ -892,7 +892,7 @@ class TestCreateSubagent:
             mock_instance = MagicMock()
 
             async def _run_gen():
-                from laffyhand.core.events import StepFinish
+                from laffyhand.core.models import StepFinish
 
                 yield StepFinish(index=1, reason="stop")
 
@@ -906,7 +906,7 @@ class TestCreateSubagent:
                 todo_id=None,
             )
 
-        from laffyhand.core.events import TodoUpdate as TodoUpdateEvent
+        from laffyhand.core.models import TodoUpdate as TodoUpdateEvent
 
         todo_events = [e for e in events if isinstance(e, TodoUpdateEvent)]
         assert len(todo_events) == 0, f"Expected 0 TodoUpdate events, got {len(todo_events)}"
@@ -944,7 +944,7 @@ class TestCreateSubagent:
                 todo_id=todo.id,
             )
 
-        from laffyhand.core.events import TodoUpdate as TodoUpdateEvent
+        from laffyhand.core.models import TodoUpdate as TodoUpdateEvent
 
         todo_events = [e for e in events if isinstance(e, TodoUpdateEvent)]
         assert len(todo_events) == 1, f"Expected 1 TodoUpdate event (in_progress), got {len(todo_events)}: {events}"
@@ -1000,7 +1000,7 @@ class TestCreateSubagent:
         # Give the fire-and-forget task time to execute
         await asyncio.sleep(0)
 
-        from laffyhand.core.events import TodoUpdate as TodoUpdateEvent
+        from laffyhand.core.models import TodoUpdate as TodoUpdateEvent
 
         todo_events = [e for e in events if isinstance(e, TodoUpdateEvent)]
         assert len(todo_events) == 1, f"Expected 1 TodoUpdate event from on_complete, got {len(todo_events)}: {events}"
@@ -1086,7 +1086,7 @@ class TestDoGenerateTitle:
     async def test_exception_logged(self, runtime, session_manager):
         runtime._llm_for_session = MagicMock(side_effect=Exception("mock error"))
         session = session_manager.create()
-        with patch("laffyhand.core.runtime.logger.exception") as mock_log:
+        with patch("laffyhand.core.runtime.runtime.logger.exception") as mock_log:
             await runtime._do_generate_title(session.id)
             mock_log.assert_called_once()
 

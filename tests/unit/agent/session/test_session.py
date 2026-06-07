@@ -6,7 +6,7 @@ from laffyhand.core.llm.specs.models import AssistantMessage, SystemMessage, Too
 from laffyhand.core.session import SessionManager
 from laffyhand.core.llm.specs.models import ToolCallContent
 from laffyhand.core.exceptions import SessionError
-from laffyhand.core.schemas import (
+from laffyhand.core.models import (
     AgentState,
     SessionUsage,
 )

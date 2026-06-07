@@ -16,9 +16,17 @@ from laffyhand.core.tools.base import BaseTool
 
 class BashParams(BaseModel):
     command: str = Field(description="The shell command to execute")
-    description: str | None = Field(None, description="Brief description of the command (5-10 words)")
-    timeout: int | None = Field(None, description="Timeout in milliseconds (default: 120000)")
-    workdir: str | None = Field(None, description="Working directory for the command (default: current directory)")
+    description: str | None = Field(
+        None, description="Brief description of the command (5-10 words)"
+    )
+    timeout: int | None = Field(
+        None, description="Timeout in milliseconds (default: 120000)"
+    )
+    workdir: str | None = Field(
+        None,
+        description="Working directory for the command (default: current directory)",
+    )
+
 
 _SENSITIVE_PATTERNS = re.compile(
     r"(?i)\b(api[_-]?key|token|secret|password|passwd|credential|auth[_-]?token|access[_-]?key|private[_-]?key)"
@@ -89,14 +97,31 @@ _DANGEROUS_PYTHON_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"\bcompile\s*\("), "compile() in inline Python is blocked"),
     (re.compile(r"\bos\.system\s*\("), "os.system() in inline Python is blocked"),
     (re.compile(r"\bos\.popen\s*\("), "os.popen() in inline Python is blocked"),
-    (re.compile(r"\bsubprocess\.\w+\s*\("), "subprocess.*() in inline Python is blocked"),
+    (
+        re.compile(r"\bsubprocess\.\w+\s*\("),
+        "subprocess.*() in inline Python is blocked",
+    ),
     (re.compile(r"\bshutil\.\w+\s*\("), "shutil.*() in inline Python is blocked"),
-    (re.compile(r"\bopen\s*\([^)]*['\"][waxb+]"), "file write mode in inline Python is blocked; use the file tools"),
-    (re.compile(r"\bPath\s*\([^)]*\)\s*\.\s*(write_text|write_bytes|unlink|rmdir|mkdir)\s*\("), "Path write operations in inline Python are blocked; use the file tools"),
-    (re.compile(r"\bsocket\.\w+\s*\("), "socket operations in inline Python are blocked (network egress)"),
+    (
+        re.compile(r"\bopen\s*\([^)]*['\"][waxb+]"),
+        "file write mode in inline Python is blocked; use the file tools",
+    ),
+    (
+        re.compile(
+            r"\bPath\s*\([^)]*\)\s*\.\s*(write_text|write_bytes|unlink|rmdir|mkdir)\s*\("
+        ),
+        "Path write operations in inline Python are blocked; use the file tools",
+    ),
+    (
+        re.compile(r"\bsocket\.\w+\s*\("),
+        "socket operations in inline Python are blocked (network egress)",
+    ),
     (re.compile(r"\b__import__\s*\("), "dynamic imports in inline Python are blocked"),
     (re.compile(r"\bimportlib\."), "importlib in inline Python is blocked"),
-    (re.compile(r"\bbase64\s*\.\s*(b64decode|decode)\s*\("), "base64 decode in inline Python is blocked (encoded payload)"),
+    (
+        re.compile(r"\bbase64\s*\.\s*(b64decode|decode)\s*\("),
+        "base64 decode in inline Python is blocked (encoded payload)",
+    ),
 ]
 
 
@@ -109,7 +134,7 @@ def _extract_inline_code(command: str) -> str | None:
     if not m:
         return None
     # Find the quoted string after -c
-    rest = command[m.end():].lstrip()
+    rest = command[m.end() :].lstrip()
     if not rest:
         return None
     # Handle single or double quotes
@@ -165,7 +190,9 @@ class BashTool(BaseTool):
         # Check for dangerous patterns in inline Python scripts
         python_blocked = _check_inline_python(command)
         if python_blocked is not None:
-            logger.warning(f"Bash blocked: {python_blocked}: {_redact_command(command)}")
+            logger.warning(
+                f"Bash blocked: {python_blocked}: {_redact_command(command)}"
+            )
             return python_blocked
 
         for pattern, msg in _DANGEROUS_COMMANDS:
@@ -212,5 +239,5 @@ class BashTool(BaseTool):
                 proc.kill()
                 try:
                     await asyncio.wait_for(proc.communicate(), timeout=2)
-                except (asyncio.TimeoutError, ProcessLookupError):
+                except asyncio.TimeoutError, ProcessLookupError:
                     pass

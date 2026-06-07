@@ -25,13 +25,16 @@ class TodoManager:
     Delegates all SQL persistence to TodoRepo.
     """
 
-    def __init__(self, repo: TodoRepo, session_manager: SessionManager | None = None) -> None:
+    def __init__(
+        self, repo: TodoRepo, session_manager: SessionManager | None = None
+    ) -> None:
         self._repo = repo
         self._session_manager = session_manager
 
     @classmethod
     def from_session_manager(cls, sm: SessionManager) -> TodoManager:
         from laffyhand.core.db.repository import TodoRepo
+
         return cls(TodoRepo(sm.connection), session_manager=sm)
 
     # ── Helpers ──────────────────────────────────────────────
@@ -41,7 +44,9 @@ class TodoManager:
         if self._session_manager is not None:
             self._session_manager.ensure_exists(session_id)
 
-    def _reraise_integrity_error(self, e: sqlite3.IntegrityError, session_id: str) -> None:
+    def _reraise_integrity_error(
+        self, e: sqlite3.IntegrityError, session_id: str
+    ) -> None:
         self._repo.rollback()
         err_msg = str(e)
         if "FOREIGN KEY" in err_msg or "session" in err_msg.lower():
@@ -56,7 +61,9 @@ class TodoManager:
     def get_task(self, task_id: str) -> Optional[TodoItem]:
         return self._repo.get(task_id)
 
-    def get_tasks(self, session_id: str, status: Optional[str] = None) -> list[TodoItem]:
+    def get_tasks(
+        self, session_id: str, status: Optional[str] = None
+    ) -> list[TodoItem]:
         tasks = self._repo.get_by_session(session_id, status=status)
         self._compute_blocked(tasks)
         return tasks

@@ -27,9 +27,13 @@ if TYPE_CHECKING:
 
 
 class WriteParams(BaseModel):
-    file_path: str = Field(description="The absolute path to the file to write (must be absolute, not relative)")
+    file_path: str = Field(
+        description="The absolute path to the file to write (must be absolute, not relative)"
+    )
     content: str = Field(description="Content to write to the file")
-    confirm: bool | None = Field(None, description="If true, prompts for interactive confirmation before writing")
+    confirm: bool | None = Field(
+        None, description="If true, prompts for interactive confirmation before writing"
+    )
 
 
 class WriteTool(BaseTool):

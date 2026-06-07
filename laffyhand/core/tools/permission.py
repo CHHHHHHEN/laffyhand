@@ -23,7 +23,9 @@ class PermissionManager:
     def __init__(self, parent: PermissionManager | None = None) -> None:
         self._rules: dict[str, Rule] = {}
         self._parent = parent
-        self.request_callback: Callable[[str, str], Awaitable[tuple[bool, str | None]]] | None = None
+        self.request_callback: (
+            Callable[[str, str], Awaitable[tuple[bool, str | None]]] | None
+        ) = None
 
     def allow(self, tool_name: str) -> None:
         self._rules[tool_name] = "allow"
@@ -59,7 +61,9 @@ class PermissionManager:
         )
         return allowed
 
-    async def ask(self, permission: str, patterns: list[str]) -> tuple[bool, str | None]:
+    async def ask(
+        self, permission: str, patterns: list[str]
+    ) -> tuple[bool, str | None]:
         """Interactive permission prompt. Returns (allowed, reason) where reason is populated on denial."""
         blanket = self._get_rule(permission)
         if blanket == "deny":
@@ -91,7 +95,7 @@ class PermissionManager:
             prompt = f"\nAllow {permission} '{pattern}'? [y/N/a] "
             try:
                 answer = (await asyncio.to_thread(input, prompt)).strip().lower()
-            except (EOFError, OSError):
+            except EOFError, OSError:
                 raise RuntimeError(
                     f"Cannot prompt for permission '{permission}:{pattern}' — "
                     "no interactive terminal available. "
@@ -123,7 +127,9 @@ class PermissionManager:
                 return rule
         return None
 
-    async def require_path(self, tool_name: str, path: str | Path, workspace: str | Path | None) -> tuple[bool, str | None]:
+    async def require_path(
+        self, tool_name: str, path: str | Path, workspace: str | Path | None
+    ) -> tuple[bool, str | None]:
         """Check if a path is within the workspace. Returns (ok, reason)."""
         from laffyhand.core.tools.file._path_boundary import is_within
 
@@ -139,14 +145,10 @@ class PermissionManager:
         permission = "outside_workspace"
         parent_rule = self._check_parent_rules(permission, resolved)
         if parent_rule == "allow":
-            logger.info(
-                f"Path {resolved} allowed by parent-rule {permission}"
-            )
+            logger.info(f"Path {resolved} allowed by parent-rule {permission}")
             return (True, None)
         if parent_rule == "deny":
-            logger.info(
-                f"Path {resolved} denied by parent-rule {permission}"
-            )
+            logger.info(f"Path {resolved} denied by parent-rule {permission}")
             return (False, None)
 
         result = await self.ask(permission, [resolved])

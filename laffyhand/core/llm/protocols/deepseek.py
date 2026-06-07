@@ -3,7 +3,11 @@ from pydantic import BaseModel
 from loguru import logger
 from laffyhand.core.llm.specs.models import LLMRequest, Frame, ProviderID
 from laffyhand.core.llm.specs.models import StreamReasoning, LLMEvent
-from laffyhand.core.llm.protocols.openai import OpenAIProtocol, OpenAIChatChunk, OpenAICompletionRequest
+from laffyhand.core.llm.protocols.openai import (
+    OpenAIProtocol,
+    OpenAIChatChunk,
+    OpenAICompletionRequest,
+)
 
 
 class DeepSeekThinking(BaseModel):
@@ -20,7 +24,9 @@ class DeepseekProtocol(OpenAIProtocol):
 
     def build_request(self, request: LLMRequest) -> DeepSeekCompletionRequest:
         base = super().build_request(request)
-        return DeepSeekCompletionRequest(**base.model_dump(), thinking=DeepSeekThinking())
+        return DeepSeekCompletionRequest(
+            **base.model_dump(), thinking=DeepSeekThinking()
+        )
 
     def parse_frame(self, frame: Frame | dict[str, Any]) -> list[LLMEvent]:
         if isinstance(frame, dict):

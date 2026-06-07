@@ -1,12 +1,17 @@
 from __future__ import annotations
 
-from pydantic import BaseModel
 from typing import Any, Literal, Union
 
-from laffyhand.core.llm.specs.models import Usage, StreamToolCall as ToolCall
+from pydantic import BaseModel
+
+from laffyhand.core.llm.specs.models import Usage
 
 
-# ─── Agent-level stream events ──────────────────────────────
+class ToolCall(BaseModel):
+    type: Literal["tool-call"] = "tool-call"
+    tool_call_id: str
+    tool_name: str
+    args: str
 
 
 class StepStart(BaseModel):
@@ -128,28 +133,6 @@ class TodoUpdate(BaseModel):
     type: str = "todo-update"
 
 
-__all__ = [
-    "StepStart",
-    "TextStart",
-    "TextDelta",
-    "TextEnd",
-    "ReasoningStart",
-    "ReasoningDelta",
-    "ReasoningEnd",
-    "ToolResult",
-    "ToolError",
-    "StepFinish",
-    "Finish",
-    "Compacting",
-    "PermissionRequest",
-    "SubAgentStart",
-    "SubAgentDelta",
-    "SubAgentEnd",
-    "UsageUpdate",
-    "TodoUpdate",
-    "AgentEvent",
-]
-
 AgentEvent = Union[
     StepStart,
     TextStart,
@@ -170,4 +153,27 @@ AgentEvent = Union[
     SubAgentEnd,
     UsageUpdate,
     TodoUpdate,
+]
+
+__all__ = [
+    "StepStart",
+    "TextStart",
+    "TextDelta",
+    "TextEnd",
+    "ReasoningStart",
+    "ReasoningDelta",
+    "ReasoningEnd",
+    "ToolCall",
+    "ToolResult",
+    "ToolError",
+    "StepFinish",
+    "Finish",
+    "Compacting",
+    "PermissionRequest",
+    "SubAgentStart",
+    "SubAgentDelta",
+    "SubAgentEnd",
+    "UsageUpdate",
+    "TodoUpdate",
+    "AgentEvent",
 ]

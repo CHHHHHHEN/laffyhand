@@ -65,7 +65,7 @@ class MemoryService:
                 continue
             idx = line.find(". ")
             if idx > 0 and line[:idx].strip().isdigit():
-                entries.append(line[idx + 2:].strip())
+                entries.append(line[idx + 2 :].strip())
             else:
                 raise MemoryFormatError(
                     f"Unexpected line (not a numbered entry): {line!r}"

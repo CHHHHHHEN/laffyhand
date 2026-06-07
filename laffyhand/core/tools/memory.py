@@ -11,9 +11,7 @@ if TYPE_CHECKING:
 
 
 class MemoryParams(BaseModel):
-    operation: str = Field(
-        description="Operation: read, append, update, delete, clear"
-    )
+    operation: str = Field(description="Operation: read, append, update, delete, clear")
     entry: str | None = Field(
         None, description="Entry text (required for append, update)"
     )

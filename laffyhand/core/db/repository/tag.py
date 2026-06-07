@@ -87,8 +87,12 @@ class FileTagRepo:
             if status is None:
                 new_status = existing.status
             new_exports = dict(existing.exports) if exports is None else exports
-            new_side_effects = existing.side_effects if side_effects is None else side_effects
-            new_depends_on = list(existing.depends_on) if depends_on is None else depends_on
+            new_side_effects = (
+                existing.side_effects if side_effects is None else side_effects
+            )
+            new_depends_on = (
+                list(existing.depends_on) if depends_on is None else depends_on
+            )
         else:
             if exports is not None:
                 new_exports = exports
@@ -101,12 +105,30 @@ class FileTagRepo:
         if existing:
             self._conn.execute(
                 "UPDATE file_tag SET message=?, tags=?, updated_at=?, status=?, exports=?, side_effects=?, depends_on=? WHERE path=?",
-                (new_message, json.dumps(tag_dict), now, new_status, json.dumps(new_exports), new_side_effects, json.dumps(new_depends_on), path),
+                (
+                    new_message,
+                    json.dumps(tag_dict),
+                    now,
+                    new_status,
+                    json.dumps(new_exports),
+                    new_side_effects,
+                    json.dumps(new_depends_on),
+                    path,
+                ),
             )
         else:
             self._conn.execute(
                 "INSERT INTO file_tag (path, message, tags, updated_at, status, exports, side_effects, depends_on) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                (path, new_message, json.dumps(tag_dict), now, new_status, json.dumps(new_exports), new_side_effects, json.dumps(new_depends_on)),
+                (
+                    path,
+                    new_message,
+                    json.dumps(tag_dict),
+                    now,
+                    new_status,
+                    json.dumps(new_exports),
+                    new_side_effects,
+                    json.dumps(new_depends_on),
+                ),
             )
 
     def get(self, path: str) -> FileTag | None:
@@ -123,9 +145,7 @@ class FileTagRepo:
         return _rows_to_tags(rows)
 
     def list_all(self) -> list[FileTag]:
-        rows = self._conn.execute(
-            "SELECT * FROM file_tag ORDER BY path"
-        ).fetchall()
+        rows = self._conn.execute("SELECT * FROM file_tag ORDER BY path").fetchall()
         return _rows_to_tags(rows)
 
     def delete(self, path: str) -> bool:
@@ -138,13 +158,13 @@ class FileTagRepo:
         return True
 
     def delete_missing(self) -> int:
-        rows = self._conn.execute("SELECT path, status FROM file_tag WHERE status='active'").fetchall()
+        rows = self._conn.execute(
+            "SELECT path, status FROM file_tag WHERE status='active'"
+        ).fetchall()
         deleted = 0
         for row in rows:
             if not os.path.exists(row["path"]):
-                self._conn.execute(
-                    "DELETE FROM file_tag WHERE path=?", (row["path"],)
-                )
+                self._conn.execute("DELETE FROM file_tag WHERE path=?", (row["path"],))
                 deleted += 1
         return deleted
 

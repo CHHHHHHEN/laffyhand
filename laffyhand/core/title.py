@@ -70,17 +70,23 @@ class TitleService:
             return
         asyncio.create_task(self._do_generate_title(session_id))
 
-    async def generate_title(self, session_id: str, llm: LLM | None = None) -> str | None:
+    async def generate_title(
+        self, session_id: str, llm: LLM | None = None
+    ) -> str | None:
         return await self._do_generate_title(session_id, llm=llm)
 
-    async def _do_generate_title(self, session_id: str, llm: LLM | None = None) -> str | None:
+    async def _do_generate_title(
+        self, session_id: str, llm: LLM | None = None
+    ) -> str | None:
         try:
             if llm is None:
                 if self._llm_provider is None:
                     raise ConfigError("TitleService: llm_provider not set")
                 llm = self._llm_provider(session_id)
             title = await asyncio.wait_for(
-                generate_title(self.session_manager, session_id, llm, self.title_config),
+                generate_title(
+                    self.session_manager, session_id, llm, self.title_config
+                ),
                 timeout=30,
             )
             if title:

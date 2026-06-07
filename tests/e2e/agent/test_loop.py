@@ -8,7 +8,7 @@ from laffyhand.core.llm.specs.models import (
     StreamToolCall,
     StreamFinish,
 )
-from laffyhand.core.schemas import (
+from laffyhand.core.models import (
     AgentState,
     CompactionConfig,
     SessionID,
