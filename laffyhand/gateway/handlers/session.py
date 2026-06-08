@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import asyncio
 import os
 from typing import TYPE_CHECKING, Any
+
+from loguru import logger
 
 from laffyhand.core.llm.specs.models import SystemMessage
 from laffyhand.core.models import AgentState, SessionID, SessionUsage
 from laffyhand.gateway.session_converters import _serialize_messages
+from laffyhand.gateway.protocol import Notification
 
 if TYPE_CHECKING:
     from laffyhand.core.runtime import AgentRuntime
@@ -118,6 +122,8 @@ async def handle_session_load(
     is_streaming = False
     if transport.dispatcher is not None:
         is_streaming = transport.dispatcher.get_active_session_stream(session_id) is not None
+    if not is_streaming:
+        is_streaming = await runtime.session_event_bus.has_subscribers(session_id)
     return {
         "session_id": state.session_id,
         "title": session.title if session else None,
@@ -285,3 +291,49 @@ async def handle_session_compact(
         "session_id": new_id,
         "parent_id": session_id,
     }
+
+
+async def handle_session_subscribe(
+    runtime: AgentRuntime,
+    params: dict[str, Any],
+    transport: Transport,
+    _request_id: str | int | None,
+    conn_id: str,
+) -> None:
+    session_id: str = params.get("session_id", "")
+    if not session_id:
+        raise ValueError("session_id is required")
+
+    state = runtime.get_state(session_id)
+    if state is None:
+        state = runtime.load_session_state(session_id)
+    if state is None:
+        raise ValueError(f"Session not found: {session_id}")
+
+    queue = await runtime.session_event_bus.subscribe(session_id)
+
+    logger.debug(f"Session subscribe started for {session_id} (conn={conn_id})")
+
+    try:
+        while True:
+            event = await queue.get()
+            if event is None:
+                break
+            notif = Notification(method="event", params=event)
+            try:
+                await transport.send(notif.json())
+            except Exception:
+                logger.debug(
+                    f"Session subscribe transport closed for {session_id} (conn={conn_id})"
+                )
+                break
+    except asyncio.CancelledError:
+        logger.info(f"Session subscribe cancelled for {session_id} (conn={conn_id})")
+        raise
+    except Exception:
+        logger.exception(
+            f"Session subscribe error for {session_id} (conn={conn_id})"
+        )
+    finally:
+        await runtime.session_event_bus.unsubscribe(session_id, queue)
+        logger.debug(f"Session subscribe ended for {session_id} (conn={conn_id})")

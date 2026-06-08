@@ -2,6 +2,7 @@ import { useCallback, useRef } from "react"
 import { useParams } from "react-router-dom"
 import { useQueryClient } from "@tanstack/react-query"
 import { rpcClient } from "@/lib/rpc"
+import { stopActiveSubscription } from "@/lib/session-subscription"
 import { useChatStore } from "@/stores/chat-store"
 import { useTodoStore } from "@/stores/todo-store"
 import type { TodoItem } from "@/types/session"
@@ -71,6 +72,9 @@ export function useChat() {
         chatStore.addUserMessage(sessionId, content)
       }
       chatStore.startStreaming(sessionId)
+
+      // Stop any active session subscription before starting a new chat stream
+      stopActiveSubscription(sessionId)
 
       const abortController = new AbortController()
       abortRef.current = abortController

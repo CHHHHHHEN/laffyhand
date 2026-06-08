@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 
 import pytest
 from unittest.mock import AsyncMock, MagicMock
@@ -16,6 +17,7 @@ from laffyhand.gateway.handlers import (
     handle_session_delete,
     handle_session_fork,
     handle_session_compact,
+    handle_session_subscribe,
     handle_chat,
     handle_chat_stream,
     handle_chat_cancel,
@@ -62,6 +64,13 @@ def runtime():
     r.session_store.pop = MagicMock(side_effect=lambda sid: _state_backend.pop(sid, None))
     r.session_store.get = MagicMock(side_effect=lambda sid: _state_backend.get(sid))
     r.session_store.pending_permissions = _perm_backend
+
+    r.session_event_bus = MagicMock()
+    r.session_event_bus.publish = AsyncMock()
+    r.session_event_bus.close_session = AsyncMock()
+    r.session_event_bus.subscribe = AsyncMock()
+    r.session_event_bus.unsubscribe = AsyncMock()
+    r.session_event_bus.has_subscribers = AsyncMock(return_value=False)
     return r
 
 
@@ -647,6 +656,83 @@ class TestHandleChatStream:
         last_data = json.loads(last_call[0][0])
         assert last_data["params"]["type"] == "finish"
         assert last_data["params"]["reason"] == ""
+
+
+class TestHandleSessionSubscribe:
+    @pytest.mark.anyio
+    async def test_subscribes_and_receives_events(self, runtime, transport):
+        session_id = "sess-sub"
+        mock_state = MagicMock()
+        mock_state.session_id = session_id
+        runtime.get_state = MagicMock(return_value=mock_state)
+        runtime.load_session_state = MagicMock(return_value=mock_state)
+
+        real_queue: asyncio.Queue[dict | None] = asyncio.Queue()
+        runtime.session_event_bus.subscribe = AsyncMock(return_value=real_queue)
+
+        async def run_subscriber():
+            await handle_session_subscribe(
+                runtime, {"session_id": session_id}, transport, 1, "c1",
+            )
+
+        async def publish_events():
+            await asyncio.sleep(0.05)
+            await real_queue.put({"type": "text-delta", "text": "hello"})
+            await asyncio.sleep(0.05)
+            await real_queue.put({"type": "finish"})
+            await asyncio.sleep(0.05)
+            await real_queue.put(None)
+
+        async with asyncio.TaskGroup() as tg:
+            tg.create_task(run_subscriber())
+            tg.create_task(publish_events())
+
+        assert transport.send.call_count >= 2
+        calls = transport.send.await_args_list
+        sent_data = [json.loads(c[0][0]) for c in calls]
+
+        events = [n["params"] for n in sent_data if n.get("method") == "event"]
+        assert {"type": "text-delta", "text": "hello"} in events
+        assert {"type": "finish"} in events
+
+    @pytest.mark.anyio
+    async def test_missing_session_id_raises(self, runtime, transport):
+        with pytest.raises(ValueError, match="session_id is required"):
+            await handle_session_subscribe(runtime, {}, transport, 1, "c1")
+
+    @pytest.mark.anyio
+    async def test_session_not_found_raises(self, runtime, transport):
+        runtime.load_session_state = MagicMock(return_value=None)
+        runtime.get_state = MagicMock(return_value=None)
+        with pytest.raises(ValueError, match="Session not found"):
+            await handle_session_subscribe(
+                runtime, {"session_id": "nonexistent"}, transport, 1, "c1",
+            )
+
+    @pytest.mark.anyio
+    async def test_unsubscribe_on_cancellation(self, runtime, transport):
+        session_id = "sess-cancel"
+        mock_state = MagicMock()
+        mock_state.session_id = session_id
+        runtime.get_state = MagicMock(return_value=mock_state)
+        runtime.load_session_state = MagicMock(return_value=mock_state)
+
+        real_queue: asyncio.Queue[dict | None] = asyncio.Queue()
+        runtime.session_event_bus.subscribe = AsyncMock(return_value=real_queue)
+
+        async def run_and_cancel():
+            task = asyncio.create_task(
+                handle_session_subscribe(
+                    runtime, {"session_id": session_id}, transport, 1, "c1",
+                ),
+            )
+            await asyncio.sleep(0.05)
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+
+        await run_and_cancel()
+        runtime.session_event_bus.unsubscribe.assert_awaited_once()
 
 
 class TestHandleToolsList:

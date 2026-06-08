@@ -8,6 +8,7 @@ import { useCurrentSession, useAgents, useSessions } from "@/hooks/use-sessions"
 import { useChatStore } from "@/stores/chat-store"
 import { useSessionStore } from "@/stores/session-store"
 import { rpcClient } from "@/lib/rpc"
+import { useSessionSubscription } from "@/lib/session-subscription"
 import { Spinner } from "@/components/ui/Spinner"
 
 export function ChatPage() {
@@ -31,6 +32,20 @@ export function ChatPage() {
   const sessionState = useChatStore((s) => (sessionId ? s.sessions[sessionId] : undefined))
   const isStreaming = sessionState?.isStreaming ?? false
   const messages = sessionState?.messages ?? []
+
+  // Auto-subscribe to session event bus when server is streaming but local stream is gone
+  // (covers page-refresh / disconnect scenarios)
+  const { start: startSubscription } = useSessionSubscription(sessionId)
+
+  useEffect(() => {
+    if (sessionId && session?.is_streaming && !isStreaming) {
+      // Set up streaming state in store so subscription events
+      // (text-delta, tool-call, etc.) have a valid streaming context.
+      const store = useChatStore.getState()
+      store.startStreaming(sessionId)
+      startSubscription(sessionId)
+    }
+  }, [sessionId, session?.is_streaming, isStreaming, startSubscription])
 
   const permissionRequests = useMemo(
     () => messages.filter((m) => m.role === "permission-request"),

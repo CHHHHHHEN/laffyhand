@@ -45,6 +45,7 @@ AGENT_LIST = "agent/list"
 TODO_LIST = "todo/list"
 TODO_UPDATE = "todo/update"
 SESSION_COMPACT = "session/compact"
+SESSION_SUBSCRIBE = "session/subscribe"
 
 
 @dataclass

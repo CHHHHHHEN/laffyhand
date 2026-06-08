@@ -32,6 +32,7 @@ from laffyhand.core.memory.service import MemoryService
 from laffyhand.core.preference import PreferenceService
 from laffyhand.core.title import TitleService
 from laffyhand.core.workspace import WorkspaceService
+from laffyhand.core.event_bus import SessionEventBus
 
 if TYPE_CHECKING:
     from laffyhand.core.agent import AgentInfo
@@ -77,6 +78,8 @@ class AgentRuntime:
             self._context_size = 128_000
 
         self.workspace_service = WorkspaceService(self._config)
+        self.session_event_bus = SessionEventBus()
+
         self.tool_registry = ToolRegistry()
         self.tool_registry.workspace = self.workspace_service.resolve_workspace()
         self.agent_registry = AgentRegistry()

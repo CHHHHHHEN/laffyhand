@@ -25,6 +25,7 @@ from laffyhand.gateway.protocol import (
     SESSION_SEARCH,
     SESSION_SET_CONFIG,
     SESSION_SET_TITLE,
+    SESSION_SUBSCRIBE,
     SHUTDOWN,
     SUBAGENT_LIST_ACTIVE,
     TODO_LIST,
@@ -99,6 +100,7 @@ from laffyhand.gateway.handlers.session import (
     handle_session_search,
     handle_session_set_config,
     handle_session_set_title,
+    handle_session_subscribe,
 )
 from laffyhand.gateway.handlers.todo import handle_todo_list, handle_todo_update
 from laffyhand.gateway.handlers.tools import (
@@ -142,6 +144,7 @@ def register_all_handlers(dispatcher: Dispatcher) -> None:
     dispatcher.register(TODO_LIST, handle_todo_list)
     dispatcher.register(TODO_UPDATE, handle_todo_update)
     dispatcher.register(SESSION_COMPACT, handle_session_compact)
+    dispatcher.register(SESSION_SUBSCRIBE, handle_session_subscribe, streaming=True)
 
 
 __all__ = [
@@ -167,6 +170,7 @@ __all__ = [
     "handle_session_search",
     "handle_session_set_config",
     "handle_session_set_title",
+    "handle_session_subscribe",
     "handle_shutdown",
     "handle_subagent_list_active",
     "handle_todo_list",

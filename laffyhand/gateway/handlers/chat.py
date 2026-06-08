@@ -161,6 +161,8 @@ class ChatStreamSession:
             logger.warning(
                 "Failed to send finish event to client (connection may be closed)"
             )
+        await self._runtime.session_event_bus.publish(self._session_id, done_params)
+        await self._runtime.session_event_bus.close_session(self._session_id)
 
     async def _stream(self) -> None:
         """Inner stream iteration with error and cancellation handling."""
@@ -174,11 +176,10 @@ class ChatStreamSession:
                     for be in bg:
                         await self._event_sink(be)
 
-                notif = Notification(
-                    method="event",
-                    params=event.model_dump(exclude_none=True),
-                )
+                params = event.model_dump(exclude_none=True)
+                notif = Notification(method="event", params=params)
                 await self._transport.send(notif.json())
+                await self._runtime.session_event_bus.publish(self._session_id, params)
 
                 if isinstance(event, StepFinish):
                     self._finish_reason = event.reason
@@ -213,11 +214,10 @@ class ChatStreamSession:
                         logger.warning("Failed to relay background event")
 
             if self._cancelled:
-                cancel = Notification(
-                    method="event",
-                    params={"type": "cancelled", "data": "Stream cancelled"},
-                )
+                cancel_params = {"type": "cancelled", "data": "Stream cancelled"}
+                cancel = Notification(method="event", params=cancel_params)
                 await self._transport.send(cancel.json())
+                await self._runtime.session_event_bus.publish(self._session_id, cancel_params)
 
     async def _permission_callback(
         self, permission: str, pattern: str
@@ -252,10 +252,10 @@ class ChatStreamSession:
             self._runtime.session_store.pending_permissions.pop(request_id, None)
 
     async def _event_sink(self, event: Any) -> None:
-        notif = Notification(
-            method="event", params=event.model_dump(exclude_none=True)
-        )
+        params = event.model_dump(exclude_none=True)
+        notif = Notification(method="event", params=params)
         await self._transport.send(notif.json())
+        await self._runtime.session_event_bus.publish(self._session_id, params)
 
 
 async def handle_chat_stream(

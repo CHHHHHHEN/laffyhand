@@ -38,6 +38,13 @@ def runtime():
     r.session_store.pop = MagicMock(side_effect=lambda sid: _state_backend.pop(sid, None))
     r.session_store.get = MagicMock(side_effect=lambda sid: _state_backend.get(sid))
     r.session_store.contains = MagicMock(side_effect=lambda sid: sid in _state_backend)
+
+    r.session_event_bus = MagicMock()
+    r.session_event_bus.publish = AsyncMock()
+    r.session_event_bus.close_session = AsyncMock()
+    r.session_event_bus.subscribe = AsyncMock()
+    r.session_event_bus.unsubscribe = AsyncMock()
+    r.session_event_bus.has_subscribers = AsyncMock(return_value=False)
     return r
 
 
@@ -240,6 +247,13 @@ async def test_chat_stream_via_gateway(transport_pair):
     runtime.get_session_lock = MagicMock(return_value=MagicMock())
     runtime.subagent_manager = None
 
+    runtime.session_event_bus = MagicMock()
+    runtime.session_event_bus.publish = AsyncMock()
+    runtime.session_event_bus.close_session = AsyncMock()
+    runtime.session_event_bus.subscribe = AsyncMock()
+    runtime.session_event_bus.unsubscribe = AsyncMock()
+    runtime.session_event_bus.has_subscribers = AsyncMock(return_value=False)
+
     import asyncio
 
     gateway = GatewayServer(runtime, server_t)
@@ -430,6 +444,13 @@ def _make_base_runtime() -> MagicMock:
     r._schedule_title_generation = MagicMock()
     r.get_session_lock = MagicMock(return_value=MagicMock())
     r.subagent_manager = None
+
+    r.session_event_bus = MagicMock()
+    r.session_event_bus.publish = AsyncMock()
+    r.session_event_bus.close_session = AsyncMock()
+    r.session_event_bus.subscribe = AsyncMock()
+    r.session_event_bus.unsubscribe = AsyncMock()
+    r.session_event_bus.has_subscribers = AsyncMock(return_value=False)
     return r
 
 
