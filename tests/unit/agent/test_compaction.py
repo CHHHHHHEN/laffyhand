@@ -1,11 +1,7 @@
 from __future__ import annotations
 
-from laffyhand.core.compaction._summarize import _is_summary_content, _summary_depth
-from laffyhand.core.compaction import (
-    build_summary_text,
-    is_overflow,
-    select_tail,
-)
+from laffyhand.core.context._summarize import _is_summary_content, _summary_depth, build_summary_text
+from laffyhand.core.context.chain import is_overflow, select_tail
 from laffyhand.core.llm.specs.models import (
     AssistantMessage,
     Message,

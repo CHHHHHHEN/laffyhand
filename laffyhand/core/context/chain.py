@@ -15,7 +15,7 @@ from laffyhand.core._utils import (
     estimate_tokens,
 )
 from laffyhand.core.llm.facade import LLM
-from laffyhand.core.compaction._summarize import (
+from laffyhand.core.context._summarize import (
     _is_summary_content,
     _summary_depth,
     _summarize,

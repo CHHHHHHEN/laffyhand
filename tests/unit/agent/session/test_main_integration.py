@@ -105,7 +105,7 @@ class TestCompactOnOverflow:
     async def test_no_overflow_returns_false(
         self, session_manager: SessionManager
     ) -> None:
-        from laffyhand.core.compaction import compact_on_overflow as _compact_on_overflow
+        from laffyhand.core.context.chain import compact_on_overflow as _compact_on_overflow
 
         state = AgentState(
             messages=[UserMessage(content="hi")],
@@ -120,7 +120,7 @@ class TestCompactOnOverflow:
     async def test_overflow_with_session_manager(
         self, session_manager: SessionManager
     ) -> None:
-        from laffyhand.core.compaction import compact_on_overflow as _compact_on_overflow
+        from laffyhand.core.context.chain import compact_on_overflow as _compact_on_overflow
 
         async def mock_stream(messages, **kwargs):
             yield StreamText(delta="Summary of conversation.")
@@ -154,7 +154,7 @@ class TestCompactOnOverflow:
     async def test_overflow_without_session_manager_returns_false(
         self, session_manager: SessionManager
     ) -> None:
-        from laffyhand.core.compaction import compact_on_overflow as _compact_on_overflow
+        from laffyhand.core.context.chain import compact_on_overflow as _compact_on_overflow
 
         async def mock_stream(messages, **kwargs):
             yield StreamText(delta="Summary.")
@@ -184,7 +184,7 @@ class TestCompactOnOverflow:
     async def test_overflow_with_session_compact_fails(
         self, session_manager: SessionManager
     ) -> None:
-        from laffyhand.core.compaction import compact_on_overflow as _compact_on_overflow
+        from laffyhand.core.context.chain import compact_on_overflow as _compact_on_overflow
 
         async def mock_stream(messages, **kwargs):
             yield StreamError(error="LLM failed")

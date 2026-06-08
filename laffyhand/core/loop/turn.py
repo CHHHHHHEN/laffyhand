@@ -44,8 +44,7 @@ from laffyhand.core.models import (
 )
 
 from laffyhand.core._utils import exponential_backoff
-from laffyhand.core.compaction import compact_on_overflow
-from laffyhand.core.compaction import prune
+from laffyhand.core.context import ContextManager
 from laffyhand.core.tools.registry import ToolExecutionResult
 from laffyhand.core.llm.facade import LLM
 from laffyhand.core.tools import ToolRegistry
@@ -53,23 +52,6 @@ from laffyhand.core.tools import ToolRegistry
 if TYPE_CHECKING:
     from laffyhand.core.session import SessionManager
     from laffyhand.core.subagent.manager import SubagentTaskRunner
-
-
-# ── Helpers ────────────────────────────────────────────────────
-
-
-def build_llm_context(
-    agent_state: AgentState,
-    compaction_config: CompactionConfig,
-) -> list[Message]:
-    if compaction_config.prune:
-        return prune(
-            agent_state.messages,
-            curr_context_usage=agent_state.usage.curr_context_usage,
-            context_size=agent_state.usage.context_size,
-            config=compaction_config,
-        )
-    return agent_state.messages
 
 
 # ── Message persistence helper ───────────────────────────────────
@@ -205,7 +187,12 @@ class AgentTurn:
         self._on_compacted = on_compacted
 
         self._context_size = agent_state.usage.context_size
-        self._compacted_this_step = False
+        self._context_manager = ContextManager(
+            llm=llm,
+            config=compaction_config,
+            session_manager=session_manager,
+            on_compacted=on_compacted,
+        )
         self._store = MessageStore(session_manager, agent_state.session_id)
         self._tc: TurnContext | None = None
 
@@ -217,13 +204,14 @@ class AgentTurn:
                 break
 
             self._agent_state.step += 1
-            self._compacted_this_step = False
+            self._context_manager.reset_step_flag()
 
             if self._agent_state.step > self._max_steps:
                 logger.info(f"Reached max steps ({self._max_steps}), stopping")
                 break
 
-            if await self._compact_pre():
+            ctx = await self._context_manager.prepare(self._agent_state)
+            if ctx.compacted:
                 yield Compacting(data="Compacting conversation history...")
                 continue
 
@@ -235,15 +223,14 @@ class AgentTurn:
             tool_definitions = await self._tool_registry.build_tool_definitions(
                 exclude=disabled_tools,
             )
-            llm_context = build_llm_context(self._agent_state, self._compaction_config)
             logger.debug(
-                f"Sending {len(llm_context)} messages to LLM, {len(tool_definitions)} tools"
+                f"Sending {len(ctx.messages)} messages to LLM, {len(tool_definitions)} tools"
             )
 
             yield StepStart(index=step_index)
 
             self._tc = None
-            async for ev in self._retry_llm(llm_context, tool_definitions, step_index):
+            async for ev in self._retry_llm(ctx.messages, tool_definitions, step_index):
                 yield ev
 
             turn_ctx = self._tc
@@ -276,17 +263,12 @@ class AgentTurn:
 
             if turn_ctx.finish_reason is not None:
                 await self._store.flush(self._agent_state.messages)
-                if await self._compact_post():
+                auto_continue = await self._context_manager.post_turn(self._agent_state)
+                if auto_continue:
                     yield Compacting(data="Compacting conversation history...")
-                    if self._compaction_config.auto_continue:
-                        self._agent_state.messages.append(
-                            UserMessage(
-                                content="Continue if you have next steps, or stop and ask for clarification if you are unsure how to proceed.",
-                            )
-                        )
-                        await self._store.flush(self._agent_state.messages)
-                        yield Compacting(data="Continuing after compaction...")
-                        continue
+                    await self._store.flush(self._agent_state.messages)
+                    yield Compacting(data="Continuing after compaction...")
+                    continue
                 break
 
     # ── Step lifecycle methods ──────────────────────────────────
@@ -295,24 +277,6 @@ class AgentTurn:
         if self._agent_state.interrupt_requested:
             self._agent_state.interrupt_requested = False
             logger.debug("Agent loop interrupted by user request")
-            return True
-        return False
-
-    async def _compact_pre(self) -> bool:
-        if (
-            self._agent_state.step > 1
-            and self._context_size
-            and not self._compacted_this_step
-            and await compact_on_overflow(
-                self._agent_state,
-                self._llm,
-                self._compaction_config,
-                self._session_manager,
-                on_compacted=self._on_compacted,
-            )
-        ):
-            self._store.sync(len(self._agent_state.messages))
-            self._compacted_this_step = True
             return True
         return False
 
@@ -497,30 +461,9 @@ class AgentTurn:
         )
         await self._store.flush(self._agent_state.messages)
 
-    # ── Post-turn compaction ────────────────────────────────────
-
-    async def _compact_post(self) -> bool:
-        if (
-            self._context_size
-            and not self._compacted_this_step
-            and await compact_on_overflow(
-                self._agent_state,
-                self._llm,
-                self._compaction_config,
-                self._session_manager,
-                on_compacted=self._on_compacted,
-            )
-        ):
-            self._store.sync(len(self._agent_state.messages))
-            self._compacted_this_step = True
-            return True
-        return False
-
-
 __all__ = [
     "AgentTurn",
     "TurnContext",
-    "build_llm_context",
     "MessageStore",
     "StreamEventConverter",
 ]

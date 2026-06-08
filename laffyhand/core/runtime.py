@@ -293,7 +293,7 @@ class AgentRuntime:
 
     async def compact_session(self, session_id: str) -> str | None:
         """Manually trigger compaction for a session. Returns new session_id or None."""
-        from laffyhand.core.compaction import compact_with_chain
+        from laffyhand.core.context.chain import compact_with_chain
 
         state = self._session_store.get(session_id)
         if state is None:

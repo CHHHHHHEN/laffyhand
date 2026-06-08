@@ -18,20 +18,20 @@ from laffyhand.core.models import (
     SessionID,
     SessionUsage,
 )
-from laffyhand.core.compaction import (
+from laffyhand.core.context.chain import (
     compact_with_chain,
     is_overflow,
     select_tail,
-    build_summary_text,
-    prune,
+    _select_compaction_targets,
 )
-from laffyhand.core.compaction.chain import _select_compaction_targets
-from laffyhand.core.compaction._summarize import _is_summary_content
+from laffyhand.core.context._summarize import build_summary_text
+from laffyhand.core.context._prune import prune
+from laffyhand.core.context._summarize import _is_summary_content
 from laffyhand.core._utils import (
     estimate_message_tokens,
     estimate_messages_tokens,
 )
-from laffyhand.core.loop import build_llm_context
+from laffyhand.core.context._prune import prune
 
 
 PRUNE_PROTECT = CompactionConfig().prune_protect
@@ -240,19 +240,16 @@ class TestPrune(unittest.TestCase):
         self.assertLessEqual(pruned_count, 2)
 
 
-class TestBuildLlmContext(unittest.TestCase):
+class TestPruneBehavior(unittest.TestCase):
     def test_no_prune_when_disabled(self):
         config = CompactionConfig(prune=False)
-        state = AgentState(
-            messages=[
-                SystemMessage(content="sys"),
-                ToolMessage(tool_call_id="c1", content="test"),
-            ],
-            session_id=SessionID("test"),
-        )
-        ctx = build_llm_context(state, config)
-        self.assertEqual(len(ctx), 2)
-        self.assertEqual(ctx[1].content, "test")
+        msgs = [
+            SystemMessage(content="sys"),
+            ToolMessage(tool_call_id="c1", content="test"),
+        ]
+        result = prune(msgs, curr_context_usage=0, context_size=128_000, config=config)
+        self.assertEqual(len(result), 2)
+        self.assertEqual(result[1].content, "test")
 
     def test_prune_applied_to_context_view(self):
         config = CompactionConfig(prune=True)
@@ -261,19 +258,20 @@ class TestBuildLlmContext(unittest.TestCase):
             SystemMessage(content="sys"),
             ToolMessage(tool_call_id="c1", content=original),
         ]
-        state = AgentState(
-            messages=list(msgs),
-            session_id=SessionID("test"),
+        result = prune(
+            list(msgs),
+            curr_context_usage=128_000,
+            context_size=128_000,
+            config=config,
         )
-        ctx = build_llm_context(state, config)
         self.assertTrue(
-            ctx[1].content.startswith("[Old tool result content cleared:"),
+            result[1].content.startswith("[Old tool result content cleared:"),
             "context view should have pruned tool output",
         )
         self.assertEqual(
             msgs[1].content,
             original,
-            "original messages must not be mutated by build_llm_context",
+            "original messages must not be mutated by prune",
         )
 
 
