@@ -5,7 +5,6 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from laffyhand.core.context import ContextManager, PreparedContext
-from laffyhand.core.context._prune import prune
 from laffyhand.core.llm.specs.models import (
     Message,
     SystemMessage,
@@ -193,9 +192,6 @@ class TestContextManagerPostTurn:
                 UserMessage(content="z" * 1000),
             ],
         )
-
-        # We need to mock the internal compact_with_chain
-        original_messages = list(state.messages)
 
         result = await cm.post_turn(state)
         # Without a proper compact mock, this should fail and return False

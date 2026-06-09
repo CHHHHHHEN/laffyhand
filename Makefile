@@ -1,9 +1,13 @@
-.PHONY: build ui distclean
+.PHONY: build ui distclean hooks
 
 build: ui dist/laffyhand
 
 ui:
 	cd laffyhand/ui && pnpm build
+
+hooks:
+	uv run pre-commit install
+	uv run pre-commit install --hook-type commit-msg
 
 dist/laffyhand: laffyhand/__main__.py $(shell find laffyhand -name '*.py') $(shell find laffyhand/ui/dist -type f 2>/dev/null)
 	uv run nuitka --onefile \

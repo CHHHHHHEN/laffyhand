@@ -12,6 +12,7 @@ ignore = ["E402"]
 dev = [
     "mypy>=1.15",
     "nuitka>=2.6",
+    "pre-commit>=4.2",
     "pytest>=9.0.3",
     "pytest-cov>=7.1.0",
     "pytest-timeout>=2.3",

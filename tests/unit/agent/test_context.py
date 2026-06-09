@@ -31,7 +31,6 @@ from laffyhand.core._utils import (
     estimate_message_tokens,
     estimate_messages_tokens,
 )
-from laffyhand.core.context._prune import prune
 
 
 PRUNE_PROTECT = CompactionConfig().prune_protect
