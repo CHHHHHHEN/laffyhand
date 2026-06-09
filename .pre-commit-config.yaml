@@ -70,6 +70,6 @@ repos:
       # ── commit-msg ──
       - id: commit-msg
         name: commit message format
-        entry: laffyhand/hooks/commit-msg.sh
+        entry: hooks/commit-msg.sh
         language: script
         stages: [commit-msg]
