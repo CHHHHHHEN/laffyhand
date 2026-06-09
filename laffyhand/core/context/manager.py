@@ -11,7 +11,7 @@ from laffyhand.core.context.chain import (
     select_tail,
 )
 from laffyhand.core.context._prune import prune
-from laffyhand.core.llm.specs.models import Message, SystemMessage, UserMessage
+from laffyhand.core.llm.specs.models import AssistantMessage, Message, UserMessage
 from laffyhand.core.models import AgentState, CompactionConfig, SessionID
 from laffyhand.core._utils import estimate_messages_tokens
 
@@ -71,7 +71,60 @@ class ContextManager:
                         session_id=str(state.session_id),
                     )
 
+        # Apply steer wrapping
+        messages = self._wrap_steer(messages, state.step)
+
         return PreparedContext(messages=messages)
+
+    @staticmethod
+    def extract_key_info(messages: list[Message]) -> dict:
+        latest_user = None
+        latest_assistant = None
+        for m in reversed(messages):
+            if isinstance(m, UserMessage) and latest_user is None:
+                latest_user = m
+            if isinstance(m, AssistantMessage) and latest_assistant is None:
+                latest_assistant = m
+            if latest_user and latest_assistant:
+                break
+
+        last_finished_idx = None
+        for i in range(len(messages) - 1, -1, -1):
+            if isinstance(messages[i], AssistantMessage):
+                last_finished_idx = i
+                break
+
+        pending_tasks = messages[last_finished_idx + 1:] if last_finished_idx is not None else []
+
+        return {
+            "latest_user": latest_user,
+            "latest_assistant": latest_assistant,
+            "last_finished_idx": last_finished_idx,
+            "pending_tasks": pending_tasks,
+        }
+
+    @staticmethod
+    def _wrap_steer(messages: list[Message], step: int) -> list[Message]:
+        if step <= 1:
+            return messages
+
+        last_finished_idx = None
+        for i in range(len(messages) - 1, -1, -1):
+            if isinstance(messages[i], AssistantMessage):
+                last_finished_idx = i
+                break
+
+        if last_finished_idx is None:
+            return messages
+
+        result = list(messages)
+        for i in range(last_finished_idx + 1, len(result)):
+            msg = result[i]
+            if isinstance(msg, UserMessage):
+                result[i] = UserMessage(
+                    content=f"<system-reminder>\n{msg.content}\n</system-reminder>"
+                )
+        return result
 
     async def _do_compact(self, state: AgentState) -> bool:
         if self._session_manager is None or not state.session_id:
@@ -82,16 +135,19 @@ class ContextManager:
         if result is None:
             return False
 
-        summary, original_system, tail = result
+        original_system, summary_messages, tail = result
+        summary_content = next(
+            (m.content for m in summary_messages if isinstance(m, AssistantMessage) and m.content),
+            "",
+        )
         child = self._session_manager.create_compacted_child(
             parent_id=state.session_id,
             system_messages=original_system,
-            summary_content=summary,
+            summary_content=summary_content or "",
             tail_messages=tail,
         )
-        summary_msg = SystemMessage(content=summary.strip())
         state.session_id = SessionID(child.id)
-        state.messages = original_system + [summary_msg] + tail
+        state.messages = original_system + summary_messages + tail
         state.step = 0
         if self._on_compacted is not None:
             self._on_compacted(child.id)

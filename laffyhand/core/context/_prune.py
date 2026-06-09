@@ -17,48 +17,46 @@ def prune(
     if config is None:
         config = CompactionConfig()
 
-    prune_protect = config.prune_protect
-    prune_minimum = config.prune_minimum
-    prune_min_savings = config.prune_min_savings
+    protect_window = config.prune_protect  # 40K default
+    min_savings = config.prune_min_savings  # 50 default
 
-    if curr_context_usage and context_size and curr_context_usage < context_size * 0.7:
+    has_tool_msgs = any(isinstance(m, ToolMessage) for m in messages)
+    if not has_tool_msgs:
         return messages
 
-    tool_indices: list[int] = []
-    total_tokens = 0
-    for i in range(len(messages) - 1, -1, -1):
-        msg = messages[i]
-        if isinstance(msg, ToolMessage):
-            total_tokens += estimate_tokens(msg.content)
-            tool_indices.append(i)
-    logger.trace(
-        f"Prune: found {len(tool_indices)} ToolMessages, total_tokens={total_tokens}"
-    )
-    if total_tokens <= prune_protect:
-        logger.trace(
-            f"Total tokens {total_tokens} <= prune_protect {prune_protect}, skipping"
-        )
-        return messages
-    target = max(prune_minimum, total_tokens // 2)
-    pruned = 0
     result = list(messages)
-    for idx in reversed(tool_indices):
-        msg = result[idx]
+    modified = False
+
+    # Walk backwards from end, accumulate token distance
+    # Tool messages outside the recent protect_window get pruned
+    accumulated = 0
+    pruned_tokens = 0
+    for i in range(len(result) - 1, -1, -1):
+        msg = result[i]
+        tokens = _estimate_message_tokens_fast(msg)
+        accumulated += tokens
+        if accumulated <= protect_window:
+            continue
         if not isinstance(msg, ToolMessage):
             continue
         old_t = estimate_tokens(msg.content)
-        if old_t < prune_min_savings:
+        if old_t < min_savings:
             continue
-        if total_tokens - pruned <= target:
-            break
-        new_content = f"[Old tool result content cleared: {old_t} tokens]"
-        result[idx] = ToolMessage(
+        result[i] = ToolMessage(
             tool_call_id=msg.tool_call_id,
-            content=new_content,
+            content=f"[Old tool result content cleared: {old_t} tokens]",
         )
-        pruned += old_t - estimate_tokens(new_content)
-        logger.trace(
-            f"Pruned message at index {idx}: {old_t} -> {estimate_tokens(new_content)} tokens"
-        )
-    logger.info(f"Pruned {pruned} tokens from tool outputs")
+        pruned_tokens += old_t
+        modified = True
+
+    if not modified:
+        return messages
+    logger.info(f"Pruned {pruned_tokens} tokens from tool outputs outside {protect_window}-token window")
     return result
+
+
+def _estimate_message_tokens_fast(msg: Message) -> int:
+    if isinstance(msg, ToolMessage):
+        return estimate_tokens(msg.content)
+    content = msg.content or ""
+    return estimate_tokens(content)

@@ -40,9 +40,7 @@ def _summary_depth(messages: list[Message], max_depth: int = 3) -> int:
     depth = 0
     for m in messages:
         content = ""
-        if isinstance(m, SystemMessage):
-            content = m.content or ""
-        elif isinstance(m, UserMessage):
+        if isinstance(m, (SystemMessage, UserMessage, AssistantMessage)):
             content = m.content or ""
         if _is_summary_content(content):
             depth += 1
@@ -52,17 +50,10 @@ def _summary_depth(messages: list[Message], max_depth: int = 3) -> int:
 def build_summary_text(messages: Sequence[Message], tool_truncate: int = 500) -> str:
     lines = []
     for msg in messages:
-        if isinstance(msg, SystemMessage) and _is_summary_content(msg.content):
+        content = (msg.content or "") if hasattr(msg, "content") else ""
+        if _is_summary_content(content):
             inner = (
-                msg.content.strip()
-                .removeprefix(_SUMMARY_TAG_OPEN)
-                .removesuffix(_SUMMARY_TAG_CLOSE)
-                .strip()
-            )
-            lines.append(f"[Previous Summary]:\n{inner}")
-        elif isinstance(msg, UserMessage) and _is_summary_content(msg.content):
-            inner = (
-                msg.content.strip()
+                content.strip()
                 .removeprefix(_SUMMARY_TAG_OPEN)
                 .removesuffix(_SUMMARY_TAG_CLOSE)
                 .strip()

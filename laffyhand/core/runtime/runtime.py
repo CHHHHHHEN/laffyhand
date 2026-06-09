@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
-from laffyhand.core.llm.specs.models import ModelID, ProviderID, SystemMessage
+from laffyhand.core.llm.specs.models import AssistantMessage, ModelID, ProviderID, SystemMessage
 from laffyhand.core.models import AgentEvent, AgentState, CompactionConfig, SessionID
 from laffyhand.core.agent import AgentRegistry, assemble_system_prompt
 from laffyhand.core.skill import SkillRegistry
@@ -283,16 +283,19 @@ class AgentRuntime:
         if result is None:
             logger.info(f"compact_session: nothing to compact for {session_id}")
             return None
-        summary, original_system, tail = result
+        original_system, summary_messages, tail = result
+        summary_content = next(
+            (m.content for m in summary_messages if isinstance(m, AssistantMessage) and m.content),
+            "",
+        )
         child = self.session_manager.create_compacted_child(
             parent_id=session_id,
             system_messages=original_system,
-            summary_content=summary,
+            summary_content=summary_content or "",
             tail_messages=tail,
         )
-        summary_msg = SystemMessage(content=summary.strip())
         state.session_id = SessionID(child.id)
-        state.messages = original_system + [summary_msg] + tail
+        state.messages = original_system + summary_messages + tail
         state.step = 0
         self._schedule_title_generation(child.id, "on_compact")
         logger.info(f"Manual compaction: {session_id} -> {child.id}")

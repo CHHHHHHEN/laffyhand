@@ -4,7 +4,12 @@ from typing import TYPE_CHECKING, Callable
 
 from loguru import logger
 
-from laffyhand.core.llm.specs.models import SystemMessage, ToolMessage, UserMessage
+from laffyhand.core.llm.specs.models import (
+    AssistantMessage,
+    SystemMessage,
+    ToolMessage,
+    UserMessage,
+)
 from laffyhand.core.llm.specs.models import (
     Message,
 )
@@ -134,7 +139,7 @@ async def compact_with_chain(
     agent_state: AgentState,
     llm: LLM,
     config: CompactionConfig,
-) -> tuple[str, list[SystemMessage], list[Message]] | None:
+) -> tuple[list[SystemMessage], list[Message], list[Message]] | None:
     targets = _select_compaction_targets(
         agent_state.messages,
         config,
@@ -157,9 +162,16 @@ async def compact_with_chain(
         return None
 
     logger.info(f"Chain compaction summary generated ({len(summary)} chars)")
+    summary_text = f"{_SUMMARY_TAG_OPEN}\n{summary.strip()}\n{_SUMMARY_TAG_CLOSE}"
+
+    compaction_prompt = UserMessage(
+        content="What did we do in the earlier part of our conversation? Please summarize."
+    )
+    summary_response = AssistantMessage(content=summary_text, tool_calls=None)
+
     return (
-        f"{_SUMMARY_TAG_OPEN}\n{summary.strip()}\n{_SUMMARY_TAG_CLOSE}",
         original_system,
+        [compaction_prompt, summary_response],
         tail,
     )
 
@@ -190,16 +202,19 @@ async def compact_on_overflow(
     result = await compact_with_chain(agent_state, llm, compaction_config)
     if result is None:
         return False
-    summary, original_system, tail = result
+    original_system, summary_messages, tail = result
+    summary_content = next(
+        (m.content for m in summary_messages if isinstance(m, AssistantMessage) and m.content),
+        "",
+    )
     child = session_manager.create_compacted_child(
         parent_id=agent_state.session_id,
         system_messages=original_system,
-        summary_content=summary,
+        summary_content=summary_content or "",
         tail_messages=tail,
     )
-    summary_msg = SystemMessage(content=summary.strip())
     agent_state.session_id = SessionID(child.id)
-    agent_state.messages = original_system + [summary_msg] + tail
+    agent_state.messages = original_system + summary_messages + tail
     agent_state.step = 0
     if on_compacted is not None:
         on_compacted(child.id)
