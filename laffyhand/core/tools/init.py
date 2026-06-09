@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from laffyhand.core.mcp import MCPService
     from laffyhand.core.memory.service import MemoryService
+    from laffyhand.core.preference import PreferenceService
     from laffyhand.core.tools.registry import ToolRegistry
     from laffyhand.core.session.todo import TodoManager
     from laffyhand.core.skill import SkillRegistry
@@ -25,6 +26,7 @@ class ToolInitializer:
         subagent_orchestrator: SubagentOrchestrator,
         file_tag_repo: FileTagRepo,
         memory_service: MemoryService | None = None,
+        preference_service: PreferenceService | None = None,
     ) -> None:
         self._mcp_service = mcp_service
         self._tool_registry = tool_registry
@@ -34,6 +36,7 @@ class ToolInitializer:
         self._subagent_orchestrator = subagent_orchestrator
         self._file_tag_repo = file_tag_repo
         self._memory_service = memory_service
+        self._preference_service = preference_service
 
     async def register_all(self) -> None:
         from laffyhand.core.tools.file import (
@@ -61,7 +64,12 @@ class ToolInitializer:
             self._tool_registry.register_tool(mcp_tool)
 
         # Built-in tools
-        self._tool_registry.register_tool(ReadTool())
+        self._tool_registry.register_tool(
+            ReadTool(
+                preference_service=self._preference_service,
+                workspace=self._tool_registry.workspace,
+            )
+        )
         self._tool_registry.register_tool(ListDirTool())
         self._tool_registry.register_tool(
             WriteTool(permission_manager=self._tool_registry.permission)

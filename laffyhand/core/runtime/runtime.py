@@ -87,6 +87,8 @@ class AgentRuntime:
         self.todo_manager = TodoManager.from_session_manager(self.session_manager)
         self._file_tag_repo = FileTagRepo(self.session_manager.connection)
 
+        self.preference_service = PreferenceService()
+
         self.subagent_orchestrator = SubagentOrchestrator(
             session_manager=self.session_manager,
             tool_registry=self.tool_registry,
@@ -115,6 +117,7 @@ class AgentRuntime:
             subagent_orchestrator=self.subagent_orchestrator,
             file_tag_repo=self._file_tag_repo,
             memory_service=self._memory_service,
+            preference_service=self.preference_service,
         )
 
         self.loop_orchestrator = LoopOrchestrator(
@@ -124,11 +127,9 @@ class AgentRuntime:
             llm_provider=self._llm_for_session,
             compaction_config=self.compaction_config,
             max_steps=self.max_steps,
-            preference_checker=self.poll_new_preferences,
             title_scheduler=self._schedule_title_generation,
             session_store=self._session_store,
         )
-        self.preference_service = PreferenceService()
 
     def update_sessions_workspace_env(self, new_workspace: str) -> None:
         new_env_block = build_env_block(new_workspace)
@@ -195,25 +196,6 @@ class AgentRuntime:
 
     def load_skills(self, skill_dirs: Sequence[str | Path]) -> None:
         self.skill_registry.discover(list(skill_dirs))
-
-    # ── Preference delegation ────────────────────────────────────
-
-    async def poll_new_preferences(self) -> str:
-        return await self.preference_service.poll_new_preferences()
-
-    def resolve_preferences(
-        self,
-        file_path: str,
-        message_id: str,
-        *,
-        root: str | None = None,
-    ) -> list[dict[str, str]]:
-        return self.preference_service.resolve_preferences(
-            file_path, message_id, root=root
-        )
-
-    def clear_preference_claims(self, message_id: str) -> None:
-        self.preference_service.clear_preference_claims(message_id)
 
     async def build_system_prompt(
         self,

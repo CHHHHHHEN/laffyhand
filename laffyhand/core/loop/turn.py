@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator, Callable
 from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel
@@ -172,7 +172,6 @@ class AgentTurn:
         max_steps: int = 50,
         session_manager: SessionManager | None = None,
         subagent_manager: SubagentTaskRunner | None = None,
-        preference_checker: Callable[[], Awaitable[str]] | None = None,
         on_compacted: Callable[[str], None] | None = None,
     ) -> None:
         self._agent_state = agent_state
@@ -183,7 +182,6 @@ class AgentTurn:
         self._max_steps = max_steps
         self._session_manager = session_manager
         self._subagent_manager = subagent_manager
-        self._preference_checker = preference_checker
         self._on_compacted = on_compacted
 
         self._context_size = agent_state.usage.context_size
@@ -216,7 +214,6 @@ class AgentTurn:
                 continue
 
             await self._inject_subagent_results()
-            await self._inject_preferences()
 
             step_index = self._agent_state.step
             disabled_tools = self._agent_state.disabled_tools
@@ -295,16 +292,6 @@ class AgentTurn:
                 )
                 self._agent_state.messages.append(injected)
                 logger.info(f"Injected subagent result: {bg.task_id[:8]}")
-
-    async def _inject_preferences(self) -> None:
-        if self._preference_checker is not None:
-            new_prefs = await self._preference_checker()
-            if new_prefs:
-                wrapped = f"<system-reminder>\n{new_prefs}\n</system-reminder>"
-                self._agent_state.messages.append(
-                    UserMessage(content=wrapped),
-                )
-                logger.info("Injected new preferences via <system-reminder>")
 
     # ── LLM streaming & retry ──────────────────────────────────
 
@@ -408,7 +395,6 @@ class AgentTurn:
         logger.debug(f"Executing {len(turn_ctx.tool_calls)} tool call(s)")
         exec_context: dict[str, str | None] = {
             "session_id": self._agent_state.session_id,
-            "_claim_id": f"{self._agent_state.session_id}:preferences",
         }
 
         async def _exec_one(

@@ -12,6 +12,6 @@ class PreferencesSection(PromptSection):
     required = False
 
     async def render(self, context: PromptContext) -> str:
-        if context.preference_service is None:
+        if context.preference_service is None or context.workspace is None:
             return ""
-        return await context.preference_service.load_preferences()
+        return await context.preference_service.load_preferences(context.workspace)

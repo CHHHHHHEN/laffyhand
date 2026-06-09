@@ -8,12 +8,15 @@ import asyncio
 import difflib
 import re
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 from pydantic import BaseModel, Field
 from laffyhand.core.tools.base import BaseTool
 from laffyhand.core.tools.file._security import looks_binary
+
+if TYPE_CHECKING:
+    from laffyhand.core.preference import PreferenceService
 
 
 class ReadParams(BaseModel):
@@ -38,6 +41,16 @@ class ReadParams(BaseModel):
 class ReadTool(BaseTool):
     name = "read"
     path_params = ["file_path"]
+
+    def __init__(
+        self,
+        preference_service: PreferenceService | None = None,
+        workspace: str | None = None,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(**kwargs)
+        self._preference_service = preference_service
+        self._workspace = workspace
     description = (
         "Read a text file with line-numbered output.\n\n"
         "**Required:** ``file_path``.\n\n"
@@ -60,6 +73,18 @@ class ReadTool(BaseTool):
         except PermissionError:
             return []
         return difflib.get_close_matches(path.name, candidates, n=5, cutoff=0.3)
+
+    async def _resolve_preferences(self, path: Path) -> str:
+        if self._preference_service is None or self._workspace is None:
+            return ""
+        content = await asyncio.to_thread(
+            self._preference_service.resolve_for_read,
+            str(path),
+            self._workspace,
+        )
+        if content is None:
+            return ""
+        return f"<preference>\n{content}\n</preference>"
 
     async def _read_with_context(
         self,
@@ -162,9 +187,13 @@ class ReadTool(BaseTool):
             logger.info(
                 f"Read: context read {path} pattern={pattern} context={context}"
             )
-            return await self._read_with_context(
+            result = await self._read_with_context(
                 path, pattern, context, params.get("offset"), params.get("limit")
             )
+            pref_text = await self._resolve_preferences(path)
+            if pref_text:
+                result += f"\n\n{pref_text}"
+            return result
 
         offset = params.get("offset")
         limit = params.get("limit")
@@ -202,6 +231,10 @@ class ReadTool(BaseTool):
 
         if offset is None and limit is None and len(text) > self.max_result_size:
             result += f"\n[File is large ({len(text)} bytes). Use offset and limit to read specific sections.]"
+
+        pref_text = await self._resolve_preferences(path)
+        if pref_text:
+            result += f"\n\n{pref_text}"
 
         logger.info(
             f"Read: {path} ({total_lines} lines, offset={offset}, limit={limit})"

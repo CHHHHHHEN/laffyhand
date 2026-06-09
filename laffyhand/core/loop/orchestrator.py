@@ -32,7 +32,6 @@ class LoopOrchestrator:
         llm_provider: Callable[[str], LLM],
         compaction_config: CompactionConfig,
         max_steps: int,
-        preference_checker: Callable[[], Awaitable[str]] | None,
         title_scheduler: Callable[[str, str], None],
         session_store: SessionStateStore,
     ) -> None:
@@ -42,7 +41,6 @@ class LoopOrchestrator:
         self._llm_provider = llm_provider
         self._compaction_config = compaction_config
         self._max_steps = max_steps
-        self._preference_checker = preference_checker
         self._title_scheduler = title_scheduler
         self._session_store = session_store
         self._session_tasks: dict[str, asyncio.Task[None]] = {}
@@ -67,7 +65,6 @@ class LoopOrchestrator:
                 max_steps=self._max_steps,
                 session_manager=self._session_manager,
                 subagent_manager=self._subagent_manager,
-                preference_checker=self._preference_checker,
                 on_compacted=lambda child_sid: self._title_scheduler(
                     child_sid, "on_compact"
                 ),

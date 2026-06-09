@@ -192,112 +192,31 @@ class TestUpdateSessionsWorkspaceEnv:
 
 class TestPreferences:
     @pytest.mark.anyio
-    async def test_load_initial_preferences_from_cwd(self, runtime, tmp_path):
+    async def test_load_preferences_reads_worktree_root(self, runtime, tmp_path):
         agents_md = tmp_path / "AGENTS.md"
         agents_md.write_text("Rule 1\nRule 2")
-        runtime.preference_service._preferences = None  # force fresh load
-        with (
-            patch("os.getcwd", return_value=str(tmp_path)),
-            patch("os.path.expanduser", return_value="/nonexistent"),
-        ):
-            result = await runtime.preference_service.load_preferences()
+        runtime.preference_service._preferences = None
+        result = await runtime.preference_service.load_preferences(str(tmp_path))
         assert "<preference>" in result
         assert "Rule 1" in result
         assert "Rule 2" in result
         assert runtime.preference_service._preferences is not None
-        # cached on second call
-        cached = await runtime.preference_service.load_preferences()
+        cached = await runtime.preference_service.load_preferences(str(tmp_path))
         assert cached is result
 
     @pytest.mark.anyio
-    async def test_load_initial_no_agents_md(self, runtime):
+    async def test_load_preferences_no_agents_md(self, runtime, tmp_path):
         runtime.preference_service._preferences = None
-        with (
-            patch("os.getcwd", return_value="/nonexistent"),
-            patch("os.path.expanduser", return_value="/nonexistent"),
-        ):
-            result = await runtime.preference_service.load_preferences()
+        result = await runtime.preference_service.load_preferences(str(tmp_path))
         assert result == ""
-
-    @pytest.mark.anyio
-    async def test_poll_new_preferences_detects_new_file(self, runtime, tmp_path):
-        runtime.preference_service._preferences = ""
-        runtime.preference_service._prefs_initialized = True
-        with (
-            patch("os.getcwd", return_value=str(tmp_path)),
-            patch("os.path.expanduser", return_value="/nonexistent"),
-        ):
-            result = await runtime.poll_new_preferences()
-        assert result == ""
-        agents_md = tmp_path / "AGENTS.md"
-        agents_md.write_text("New rule")
-        with (
-            patch("os.getcwd", return_value=str(tmp_path)),
-            patch("os.path.expanduser", return_value="/nonexistent"),
-        ):
-            result = await runtime.poll_new_preferences()
-        assert "<preference>" in result
-        assert "New rule" in result
-
-    @pytest.mark.anyio
-    async def test_poll_new_preferences_detects_changed_file(self, runtime, tmp_path):
-        agents_md = tmp_path / "AGENTS.md"
-        agents_md.write_text("Original rule")
-        runtime.preference_service._preferences = None
-        with (
-            patch("os.getcwd", return_value=str(tmp_path)),
-            patch("os.path.expanduser", return_value="/nonexistent"),
-        ):
-            await runtime.preference_service.load_preferences()
-        agents_md.write_text("Changed rule")
-        with (
-            patch("os.getcwd", return_value=str(tmp_path)),
-            patch("os.path.expanduser", return_value="/nonexistent"),
-        ):
-            result = await runtime.poll_new_preferences()
-        assert "Changed rule" in result
-
-    @pytest.mark.anyio
-    async def test_poll_new_preferences_returns_empty_when_unchanged(
-        self, runtime, tmp_path
-    ):
-        agents_md = tmp_path / "AGENTS.md"
-        agents_md.write_text("Stable rule")
-        runtime.preference_service._preferences = None
-        with (
-            patch("os.getcwd", return_value=str(tmp_path)),
-            patch("os.path.expanduser", return_value="/nonexistent"),
-        ):
-            await runtime.preference_service.load_preferences()
-        with (
-            patch("os.getcwd", return_value=str(tmp_path)),
-            patch("os.path.expanduser", return_value="/nonexistent"),
-        ):
-            result = await runtime.poll_new_preferences()
-        assert result == ""
-
-    @pytest.mark.anyio
-    async def test_poll_new_preferences_cleared_cache_rescans(self, runtime, tmp_path):
-        agents_md = tmp_path / "AGENTS.md"
-        agents_md.write_text("Persistent rule")
-        runtime.preference_service._preferences = ""
-        runtime.preference_service._preference_files = {}
-        runtime.preference_service._prefs_initialized = True
-        with (
-            patch("os.getcwd", return_value=str(tmp_path)),
-            patch("os.path.expanduser", return_value="/nonexistent"),
-        ):
-            result = await runtime.poll_new_preferences()
-        assert "Persistent rule" in result
 
     @pytest.mark.anyio
     async def test_preference_includes_in_system_prompt(self, runtime, tmp_path):
         agents_md = tmp_path / "AGENTS.md"
         agents_md.write_text("Be concise.")
         runtime.preference_service._preferences = None
-        with (
-            patch("os.getcwd", return_value=str(tmp_path)),
-            patch("os.path.expanduser", return_value="/nonexistent"),
+        with patch.object(
+            runtime.tool_registry, "workspace", str(tmp_path),
         ):
             prompt = await runtime.build_system_prompt("Base.")
         assert "<preference>" in prompt
@@ -305,10 +224,9 @@ class TestPreferences:
 
 
 class TestPreferenceFileDiscovery:
-    """Tests for _find_up / _find_up_all / first-match-wins in _read_preference_files."""
+    """Tests for find_up / find_up_all walking utilities."""
 
     def test_find_up_finds_closest_ancestor(self, runtime, tmp_path):
-        """_find_up returns the first AGENTS.md when walking upward."""
         outer = tmp_path / "outer"
         inner = outer / "inner"
         inner.mkdir(parents=True)
@@ -319,11 +237,10 @@ class TestPreferenceFileDiscovery:
         assert found == md
 
     def test_find_up_stops_at_stop_dir(self, runtime, tmp_path):
-        """_find_up does not search past the stop directory."""
         parent = tmp_path / "parent"
         child = parent / "child"
         child.mkdir(parents=True)
-        md = tmp_path / "AGENTS.md"  # above stop boundary
+        md = tmp_path / "AGENTS.md"
         md.write_text("should not be found")
         found = runtime.preference_service.find_up("AGENTS.md", start=child, stop=parent)
         assert found is None
@@ -333,13 +250,11 @@ class TestPreferenceFileDiscovery:
         assert found is None
 
     def test_find_up_uses_cwd_default(self, runtime):
-        """_find_up with no args searches from CWD."""
         with patch("os.getcwd", return_value="/nonexistent"):
             found = runtime.preference_service.find_up("AGENTS.md")
-        assert found is None  # /nonexistent doesn't have AGENTS.md
+        assert found is None
 
     def test_find_up_all_collects_multiple_matches(self, runtime, tmp_path):
-        """_find_up_all collects all AGENTS.md files walking upward."""
         outer = tmp_path / "outer"
         inner = outer / "inner"
         inner.mkdir(parents=True)
@@ -352,77 +267,11 @@ class TestPreferenceFileDiscovery:
         assert inner_md in found
         assert outer_md in found
 
-    def test_read_preference_files_first_match_wins_project(self, runtime, tmp_path):
-        """_read_preference_files prefers project-level AGENTS.md over home."""
-        agents_md = tmp_path / "AGENTS.md"
-        agents_md.write_text("project rules")
-        with (
-            patch("os.getcwd", return_value=str(tmp_path)),
-            patch("os.path.expanduser", return_value="/nonexistent"),
-        ):
-            result = runtime.preference_service._read_preference_files()
-        assert len(result) == 1
-        assert str(agents_md) in result
-        assert "project rules" in result[str(agents_md)]
 
-    def test_read_preference_files_fallback_to_home(self, runtime, tmp_path):
-        """When no project AGENTS.md, fall back to home directory."""
-        home = tmp_path / "home"
-        home.mkdir()
-        home_md = home / "AGENTS.md"
-        home_md.write_text("home rules")
-        with (
-            patch("os.getcwd", return_value=str(tmp_path)),
-            patch("os.path.expanduser", return_value=str(home)),
-        ):
-            result = runtime.preference_service._read_preference_files()
-        assert len(result) == 1
-        assert str(home_md) in result
-        assert "home rules" in result[str(home_md)]
+class TestResolveForRead:
+    """Tests for resolve_for_read (called after Read tool)."""
 
-    def test_read_preference_files_project_wins_over_home(self, runtime, tmp_path):
-        """Project-level AGENTS.md wins (first-match), home is not loaded."""
-        home = tmp_path / "home"
-        home.mkdir()
-        agents_md = tmp_path / "AGENTS.md"
-        agents_md.write_text("project rules")
-        home_md = home / "AGENTS.md"
-        home_md.write_text("home rules")
-        with (
-            patch("os.getcwd", return_value=str(tmp_path)),
-            patch("os.path.expanduser", return_value=str(home)),
-        ):
-            result = runtime.preference_service._read_preference_files()
-        assert len(result) == 1, "Only project-level should be loaded"
-        assert str(agents_md) in result
-        assert str(home_md) not in result
-
-    @pytest.mark.anyio
-    async def test_poll_uses_first_match_wins(self, runtime, tmp_path):
-        """poll_new_preferences uses the same first-match-wins logic."""
-        agents_md = tmp_path / "AGENTS.md"
-        agents_md.write_text("project rule")
-        runtime.preference_service._preferences = None
-        with (
-            patch("os.getcwd", return_value=str(tmp_path)),
-            patch("os.path.expanduser", return_value="/nonexistent"),
-        ):
-            await runtime.preference_service.load_preferences()
-        agents_md.write_text("changed project rule")
-        with (
-            patch("os.getcwd", return_value=str(tmp_path)),
-            patch("os.path.expanduser", return_value="/nonexistent"),
-        ):
-            result = await runtime.poll_new_preferences()
-        assert "changed project rule" in result
-        assert len(runtime.preference_service._preference_files) == 1
-
-
-class TestPreferenceResolution:
-    """Tests for resolve_preferences / clear_preference_claims."""
-
-    def test_resolve_preferences_walks_up_from_file(self, runtime, tmp_path):
-        """resolve_preferences walks upward from the file to find AGENTS.md."""
+    def test_resolve_for_read_walks_up_from_file(self, runtime, tmp_path):
         outer = tmp_path / "outer"
         inner = outer / "inner"
         inner.mkdir(parents=True)
@@ -430,14 +279,12 @@ class TestPreferenceResolution:
         outer_md.write_text("outer project rules")
         src = inner / "src.py"
         src.write_text("code")
-        instructions = runtime.resolve_preferences(
-            str(src), "msg-1", root=str(tmp_path),
-        )
-        assert len(instructions) == 1
-        assert "outer project rules" in instructions[0]["content"]
+        result = runtime.preference_service.resolve_for_read(str(src), str(tmp_path))
+        assert result is not None
+        assert "outer project rules" in result
+        assert str(outer_md) in runtime.preference_service._loaded_paths
 
-    def test_resolve_preferences_claims_prevent_duplicates(self, runtime, tmp_path):
-        """Same file on same message_id not returned twice."""
+    def test_resolve_for_read_skips_already_loaded(self, runtime, tmp_path):
         outer = tmp_path / "outer"
         inner = outer / "inner"
         inner.mkdir(parents=True)
@@ -445,17 +292,27 @@ class TestPreferenceResolution:
         outer_md.write_text("rules")
         src = inner / "src.py"
         src.write_text("code")
-        # First call — returns instruction
-        first = runtime.resolve_preferences(str(src), "msg-1", root=str(tmp_path))
-        assert len(first) == 1
-        # Second call — claimed, so returns empty
-        second = runtime.resolve_preferences(str(src), "msg-1", root=str(tmp_path))
-        assert len(second) == 0
+        first = runtime.preference_service.resolve_for_read(str(src), str(tmp_path))
+        assert first is not None
+        second = runtime.preference_service.resolve_for_read(str(src), str(tmp_path))
+        assert second is None  # already loaded
 
-    def test_resolve_preferences_different_messages_separate_claims(
-        self, runtime, tmp_path
-    ):
-        """Different message IDs get separate claims."""
+    def test_resolve_for_read_multiple_files(self, runtime, tmp_path):
+        outer = tmp_path / "outer"
+        inner = outer / "inner"
+        inner.mkdir(parents=True)
+        outer_md = outer / "AGENTS.md"
+        outer_md.write_text("outer")
+        inner_md = inner / "AGENTS.md"
+        inner_md.write_text("inner")
+        src = inner / "src.py"
+        src.write_text("code")
+        result = runtime.preference_service.resolve_for_read(str(src), str(tmp_path))
+        assert result is not None
+        assert "outer" in result
+        assert "inner" in result
+
+    def test_resolve_for_read_cross_session_loaded_once(self, runtime, tmp_path):
         outer = tmp_path / "outer"
         inner = outer / "inner"
         inner.mkdir(parents=True)
@@ -463,53 +320,13 @@ class TestPreferenceResolution:
         outer_md.write_text("rules")
         src = inner / "src.py"
         src.write_text("code")
-        first = runtime.resolve_preferences(str(src), "msg-1", root=str(tmp_path))
-        assert len(first) == 1
-        # Different message — not claimed yet
-        second = runtime.resolve_preferences(str(src), "msg-2", root=str(tmp_path))
-        assert len(second) == 1
-
-    def test_clear_preference_claims_releases_tracking(self, runtime, tmp_path):
-        """After clearing claims, same message can get instructions again."""
-        outer = tmp_path / "outer"
-        inner = outer / "inner"
-        inner.mkdir(parents=True)
-        outer_md = outer / "AGENTS.md"
-        outer_md.write_text("rules")
-        src = inner / "src.py"
-        src.write_text("code")
-        runtime.resolve_preferences(str(src), "msg-1", root=str(tmp_path))
-        runtime.clear_preference_claims("msg-1")
-        # After clear, same message can get instructions again
-        second = runtime.resolve_preferences(str(src), "msg-1", root=str(tmp_path))
-        assert len(second) == 1
-
-    def test_session_stable_claim_id_prevents_cross_step_reinjection(
-        self, runtime, tmp_path
-    ):
-        """Session-stable claim ID (e.g. '{session}:preferences') prevents
-        re-injecting the same AGENTS.md across different steps.
-        This validates the fix for repeated AGENTS.md injection.
-        """
-        outer = tmp_path / "outer"
-        inner = outer / "inner"
-        inner.mkdir(parents=True)
-        outer_md = outer / "AGENTS.md"
-        outer_md.write_text("stable project rules")
-        src = inner / "src.py"
-        src.write_text("code")
-
-        # Simulate step 1 — returns instruction
-        step1 = runtime.resolve_preferences(str(src), "sess-1:preferences", root=str(tmp_path))
-        assert len(step1) == 1
-
-        # Simulate step 2 — same claim_id, should NOT re-inject
-        step2 = runtime.resolve_preferences(str(src), "sess-1:preferences", root=str(tmp_path))
-        assert len(step2) == 0
-
-        # Different session still gets injection
-        other = runtime.resolve_preferences(str(src), "sess-2:preferences", root=str(tmp_path))
-        assert len(other) == 1
+        first = runtime.preference_service.resolve_for_read(str(src), str(tmp_path))
+        assert first is not None
+        # Second call, even with different file but same AGENTS.md path
+        src2 = inner / "other.py"
+        src2.write_text("more code")
+        second = runtime.preference_service.resolve_for_read(str(src2), str(tmp_path))
+        assert second is None
 
     def test_creates_agent_state(self, runtime):
         sys_msg = SystemMessage(content="You are a bot.")
