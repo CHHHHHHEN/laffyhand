@@ -2,27 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import os
-from collections.abc import Iterator
 from pathlib import Path
 
 from loguru import logger
 
-
-def _walk_up(
-    target: str,
-    start: Path | None = None,
-    stop: Path | None = None,
-) -> Iterator[Path]:
-    if start is None:
-        start = Path(os.getcwd()).resolve()
-    if stop is None:
-        stop = Path(os.path.expanduser("~")).resolve()
-    current = start.resolve()
-    while True:
-        yield current / target
-        if current == stop or current.parent == current:
-            break
-        current = current.parent
+from laffyhand.core.preference._walk import _walk_up
 
 
 class PreferenceService:
@@ -138,6 +122,3 @@ class PreferenceService:
 
     def clear_preference_claims(self, message_id: str) -> None:
         self._pref_claims.pop(message_id, None)
-
-
-__all__ = ["PreferenceService"]
