@@ -3,7 +3,9 @@ repos:
     rev: v5.0.0
     hooks:
       - id: trailing-whitespace
+        stages: [pre-commit]
       - id: end-of-file-fixer
+        stages: [pre-commit]
 
   - repo: local
     hooks:
@@ -12,6 +14,7 @@ repos:
         name: mypy
         entry: uv run mypy laffyhand/
         language: system
+        stages: [pre-commit]
         always_run: true
         pass_filenames: false
 
@@ -19,6 +22,7 @@ repos:
         name: ruff check
         entry: uv run ruff check
         language: system
+        stages: [pre-commit]
         always_run: true
         pass_filenames: false
 
@@ -26,6 +30,7 @@ repos:
         name: vulture
         entry: uv run vulture laffyhand/ --min-confidence 70
         language: system
+        stages: [pre-commit]
         always_run: true
         pass_filenames: false
 
@@ -33,6 +38,7 @@ repos:
         name: pytest
         entry: uv run pytest tests/
         language: system
+        stages: [pre-commit]
         always_run: true
         pass_filenames: false
 
@@ -41,6 +47,7 @@ repos:
         name: UI build (tsc + vite)
         entry: bash -c 'cd laffyhand/ui && pnpm build'
         language: system
+        stages: [pre-commit]
         always_run: true
         pass_filenames: false
 
@@ -48,6 +55,7 @@ repos:
         name: eslint
         entry: bash -c 'cd laffyhand/ui && pnpm lint'
         language: system
+        stages: [pre-commit]
         always_run: true
         pass_filenames: false
 
@@ -55,6 +63,7 @@ repos:
         name: vitest
         entry: bash -c 'cd laffyhand/ui && pnpm vitest run'
         language: system
+        stages: [pre-commit]
         always_run: true
         pass_filenames: false
 
