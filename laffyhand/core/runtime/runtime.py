@@ -291,23 +291,6 @@ class AgentRuntime:
         logger.info(f"Manual compaction: {session_id} -> {child.id}")
         return child.id
 
-    # ── Background session tasks ──────────────────────────────
-
-    def is_session_running(self, session_id: str) -> bool:
-        return self.loop_orchestrator.is_session_running(session_id)
-
-    async def start_background_agent_turn(
-        self,
-        session_id: str,
-        event_sink: Callable[[Any], Awaitable[None]] | None = None,
-    ) -> asyncio.Queue:
-        return await self.loop_orchestrator.start_background_agent_turn(
-            session_id, event_sink=event_sink
-        )
-
-    def cancel_background_agent_turn(self, session_id: str) -> None:
-        self.loop_orchestrator.cancel_background_agent_turn(session_id)
-
     async def create_subagent(
         self,
         parent_session_id: str,
