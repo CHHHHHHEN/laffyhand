@@ -46,8 +46,8 @@ class TestSkillLifecycle(unittest.TestCase):
 
         # Skill tool with permission always allowed
         pm = PermissionManager()
-        pm.allow("skill:code-review")
-        pm.allow("skill:deploy")
+        pm.add_rule("skill:code-review", "allow")
+        pm.add_rule("skill:deploy", "allow")
         tool = SkillTool(registry, pm)
 
         # Load skill (permission pre-approved)

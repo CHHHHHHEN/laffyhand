@@ -188,23 +188,6 @@ class SessionManager:
             raise
         return new_count
 
-    def sync_messages(self, session_id: str, messages: list[Message]) -> int:
-        self.ensure_exists(session_id)
-        began = self._begin()
-        try:
-            self._messages.delete_by_session(session_id)
-            for msg in messages:
-                self._messages.insert(message_to_session_message(msg, session_id))
-            self._update_counters(session_id, len(messages))
-            self._end(began)
-        except Exception:
-            self._rollback(began)
-            raise
-        return len(messages)
-
-    def get_message_count(self, session_id: str) -> int:
-        return self._messages.count_by_session(session_id)
-
     def get_messages(
         self, session_id: str, offset: int = 0, limit: int | None = None
     ) -> list[Message]:

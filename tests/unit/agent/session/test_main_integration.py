@@ -4,18 +4,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from laffyhand.core.llm.specs.models import AssistantMessage, SystemMessage, UserMessage
+from laffyhand.core.llm.specs.models import SystemMessage, UserMessage
 from laffyhand.core.session import SessionManager, TitleConfig
 from laffyhand.core.llm.specs.models import (
     StreamText,
     StreamFinish,
     StreamError,
-)
-from laffyhand.core.models import (
-    AgentState,
-    CompactionConfig,
-    SessionID,
-    SessionUsage,
 )
 
 
@@ -95,116 +89,6 @@ class TestGenerateTitle:
         config = TitleConfig(mode="auto")
         result = await generate_title(session_manager, session.id, llm, config)
         assert result is None
-
-
-# ── _compact_on_overflow ─────────────────────────────────────
-
-
-class TestCompactOnOverflow:
-    @pytest.mark.anyio
-    async def test_no_overflow_returns_false(
-        self, session_manager: SessionManager
-    ) -> None:
-        from laffyhand.core.context.chain import compact_on_overflow as _compact_on_overflow
-
-        state = AgentState(
-            messages=[UserMessage(content="hi")],
-            session_id=SessionID("test"),
-            usage=SessionUsage(context_size=128000),
-        )
-        config = CompactionConfig()
-        result = await _compact_on_overflow(state, MagicMock(), config, session_manager)
-        assert result is False
-
-    @pytest.mark.anyio
-    async def test_overflow_with_session_manager(
-        self, session_manager: SessionManager
-    ) -> None:
-        from laffyhand.core.context.chain import compact_on_overflow as _compact_on_overflow
-
-        async def mock_stream(messages, **kwargs):
-            yield StreamText(delta="Summary of conversation.")
-            yield StreamFinish(finish_reason="stop")
-
-        llm = MagicMock()
-        llm.stream = mock_stream
-
-        msgs = [
-            SystemMessage(content="sys"),
-            UserMessage(content="Hello! " * 5000),
-            AssistantMessage(content="Hi! " * 5000),
-            UserMessage(content="More text. " * 5000),
-            AssistantMessage(content="Response. " * 5000),
-        ]
-        session = session_manager.create(messages=msgs)
-        state = AgentState(
-            messages=msgs,
-            turn_count=2,
-            step=0,
-            session_id=session.id,
-            usage=SessionUsage(context_size=2000),
-        )
-        config = CompactionConfig(tail_turns=1)
-        result = await _compact_on_overflow(state, llm, config, session_manager)
-        assert result is True
-        assert state.session_id != session.id
-        assert state.step == 0
-
-    @pytest.mark.anyio
-    async def test_overflow_without_session_manager_returns_false(
-        self, session_manager: SessionManager
-    ) -> None:
-        from laffyhand.core.context.chain import compact_on_overflow as _compact_on_overflow
-
-        async def mock_stream(messages, **kwargs):
-            yield StreamText(delta="Summary.")
-            yield StreamFinish(finish_reason="stop")
-
-        llm = MagicMock()
-        llm.stream = mock_stream
-
-        msgs = [
-            SystemMessage(content="sys"),
-            UserMessage(content="Hello! " * 5000),
-            AssistantMessage(content="Hi! " * 5000),
-            UserMessage(content="More. " * 5000),
-            AssistantMessage(content="Response. " * 5000),
-        ]
-        state = AgentState(
-            messages=msgs,
-            turn_count=2,
-            session_id=SessionID("test-session"),
-            usage=SessionUsage(context_size=2000),
-        )
-        config = CompactionConfig(tail_turns=1)
-        result = await _compact_on_overflow(state, llm, config, None)
-        assert result is False, "compaction without session_manager must return False"
-
-    @pytest.mark.anyio
-    async def test_overflow_with_session_compact_fails(
-        self, session_manager: SessionManager
-    ) -> None:
-        from laffyhand.core.context.chain import compact_on_overflow as _compact_on_overflow
-
-        async def mock_stream(messages, **kwargs):
-            yield StreamError(error="LLM failed")
-
-        llm = MagicMock()
-        llm.stream = mock_stream
-
-        msgs = [
-            SystemMessage(content="sys"),
-            UserMessage(content="Hello! " * 5000),
-        ]
-        session = session_manager.create(messages=msgs)
-        state = AgentState(
-            messages=msgs,
-            session_id=session.id,
-            usage=SessionUsage(context_size=2000),
-        )
-        config = CompactionConfig()
-        result = await _compact_on_overflow(state, llm, config, session_manager)
-        assert result is False
 
 
 # ── create_runtime ─────────────────────────────────────────────

@@ -2,15 +2,13 @@ from __future__ import annotations
 
 import asyncio
 import copy
-from collections.abc import AsyncIterator, Awaitable, Callable
-from contextlib import asynccontextmanager
+from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
 from laffyhand.core.llm.specs.models import SystemMessage
 from laffyhand.core.models import AgentState, SessionID
-from laffyhand.core.exceptions import SessionError
 
 if TYPE_CHECKING:
     from laffyhand.core.session import SessionManager
@@ -48,20 +46,6 @@ class SessionStateStore:
         if session_id not in self._session_locks:
             self._session_locks[session_id] = asyncio.Lock()
         return self._session_locks[session_id]
-
-    # ── Session context ───────────────────────────────────────
-
-    @asynccontextmanager
-    async def use(
-        self,
-        session_id: str,
-    ) -> AsyncIterator[tuple[AgentState, asyncio.Lock]]:
-        state = self._states.get(session_id)
-        if state is None:
-            raise SessionError(f"Session not found: {session_id}")
-        lock = self.get_lock(session_id)
-        async with lock:
-            yield (state, lock)
 
     # ── Pending permissions ───────────────────────────────────
 

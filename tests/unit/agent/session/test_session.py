@@ -146,15 +146,6 @@ class TestMessages:
         loaded = session_manager.get_messages(session.id, limit=2)
         assert len(loaded) == 2
 
-    def test_sync_messages(self, session_manager: SessionManager) -> None:
-        msgs = make_messages()
-        session = session_manager.create(messages=msgs)
-        new_msgs = [SystemMessage(content="New system.")]
-        session_manager.sync_messages(session.id, new_msgs)
-        loaded = session_manager.get_messages(session.id)
-        assert len(loaded) == 1
-        assert loaded[0].content == "New system."
-
     def test_assistant_message_with_tool_calls(
         self, session_manager: SessionManager
     ) -> None:
@@ -264,7 +255,7 @@ class TestStatePersistence:
         session_manager.store_messages(session.id, msgs)
 
         # Verify initial state
-        assert session_manager.get_message_count(session.id) == 3
+        assert len(session_manager.get_messages(session.id)) == 3
 
         # Shutdown: save the exact same state
         state = AgentState(
@@ -594,15 +585,6 @@ class TestAdvancedCRUD:
         session = session_manager.get("nonexistent")
         assert session is not None
         assert session.message_count == 1
-
-    def test_sync_messages_creates_session_if_not_exists(
-        self, session_manager: SessionManager
-    ) -> None:
-        session_manager.sync_messages("nonexistent", [UserMessage(content="hi")])
-        session = session_manager.get("nonexistent")
-        assert session is not None
-        messages = session_manager.get_messages("nonexistent")
-        assert len(messages) == 1
 
     def test_fork_with_custom_title(self, session_manager: SessionManager) -> None:
         msgs = [UserMessage(content="hi")]

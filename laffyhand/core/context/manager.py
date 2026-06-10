@@ -77,33 +77,6 @@ class ContextManager:
         return PreparedContext(messages=messages)
 
     @staticmethod
-    def extract_key_info(messages: list[Message]) -> dict:
-        latest_user = None
-        latest_assistant = None
-        for m in reversed(messages):
-            if isinstance(m, UserMessage) and latest_user is None:
-                latest_user = m
-            if isinstance(m, AssistantMessage) and latest_assistant is None:
-                latest_assistant = m
-            if latest_user and latest_assistant:
-                break
-
-        last_finished_idx = None
-        for i in range(len(messages) - 1, -1, -1):
-            if isinstance(messages[i], AssistantMessage):
-                last_finished_idx = i
-                break
-
-        pending_tasks = messages[last_finished_idx + 1:] if last_finished_idx is not None else []
-
-        return {
-            "latest_user": latest_user,
-            "latest_assistant": latest_assistant,
-            "last_finished_idx": last_finished_idx,
-            "pending_tasks": pending_tasks,
-        }
-
-    @staticmethod
     def _wrap_steer(messages: list[Message], step: int) -> list[Message]:
         if step <= 1:
             return messages

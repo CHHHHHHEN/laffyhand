@@ -31,7 +31,7 @@ async def test_session_save_and_load(db_path):
         UserMessage(content="Hello"),
         AssistantMessage(content="Hi there!"),
     ]
-    sm.sync_messages(session.id, messages)
+    sm.store_messages(session.id, messages)
 
     loaded = sm.get(session.id)
     assert loaded is not None
@@ -95,7 +95,7 @@ async def test_session_compaction_chain_persistence(db_path):
         UserMessage(content="Hello"),
         AssistantMessage(content="World"),
     ]
-    sm.sync_messages(parent.id, messages)
+    sm.store_messages(parent.id, messages)
 
     child = sm.create_compacted_child(
         parent_id=parent.id,

@@ -32,8 +32,8 @@ def tool_registry():
 @pytest.fixture
 def parent_permission():
     pm = PermissionManager()
-    pm.allow("read")
-    pm.allow("write")
+    pm.add_rule("read", "allow")
+    pm.add_rule("write", "allow")
     return pm
 
 

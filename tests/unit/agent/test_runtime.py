@@ -631,7 +631,8 @@ class TestCreateSubagent:
         assert len(todo_events) == 2, f"Expected 2 TodoUpdate events, got {len(todo_events)}: {events}"
 
         # Verify todo status in DB
-        updated = runtime.todo_manager.get_task(todo.id)
+        tasks = runtime.todo_manager.get_tasks(session.id)
+        updated = next((t for t in tasks if t.id == todo.id), None)
         assert updated is not None
         assert updated.status == "completed"
 

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Callable
-
 from loguru import logger
 
 from laffyhand.core.llm.specs.models import (
@@ -13,10 +11,9 @@ from laffyhand.core.llm.specs.models import (
 from laffyhand.core.llm.specs.models import (
     Message,
 )
-from laffyhand.core.models import AgentState, CompactionConfig, SessionID
+from laffyhand.core.models import AgentState, CompactionConfig
 from laffyhand.core._utils import (
     estimate_message_tokens,
-    estimate_messages_tokens,
     estimate_tokens,
 )
 from laffyhand.core.llm.facade import LLM
@@ -27,9 +24,6 @@ from laffyhand.core.context._summarize import (
     _SUMMARY_TAG_OPEN,
     _SUMMARY_TAG_CLOSE,
 )
-
-if TYPE_CHECKING:
-    from laffyhand.core.session import SessionManager
 
 
 def is_overflow(tokens: int, context_size: int, reserved: int) -> bool:
@@ -174,48 +168,3 @@ async def compact_with_chain(
         [compaction_prompt, summary_response],
         tail,
     )
-
-
-async def compact_on_overflow(
-    agent_state: AgentState,
-    llm: LLM,
-    compaction_config: CompactionConfig,
-    session_manager: SessionManager | None = None,
-    on_compacted: Callable[[str], None] | None = None,
-) -> bool:
-    tokens = agent_state.usage.curr_context_usage or estimate_messages_tokens(
-        agent_state.messages
-    )
-    context_size = agent_state.usage.context_size
-    reserved = compaction_config.reserved or min(
-        compaction_config.reserved_buffer, context_size // 4
-    )
-    if not is_overflow(tokens, context_size, reserved):
-        logger.debug(f"No compaction needed: {tokens} tokens within context limit")
-        return False
-    logger.info(f"Compaction triggered: {tokens} tokens")
-
-    if session_manager is None or not agent_state.session_id:
-        logger.error("Compaction requires a session_manager")
-        return False
-
-    result = await compact_with_chain(agent_state, llm, compaction_config)
-    if result is None:
-        return False
-    original_system, summary_messages, tail = result
-    summary_content = next(
-        (m.content for m in summary_messages if isinstance(m, AssistantMessage) and m.content),
-        "",
-    )
-    child = session_manager.create_compacted_child(
-        parent_id=agent_state.session_id,
-        system_messages=original_system,
-        summary_content=summary_content or "",
-        tail_messages=tail,
-    )
-    agent_state.session_id = SessionID(child.id)
-    agent_state.messages = original_system + summary_messages + tail
-    agent_state.step = 0
-    if on_compacted is not None:
-        on_compacted(child.id)
-    return True

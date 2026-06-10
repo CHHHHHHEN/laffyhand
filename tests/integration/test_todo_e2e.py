@@ -247,25 +247,6 @@ class TestTodoE2E:
         assert "Task A" in tool_result
         assert "Task B" in tool_result
 
-    def test_subagent_lifecycle(self, mgr):
-        """Simulate what happens when TaskTool delegates: link → complete."""
-        item = mgr.add_task(SID, "Subagent task")
-        assert item.status == "pending"
-
-        mgr.link_task_tool(item.id, "tool-call-sub-1")
-        assert mgr.get_task(item.id).status == "in_progress"
-
-        mgr.on_subagent_complete("tool-call-sub-1", success=True)
-        assert mgr.get_task(item.id).status == "completed"
-
-    def test_subagent_failure(self, mgr):
-        item = mgr.add_task(SID, "Subagent task")
-        mgr.link_task_tool(item.id, "tool-call-sub-2")
-        mgr.on_subagent_complete("tool-call-sub-2", success=False)
-        got = mgr.get_task(item.id)
-        assert got.status == "pending"
-        assert got.task_tool_id is None
-
     def test_tool_read_filter_by_status(self, tool, mgr):
         asyncio.run(
             tool.run({"operation": "add", "content": "active", "session_id": SID})

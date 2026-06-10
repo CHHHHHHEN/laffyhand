@@ -86,11 +86,6 @@ class ToolRegistry:
             self._tools[tool.name] = tool
             self._dirty = True
 
-    def unregister_tool(self, name: str) -> None:
-        with self._lock:
-            self._tools.pop(name, None)
-            self._dirty = True
-
     def unregister_by_prefix(self, prefix: str) -> int:
         unregistered = 0
         with self._lock:

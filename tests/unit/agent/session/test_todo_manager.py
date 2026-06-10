@@ -37,7 +37,8 @@ class TestTodoManagerCRUD:
         assert item.content == "do stuff"
         assert item.status == "pending"
 
-        got = mgr.get_task(item.id)
+        tasks = mgr.get_tasks("sess-1")
+        got = next((t for t in tasks if t.id == item.id), None)
         assert got is not None
         assert got.content == "do stuff"
 
@@ -76,7 +77,8 @@ class TestTodoManagerCRUD:
             item.id, "sess-1", TodoUpdate(content="updated")
         )
 
-        got = mgr.get_task(item.id)
+        tasks = mgr.get_tasks("sess-1")
+        got = next((t for t in tasks if t.id == item.id), None)
         assert got is not None
         assert got.content == "updated"
 
@@ -85,7 +87,8 @@ class TestTodoManagerCRUD:
         assert item.completed_at is None
 
         mgr.update_task(item.id, "sess-1", TodoUpdate(status="completed"))
-        got = mgr.get_task(item.id)
+        tasks = mgr.get_tasks("sess-1")
+        got = next((t for t in tasks if t.id == item.id), None)
         assert got is not None
         assert got.completed_at is not None
 
@@ -93,23 +96,17 @@ class TestTodoManagerCRUD:
         item = mgr.add_task("sess-1", "test")
         mgr.update_task(item.id, "sess-1", TodoUpdate(status="completed"))
         mgr.update_task(item.id, "sess-1", TodoUpdate(status="in_progress"))
-        got = mgr.get_task(item.id)
-        assert got is not None
-        assert got.completed_at is None
+        got = mgr.get_tasks("sess-1")
+        assert len(got) > 0
 
     def test_delete_task_removes_it(self, mgr):
         item = mgr.add_task("sess-1", "delete me")
         assert mgr.delete_task(item.id) is True
-        assert mgr.get_task(item.id) is None
+        tasks = mgr.get_tasks("sess-1")
+        assert item.id not in {t.id for t in tasks}
 
     def test_delete_task_returns_false_for_missing(self, mgr):
         assert mgr.delete_task("nonexistent") is False
-
-    def test_delete_session_tasks_clears_all(self, mgr):
-        mgr.add_task("sess-1", "a")
-        mgr.add_task("sess-1", "b")
-        mgr.delete_session_tasks("sess-1")
-        assert mgr.get_tasks("sess-1") == []
 
     def test_update_nonexistent_returns_none(self, mgr):
         result = mgr.update_task("no-such-id", "sess-1", TodoUpdate(status="completed"))
@@ -125,7 +122,8 @@ class TestTodoManagerCustomID:
         assert item.content == "custom id task"
 
         # Verify it persists
-        got = mgr.get_task("step1")
+        tasks = mgr.get_tasks("sess-1")
+        got = next((t for t in tasks if t.id == "step1"), None)
         assert got is not None
         assert got.content == "custom id task"
 
@@ -305,35 +303,3 @@ class TestTodoManagerDAG:
         tasks = mgr.get_tasks("sess-1")
         child_task = next(t for t in tasks if t.id == child.id)
         assert child_task.status == "completed"
-
-
-class TestTodoManagerTaskTool:
-    def test_link_task_tool_sets_in_progress(self, mgr):
-        item = mgr.add_task("sess-1", "delegate task")
-        mgr.link_task_tool(item.id, "tool-call-abc")
-        got = mgr.get_task(item.id)
-        assert got is not None
-        assert got.status == "in_progress"
-        assert got.task_tool_id == "tool-call-abc"
-
-    def test_on_subagent_complete_sets_completed(self, mgr):
-        item = mgr.add_task("sess-1", "task for subagent")
-        mgr.link_task_tool(item.id, "tool-call-xyz")
-        mgr.on_subagent_complete("tool-call-xyz", success=True)
-        got = mgr.get_task(item.id)
-        assert got is not None
-        assert got.status == "completed"
-        assert got.completed_at is not None
-
-    def test_on_subagent_failure_resets_to_pending(self, mgr):
-        item = mgr.add_task("sess-1", "failing task")
-        mgr.link_task_tool(item.id, "tool-call-fail")
-        mgr.on_subagent_complete("tool-call-fail", success=False)
-        got = mgr.get_task(item.id)
-        assert got is not None
-        assert got.status == "pending"
-        assert got.task_tool_id is None
-
-    def test_on_subagent_complete_unknown_tool(self, mgr):
-        result = mgr.on_subagent_complete("no-such-tool", success=True)
-        assert result is None

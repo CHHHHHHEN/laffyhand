@@ -544,49 +544,6 @@ class TestSummaryChain(unittest.TestCase):
         )
 
 
-class TestContextManagerKeyInfo(unittest.TestCase):
-    def test_extract_key_info_empty(self):
-        info = ContextManager.extract_key_info([])
-        self.assertIsNone(info["latest_user"])
-        self.assertIsNone(info["latest_assistant"])
-        self.assertIsNone(info["last_finished_idx"])
-        self.assertEqual(info["pending_tasks"], [])
-
-    def test_extract_key_info_basic(self):
-        msgs = [
-            SystemMessage(content="sys"),
-            UserMessage(content="user1"),
-            AssistantMessage(content="asst1"),
-            UserMessage(content="user2"),
-            AssistantMessage(content="asst2", tool_calls=[ToolCallContent(tool_call_id="c1", tool_name="read", args="{}")]),
-        ]
-        info = ContextManager.extract_key_info(msgs)
-        self.assertEqual(info["latest_user"] and info["latest_user"].content, "user2")
-        self.assertEqual(info["latest_assistant"] and info["latest_assistant"].content, "asst2")
-        self.assertEqual(info["last_finished_idx"], 4)
-        self.assertEqual(info["pending_tasks"], [])
-
-    def test_extract_key_info_with_pending_tasks(self):
-        msgs = [
-            SystemMessage(content="sys"),
-            UserMessage(content="user1"),
-            AssistantMessage(content="asst1"),
-            ToolMessage(tool_call_id="c1", content="result"),
-            UserMessage(content="pending steer"),
-        ]
-        info = ContextManager.extract_key_info(msgs)
-        self.assertEqual(len(info["pending_tasks"]), 2)
-        self.assertIsInstance(info["pending_tasks"][0], ToolMessage)
-        self.assertIsInstance(info["pending_tasks"][1], UserMessage)
-
-    def test_extract_key_info_only_system(self):
-        msgs = [SystemMessage(content="sys")]
-        info = ContextManager.extract_key_info(msgs)
-        self.assertIsNone(info["latest_user"])
-        self.assertIsNone(info["latest_assistant"])
-        self.assertEqual(info["last_finished_idx"], None)
-
-
 class TestWrapSteer(unittest.TestCase):
     def test_no_wrap_when_step_one(self):
         msgs = [UserMessage(content="hello")]

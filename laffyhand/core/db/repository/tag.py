@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import sqlite3
 from datetime import datetime, timezone
 
@@ -66,16 +65,3 @@ class FileTagRepo:
             return False
         self._conn.execute("DELETE FROM file_tag WHERE path=?", (path,))
         return True
-
-    def delete_missing(self) -> int:
-        rows = self._conn.execute("SELECT path FROM file_tag").fetchall()
-        deleted = 0
-        for row in rows:
-            if not os.path.exists(row["path"]):
-                self._conn.execute("DELETE FROM file_tag WHERE path=?", (row["path"],))
-                deleted += 1
-        return deleted
-
-    def get_all_paths(self) -> list[str]:
-        rows = self._conn.execute("SELECT path FROM file_tag").fetchall()
-        return [r["path"] for r in rows]

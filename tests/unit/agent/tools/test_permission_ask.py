@@ -16,7 +16,7 @@ class TestPermissionAsk(unittest.TestCase):
         self.assertIsNone(reason)
 
     def test_ask_allowed_by_rule(self):
-        self.pm.allow("skill:test")
+        self.pm.add_rule("skill:test", "allow")
         allowed, reason = asyncio.run(self.pm.ask("skill", ["test"]))
         self.assertTrue(allowed)
         self.assertIsNone(reason)
@@ -28,8 +28,8 @@ class TestPermissionAsk(unittest.TestCase):
         self.assertFalse(allowed)
 
     def test_ask_all_allowed_through_allow_rule(self):
-        self.pm.allow("skill:good")
-        self.pm.allow("skill:bad")
+        self.pm.add_rule("skill:good", "allow")
+        self.pm.add_rule("skill:bad", "allow")
         allowed, _ = asyncio.run(self.pm.ask("skill", ["good", "bad"]))
         self.assertTrue(allowed)
 
@@ -106,7 +106,7 @@ class TestPermissionAskCallback(unittest.TestCase):
         self.assertEqual(reason, "not needed right now")
 
     def test_callback_not_called_when_rule_exists(self):
-        self.pm.allow("skill:test")
+        self.pm.add_rule("skill:test", "allow")
         self.pm.request_callback = lambda p, pat: (_ for _ in ()).throw(
             AssertionError("should not be called")
         )

@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Any, Optional
 
 import sqlite3
 
-from laffyhand.core.db.models import TodoItem, TodoStatus, generate_id, utcnow
+from laffyhand.core.db.models import TodoItem, generate_id, utcnow
 from laffyhand.core.session.todo.models import TodoCreate, TodoUpdate
 from laffyhand.core.db.repository.common import _ts
 
@@ -51,9 +51,6 @@ class TodoManager:
         raise
 
     # ── CRUD (delegates to repo) ─────────────────────────────
-
-    def get_task(self, task_id: str) -> Optional[TodoItem]:
-        return self._repo.get(task_id)
 
     def get_tasks(
         self, session_id: str, status: Optional[str] = None
@@ -239,14 +236,6 @@ class TodoManager:
         ids = [t.id for t in tasks if t.status in statuses]
         return self.delete_tasks(ids)
 
-    def delete_session_tasks(self, session_id: str) -> None:
-        try:
-            self._repo.delete_by_session(session_id)
-            self._repo.commit()
-        except Exception:
-            self._repo.rollback()
-            raise
-
     # ── DAG ───────────────────────────────────────────────────
 
     def _compute_blocked(self, tasks: list[TodoItem]) -> None:
@@ -322,28 +311,3 @@ class TodoManager:
                         changed = True
         if changed:
             self._repo.commit()
-
-    # ── TaskTool integration ──────────────────────────────────
-
-    def link_task_tool(self, task_id: str, tool_call_id: str) -> Optional[TodoItem]:
-        item = self._repo.get(task_id)
-        if item is None:
-            return None
-        return self.update_task(
-            task_id,
-            item.session_id,
-            TodoUpdate(task_tool_id=tool_call_id, status="in_progress"),
-        )
-
-    def on_subagent_complete(
-        self, tool_call_id: str, success: bool
-    ) -> Optional[TodoItem]:
-        item = self._repo.get_by_task_tool_id(tool_call_id)
-        if item is None:
-            return None
-        new_status: TodoStatus = "completed" if success else "pending"
-        return self.update_task(
-            item.id,
-            item.session_id,
-            TodoUpdate(status=new_status, task_tool_id=None),
-        )

@@ -102,21 +102,6 @@ class TestFileTagRepo:
     def test_delete_nonexistent(self, repo):
         assert repo.delete("/tmp/nonexistent.py") is False
 
-    def test_delete_missing(self, repo, tmp_path):
-        f = tmp_path / "existent.py"
-        f.write_text("ok")
-        repo.upsert(str(f), content="exists")
-        repo.upsert(str(tmp_path / "missing.py"), content="gone")
-        assert repo.delete_missing() == 1
-
-    def test_get_all_paths(self, repo):
-        repo.upsert("/tmp/a.py", content="a")
-        repo.upsert("/tmp/b.py", content="b")
-        paths = repo.get_all_paths()
-        assert len(paths) == 2
-        assert "/tmp/a.py" in paths
-
-
 class TestTagTool:
     def test_add(self, tool, temp_file):
         result = asyncio.run(

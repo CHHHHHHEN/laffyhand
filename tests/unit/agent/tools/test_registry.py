@@ -42,10 +42,6 @@ class TestRegistry(unittest.TestCase):
         self.assertIn("echo", prompt)
         self.assertIn("Echo back input", prompt)
 
-    def test_unregister(self):
-        self.registry.unregister_tool("echo")
-        self.assertEqual(len(asyncio.run(self.registry.build_tool_definitions())), 0)
-
     def test_cache_invalidated_on_register(self):
         defs1 = asyncio.run(self.registry.build_tool_definitions())
         self.registry.register_tool(EchoTool())
@@ -54,11 +50,6 @@ class TestRegistry(unittest.TestCase):
 
     def test_run_unknown_tool_returns_error_message(self):
         result = asyncio.run(self.registry.run_tool("nonexistent", {}))
-        self.assertIn("not registered", result)
-
-    def test_run_unregistered_tool_after_unregister(self):
-        self.registry.unregister_tool("echo")
-        result = asyncio.run(self.registry.run_tool("echo", {}))
         self.assertIn("not registered", result)
 
     def test_build_tool_definitions_exclude(self):

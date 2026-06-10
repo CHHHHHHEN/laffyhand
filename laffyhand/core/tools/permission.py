@@ -27,9 +27,6 @@ class PermissionManager:
             Callable[[str, str], Awaitable[tuple[bool, str | None]]] | None
         ) = None
 
-    def allow(self, tool_name: str) -> None:
-        self._rules[tool_name] = "allow"
-
     def deny(self, tool_name: str) -> None:
         self._rules[tool_name] = "deny"
 

@@ -18,7 +18,7 @@ class TestPermission(unittest.TestCase):
     def test_allow_override(self):
         pm = PermissionManager()
         pm.deny("bash")
-        pm.allow("bash")
+        pm.add_rule("bash", "allow")
         self.assertTrue(pm.check("bash"))
 
     def test_deny_one_not_others(self):
@@ -45,7 +45,7 @@ class TestRequirePath(unittest.TestCase):
                 )
 
     def test_outside_allowed_exact_path(self):
-        self.pm.allow("outside_workspace:/outside/file.py")
+        self.pm.add_rule("outside_workspace:/outside/file.py", "allow")
         allowed, _ = asyncio.run(
             self.pm.require_path("read", "/outside/file.py", "/home/user/project")
         )
@@ -59,14 +59,14 @@ class TestRequirePath(unittest.TestCase):
         self.assertFalse(allowed)
 
     def test_outside_subdir_allowed_by_parent_dir(self):
-        self.pm.allow("outside_workspace:/outside/dir")
+        self.pm.add_rule("outside_workspace:/outside/dir", "allow")
         allowed, _ = asyncio.run(
             self.pm.require_path("read", "/outside/dir/sub/file.py", "/home/user/project")
         )
         self.assertTrue(allowed)
 
     def test_outside_subdir_allowed_by_grandparent_dir(self):
-        self.pm.allow("outside_workspace:/outside")
+        self.pm.add_rule("outside_workspace:/outside", "allow")
         allowed, _ = asyncio.run(
             self.pm.require_path("read", "/outside/a/b/c/file.py", "/home/user/project")
         )
@@ -80,7 +80,7 @@ class TestRequirePath(unittest.TestCase):
         self.assertFalse(allowed)
 
     def test_outside_sibling_not_allowed(self):
-        self.pm.allow("outside_workspace:/outside/dir_a")
+        self.pm.add_rule("outside_workspace:/outside/dir_a", "allow")
         with patch("asyncio.to_thread", side_effect=EOFError):
             with self.assertRaises(RuntimeError):
                 asyncio.run(
@@ -88,7 +88,7 @@ class TestRequirePath(unittest.TestCase):
                 )
 
     def test_outside_allowed_file_not_confused_with_dir(self):
-        self.pm.allow("outside_workspace:/outside/file.py")
+        self.pm.add_rule("outside_workspace:/outside/file.py", "allow")
         with patch("asyncio.to_thread", side_effect=EOFError):
             with self.assertRaises(RuntimeError):
                 asyncio.run(
@@ -136,7 +136,7 @@ class TestRequirePath(unittest.TestCase):
 
     def test_check_parent_rules_checks_path_itself(self):
         """_check_parent_rules should find a rule for the exact path, not just parents."""
-        self.pm.allow("outside_workspace:/outside/dir")
+        self.pm.add_rule("outside_workspace:/outside/dir", "allow")
         # Access the directory itself — previously required ask(),
         # now handled by _check_parent_rules
         allowed, _ = asyncio.run(
@@ -148,9 +148,9 @@ class TestRequirePath(unittest.TestCase):
 class TestPermissionParentDelegation(unittest.TestCase):
     def setUp(self):
         self.parent = PermissionManager()
-        self.parent.allow("read")
-        self.parent.allow("write")
-        self.parent.allow("outside_workspace:/allowed_dir")
+        self.parent.add_rule("read", "allow")
+        self.parent.add_rule("write", "allow")
+        self.parent.add_rule("outside_workspace:/allowed_dir", "allow")
         self.child = PermissionManager(parent=self.parent)
 
     def test_child_sees_parent_allow_rules(self):
@@ -171,7 +171,7 @@ class TestPermissionParentDelegation(unittest.TestCase):
     def test_child_override_allow(self):
         """Child's allow rule overrides parent's deny."""
         self.parent.deny("bash")
-        self.child.allow("bash")
+        self.child.add_rule("bash", "allow")
         self.assertTrue(self.child.check("bash"))
 
     def test_child_no_rules_default_allow(self):
@@ -183,7 +183,7 @@ class TestPermissionParentDelegation(unittest.TestCase):
         """Child sees rules added to parent after child was created.
         This is the core fix: "always allow" on parent must be visible to child immediately."""
         # Parent adds a new rule after child is created
-        self.parent.allow("list_dir")
+        self.parent.add_rule("list_dir", "allow")
         self.assertTrue(self.child.check("list_dir"))
 
     def test_child_sees_parent_pattern_rules_added_after_creation(self):
@@ -196,7 +196,7 @@ class TestPermissionParentDelegation(unittest.TestCase):
     def test_get_rules_merges_parent(self):
         """get_rules() returns merged parent + child rules, with child taking precedence."""
         self.parent.deny("bash")
-        self.parent.allow("outside_workspace:/etc")
+        self.parent.add_rule("outside_workspace:/etc", "allow")
         self.child.deny("write")
         merged = self.child.get_rules()
         self.assertEqual(merged.get("bash"), "deny")
@@ -229,7 +229,7 @@ class TestPermissionParentDelegation(unittest.TestCase):
 
     def test_ask_honors_parent_pattern_rule(self):
         """Child's ask() checks parent's pattern rules before calling callback."""
-        self.parent.allow("skill:test")
+        self.parent.add_rule("skill:test", "allow")
         call_count = 0
 
         async def callback(permission, pattern):
@@ -244,7 +244,7 @@ class TestPermissionParentDelegation(unittest.TestCase):
 
     def test_require_path_uses_parent_rules(self):
         """require_path on child finds rules from parent's PermissionManager."""
-        self.parent.allow("outside_workspace:/outside/dir")
+        self.parent.add_rule("outside_workspace:/outside/dir", "allow")
         allowed, _ = asyncio.run(
             self.child.require_path("read", "/outside/dir/sub/file.py", "/home/user/project")
         )
@@ -303,8 +303,8 @@ class TestPermissionParentDelegation(unittest.TestCase):
 class TestSubagentPermissionsCompose(unittest.TestCase):
     def setUp(self):
         self.parent_pm = PermissionManager()
-        self.parent_pm.allow("read")
-        self.parent_pm.allow("write")
+        self.parent_pm.add_rule("read", "allow")
+        self.parent_pm.add_rule("write", "allow")
 
     def test_compose_no_agent_deny(self):
         """Compose with no agent deny rules creates child that delegates to parent."""
@@ -321,7 +321,7 @@ class TestSubagentPermissionsCompose(unittest.TestCase):
     def test_compose_child_sees_parent_updates(self):
         """Child created via compose sees rules added to parent after creation."""
         child = SubagentPermissions.compose(self.parent_pm, {})
-        self.parent_pm.allow("list_dir")
+        self.parent_pm.add_rule("list_dir", "allow")
         self.assertTrue(child.check("list_dir"))
 
     def test_compose_with_parent_session_permission(self):
