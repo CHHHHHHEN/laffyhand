@@ -5,7 +5,7 @@ import tempfile
 
 import pytest
 
-from laffyhand.core.llm.specs.models import AssistantMessage, SystemMessage, UserMessage
+from laffyhand.core.domain.messages import AssistantMessage, SystemMessage, UserMessage
 from laffyhand.core.session import SessionManager
 from laffyhand.core.models import (
     AgentState,

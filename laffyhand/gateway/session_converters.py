@@ -4,7 +4,7 @@ import itertools
 import time
 from typing import Any
 
-from laffyhand.core.llm.specs.models import (
+from laffyhand.core.domain.messages import (
     AssistantMessage,
     Message,
     SystemMessage,

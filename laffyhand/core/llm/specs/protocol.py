@@ -1,11 +1,11 @@
 from abc import ABC, abstractmethod
 from typing import ClassVar, List
 
+from laffyhand.core.domain.messages import ProviderID
 from laffyhand.core.llm.specs.models import (
     Frame,
     LLMRequest,
     ProviderRequest,
-    ProviderID,
 )
 from laffyhand.core.llm.specs.models import LLMEvent
 

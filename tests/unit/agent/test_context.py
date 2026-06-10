@@ -16,15 +16,17 @@ from laffyhand.core.context.chain import (
     is_overflow,
     select_tail,
 )
-from laffyhand.core.llm.specs.models import (
+from laffyhand.core.domain.messages import (
     AssistantMessage,
-    StreamError,
-    StreamFinish,
-    StreamText,
     SystemMessage,
     ToolCallContent,
     ToolMessage,
     UserMessage,
+)
+from laffyhand.core.llm.specs.models import (
+    StreamError,
+    StreamFinish,
+    StreamText,
 )
 from laffyhand.core.models import (
     AgentState,

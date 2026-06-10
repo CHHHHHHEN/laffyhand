@@ -17,7 +17,7 @@ from laffyhand.core.models import (
     ToolError,
     ToolResult,
 )
-from laffyhand.core.llm.specs.models import SystemMessage, UserMessage
+from laffyhand.core.domain.messages import SystemMessage, UserMessage
 from laffyhand.core.models import AgentState, SessionID, SessionUsage
 from laffyhand.core.agent import assemble_subagent_prompt
 from laffyhand.core.tools.permission import SubagentPermissions

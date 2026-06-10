@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from laffyhand.core.llm.specs.models import SystemMessage, UserMessage
+from laffyhand.core.domain.messages import SystemMessage, UserMessage
 from laffyhand.core.session import SessionManager, TitleConfig
 from laffyhand.core.llm.specs.models import (
     StreamText,

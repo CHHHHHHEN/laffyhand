@@ -5,7 +5,7 @@ from collections.abc import Callable
 
 from loguru import logger
 
-from laffyhand.core.llm.specs.models import Message, SystemMessage, UserMessage
+from laffyhand.core.domain.messages import Message, SystemMessage, UserMessage
 from laffyhand.core.session.models import TitleConfig
 from laffyhand.core.llm.facade import LLM, stream_text
 from laffyhand.core.session.manager import SessionManager

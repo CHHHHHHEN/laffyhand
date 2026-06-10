@@ -6,13 +6,13 @@ from collections.abc import Sequence
 
 from loguru import logger
 
-from laffyhand.core.llm.specs.models import (
+from laffyhand.core.domain.messages import (
     AssistantMessage,
     Message,
     SystemMessage,
     UserMessage,
 )
-from laffyhand.core.llm.specs.models import ModelID, ProviderID
+from laffyhand.core.domain.messages import ModelID, ProviderID
 from laffyhand.core.db.models import Session, utcnow
 from laffyhand.core.session.converters import (
     message_to_session_message,

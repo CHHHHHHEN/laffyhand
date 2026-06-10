@@ -6,7 +6,7 @@ from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
-from laffyhand.core.llm.specs.models import ModelID, ProviderID
+from laffyhand.core.domain.messages import ModelID, ProviderID
 
 
 def utcnow() -> datetime:

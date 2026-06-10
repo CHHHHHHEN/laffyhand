@@ -12,7 +12,7 @@ from laffyhand.core.models import (
     StepFinish,
     TextDelta,
 )
-from laffyhand.core.llm.specs.models import SystemMessage, UserMessage
+from laffyhand.core.domain.messages import SystemMessage, UserMessage
 from laffyhand.core.tools.permission import request_callback as _pm_callback
 from laffyhand.gateway.protocol import Notification
 

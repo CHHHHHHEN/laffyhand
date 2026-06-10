@@ -4,8 +4,8 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from laffyhand.core.llm.specs.models import ToolMessage
-from laffyhand.core.llm.specs.models import ToolCallContent
+from laffyhand.core.domain.messages import ToolMessage
+from laffyhand.core.domain.messages import ToolCallContent
 from laffyhand.core.tools.registry import ToolRegistry, ToolExecutionResult
 
 

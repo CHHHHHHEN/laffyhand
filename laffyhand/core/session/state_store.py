@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
-from laffyhand.core.llm.specs.models import SystemMessage
+from laffyhand.core.domain.messages import SystemMessage
 from laffyhand.core.models import AgentState, SessionID
 
 if TYPE_CHECKING:

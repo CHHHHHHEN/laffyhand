@@ -11,7 +11,7 @@ from laffyhand.core.context.chain import (
     select_tail,
 )
 from laffyhand.core.context._prune import prune
-from laffyhand.core.llm.specs.models import AssistantMessage, Message, UserMessage
+from laffyhand.core.domain.messages import AssistantMessage, Message, UserMessage
 from laffyhand.core.models import AgentState, CompactionConfig, SessionID
 from laffyhand.core._utils import estimate_messages_tokens
 

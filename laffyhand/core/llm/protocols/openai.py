@@ -2,26 +2,28 @@ from typing import Any, ClassVar, Union, Optional, Literal, cast, get_args
 from pydantic import BaseModel, Field as F
 from loguru import logger
 
-from laffyhand.core.llm.specs.models import (
+from laffyhand.core.domain.messages import (
     AssistantMessage,
+    FinishReason,
+    Message,
+    ProviderID,
+    ToolCallAccumulator,
+    ToolDefinition,
+    Usage,
+)
+from laffyhand.core.llm.specs.models import (
     LLMRequest,
     Frame,
     ProviderRequest,
-    Message,
-    ToolCallAccumulator,
 )
 from laffyhand.core.llm.specs.models import (
-    ToolDefinition,
     LLMEvent,
     StreamText,
     StreamReasoning,
     StreamToolCall,
     StreamFinish,
-    Usage,
-    FinishReason,
 )
 from laffyhand.core.llm.specs import Protocol, Endpoint
-from laffyhand.core.llm.specs.models import ProviderID
 
 
 # ─── Request wire models ─────────────────────────────────────────

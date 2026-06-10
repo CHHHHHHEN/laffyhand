@@ -6,7 +6,7 @@ import json
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from laffyhand.core.llm.specs.models import AssistantMessage, SystemMessage, ToolMessage, UserMessage
+from laffyhand.core.domain.messages import AssistantMessage, SystemMessage, ToolMessage, UserMessage
 from laffyhand.gateway import handlers
 from laffyhand.gateway.handlers import (
     handle_initialize,
@@ -32,7 +32,7 @@ from laffyhand.gateway.handlers import (
     handle_workspace_set,
 )
 from laffyhand.gateway.session_converters import _serialize_messages, _next_msg_id
-from laffyhand.core.llm.specs.models import (
+from laffyhand.core.domain.messages import (
     ToolCallContent,
     Usage,
 )

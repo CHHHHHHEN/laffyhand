@@ -1,6 +1,6 @@
 import unittest
-from laffyhand.core.llm.specs.models import AssistantMessage, SystemMessage, ToolMessage, UserMessage
-from laffyhand.core.llm.specs.models import (
+from laffyhand.core.domain.messages import AssistantMessage, SystemMessage, ToolMessage, UserMessage
+from laffyhand.core.domain.messages import (
     ToolCallContent,
     ToolDefinition,
     Usage,

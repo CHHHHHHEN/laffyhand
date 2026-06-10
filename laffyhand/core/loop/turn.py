@@ -8,16 +8,20 @@ from pydantic import BaseModel
 
 from loguru import logger
 
-from laffyhand.core.llm.specs.models import AssistantMessage, Message, UserMessage
+from laffyhand.core.domain.messages import (
+    AssistantMessage,
+    FinishReason,
+    Message,
+    ToolCallContent,
+    Usage,
+    UserMessage,
+)
 from laffyhand.core.llm.specs.models import (
     StreamText,
     StreamReasoning,
     StreamToolCall,
     StreamFinish,
     StreamError,
-    FinishReason,
-    ToolCallContent,
-    Usage,
     LLMEvent,
 )
 from laffyhand.core.models import (

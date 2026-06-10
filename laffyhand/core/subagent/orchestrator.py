@@ -10,7 +10,7 @@ from laffyhand.core.models import (
     SubAgentStart,
     TodoUpdate as TodoUpdateEvent,
 )
-from laffyhand.core.llm.specs.models import AssistantMessage
+from laffyhand.core.domain.messages import AssistantMessage
 from laffyhand.core.models import CompactionConfig
 from laffyhand.core.session.todo import TodoUpdate as TodoStatusUpdate
 from laffyhand.core.subagent._shared import (

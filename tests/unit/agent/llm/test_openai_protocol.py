@@ -1,8 +1,8 @@
 import unittest
-from laffyhand.core.llm.specs.models import AssistantMessage, LLMRequest, SystemMessage, ToolMessage, UserMessage
+from laffyhand.core.domain.messages import AssistantMessage, SystemMessage, ToolMessage, UserMessage
+from laffyhand.core.llm.specs.models import LLMRequest
+from laffyhand.core.domain.messages import ToolCallContent, ToolDefinition
 from laffyhand.core.llm.specs.models import (
-    ToolCallContent,
-    ToolDefinition,
     StreamText,
     StreamReasoning,
     StreamToolCall,

@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 
-from laffyhand.core.llm.specs.models import (
+from laffyhand.core.domain.messages import (
     AssistantMessage,
     Message,
     SystemMessage,

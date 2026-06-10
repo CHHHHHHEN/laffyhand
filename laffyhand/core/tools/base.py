@@ -3,7 +3,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from laffyhand.core.llm.specs.models import ToolDefinition
+from laffyhand.core.domain.messages import ToolDefinition
 
 
 class BaseTool(ABC):

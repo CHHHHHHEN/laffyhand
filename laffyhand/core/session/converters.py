@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 
-from laffyhand.core.llm.specs.models import (
+from laffyhand.core.domain.messages import (
     AssistantMessage,
     Message,
     SystemMessage,
@@ -30,7 +30,7 @@ from laffyhand.core.db.models import (
     generate_id,
     utcnow,
 )
-from laffyhand.core.llm.specs.models import ModelID, ProviderID
+from laffyhand.core.domain.messages import ModelID, ProviderID
 
 
 def message_to_session_message(msg: Message, session_id: str) -> SessionMessage:

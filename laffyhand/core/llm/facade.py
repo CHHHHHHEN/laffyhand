@@ -2,13 +2,13 @@ from collections.abc import AsyncIterator
 from typing import Optional
 
 from loguru import logger
-from laffyhand.core.llm.specs.models import LLMRequest, Message, ModelID, ProviderID
+from laffyhand.core.domain.messages import Message, ModelID, ProviderID, ToolDefinition
+from laffyhand.core.llm.specs.models import LLMRequest
 from laffyhand.core.llm.specs.models import (
     LLMEvent,
     StreamError,
     StreamFinish,
     StreamText,
-    ToolDefinition,
 )
 from laffyhand.core.llm._route import Route
 

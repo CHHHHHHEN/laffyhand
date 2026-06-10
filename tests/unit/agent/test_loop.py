@@ -2,8 +2,8 @@ import asyncio
 import unittest
 from collections.abc import AsyncIterator
 
-from laffyhand.core.llm.specs.models import AssistantMessage, SystemMessage, UserMessage
-from laffyhand.core.llm.specs.models import Usage
+from laffyhand.core.domain.messages import AssistantMessage, SystemMessage, UserMessage
+from laffyhand.core.domain.messages import Usage
 from laffyhand.core.models import (
     AgentState,
     CompactionConfig,

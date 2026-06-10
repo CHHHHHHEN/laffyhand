@@ -5,7 +5,7 @@ from typing import NewType
 from loguru import logger
 from pydantic import BaseModel, Field
 
-from laffyhand.core.llm.specs.models import Message, Usage
+from laffyhand.core.domain.messages import Message, Usage
 
 SessionID = NewType("SessionID", str)
 

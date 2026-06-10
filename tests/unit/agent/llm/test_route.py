@@ -3,13 +3,14 @@ from collections.abc import AsyncIterator
 
 from laffyhand.core.llm._route import Route
 from laffyhand.core.llm.specs import Protocol, Endpoint, Auth, Framing
-from laffyhand.core.llm.specs.models import LLMRequest, SystemMessage, UserMessage, Header
+from laffyhand.core.domain.messages import SystemMessage, UserMessage
+from laffyhand.core.llm.specs.models import LLMRequest, Header
+from laffyhand.core.domain.messages import Usage
 from laffyhand.core.llm.specs.models import (
     StreamError,
     LLMEvent,
     StreamText,
     StreamFinish,
-    Usage,
 )
 
 

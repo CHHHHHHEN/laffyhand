@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, AsyncMock, patch
 import pytest
 
 from laffyhand.core.agent import AgentInfo
-from laffyhand.core.llm.specs.models import AssistantMessage, SystemMessage, UserMessage
+from laffyhand.core.domain.messages import AssistantMessage, SystemMessage, UserMessage
 from laffyhand.core.memory.service import MemoryService
 from laffyhand.core.runtime import AgentRuntime
 from laffyhand.core.subagent.orchestrator import MAX_SUBAGENT_DEPTH

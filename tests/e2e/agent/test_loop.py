@@ -1,9 +1,9 @@
 import asyncio
 import unittest
 
-from laffyhand.core.llm.specs.models import SystemMessage, ToolMessage
+from laffyhand.core.domain.messages import SystemMessage, ToolMessage
+from laffyhand.core.domain.messages import Usage
 from laffyhand.core.llm.specs.models import (
-    Usage,
     StreamText,
     StreamToolCall,
     StreamFinish,

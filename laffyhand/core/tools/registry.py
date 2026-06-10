@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from loguru import logger
-from laffyhand.core.llm.specs.models import ToolDefinition, ToolCallContent, ToolMessage
+from laffyhand.core.domain.messages import ToolDefinition, ToolCallContent, ToolMessage
 from laffyhand.core.tools.base import BaseTool
 from laffyhand.core.tools.permission import PermissionManager
 from laffyhand.core._utils import truncate_output

@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
-from laffyhand.core.llm.specs.models import AssistantMessage, ModelID, ProviderID, SystemMessage
+from laffyhand.core.domain.messages import AssistantMessage, ModelID, ProviderID, SystemMessage
 from laffyhand.core.models import AgentEvent, AgentState, CompactionConfig, SessionID
 from laffyhand.core.agent import AgentRegistry, assemble_system_prompt
 from laffyhand.core.skill import SkillRegistry

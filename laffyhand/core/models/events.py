@@ -4,7 +4,7 @@ from typing import Any, Literal, Union
 
 from pydantic import BaseModel
 
-from laffyhand.core.llm.specs.models import Usage
+from laffyhand.core.domain.messages import Usage
 
 
 class ToolCall(BaseModel):

@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from laffyhand.core.context import ContextManager, PreparedContext
-from laffyhand.core.llm.specs.models import (
+from laffyhand.core.domain.messages import (
     Message,
     SystemMessage,
     ToolMessage,

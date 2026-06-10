@@ -4,7 +4,7 @@ from __future__ import annotations
 from loguru import logger
 
 from laffyhand.core._utils import estimate_tokens
-from laffyhand.core.llm.specs.models import Message, ToolMessage
+from laffyhand.core.domain.messages import Message, ToolMessage
 from laffyhand.core.models import CompactionConfig
 
 

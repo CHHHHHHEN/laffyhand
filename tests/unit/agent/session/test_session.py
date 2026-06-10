@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import pytest
 
-from laffyhand.core.llm.specs.models import AssistantMessage, SystemMessage, ToolMessage, UserMessage
+from laffyhand.core.domain.messages import AssistantMessage, SystemMessage, ToolMessage, UserMessage
 from laffyhand.core.session import SessionManager
-from laffyhand.core.llm.specs.models import ToolCallContent
+from laffyhand.core.domain.messages import ToolCallContent
 from laffyhand.core.exceptions import SessionError
 from laffyhand.core.models import (
     AgentState,
@@ -486,7 +486,7 @@ class TestHelpers:
 
     def test_message_to_session_message_assistant_with_tokens(self) -> None:
         from laffyhand.core.session.converters import message_to_session_message
-        from laffyhand.core.llm.specs.models import Usage
+        from laffyhand.core.domain.messages import Usage
 
         msg = AssistantMessage(
             content="Hello", tokens=Usage(input_tokens=10, output_tokens=5, reasoning_tokens=3)
@@ -503,7 +503,7 @@ class TestHelpers:
         from laffyhand.core.session.converters import (
             message_to_session_message, session_message_to_message,
         )
-        from laffyhand.core.llm.specs.models import Usage
+        from laffyhand.core.domain.messages import Usage
 
         msg = AssistantMessage(
             content="Hello", reasoning="thinking",

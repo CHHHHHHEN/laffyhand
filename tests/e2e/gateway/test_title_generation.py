@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from laffyhand.core.llm.specs.models import UserMessage
+from laffyhand.core.domain.messages import UserMessage
 from laffyhand.core.runtime import AgentRuntime
 from laffyhand.core.llm.specs.models import (
     StreamText,

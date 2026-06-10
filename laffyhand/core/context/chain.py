@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from loguru import logger
 
-from laffyhand.core.llm.specs.models import (
+from laffyhand.core.domain.messages import (
     AssistantMessage,
     SystemMessage,
     ToolMessage,
     UserMessage,
 )
-from laffyhand.core.llm.specs.models import (
+from laffyhand.core.domain.messages import (
     Message,
 )
 from laffyhand.core.models import AgentState, CompactionConfig
