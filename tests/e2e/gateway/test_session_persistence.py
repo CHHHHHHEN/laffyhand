@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import sqlite3
 import tempfile
 
 import pytest
@@ -11,6 +12,20 @@ from laffyhand.core.models import (
     AgentState,
     SessionUsage,
 )
+from laffyhand.db import SessionRepo, MessageRepo, create_tables
+
+
+def _make_session_manager(db_path: str) -> SessionManager:
+    conn = sqlite3.connect(db_path, timeout=10)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA foreign_keys=ON")
+    conn.execute("PRAGMA synchronous=NORMAL")
+    conn.execute("PRAGMA cache_size=-64000")
+    conn.execute("PRAGMA temp_store=MEMORY")
+    conn.execute("PRAGMA busy_timeout=5000")
+    create_tables(conn)
+    return SessionManager(SessionRepo(conn), MessageRepo(conn), conn)
 
 
 @pytest.fixture
@@ -22,7 +37,7 @@ def db_path():
 
 @pytest.mark.anyio
 async def test_session_save_and_load(db_path):
-    sm = SessionManager(db_path)
+    sm = _make_session_manager(db_path)
     session = sm.create(title="test-session", cwd="/tmp", model="gpt-4")
     assert session.id is not None
 
@@ -51,7 +66,7 @@ async def test_session_save_and_load(db_path):
 
 @pytest.mark.anyio
 async def test_session_state_persistence(db_path):
-    sm = SessionManager(db_path)
+    sm = _make_session_manager(db_path)
     session = sm.create(title="state-test")
 
     state = AgentState(
@@ -87,7 +102,7 @@ async def test_session_state_persistence(db_path):
 
 @pytest.mark.anyio
 async def test_session_compaction_chain_persistence(db_path):
-    sm = SessionManager(db_path)
+    sm = _make_session_manager(db_path)
     parent = sm.create(title="parent-session")
 
     messages = [
@@ -114,11 +129,9 @@ async def test_session_compaction_chain_persistence(db_path):
     assert child_loaded is not None
     assert child_loaded.status == "active"
 
-    # Compression chain: resolve should walk to child
     tip = sm.get_compression_tip(parent.id)
     assert tip == child.id
 
-    # Chain should include both
     chain = sm.chain(child.id)
     assert parent.id in chain
     assert child.id in chain
@@ -128,8 +141,7 @@ async def test_session_compaction_chain_persistence(db_path):
 
 @pytest.mark.anyio
 async def test_session_persistence_after_crash(db_path):
-    """Simulate saving state and verify it survives a 'restart' (new SessionManager)."""
-    sm1 = SessionManager(db_path)
+    sm1 = _make_session_manager(db_path)
     session = sm1.create(title="crash-test")
 
     state = AgentState(
@@ -144,7 +156,7 @@ async def test_session_persistence_after_crash(db_path):
     sm1.save_state(session.id, state)
     sm1.close()
 
-    sm2 = SessionManager(db_path)
+    sm2 = _make_session_manager(db_path)
     loaded_state = sm2.load_state(session.id)
     assert loaded_state is not None
     assert loaded_state.turn_count == 1

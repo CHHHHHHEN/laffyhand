@@ -11,7 +11,7 @@ import pytest
 from laffyhand.core.tools.file.list_dir import ListDirTool
 
 if TYPE_CHECKING:
-    from laffyhand.core.db.repository import FileTagRepo
+    from laffyhand.db import FileTagRepo
 
 
 class TestListDirTool(unittest.TestCase):
@@ -222,8 +222,8 @@ class TestListDirTool(unittest.TestCase):
 @pytest.fixture
 def tag_repo():
     import sqlite3
-    from laffyhand.core.db.schema import create_tables
-    from laffyhand.core.db.repository import FileTagRepo
+    from laffyhand.db import create_tables
+    from laffyhand.db import FileTagRepo
 
     conn = sqlite3.connect(":memory:")
     conn.row_factory = sqlite3.Row

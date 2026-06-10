@@ -26,7 +26,7 @@ def _deserialize_str_list(raw: str) -> list[str]:
         return []
     try:
         return cast(list[str], json.loads(raw))
-    except json.JSONDecodeError, TypeError:
+    except json.JSONDecodeError:
         return []
 
 

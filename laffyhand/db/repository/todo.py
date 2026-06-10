@@ -3,8 +3,9 @@ from __future__ import annotations
 import sqlite3
 from typing import Optional
 
-from laffyhand.core.db.models import TodoItem, utcnow
-from laffyhand.core.db.repository.common import (
+from laffyhand.core._utils.time import utcnow
+from laffyhand.core.session.todo.models import TodoItem
+from laffyhand.db.repository.common import (
     _from_ts,
     _serialize_json,
     _deserialize_str_list,
@@ -28,6 +29,13 @@ class TodoRepo:
 
     def rollback(self) -> None:
         self._conn.rollback()
+
+    def touch_session(self, session_id: str) -> None:
+        now = utcnow()
+        self._conn.execute(
+            "UPDATE todo SET updated_at=? WHERE session_id=?",
+            (_ts(now), session_id),
+        )
 
     def get(self, task_id: str) -> Optional[TodoItem]:
         row = self._conn.execute(
@@ -106,7 +114,6 @@ class TodoRepo:
         return True
 
     def get_dependents(self, task_id: str) -> list[tuple[str, list[str]]]:
-        """Return (dependent_id, depends_on_list) for tasks that mention task_id."""
         rows = self._conn.execute(
             "SELECT id, depends_on FROM todo WHERE depends_on LIKE ?",
             (f"%{task_id}%",),
@@ -118,8 +125,6 @@ class TodoRepo:
             "SELECT COUNT(*) AS cnt FROM todo WHERE session_id=?", (session_id,)
         ).fetchone()
         return row["cnt"] if row else 0
-
-    # ── Helpers ──────────────────────────────────────────────
 
     @staticmethod
     def _row_to_todo(row: sqlite3.Row) -> TodoItem:

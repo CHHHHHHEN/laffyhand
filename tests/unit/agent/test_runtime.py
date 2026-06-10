@@ -396,7 +396,7 @@ class TestLoadSessionState:
 
     def test_load_session_state_repeated_calls(self, runtime, session_manager):
         """load_session_state can be called multiple times with the same id."""
-        from laffyhand.core.db.models import Session as SessionModel
+        from laffyhand.core.session.models import Session as SessionModel
 
         session = SessionModel(provider="test", model="test")
         state = AgentState(

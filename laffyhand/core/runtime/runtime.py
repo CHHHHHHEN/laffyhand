@@ -1,30 +1,29 @@
 from __future__ import annotations
 
 import asyncio
+import sqlite3
 from collections.abc import AsyncIterator, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
+from laffyhand.core._utils import build_env_block
 from laffyhand.core.domain.messages import AssistantMessage, ModelID, ProviderID, SystemMessage
 from laffyhand.core.models import AgentEvent, AgentState, CompactionConfig, SessionID
 from laffyhand.core.agent import AgentRegistry, assemble_system_prompt
 from laffyhand.core.skill import SkillRegistry
 from laffyhand.core.session import SessionManager, TitleConfig
 from laffyhand.core.session.state_store import SessionStateStore
-from laffyhand.core.subagent import (
-    SubagentOrchestrator,
-)
+from laffyhand.core.session.todo import TodoManager
+from laffyhand.core.subagent import SubagentOrchestrator
+from laffyhand.db import SessionRepo, MessageRepo, FileTagRepo, TodoRepo, create_tables
 from laffyhand.core.tools.registry import ToolRegistry
 from laffyhand.core.tools.init import ToolInitializer
-from laffyhand.core.session.todo import TodoManager
 from laffyhand.core.mcp import MCPService
-from laffyhand.core.db.repository import FileTagRepo
 from laffyhand.core.loop import LoopOrchestrator
 from laffyhand.llm import LLM, build_route
 from laffyhand.core.exceptions import ConfigError
-from laffyhand.core._utils import build_env_block
 from laffyhand.core.memory.service import MemoryService
 from laffyhand.core.preference import PreferenceService
 from laffyhand.core.title import TitleService
@@ -34,6 +33,21 @@ from laffyhand.core.event_bus import SessionEventBus
 if TYPE_CHECKING:
     from laffyhand.core.agent import AgentInfo
     from laffyhand.config import LaffyConfig
+
+
+def _create_connection(db_path: str | Path) -> sqlite3.Connection:
+    path = Path(db_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(path), timeout=10)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA foreign_keys=ON")
+    conn.execute("PRAGMA synchronous=NORMAL")
+    conn.execute("PRAGMA cache_size=-64000")
+    conn.execute("PRAGMA temp_store=MEMORY")
+    conn.execute("PRAGMA busy_timeout=5000")
+    create_tables(conn)
+    return conn
 
 
 class AgentRuntime:
@@ -49,7 +63,18 @@ class AgentRuntime:
         self.llm = llm
 
         self._session_store = SessionStateStore()
-        self.session_manager = session_manager or SessionManager(config.db.path)
+
+        if session_manager is not None:
+            self.session_manager = session_manager
+        else:
+            conn = _create_connection(config.db.path)
+            session_repo = SessionRepo(conn)
+            message_repo = MessageRepo(conn)
+            self.session_manager = SessionManager(session_repo, message_repo, conn)
+            self._file_tag_repo = FileTagRepo(conn)
+            todo_repo = TodoRepo(conn)
+            self.todo_manager = TodoManager(todo_repo, session_manager=self.session_manager)
+
         self.mcp_service = mcp_service or MCPService()
         self.compaction_config = CompactionConfig(
             tail_turns=config.agent.compaction_tail_turns,
@@ -78,10 +103,14 @@ class AgentRuntime:
         self.tool_registry.workspace = self.workspace_service.resolve_workspace()
         self.agent_registry = AgentRegistry()
         self.skill_registry = SkillRegistry()
-        self.todo_manager = TodoManager.from_session_manager(self.session_manager)
-        self._file_tag_repo = FileTagRepo(self.session_manager.connection)
 
         self.preference_service = PreferenceService()
+
+        if not hasattr(self, '_file_tag_repo'):
+            self._file_tag_repo = FileTagRepo(self.session_manager.connection)
+        if not hasattr(self, 'todo_manager'):
+            todo_repo = TodoRepo(self.session_manager.connection)
+            self.todo_manager = TodoManager(todo_repo, session_manager=self.session_manager)
 
         self.subagent_orchestrator = SubagentOrchestrator(
             session_manager=self.session_manager,

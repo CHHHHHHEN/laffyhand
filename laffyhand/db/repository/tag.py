@@ -3,7 +3,7 @@ from __future__ import annotations
 import sqlite3
 from datetime import datetime, timezone
 
-from laffyhand.core.db.models import FileTag
+from laffyhand.core.models.tag import FileTag
 
 
 def _row_to_tag(row: sqlite3.Row) -> FileTag:

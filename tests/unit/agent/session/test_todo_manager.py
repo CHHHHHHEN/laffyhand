@@ -5,8 +5,7 @@ import sqlite3
 import pytest
 
 from laffyhand.core.session.todo import TodoCreate, TodoUpdate
-from laffyhand.core.db.schema import create_tables
-from laffyhand.core.db.repository import TodoRepo
+from laffyhand.db import create_tables, TodoRepo
 from laffyhand.core.session.todo import TodoManager
 
 

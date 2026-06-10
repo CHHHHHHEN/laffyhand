@@ -8,6 +8,7 @@ from laffyhand.core._utils.misc import (
     exponential_backoff,
     truncate_output,
 )
+from laffyhand.core._utils.time import generate_id, utcnow
 
 __all__ = [
     "build_env_block",
@@ -15,5 +16,7 @@ __all__ = [
     "estimate_messages_tokens",
     "estimate_tokens",
     "exponential_backoff",
+    "generate_id",
     "truncate_output",
+    "utcnow",
 ]

@@ -3,8 +3,7 @@ import sqlite3
 import pytest
 
 from laffyhand.core.session.todo import TodoManager
-from laffyhand.core.db.repository import TodoRepo
-from laffyhand.core.db.schema import create_tables
+from laffyhand.db import TodoRepo, create_tables
 from laffyhand.core.tools.todo import TodoTool
 
 

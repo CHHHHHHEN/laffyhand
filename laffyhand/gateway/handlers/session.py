@@ -31,7 +31,7 @@ async def _ensure_session(
     agent_name = params.get("agent", "") or "build"
     system_content = await _system_prompt(runtime, params.get("system_prompt", ""), agent_name)
     system_message = SystemMessage(content=system_content)
-    from laffyhand.core.db.models import Session as SessionModel
+    from laffyhand.core.session.models import Session as SessionModel
 
     session = SessionModel(
         title=params.get("title", ""),

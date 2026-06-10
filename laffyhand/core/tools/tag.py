@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
-from laffyhand.core.db.models import FileTag
+from laffyhand.core.models.tag import FileTag
 from laffyhand.core.tools.base import BaseTool
 
 
@@ -41,7 +41,7 @@ class TagParams(BaseModel):
 
 
 if TYPE_CHECKING:
-    from laffyhand.core.db.repository.tag import FileTagRepo
+    from laffyhand.core._ports import FileTagRepository
 
 
 _STALE_NOTE = (
@@ -70,7 +70,7 @@ def annotate_result(
     tool_name: str,
     result: str,
     params: dict[str, Any],
-    repo: FileTagRepo,
+    repo: FileTagRepository,
 ) -> str:
     if not result:
         return result
@@ -83,7 +83,7 @@ def annotate_result(
     return result
 
 
-def _annotate_glob(result: str, params: dict[str, Any], repo: FileTagRepo) -> str:
+def _annotate_glob(result: str, params: dict[str, Any], repo: FileTagRepository) -> str:
     root = Path(params.get("path", ".")).resolve()
     lines = result.splitlines(keepends=False)
     annotated: list[str] = []
@@ -102,7 +102,7 @@ def _annotate_glob(result: str, params: dict[str, Any], repo: FileTagRepo) -> st
     return "\n".join(annotated)
 
 
-def _annotate_read(result: str, params: dict[str, Any], repo: FileTagRepo) -> str:
+def _annotate_read(result: str, params: dict[str, Any], repo: FileTagRepository) -> str:
     file_path = params.get("file_path") or params.get("directory_path")
     if not file_path or not result.startswith("Contents of "):
         return result
@@ -160,7 +160,7 @@ class TagTool(BaseTool):
     )
     max_result_size = 50000
 
-    def __init__(self, repo: FileTagRepo) -> None:
+    def __init__(self, repo: FileTagRepository) -> None:
         super().__init__()
         self._repo = repo
 

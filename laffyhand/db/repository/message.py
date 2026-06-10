@@ -6,7 +6,8 @@ from typing import Optional, cast
 
 from pydantic import BaseModel
 
-from laffyhand.core.db.models import (
+from laffyhand.core.domain.messages import Message
+from laffyhand.db.models.message import (
     AgentSwitchedData,
     AssistantData,
     CompactionData,
@@ -16,10 +17,14 @@ from laffyhand.core.db.models import (
     SyntheticData,
     UserData,
 )
+from laffyhand.db.converters import message_to_session_message, session_message_to_message
 
 
 class MessageRepo:
-    """Pure DB CRUD for the session_message table."""
+    """Pure DB CRUD for the session_message table.
+
+    Internally converts between domain Message and DB SessionMessage.
+    """
 
     def __init__(self, conn: sqlite3.Connection) -> None:
         self._conn = conn
@@ -53,7 +58,8 @@ class MessageRepo:
             data=data,
         )
 
-    def insert(self, sm: SessionMessage) -> None:
+    def insert(self, message: Message, session_id: str) -> None:
+        sm = message_to_session_message(message, session_id)
         self._conn.execute(
             "INSERT INTO session_message (id, session_id, type, time_created, time_updated, data) VALUES (?,?,?,?,?,?)",
             (
@@ -68,7 +74,7 @@ class MessageRepo:
 
     def get_by_session(
         self, session_id: str, offset: int = 0, limit: Optional[int] = None
-    ) -> list[SessionMessage]:
+    ) -> list[Message]:
         if limit is not None:
             rows = self._conn.execute(
                 "SELECT * FROM session_message WHERE session_id=? ORDER BY time_created LIMIT ? OFFSET ?",
@@ -79,7 +85,7 @@ class MessageRepo:
                 "SELECT * FROM session_message WHERE session_id=? ORDER BY time_created",
                 (session_id,),
             ).fetchall()
-        return [self._decode_row(r) for r in rows]
+        return [session_message_to_message(self._decode_row(r)) for r in rows]
 
     def count_by_session(self, session_id: str) -> int:
         row = self._conn.execute(

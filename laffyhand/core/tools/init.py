@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from laffyhand.core.skill import SkillRegistry
     from laffyhand.core.agent import AgentRegistry
     from laffyhand.core.subagent import SubagentOrchestrator
-    from laffyhand.core.db.repository import FileTagRepo
+    from laffyhand.core._ports import FileTagRepository
 
 
 class ToolInitializer:
@@ -24,7 +24,7 @@ class ToolInitializer:
         skill_registry: SkillRegistry,
         agent_registry: AgentRegistry,
         subagent_orchestrator: SubagentOrchestrator,
-        file_tag_repo: FileTagRepo,
+        file_tag_repo: FileTagRepository,
         memory_service: MemoryService | None = None,
         preference_service: PreferenceService | None = None,
     ) -> None:

@@ -1,5 +1,6 @@
 from laffyhand.core.models.session import AgentState, SessionID, SessionUsage
 from laffyhand.core.models.compaction import CompactionConfig, RetryConfig
+from laffyhand.core.models.tag import FileTag
 from laffyhand.core.models.events import (
     StepStart,
     TextStart,
@@ -26,6 +27,7 @@ from laffyhand.core.models.events import (
 __all__ = [
     "AgentState",
     "CompactionConfig",
+    "FileTag",
     "RetryConfig",
     "SessionID",
     "SessionUsage",

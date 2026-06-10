@@ -10,7 +10,8 @@ from laffyhand.core.domain.messages import (
     Usage,
     UserMessage,
 )
-from laffyhand.core.db.models import (
+from laffyhand.core._utils.time import generate_id, utcnow
+from laffyhand.db.models.message import (
     AssistantContent,
     AssistantData,
     AssistantReasoningPart,
@@ -18,7 +19,6 @@ from laffyhand.core.db.models import (
     AssistantToolPart,
     MessageSnapshot,
     MessageTime,
-    Model,
     SessionMessage,
     ShellData,
     SyntheticData,
@@ -27,10 +27,7 @@ from laffyhand.core.db.models import (
     ToolStateCompleted,
     ToolStatePending,
     UserData,
-    generate_id,
-    utcnow,
 )
-from laffyhand.core.domain.messages import ModelID, ProviderID
 
 
 def message_to_session_message(msg: Message, session_id: str) -> SessionMessage:
@@ -92,7 +89,7 @@ def message_to_session_message(msg: Message, session_id: str) -> SessionMessage:
             time_updated=now,
             data=AssistantData(
                 agent="",
-                model=Model(id=ModelID(""), provider=ProviderID("")),
+                model={"id": "", "provider": ""},
                 snapshot=MessageSnapshot(),
                 finish="stop",
                 cost=0,

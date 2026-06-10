@@ -1,33 +1,8 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Literal, Optional, Sequence, Union
-from uuid import uuid4
+from typing import Any, List, Literal, Optional, Sequence, Union
 
 from pydantic import BaseModel, Field
-
-from laffyhand.core.domain.messages import ModelID, ProviderID
-
-
-def utcnow() -> datetime:
-    return datetime.now(timezone.utc)
-
-
-def generate_id() -> str:
-    now = utcnow()
-    return now.strftime("%Y%m%d_%H%M%S") + "_" + uuid4().hex[:8]
-
-
-ModelVariant = Literal["none", "low", "medium", "high", "xhigh"]
-
-
-class Model(BaseModel):
-    id: ModelID = Field(description="模型ID")
-    provider: ProviderID = Field(description="LLM提供商ID")
-    variant: Optional[ModelVariant] = None
-
-
-# ── Message types ───────────────────────────────────────────────
 
 
 class FilePart(BaseModel):
@@ -69,9 +44,6 @@ class TokenDetail(BaseModel):
 class MessageSnapshot(BaseModel):
     start: Optional[str] = Field(default=None, description="起始快照")
     end: Optional[str] = Field(default=None, description="结束快照")
-
-
-# ── Assistant Content ───────────────────────────────────────────
 
 
 class AssistantTextPart(BaseModel):
@@ -130,12 +102,9 @@ class AssistantToolPart(BaseModel):
 AssistantContent = Union[AssistantTextPart, AssistantReasoningPart, AssistantToolPart]
 
 
-# ── Message data payloads ───────────────────────────────────────
-
-
 class AssistantData(BaseModel):
     agent: str = Field(description="agent 名称")
-    model: Model = Field(description="回复模型")
+    model: dict[str, Any] = Field(default_factory=dict, description="回复模型")
     content: Sequence[AssistantContent] = Field(
         default_factory=list, description="按时间顺序排列的消息内容数组"
     )
@@ -147,8 +116,6 @@ class AssistantData(BaseModel):
 
 
 class SyntheticData(BaseModel):
-    """由系统插入的消息，如上下文压缩后插入的总结文本"""
-
     session_id: str = Field(description="源会话 ID")
     text: str = Field(description="合成消息文本")
 
@@ -167,7 +134,7 @@ class AgentSwitchedData(BaseModel):
 
 
 class ModelSwitchedData(BaseModel):
-    model: Model = Field(description="切换到的模型")
+    model: dict[str, Any] = Field(default_factory=dict, description="切换到的模型")
 
 
 class CompactionData(BaseModel):
@@ -204,31 +171,3 @@ class SessionMessage(BaseModel):
     time_created: int = Field(description="创建时间戳（Unix 毫秒）")
     time_updated: int = Field(description="更新时间戳（Unix 毫秒）")
     data: MessageData = Field(description="按 type 的结构化数据")
-
-
-# ── Session ─────────────────────────────────────────────────────
-
-
-SessionStatus = Literal["active", "archived"]
-
-
-class Session(BaseModel):
-    id: str = Field(default_factory=generate_id, description="会话唯一标识")
-    status: SessionStatus = Field(default="active", description="会话状态")
-    title: str = Field(default="", description="会话标题")
-    cwd: str = Field(default="", description="工作目录")
-    provider: ProviderID = Field(description="LLM 提供商 ID")
-    model: ModelID = Field(description="LLM 模型 ID")
-    agent_name: str = Field(default="", description="Agent 名称")
-    turn_count: int = Field(default=0, description="对话轮次数")
-    step_count: int = Field(default=0, description="循环步数")
-    input_tokens: int = Field(default=0, description="累积输入 Token")
-    output_tokens: int = Field(default=0, description="累积输出 Token")
-    reasoning_tokens: int = Field(default=0, description="累积推理 Token")
-    cache_read_tokens: int = Field(default=0, description="累积缓存读取 Token")
-    cache_write_tokens: int = Field(default=0, description="累积缓存写入 Token")
-    parent_id: Optional[str] = Field(default=None, description="父会话 ID，用于压缩链")
-    message_count: int = Field(default=0, description="消息数")
-    metadata: Dict[str, Any] = Field(default_factory=dict, description="扩展元数据")
-    created_at: datetime = Field(default_factory=utcnow, description="创建时间")
-    updated_at: datetime = Field(default_factory=utcnow, description="最后更新时间")

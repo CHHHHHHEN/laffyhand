@@ -8,9 +8,8 @@ from pathlib import Path
 
 import pytest
 
-from laffyhand.core.db.repository import FileTagRepo
-from laffyhand.core.db.schema import create_tables
-from laffyhand.core.db.models import FileTag
+from laffyhand.db import FileTagRepo, create_tables
+from laffyhand.core.models.tag import FileTag
 from laffyhand.core.tools.tag import TagTool, annotate_result, format_tag_summary, _normalize, _date_from_iso
 
 

@@ -4,37 +4,26 @@ from typing import TYPE_CHECKING, Any, Optional
 
 import sqlite3
 
-from laffyhand.core.db.models import TodoItem, generate_id, utcnow
-from laffyhand.core.session.todo.models import TodoCreate, TodoUpdate
-from laffyhand.core.db.repository.common import _ts
+from laffyhand.core._ports import TodoRepository
+from laffyhand.core._utils.time import generate_id, utcnow
+from laffyhand.core.session.todo.models import TodoCreate, TodoItem, TodoUpdate
 
 if TYPE_CHECKING:
-    from laffyhand.core.db.repository import TodoRepo
     from laffyhand.core.session.manager import SessionManager
 
 
 class TodoManager:
-    """Domain logic for todo tasks: DAG validation, blocking resolution, tool integration.
-
-    Delegates all SQL persistence to TodoRepo.
-    """
+    """Domain logic for todo tasks: DAG validation, blocking resolution, tool integration."""
 
     def __init__(
-        self, repo: TodoRepo, session_manager: SessionManager | None = None
+        self, repo: TodoRepository, session_manager: SessionManager | None = None
     ) -> None:
         self._repo = repo
         self._session_manager = session_manager
 
-    @classmethod
-    def from_session_manager(cls, sm: SessionManager) -> TodoManager:
-        from laffyhand.core.db.repository import TodoRepo
-
-        return cls(TodoRepo(sm.connection), session_manager=sm)
-
     # ── Helpers ──────────────────────────────────────────────
 
     def _ensure_session(self, session_id: str) -> None:
-        """Ensure the session exists in DB before inserting tasks with FK reference."""
         if self._session_manager is not None:
             self._session_manager.ensure_exists(session_id)
 
@@ -50,7 +39,7 @@ class TodoManager:
             ) from e
         raise
 
-    # ── CRUD (delegates to repo) ─────────────────────────────
+    # ── CRUD ─────────────────────────────────────────────
 
     def get_tasks(
         self, session_id: str, status: Optional[str] = None
@@ -99,7 +88,6 @@ class TodoManager:
         existing_ids = {t.id for t in existing}
         ids: list[str] = []
         for t in tasks:
-            # If custom ID is provided, use it as-is; validate uniqueness.
             if t.id is not None:
                 if t.id in existing_ids or t.id in ids:
                     raise ValueError(
@@ -176,16 +164,8 @@ class TodoManager:
             and updates.status is not None
             and updates.status != "completed"
         ):
-            now = utcnow()
-            try:
-                self._repo.connection.execute(
-                    "UPDATE todo SET updated_at=? WHERE session_id=?",
-                    (_ts(now), session_id),
-                )
-                self._repo.commit()
-            except Exception:
-                self._repo.rollback()
-                raise
+            self._repo.touch_session(session_id)
+            self._repo.commit()
 
         return item
 
@@ -193,7 +173,6 @@ class TodoManager:
         item = self._repo.get(task_id)
         if item is None:
             return False
-        # Remove this task from all dependents' depends_on lists
         dependents = self._repo.get_dependents(task_id)
         for dep_id, deps in dependents:
             if task_id in deps:
@@ -208,7 +187,6 @@ class TodoManager:
         return True
 
     def delete_tasks(self, task_ids: list[str]) -> int:
-        """Delete multiple tasks by IDs. Removes references from dependents."""
         count = 0
         for tid in task_ids:
             if self.delete_task(tid):
@@ -218,7 +196,6 @@ class TodoManager:
     def update_tasks(
         self, task_ids: list[str], session_id: str, updates: TodoUpdate
     ) -> list[TodoItem]:
-        """Update multiple tasks with the same updates."""
         results: list[TodoItem] = []
         for tid in task_ids:
             item = self.update_task(tid, session_id, updates)
@@ -229,7 +206,6 @@ class TodoManager:
     def cleanup_tasks(
         self, session_id: str, statuses: Optional[list[str]] = None
     ) -> int:
-        """Delete tasks matching given statuses (default: completed)."""
         if statuses is None:
             statuses = ["completed"]
         tasks = self._repo.get_by_session(session_id)
@@ -239,7 +215,6 @@ class TodoManager:
     # ── DAG ───────────────────────────────────────────────────
 
     def _compute_blocked(self, tasks: list[TodoItem]) -> None:
-        """Populate blocked_by on each task based on depends_on + dependency status."""
         task_map = {t.id: t for t in tasks}
         for t in tasks:
             t.metadata.pop("blocked_by", None)
@@ -260,11 +235,6 @@ class TodoManager:
         existing: list[TodoItem],
         task_id: str | None = None,
     ) -> None:
-        """Validate dependencies: all must exist and no cycles.
-
-        For update_task, task_id is the task being modified; verifies
-        that the new depends_on don't create a cycle back to task_id.
-        """
         existing_ids = {t.id for t in existing}
         for dep_id in depends_on:
             if dep_id not in existing_ids:
@@ -277,7 +247,6 @@ class TodoManager:
                     raise ValueError("Adding these dependencies would create a cycle")
 
     def _can_reach(self, start: str, target: str) -> bool:
-        """DFS: follow depends_on edges from start; return True if target is reached."""
         visited: set[str] = set()
         stack = [start]
         while stack:
@@ -293,7 +262,6 @@ class TodoManager:
         return False
 
     def resolve_blocked(self, task_id: str, session_id: str) -> None:
-        """After task completes, re-evaluate blocked status for dependents."""
         tasks = self._repo.get_by_session(session_id)
         changed = False
         for t in tasks:

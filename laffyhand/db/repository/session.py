@@ -5,8 +5,10 @@ from typing import Optional, cast
 
 from loguru import logger
 
-from laffyhand.core.db.models import ModelID, ProviderID, Session, utcnow
-from laffyhand.core.db.repository.common import (
+from laffyhand.core.domain.messages import ModelID, ProviderID
+from laffyhand.core.session.models import Session
+from laffyhand.core._utils.time import utcnow
+from laffyhand.db.repository.common import (
     _from_ts,
     _serialize_metadata,
     _deserialize_metadata,

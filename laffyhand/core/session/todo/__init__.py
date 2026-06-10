@@ -1,5 +1,4 @@
-from laffyhand.core.db.models import TodoItem, TodoStatus
-from laffyhand.core.session.todo.models import TodoCreate, TodoUpdate
+from laffyhand.core.session.todo.models import TodoCreate, TodoItem, TodoStatus, TodoUpdate
 from laffyhand.core.session.todo.manager import TodoManager
 
 __all__ = [
