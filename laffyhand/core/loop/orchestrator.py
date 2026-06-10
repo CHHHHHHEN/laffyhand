@@ -8,7 +8,7 @@ from laffyhand.core.models import CompactionConfig
 from laffyhand.core.session.state_store import SessionStateStore
 
 if TYPE_CHECKING:
-    from laffyhand.llm.facade import LLM
+    from laffyhand.llm import LLM
     from laffyhand.core.session import SessionManager
     from laffyhand.core.tools import ToolRegistry
 

@@ -7,7 +7,7 @@ from loguru import logger
 
 from laffyhand.core.domain.messages import Message, SystemMessage, UserMessage
 from laffyhand.core.session.models import TitleConfig
-from laffyhand.llm.facade import LLM, stream_text
+from laffyhand.llm import LLM, stream_text
 from laffyhand.core.session.manager import SessionManager
 from laffyhand.core.exceptions import ConfigError
 

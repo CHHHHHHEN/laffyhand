@@ -11,7 +11,7 @@ from laffyhand.core.domain.messages import (
     UserMessage,
 )
 from laffyhand.core._utils import truncate_output
-from laffyhand.llm.facade import LLM, stream_text
+from laffyhand.llm import LLM, stream_text
 from laffyhand.core.agent import get_builtin
 
 _SUMMARY_TAG_OPEN = "<summary>"

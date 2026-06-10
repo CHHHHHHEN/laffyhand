@@ -16,7 +16,7 @@ from laffyhand.core.domain.messages import (
     Usage,
     UserMessage,
 )
-from laffyhand.llm.specs.models import (
+from laffyhand.llm import (
     StreamText,
     StreamReasoning,
     StreamToolCall,
@@ -50,7 +50,7 @@ from laffyhand.core.models import (
 from laffyhand.core._utils import exponential_backoff
 from laffyhand.core.context import ContextManager
 from laffyhand.core.tools.registry import ToolExecutionResult
-from laffyhand.llm.facade import LLM
+from laffyhand.llm import LLM
 from laffyhand.core.tools import ToolRegistry
 
 if TYPE_CHECKING:
