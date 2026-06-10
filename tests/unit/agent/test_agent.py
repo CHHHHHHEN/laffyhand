@@ -125,11 +125,6 @@ class TestAgentRegistry(TestCase):
         visible_names = {a.name for a in self.registry.list_visible()}
         self.assertTrue(hidden_names.isdisjoint(visible_names))
 
-    def test_all_returns_copy(self):
-        result = self.registry.all()
-        result["new"] = AgentInfo(name="new", system_prompt="")
-        self.assertIsNone(self.registry.get("new"))
-
     def test_discover_skips_nonexistent_dir(self):
         self.registry.discover(["/nonexistent/path"])
         visible = self.registry.list_visible()

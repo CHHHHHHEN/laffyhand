@@ -172,12 +172,6 @@ class AgentRuntime:
         return self._session_store
 
     @property
-    def pending_permissions(
-        self,
-    ) -> dict[str, tuple[asyncio.Event, str, str, bool | None, str | None]]:
-        return self._session_store.pending_permissions
-
-    @property
     def config(self) -> LaffyConfig:
         return self._config
 
@@ -347,7 +341,6 @@ class AgentRuntime:
         return True
 
     async def shutdown(self) -> None:
-        await self.loop_orchestrator.cancel_all()
         self._session_store.save_all(self.session_manager)
         await self.mcp_service.disconnect_all()
         self.session_manager.close()

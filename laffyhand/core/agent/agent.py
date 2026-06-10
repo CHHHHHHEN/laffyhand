@@ -49,9 +49,6 @@ class AgentRegistry:
     def list_visible(self) -> list[AgentInfo]:
         return [a for a in self._agents.values() if not a.hidden]
 
-    def all(self) -> dict[str, AgentInfo]:
-        return dict(self._agents)
-
     def discover(self, dirs: list[str | Path]) -> None:
         for d in dirs:
             path = Path(d)

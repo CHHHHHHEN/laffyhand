@@ -37,9 +37,6 @@ class SessionStateStore:
     def items(self) -> list[tuple[str, AgentState]]:
         return list(self._states.items())
 
-    def clear(self) -> None:
-        self._states.clear()
-
     # ── Lock management ───────────────────────────────────────
 
     def get_lock(self, session_id: str) -> asyncio.Lock:

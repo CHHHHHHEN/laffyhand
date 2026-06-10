@@ -59,10 +59,6 @@ class LoopOrchestrator:
         finally:
             self._session_store.pop_event_sink(session_id)
 
-    async def cancel_all(self) -> None:
-        pass
-
-
 __all__ = [
     "LoopOrchestrator",
 ]

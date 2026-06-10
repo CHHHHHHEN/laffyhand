@@ -82,17 +82,10 @@ class TestSkillRegistry(unittest.TestCase):
         self.assertIn("desc", summary)
         self.assertIn("no description", summary)
 
-    def test_clear_removes_all(self):
-        self.registry._skills["a"] = self.info_a
-        self.registry._skills["b"] = self.info_b
-        self.assertEqual(len(self.registry.all()), 2)
-        self.registry.clear()
-        self.assertEqual(len(self.registry.all()), 0)
-
     def test_discover_replaces_skills(self):
         self.registry._skills["old"] = self.info_a
         # After discover with a dir that has no SKILL.md, old should be gone
-        self.registry.clear()
+        self.registry._skills.clear()
         self.registry.discover([Path("/nonexistent")])
         self.assertEqual(len(self.registry.all()), 0)
         self.assertIsNone(self.registry.get("old"))

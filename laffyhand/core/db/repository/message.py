@@ -87,8 +87,3 @@ class MessageRepo:
             (session_id,),
         ).fetchone()
         return row["cnt"] if row else 0
-
-    def delete_by_session(self, session_id: str) -> None:
-        self._conn.execute(
-            "DELETE FROM session_message WHERE session_id=?", (session_id,)
-        )

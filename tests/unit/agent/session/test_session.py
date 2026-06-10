@@ -98,14 +98,6 @@ class TestSessionCRUD:
         session_manager.delete(orig.id)
         assert session_manager.get(orig.id) is None
 
-    def test_update(self, session_manager: SessionManager) -> None:
-        session = session_manager.create(title="old")
-        session.title = "new"
-        session_manager.update(session)
-        fetched = session_manager.get(session.id)
-        assert fetched is not None
-        assert fetched.title == "new"
-
 
 class TestMessages:
     def test_create_with_messages(self, session_manager: SessionManager) -> None:
@@ -387,13 +379,9 @@ class TestSearch:
 
 
 class TestMetadata:
-    def test_metadata_roundtrip(self, session_manager: SessionManager) -> None:
+    def test_create_with_metadata(self, session_manager: SessionManager) -> None:
         session = session_manager.create()
-        session.metadata = {"key": "value", "nested": {"a": 1}}
-        session_manager.update(session)
-        fetched = session_manager.get(session.id)
-        assert fetched is not None
-        assert fetched.metadata == {"key": "value", "nested": {"a": 1}}
+        assert session.metadata == {}
 
 
 class TestTitle:

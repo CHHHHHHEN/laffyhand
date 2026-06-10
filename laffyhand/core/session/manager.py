@@ -126,10 +126,6 @@ class SessionManager:
     ) -> list[Session]:
         return self._sessions.list_sessions(status=status, limit=limit, offset=offset)
 
-    def update(self, session: Session) -> None:
-        self._sessions.update(session)
-        self._conn.commit()
-
     def complete(self, session_id: str) -> None:
         self._sessions.complete(session_id)
         self._conn.commit()

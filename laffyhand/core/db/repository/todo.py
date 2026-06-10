@@ -105,9 +105,6 @@ class TodoRepo:
         self._conn.execute("DELETE FROM todo WHERE id=?", (task_id,))
         return True
 
-    def delete_by_session(self, session_id: str) -> None:
-        self._conn.execute("DELETE FROM todo WHERE session_id=?", (session_id,))
-
     def get_dependents(self, task_id: str) -> list[tuple[str, list[str]]]:
         """Return (dependent_id, depends_on_list) for tasks that mention task_id."""
         rows = self._conn.execute(
@@ -115,13 +112,6 @@ class TodoRepo:
             (f"%{task_id}%",),
         ).fetchall()
         return [(r["id"], _deserialize_str_list(r["depends_on"])) for r in rows]
-
-    def get_by_task_tool_id(self, tool_call_id: str) -> Optional[TodoItem]:
-        row = self._conn.execute(
-            "SELECT * FROM todo WHERE task_tool_id = ?",
-            (tool_call_id,),
-        ).fetchone()
-        return self._row_to_todo(row) if row else None
 
     def count_by_session(self, session_id: str) -> int:
         row = self._conn.execute(

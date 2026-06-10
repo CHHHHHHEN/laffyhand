@@ -29,9 +29,6 @@ class FileTagRepo:
     def commit(self) -> None:
         self._conn.commit()
 
-    def rollback(self) -> None:
-        self._conn.rollback()
-
     def upsert(self, path: str, content: str = "") -> None:
         now = datetime.now(timezone.utc).isoformat()
         self._conn.execute(
