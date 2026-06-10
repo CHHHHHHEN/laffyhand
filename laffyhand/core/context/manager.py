@@ -16,7 +16,7 @@ from laffyhand.core.models import AgentState, CompactionConfig, SessionID
 from laffyhand.core._utils import estimate_messages_tokens
 
 if TYPE_CHECKING:
-    from laffyhand.core.llm.facade import LLM
+    from laffyhand.llm.facade import LLM
     from laffyhand.core.session import SessionManager
 
 

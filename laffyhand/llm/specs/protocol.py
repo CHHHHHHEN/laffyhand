@@ -2,12 +2,12 @@ from abc import ABC, abstractmethod
 from typing import ClassVar, List
 
 from laffyhand.core.domain.messages import ProviderID
-from laffyhand.core.llm.specs.models import (
+from laffyhand.llm.specs.models import (
     Frame,
     LLMRequest,
     ProviderRequest,
 )
-from laffyhand.core.llm.specs.models import LLMEvent
+from laffyhand.llm.specs.models import LLMEvent
 
 
 class Protocol(ABC):

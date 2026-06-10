@@ -23,7 +23,7 @@ from laffyhand.core.domain.messages import (
     ToolMessage,
     UserMessage,
 )
-from laffyhand.core.llm.specs.models import (
+from laffyhand.llm.specs.models import (
     StreamError,
     StreamFinish,
     StreamText,

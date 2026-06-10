@@ -3,14 +3,14 @@ from typing import Optional
 
 from loguru import logger
 from laffyhand.core.domain.messages import Message, ModelID, ProviderID, ToolDefinition
-from laffyhand.core.llm.specs.models import LLMRequest
-from laffyhand.core.llm.specs.models import (
+from laffyhand.llm.specs.models import LLMRequest
+from laffyhand.llm.specs.models import (
     LLMEvent,
     StreamError,
     StreamFinish,
     StreamText,
 )
-from laffyhand.core.llm._route import Route
+from laffyhand.llm._route import Route
 
 
 async def stream_text(

@@ -2,9 +2,9 @@ from typing import Any, ClassVar, Literal
 from pydantic import BaseModel
 from loguru import logger
 from laffyhand.core.domain.messages import ProviderID
-from laffyhand.core.llm.specs.models import LLMRequest, Frame
-from laffyhand.core.llm.specs.models import StreamReasoning, LLMEvent
-from laffyhand.core.llm.protocols.openai import (
+from laffyhand.llm.specs.models import LLMRequest, Frame
+from laffyhand.llm.specs.models import StreamReasoning, LLMEvent
+from laffyhand.llm.protocols.openai import (
     OpenAIProtocol,
     OpenAIChatChunk,
     OpenAICompletionRequest,

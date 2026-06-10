@@ -1,11 +1,11 @@
 from loguru import logger
 
-from laffyhand.core.llm._route import Route
-from laffyhand.core.llm._bearer_auth import BearerAuth
-from laffyhand.core.llm._sse_framing import SSEFraming
-from laffyhand.core.llm.protocols.openai import OpenAIProtocol, OpenAIEndpoint
-from laffyhand.core.llm.protocols.deepseek import DeepseekProtocol
-from laffyhand.core.llm.specs.protocol import Protocol
+from laffyhand.llm._route import Route
+from laffyhand.llm._bearer_auth import BearerAuth
+from laffyhand.llm._sse_framing import SSEFraming
+from laffyhand.llm.protocols.openai import OpenAIProtocol, OpenAIEndpoint
+from laffyhand.llm.protocols.deepseek import DeepseekProtocol
+from laffyhand.llm.specs.protocol import Protocol
 
 _PROTOCOLS: list[type[Protocol]] = [OpenAIProtocol, DeepseekProtocol]
 

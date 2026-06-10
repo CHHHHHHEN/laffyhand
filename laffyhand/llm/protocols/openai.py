@@ -11,19 +11,19 @@ from laffyhand.core.domain.messages import (
     ToolDefinition,
     Usage,
 )
-from laffyhand.core.llm.specs.models import (
+from laffyhand.llm.specs.models import (
     LLMRequest,
     Frame,
     ProviderRequest,
 )
-from laffyhand.core.llm.specs.models import (
+from laffyhand.llm.specs.models import (
     LLMEvent,
     StreamText,
     StreamReasoning,
     StreamToolCall,
     StreamFinish,
 )
-from laffyhand.core.llm.specs import Protocol, Endpoint
+from laffyhand.llm.specs import Protocol, Endpoint
 
 
 # ─── Request wire models ─────────────────────────────────────────

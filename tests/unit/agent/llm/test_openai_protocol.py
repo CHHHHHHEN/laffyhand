@@ -1,19 +1,19 @@
 import unittest
 from laffyhand.core.domain.messages import AssistantMessage, SystemMessage, ToolMessage, UserMessage
-from laffyhand.core.llm.specs.models import LLMRequest
+from laffyhand.llm.specs.models import LLMRequest
 from laffyhand.core.domain.messages import ToolCallContent, ToolDefinition
-from laffyhand.core.llm.specs.models import (
+from laffyhand.llm.specs.models import (
     StreamText,
     StreamReasoning,
     StreamToolCall,
     StreamFinish,
 )
-from laffyhand.core.llm.protocols.openai import (
+from laffyhand.llm.protocols.openai import (
     OpenAIProtocol,
     OpenAIEndpoint,
 )
-from laffyhand.core.llm.protocols.deepseek import DeepseekProtocol
-from laffyhand.core.llm.specs.models import Frame
+from laffyhand.llm.protocols.deepseek import DeepseekProtocol
+from laffyhand.llm.specs.models import Frame
 
 
 class TestMessageToOpenAI(unittest.TestCase):

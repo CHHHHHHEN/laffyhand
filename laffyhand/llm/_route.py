@@ -17,9 +17,9 @@ def _redact_url(url: str) -> str:
     return redacted.geturl()
 
 
-from laffyhand.core.llm.specs.models import LLMRequest, Header
-from laffyhand.core.llm.specs.models import LLMEvent, StreamFinish, StreamError
-from laffyhand.core.llm.specs import Protocol, Endpoint, Auth, Framing
+from laffyhand.llm.specs.models import LLMRequest, Header
+from laffyhand.llm.specs.models import LLMEvent, StreamFinish, StreamError
+from laffyhand.llm.specs import Protocol, Endpoint, Auth, Framing
 
 
 class HTTPClient:

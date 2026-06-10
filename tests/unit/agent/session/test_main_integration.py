@@ -6,7 +6,7 @@ import pytest
 
 from laffyhand.core.domain.messages import SystemMessage, UserMessage
 from laffyhand.core.session import SessionManager, TitleConfig
-from laffyhand.core.llm.specs.models import (
+from laffyhand.llm.specs.models import (
     StreamText,
     StreamFinish,
     StreamError,

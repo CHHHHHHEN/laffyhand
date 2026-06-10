@@ -1,7 +1,7 @@
-from laffyhand.core.llm.facade import LLM, stream_text
-from laffyhand.core.llm.factory import build_route
-from laffyhand.core.llm._route import Route, HTTPClient
-from laffyhand.core.llm.specs.models import (
+from laffyhand.llm.facade import LLM, stream_text
+from laffyhand.llm.factory import build_route
+from laffyhand.llm._route import Route, HTTPClient
+from laffyhand.llm.specs.models import (
     Frame,
     Header,
     LLMEvent,

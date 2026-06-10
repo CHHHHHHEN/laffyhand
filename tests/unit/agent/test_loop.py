@@ -12,7 +12,7 @@ from laffyhand.core.models import (
     SessionUsage,
 )
 from laffyhand.core.loop import AgentTurn, TurnContext
-from laffyhand.core.llm.facade import LLM
+from laffyhand.llm.facade import LLM
 from laffyhand.core.tools.registry import ToolRegistry
 from laffyhand.core.tools.base import BaseTool
 from laffyhand.core.tools.permission import PermissionManager
@@ -106,7 +106,7 @@ class TestAgentLoopAssistantMessage(unittest.TestCase):
 
     def test_error_finish_sets_content(self):
         """When finish_reason is 'error' and no content generated, content should be set to error text."""
-        from laffyhand.core.llm.specs.models import StreamError, StreamFinish
+        from laffyhand.llm.specs.models import StreamError, StreamFinish
 
         msgs, events = self._run_loop(
             [
@@ -126,7 +126,7 @@ class TestAgentLoopAssistantMessage(unittest.TestCase):
 
     def test_empty_response_sets_content(self):
         """When LLM returns stop with no content, content should be set to empty placeholder."""
-        from laffyhand.core.llm.specs.models import StreamFinish
+        from laffyhand.llm.specs.models import StreamFinish
 
         msgs, events = self._run_loop(
             [
@@ -144,7 +144,7 @@ class TestAgentLoopAssistantMessage(unittest.TestCase):
 
     def test_content_with_tool_calls_unchanged(self):
         """When tool_calls are present, content should be None (no fallback needed)."""
-        from laffyhand.core.llm.specs.models import StreamToolCall, StreamFinish
+        from laffyhand.llm.specs.models import StreamToolCall, StreamFinish
 
         msgs, events = self._run_loop(
             [
@@ -165,7 +165,7 @@ class TestAgentLoopAssistantMessage(unittest.TestCase):
 
     def test_text_content_preserved(self):
         """Normal text response should remain unchanged."""
-        from laffyhand.core.llm.specs.models import StreamText, StreamFinish
+        from laffyhand.llm.specs.models import StreamText, StreamFinish
 
         msgs, events = self._run_loop(
             [
@@ -181,7 +181,7 @@ class TestAgentLoopAssistantMessage(unittest.TestCase):
 
     def test_error_retry_exhausted(self):
         """After max_retries exhausted, error message is committed."""
-        from laffyhand.core.llm.specs.models import StreamError, StreamFinish
+        from laffyhand.llm.specs.models import StreamError, StreamFinish
 
         msgs, events = self._run_loop(
             [
@@ -197,7 +197,7 @@ class TestAgentLoopAssistantMessage(unittest.TestCase):
 
     def test_error_retry_succeeds(self):
         """If retry succeeds, use content from the successful attempt."""
-        from laffyhand.core.llm.specs.models import StreamError, StreamFinish, StreamText
+        from laffyhand.llm.specs.models import StreamError, StreamFinish, StreamText
 
         llm = _SeqMockLLM(
             [StreamError(error="transient"), StreamFinish(finish_reason="error", usage=Usage(input_tokens=5, output_tokens=0))],
@@ -228,7 +228,7 @@ class TestAgentLoopAssistantMessage(unittest.TestCase):
 
     def test_error_partial_content_no_retry(self):
         """When partial text was already streamed, do NOT retry — commit error."""
-        from laffyhand.core.llm.specs.models import StreamError, StreamFinish, StreamText
+        from laffyhand.llm.specs.models import StreamError, StreamFinish, StreamText
 
         msgs, events = self._run_loop(
             [
@@ -245,7 +245,7 @@ class TestAgentLoopAssistantMessage(unittest.TestCase):
 
     def test_error_retry_zero_no_retry(self):
         """max_retries=0 means no retry, immediate error commit."""
-        from laffyhand.core.llm.specs.models import StreamError, StreamFinish
+        from laffyhand.llm.specs.models import StreamError, StreamFinish
 
         msgs, events = self._run_loop(
             [
@@ -260,7 +260,7 @@ class TestAgentLoopAssistantMessage(unittest.TestCase):
 
     def test_error_with_tool_calls_no_retry(self):
         """When tool_calls were issued before error, do NOT retry — commit error."""
-        from laffyhand.core.llm.specs.models import StreamError, StreamFinish, StreamToolCall
+        from laffyhand.llm.specs.models import StreamError, StreamFinish, StreamToolCall
 
         msgs, events = self._run_loop(
             [
@@ -277,7 +277,7 @@ class TestAgentLoopAssistantMessage(unittest.TestCase):
 
     def test_non_error_no_retry(self):
         """finish_reason=stop does NOT trigger retry."""
-        from laffyhand.core.llm.specs.models import StreamFinish
+        from laffyhand.llm.specs.models import StreamFinish
 
         msgs, events = self._run_loop(
             [StreamFinish(finish_reason="stop", usage=Usage(input_tokens=10, output_tokens=0))],
@@ -331,7 +331,7 @@ class TestAgentTurn(unittest.TestCase):
         return assistant_msgs, events
 
     def test_agent_turn_text_response(self):
-        from laffyhand.core.llm.specs.models import StreamText, StreamFinish
+        from laffyhand.llm.specs.models import StreamText, StreamFinish
 
         msgs, events = self._run_turn([
             StreamText(delta="Hello from AgentTurn."),
@@ -342,7 +342,7 @@ class TestAgentTurn(unittest.TestCase):
         self.assertIn("StepStart", [type(e).__name__ for e in events])
 
     def test_agent_turn_tool_calls(self):
-        from laffyhand.core.llm.specs.models import StreamToolCall, StreamFinish
+        from laffyhand.llm.specs.models import StreamToolCall, StreamFinish
 
         msgs, events = self._run_turn([
             StreamToolCall(tool_call_id="c1", tool_name="noop", args="{}"),
@@ -354,7 +354,7 @@ class TestAgentTurn(unittest.TestCase):
         self.assertEqual(msgs[0].tool_calls[0].tool_name, "noop")
 
     def test_agent_turn_error_finish(self):
-        from laffyhand.core.llm.specs.models import StreamError, StreamFinish
+        from laffyhand.llm.specs.models import StreamError, StreamFinish
 
         msgs, events = self._run_turn([
             StreamError(error="API failure"),

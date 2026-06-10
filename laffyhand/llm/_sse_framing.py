@@ -3,8 +3,8 @@ from collections.abc import AsyncIterable, AsyncIterator
 from typing import Any, cast
 from loguru import logger
 
-from laffyhand.core.llm.specs import Framing
-from laffyhand.core.llm.specs.models import Frame
+from laffyhand.llm.specs import Framing
+from laffyhand.llm.specs.models import Frame
 
 
 class _DoneSentinel:

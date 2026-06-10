@@ -717,7 +717,7 @@ class TestScheduleTitleGeneration:
 class TestDoGenerateTitle:
     @pytest.mark.anyio
     async def test_generates_title(self, runtime, session_manager):
-        from laffyhand.core.llm.specs.models import StreamText, StreamFinish
+        from laffyhand.llm.specs.models import StreamText, StreamFinish
 
         async def mock_stream(messages, **kwargs):
             yield StreamText(delta="My Title")

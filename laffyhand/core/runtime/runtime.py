@@ -22,8 +22,8 @@ from laffyhand.core.session.todo import TodoManager
 from laffyhand.core.mcp import MCPService
 from laffyhand.core.db.repository import FileTagRepo
 from laffyhand.core.loop import LoopOrchestrator
-from laffyhand.core.llm.factory import build_route
-from laffyhand.core.llm.facade import LLM
+from laffyhand.llm.factory import build_route
+from laffyhand.llm.facade import LLM
 from laffyhand.core.exceptions import ConfigError
 from laffyhand.core._utils import build_env_block
 from laffyhand.core.memory.service import MemoryService

@@ -1,6 +1,6 @@
 from loguru import logger
-from laffyhand.core.llm.specs.models import Header
-from laffyhand.core.llm.specs import Auth
+from laffyhand.llm.specs.models import Header
+from laffyhand.llm.specs import Auth
 
 
 class BearerAuth(Auth):

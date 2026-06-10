@@ -3,7 +3,7 @@ import unittest
 
 from laffyhand.core.domain.messages import SystemMessage, ToolMessage
 from laffyhand.core.domain.messages import Usage
-from laffyhand.core.llm.specs.models import (
+from laffyhand.llm.specs.models import (
     StreamText,
     StreamToolCall,
     StreamFinish,

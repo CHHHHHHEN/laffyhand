@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from laffyhand.core.session.manager import SessionManager
     from laffyhand.core.session.todo import TodoManager
     from laffyhand.core.tools.registry import ToolRegistry
-    from laffyhand.core.llm.facade import LLM
+    from laffyhand.llm.facade import LLM
 
 
 MAX_SUBAGENT_DEPTH = 3

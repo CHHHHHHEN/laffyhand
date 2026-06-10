@@ -6,7 +6,7 @@ import pytest
 
 from laffyhand.core.domain.messages import UserMessage
 from laffyhand.core.runtime import AgentRuntime
-from laffyhand.core.llm.specs.models import (
+from laffyhand.llm.specs.models import (
     StreamText,
     StreamFinish,
 )
