@@ -12,9 +12,6 @@ class TaskParams(BaseModel):
     description: str | None = Field(
         None, description="Short 3-5 word summary of the task"
     )
-    background: bool | None = Field(
-        default=False, description="Run in background (non-blocking)"
-    )
     todo_id: str | None = Field(
         None, description="Link to a TODO task ID (auto-updates status)"
     )
@@ -58,7 +55,6 @@ class TaskTool(BaseTool):
         subagent_type = params["subagent_type"]
         prompt = params["prompt"]
         description = params.get("description", "")
-        background = params.get("background", False)
         todo_id = params.get("todo_id")
 
         parent_session_id = params.get("session_id", "")
@@ -74,7 +70,6 @@ class TaskTool(BaseTool):
             agent_info,
             prompt,
             description=description,
-            background=background,
             todo_id=todo_id,
         )
         return result

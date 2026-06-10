@@ -14,9 +14,7 @@ from laffyhand.core.skill import SkillRegistry
 from laffyhand.core.session import SessionManager, TitleConfig
 from laffyhand.core.session.state_store import SessionStateStore
 from laffyhand.core.subagent import (
-    SubagentTaskRunner,
     SubagentOrchestrator,
-    SessionContext,
 )
 from laffyhand.core.tools.registry import ToolRegistry
 from laffyhand.core.tools.init import ToolInitializer
@@ -64,9 +62,6 @@ class AgentRuntime:
             llm_provider=self._llm_for_session,
         )
         self.max_steps = config.agent.max_steps
-        self.subagent_manager = SubagentTaskRunner(
-            max_concurrent=config.agent.max_concurrent_subagents,
-        )
         try:
             from laffyhand.config import resolve_provider, resolve_model
 
@@ -92,7 +87,6 @@ class AgentRuntime:
         self.subagent_orchestrator = SubagentOrchestrator(
             session_manager=self.session_manager,
             tool_registry=self.tool_registry,
-            subagent_manager=self.subagent_manager,
             llm_provider=self._llm_for_session,
             compaction_config=self.compaction_config,
             todo_manager=self.todo_manager,
@@ -123,7 +117,6 @@ class AgentRuntime:
         self.loop_orchestrator = LoopOrchestrator(
             session_manager=self.session_manager,
             tool_registry=self.tool_registry,
-            subagent_manager=self.subagent_manager,
             llm_provider=self._llm_for_session,
             compaction_config=self.compaction_config,
             max_steps=self.max_steps,
@@ -173,9 +166,6 @@ class AgentRuntime:
 
     def get_session_lock(self, session_id: str) -> asyncio.Lock:
         return self._session_store.get_lock(session_id)
-
-    def get_session_context(self, session_id: str) -> SessionContext | None:
-        return self._session_store.get_session_context(session_id)
 
     @property
     def session_store(self) -> SessionStateStore:
@@ -324,7 +314,6 @@ class AgentRuntime:
         agent_info: AgentInfo,
         prompt: str,
         description: str = "",
-        background: bool = False,
         todo_id: str | None = None,
     ) -> str:
         return await self.subagent_orchestrator.create_subagent(
@@ -332,7 +321,6 @@ class AgentRuntime:
             agent_info,
             prompt,
             description=description,
-            background=background,
             todo_id=todo_id,
         )
 
@@ -361,7 +349,6 @@ class AgentRuntime:
         if state is None:
             return False
         state.interrupt_requested = True
-        self.subagent_orchestrator.cancel_session(session_id)
         logger.debug(f"Interrupt requested for session {session_id}")
         return True
 
@@ -378,7 +365,6 @@ class AgentRuntime:
 
     async def shutdown(self) -> None:
         await self.loop_orchestrator.cancel_all()
-        await self.subagent_orchestrator.cancel_all()
         self._session_store.save_all(self.session_manager)
         await self.mcp_service.disconnect_all()
         self.session_manager.close()

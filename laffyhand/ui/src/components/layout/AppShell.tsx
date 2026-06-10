@@ -7,7 +7,6 @@ import { useTodoStore } from "@/stores/todo-store"
 import { useChatStore } from "@/stores/chat-store"
 import { useSessionStore } from "@/stores/session-store"
 import { ConfigPanel } from "@/components/chat/ConfigPanel"
-import { SubagentFooter } from "@/components/chat/SubagentFooter"
 import { SessionTabs } from "@/components/chat/SessionTabs"
 import { useEffect } from "react"
 
@@ -195,7 +194,6 @@ export function AppShell() {
             <Outlet />
           </ErrorBoundary>
         </div>
-        <SubagentFooter />
       </div>
 
       <TodoPanel />

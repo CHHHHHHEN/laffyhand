@@ -14,7 +14,6 @@ function makeSubagent(overrides: Partial<ActiveSubagent> = {}): ActiveSubagent {
     parentId: null,
     agentType: "explore",
     description: "Search the codebase for test files",
-    mode: "foreground",
     depth: 0,
     status: "completed",
     text: "",

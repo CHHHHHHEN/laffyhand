@@ -171,11 +171,6 @@ class ChatStreamSession:
                 session_id=self._session_id,
                 event_sink=self._event_sink,
             ):
-                if self._runtime.subagent_manager:
-                    bg = await self._runtime.subagent_manager.drain_events(self._session_id)
-                    for be in bg:
-                        await self._event_sink(be)
-
                 params = event.model_dump(exclude_none=True)
                 notif = Notification(method="event", params=params)
                 await self._transport.send(notif.json())
@@ -205,14 +200,6 @@ class ChatStreamSession:
                     "Failed to send error event to client in chat stream"
                 )
         finally:
-            if self._runtime.subagent_manager:
-                bg = await self._runtime.subagent_manager.drain_events(self._session_id)
-                for be in bg:
-                    try:
-                        await self._event_sink(be)
-                    except Exception:
-                        logger.warning("Failed to relay background event")
-
             if self._cancelled:
                 cancel_params = {"type": "cancelled", "data": "Stream cancelled"}
                 cancel = Notification(method="event", params=cancel_params)

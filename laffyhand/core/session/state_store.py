@@ -10,7 +10,6 @@ from loguru import logger
 
 from laffyhand.core.llm.specs.models import SystemMessage
 from laffyhand.core.models import AgentState, SessionID
-from laffyhand.core.subagent import SessionContext
 from laffyhand.core.exceptions import SessionError
 
 if TYPE_CHECKING:
@@ -21,7 +20,6 @@ class SessionStateStore:
     def __init__(self) -> None:
         self._states: dict[str, AgentState] = {}
         self._session_locks: dict[str, asyncio.Lock] = {}
-        self._session_contexts: dict[str, SessionContext] = {}
         self._pending_permissions: dict[
             str, tuple[asyncio.Event, str, str, bool | None, str | None]
         ] = {}
@@ -57,21 +55,13 @@ class SessionStateStore:
     async def use(
         self,
         session_id: str,
-    ) -> AsyncIterator[tuple[AgentState, SessionContext]]:
+    ) -> AsyncIterator[tuple[AgentState, asyncio.Lock]]:
         state = self._states.get(session_id)
         if state is None:
             raise SessionError(f"Session not found: {session_id}")
-        ctx = SessionContext()
-        self._session_contexts[session_id] = ctx
         lock = self.get_lock(session_id)
         async with lock:
-            try:
-                yield (state, ctx)
-            finally:
-                self._session_contexts.pop(session_id, None)
-
-    def get_session_context(self, session_id: str) -> SessionContext | None:
-        return self._session_contexts.get(session_id)
+            yield (state, lock)
 
     # ── Pending permissions ───────────────────────────────────
 

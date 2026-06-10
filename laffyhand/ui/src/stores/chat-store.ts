@@ -21,7 +21,6 @@ export interface SessionChatState {
   turnUsage: TurnUsage | null
   _turnStartUsage: SessionUsage | null
   foregroundSubagents: ActiveSubagent[]
-  backgroundSubagents: ActiveSubagent[]
   pendingQueue: string[]
 }
 
@@ -49,7 +48,7 @@ export interface ChatStore {
   hasPendingMessages: (sessionId: string) => boolean
   addPermissionRequest: (sessionId: string, req: PermissionInfo) => void
   resolvePermissionRequest: (sessionId: string, messageId: string, denyReason?: string) => void
-  startSubagent: (sessionId: string, event: { id: string; parent_id?: string; agent_type: string; description: string; prompt?: string; mode: "foreground" | "background"; depth: number }) => void
+  startSubagent: (sessionId: string, event: { id: string; parent_id?: string; agent_type: string; description: string; prompt?: string; depth: number }) => void
   updateSubagent: (sessionId: string, id: string, event: { kind: string; content?: string; tool_name?: string; tool_input?: string }) => void
   endSubagent: (sessionId: string, id: string, event: { status: string; summary?: string; tool_count?: number; input_tokens?: number; output_tokens?: number }) => void
   clearForegroundSubagents: (sessionId: string) => void
@@ -78,7 +77,6 @@ function createInitialSessionState(): SessionChatState {
     turnUsage: null,
     _turnStartUsage: null,
     foregroundSubagents: [],
-    backgroundSubagents: [],
     pendingQueue: [],
   }
 }
@@ -333,9 +331,6 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             streamToolCalls: [],
             currentAssistantMessageId: null,
             foregroundSubagents: [],
-            backgroundSubagents: sess.backgroundSubagents.filter(
-              (sa) => sa.status !== "completed" && sa.status !== "error",
-            ),
             sessionUsage: finalUsage,
             turnUsage,
             _turnStartUsage: null,
@@ -372,7 +367,6 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             streamToolCalls: [],
             currentAssistantMessageId: null,
             foregroundSubagents: [],
-            backgroundSubagents: [],
             error: null,
             turnUsage: null,
             _turnStartUsage: null,
@@ -468,7 +462,6 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         agentType: event.agent_type,
         description: event.description,
         prompt: event.prompt,
-        mode: event.mode,
         depth: event.depth,
         status: "running",
         text: "",
@@ -479,18 +472,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         outputTokens: 0,
         events: [],
       }
-      if (event.mode === "foreground") {
-        return {
-          sessions: {
-            ...state.sessions,
-            [sessionId]: { ...sess, foregroundSubagents: [...sess.foregroundSubagents, sa] },
-          },
-        }
-      }
       return {
         sessions: {
           ...state.sessions,
-          [sessionId]: { ...sess, backgroundSubagents: [...sess.backgroundSubagents, sa] },
+          [sessionId]: { ...sess, foregroundSubagents: [...sess.foregroundSubagents, sa] },
         },
       }
     }),
@@ -536,7 +521,6 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           [sessionId]: {
             ...sess,
             foregroundSubagents: sess.foregroundSubagents.map(update),
-            backgroundSubagents: sess.backgroundSubagents.map(update),
           },
         },
       }
@@ -562,7 +546,6 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           [sessionId]: {
             ...sess,
             foregroundSubagents: sess.foregroundSubagents.map(update),
-            backgroundSubagents: sess.backgroundSubagents.map(update),
           },
         },
       }

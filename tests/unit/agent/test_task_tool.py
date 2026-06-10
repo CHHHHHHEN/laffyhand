@@ -43,29 +43,6 @@ class TestTaskTool:
             agent,
             "Find the main function",
             description="",
-            background=False,
-            todo_id=None,
-        )
-
-    @pytest.mark.anyio
-    async def test_run_with_background(self, task_tool, agent_registry, orchestrator):
-        orchestrator.create_subagent.return_value = "Sub-agent started"
-        result = await task_tool.run(
-            {
-                "subagent_type": "general",
-                "prompt": "Do something",
-                "background": True,
-                "session_id": "session-123",
-            }
-        )
-        assert result == "Sub-agent started"
-        agent = agent_registry.get("general")
-        orchestrator.create_subagent.assert_awaited_once_with(
-            "session-123",
-            agent,
-            "Do something",
-            description="",
-            background=True,
             todo_id=None,
         )
 
@@ -86,7 +63,6 @@ class TestTaskTool:
             agent,
             "Fix the bug",
             description="Fix bug",
-            background=False,
             todo_id=None,
         )
 
@@ -109,7 +85,6 @@ class TestTaskTool:
         assert "subagent_type" in props
         assert "prompt" in props
         assert "description" in props
-        assert "background" in props
         assert schema["required"] == ["subagent_type", "prompt"]
 
     def test_input_schema_enum_contains_subagents(self, task_tool):
@@ -120,11 +95,6 @@ class TestTaskTool:
         }
         for name in subagent_names:
             assert name in enum
-
-    def test_input_schema_background_default_false(self, task_tool):
-        schema = task_tool._input_schema()
-        bg = schema["properties"]["background"]
-        assert bg.get("default") is False
 
     def test_name_and_description(self, task_tool):
         assert task_tool.name == "task"

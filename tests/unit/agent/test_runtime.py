@@ -38,9 +38,6 @@ class TestAgentRuntimeInit:
     def test_creates_agent_registry(self, runtime):
         assert runtime.agent_registry.get("build") is not None
 
-    def test_creates_subagent_manager(self, runtime):
-        assert runtime.subagent_manager.active_count() == 0
-
     def test_initial_state_is_none(self, runtime):
         assert runtime.get_state("nonexistent") is None
 
@@ -587,53 +584,6 @@ class TestCreateSubagent:
         assert "<task>" in result
 
     @pytest.mark.anyio
-    async def test_background_spawns_subagent(self, runtime, session_manager):
-        session = session_manager.create()
-        state = AgentState(
-            messages=[],
-            session_id=session.id,
-            usage=SessionUsage(context_size=0),
-        )
-        runtime.session_store.set(session.id, state)
-        agent_info = AgentInfo(name="test", system_prompt="You are test.")
-
-        with patch.object(
-            runtime.subagent_manager, "spawn", new_callable=AsyncMock
-        ) as mock_spawn:
-            mock_spawn.return_value = "abc123def456"
-            result = await runtime.create_subagent(
-                session.id,
-                agent_info,
-                "Do it",
-                background=True,
-            )
-        assert "started" in result
-        assert "test" in result
-        mock_spawn.assert_awaited_once()
-
-    @pytest.mark.anyio
-    async def test_background_spawn_receives_compaction_config(
-        self, runtime, session_manager
-    ):
-        session = session_manager.create()
-        state = AgentState(
-            messages=[],
-            session_id=session.id,
-            usage=SessionUsage(context_size=0),
-        )
-        runtime.session_store.set(session.id, state)
-        agent_info = AgentInfo(name="test", system_prompt="You are test.")
-
-        with patch.object(
-            runtime.subagent_manager, "spawn", new_callable=AsyncMock
-        ) as mock_spawn:
-            await runtime.create_subagent(session.id, agent_info, "Do it", background=True)
-            _call_session = mock_spawn.call_args[1]["session_manager"]
-            _call_compaction = mock_spawn.call_args[1]["compaction_config"]
-            assert _call_session is runtime.session_manager
-            assert _call_compaction is runtime.compaction_config
-
-    @pytest.mark.anyio
     async def test_foreground_with_todo_id_emits_update_events(
         self, runtime, session_manager
     ):
@@ -727,124 +677,6 @@ class TestCreateSubagent:
 
         todo_events = [e for e in events if isinstance(e, TodoUpdateEvent)]
         assert len(todo_events) == 0, f"Expected 0 TodoUpdate events, got {len(todo_events)}"
-
-    @pytest.mark.anyio
-    async def test_background_with_todo_id_emits_in_progress_event(
-        self, runtime, session_manager
-    ):
-        session = session_manager.create()
-        state = AgentState(
-            messages=[],
-            session_id=session.id,
-            usage=SessionUsage(context_size=0),
-        )
-        runtime.session_store.set(session.id, state)
-        agent_info = AgentInfo(name="test", system_prompt="You are test.")
-
-        todo = runtime.todo_manager.add_task(session.id, "test task")
-
-        events: list[Any] = []
-
-        async def event_sink(event: Any) -> None:
-            events.append(event)
-
-        runtime.session_store.set_event_sink(session.id, event_sink)
-
-        with patch.object(
-            runtime.subagent_manager, "spawn", new_callable=AsyncMock
-        ):
-            await runtime.create_subagent(
-                session.id,
-                agent_info,
-                "Do it",
-                background=True,
-                todo_id=todo.id,
-            )
-
-        from laffyhand.core.models import TodoUpdate as TodoUpdateEvent
-
-        todo_events = [e for e in events if isinstance(e, TodoUpdateEvent)]
-        assert len(todo_events) == 1, f"Expected 1 TodoUpdate event (in_progress), got {len(todo_events)}: {events}"
-
-        # Verify todo status set to in_progress
-        updated = runtime.todo_manager.get_task(todo.id)
-        assert updated is not None
-        assert updated.status == "in_progress"
-
-    @pytest.mark.anyio
-    async def test_background_on_complete_emits_todo_update(
-        self, runtime, session_manager
-    ):
-        session = session_manager.create()
-        state = AgentState(
-            messages=[],
-            session_id=session.id,
-            usage=SessionUsage(context_size=0),
-        )
-        runtime.session_store.set(session.id, state)
-        agent_info = AgentInfo(name="test", system_prompt="You are test.")
-
-        todo = runtime.todo_manager.add_task(session.id, "test task")
-
-        events: list[Any] = []
-
-        async def event_sink(event: Any) -> None:
-            events.append(event)
-
-        runtime.session_store.set_event_sink(session.id, event_sink)
-
-        with patch.object(
-            runtime.subagent_manager, "spawn", new_callable=AsyncMock
-        ) as mock_spawn:
-            await runtime.create_subagent(
-                session.id,
-                agent_info,
-                "Do it",
-                background=True,
-                todo_id=todo.id,
-            )
-
-        # Extract the on_complete callback passed to spawn
-        _call_on_complete = mock_spawn.call_args[1].get("on_complete")
-        assert _call_on_complete is not None, "on_complete not passed to spawn"
-
-        # Clear events from in_progress, then invoke on_complete
-        events.clear()
-
-        # Invoke on_complete with success=True
-        _call_on_complete("task-123", True)
-
-        # Give the fire-and-forget task time to execute
-        await asyncio.sleep(0)
-
-        from laffyhand.core.models import TodoUpdate as TodoUpdateEvent
-
-        todo_events = [e for e in events if isinstance(e, TodoUpdateEvent)]
-        assert len(todo_events) == 1, f"Expected 1 TodoUpdate event from on_complete, got {len(todo_events)}: {events}"
-
-        # Verify todo status set to completed
-        updated = runtime.todo_manager.get_task(todo.id)
-        assert updated is not None
-        assert updated.status == "completed"
-
-
-class TestGenerateTitleForCurrent:
-    @pytest.mark.anyio
-    async def test_generates_title(self, runtime, session_manager):
-        session = session_manager.create(messages=[UserMessage(content="Hello")])
-        state = AgentState(
-            messages=[UserMessage(content="Hello")],
-            session_id=session.id,
-            usage=SessionUsage(context_size=0),
-        )
-        runtime.session_store.set(session.id, state)
-
-        with patch(
-            "laffyhand.core.title.generate_title", new_callable=AsyncMock
-        ) as mock_gen:
-            mock_gen.return_value = "My Title"
-            result = await runtime._do_generate_title(session.id)
-            assert result == "My Title"
 
 
 class TestScheduleTitleGeneration:

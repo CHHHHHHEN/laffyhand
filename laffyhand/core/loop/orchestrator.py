@@ -13,7 +13,6 @@ from laffyhand.core.session.state_store import SessionStateStore
 if TYPE_CHECKING:
     from laffyhand.core.llm.facade import LLM
     from laffyhand.core.session import SessionManager
-    from laffyhand.core.subagent.manager import SubagentTaskRunner
     from laffyhand.core.tools import ToolRegistry
 
 
@@ -28,7 +27,6 @@ class LoopOrchestrator:
         *,
         session_manager: SessionManager,
         tool_registry: ToolRegistry,
-        subagent_manager: SubagentTaskRunner | None,
         llm_provider: Callable[[str], LLM],
         compaction_config: CompactionConfig,
         max_steps: int,
@@ -37,7 +35,6 @@ class LoopOrchestrator:
     ) -> None:
         self._session_manager = session_manager
         self._tool_registry = tool_registry
-        self._subagent_manager = subagent_manager
         self._llm_provider = llm_provider
         self._compaction_config = compaction_config
         self._max_steps = max_steps
@@ -64,7 +61,6 @@ class LoopOrchestrator:
                 compaction_config=self._compaction_config,
                 max_steps=self._max_steps,
                 session_manager=self._session_manager,
-                subagent_manager=self._subagent_manager,
                 on_compacted=lambda child_sid: self._title_scheduler(
                     child_sid, "on_compact"
                 ),

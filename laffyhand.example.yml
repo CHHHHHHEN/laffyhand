@@ -39,8 +39,6 @@ agent:
   compaction_tail_turns: 2
   # Maximum agent loop iterations per turn
   max_steps: 50
-  # Maximum concurrent sub-agents
-  max_concurrent_subagents: 2
 
 paths:
   # Directories to scan for SKILL.md files

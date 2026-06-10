@@ -92,7 +92,6 @@ class TestConfigModels:
         assert cfg.title_mode == "auto"
         assert cfg.compaction_tail_turns == 2
         assert cfg.max_steps == 50
-        assert cfg.max_concurrent_subagents == 2
 
     def test_paths_config_defaults(self):
         cfg = PathsConfig()
@@ -174,7 +173,6 @@ class TestLoadConfig:
                 "title_mode": "auto",
                 "compaction_tail_turns": 3,
                 "max_steps": 100,
-                "max_concurrent_subagents": 5,
             },
             "paths": {
                 "skills": ["skills/", "custom/"],
@@ -210,7 +208,6 @@ class TestLoadConfig:
             assert cfg.agent.title_mode == "auto"
             assert cfg.agent.compaction_tail_turns == 3
             assert cfg.agent.max_steps == 100
-            assert cfg.agent.max_concurrent_subagents == 5
             assert cfg.paths.skills == ["skills/", "custom/"]
             assert cfg.paths.agents == ["agents/"]
             assert "local-1" in cfg.mcp.servers

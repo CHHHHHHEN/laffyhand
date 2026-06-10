@@ -51,7 +51,6 @@ from laffyhand.core.tools import ToolRegistry
 
 if TYPE_CHECKING:
     from laffyhand.core.session import SessionManager
-    from laffyhand.core.subagent.manager import SubagentTaskRunner
 
 
 # ── Message persistence helper ───────────────────────────────────
@@ -154,13 +153,6 @@ class TurnContext(BaseModel):
 
 
 class AgentTurn:
-    """Encapsulates one agent turn lifecycle.
-
-    Responsibilities: interrupt/step-gate checks, pre-turn compaction,
-    subagent/preference injection, LLM streaming with retry, assistant
-    message construction, tool execution, post-turn compaction, persistence.
-    """
-
     def __init__(
         self,
         agent_state: AgentState,
@@ -171,7 +163,6 @@ class AgentTurn:
         retry_config: RetryConfig = RetryConfig(),
         max_steps: int = 50,
         session_manager: SessionManager | None = None,
-        subagent_manager: SubagentTaskRunner | None = None,
         on_compacted: Callable[[str], None] | None = None,
     ) -> None:
         self._agent_state = agent_state
@@ -181,7 +172,6 @@ class AgentTurn:
         self._retry_config = retry_config
         self._max_steps = max_steps
         self._session_manager = session_manager
-        self._subagent_manager = subagent_manager
         self._on_compacted = on_compacted
 
         self._context_size = agent_state.usage.context_size
@@ -212,8 +202,6 @@ class AgentTurn:
             if ctx.compacted:
                 yield Compacting(data="Compacting conversation history...")
                 continue
-
-            await self._inject_subagent_results()
 
             step_index = self._agent_state.step
             disabled_tools = self._agent_state.disabled_tools
@@ -276,22 +264,6 @@ class AgentTurn:
             logger.debug("Agent loop interrupted by user request")
             return True
         return False
-
-    async def _inject_subagent_results(self) -> None:
-        if self._subagent_manager is not None and self._agent_state.session_id:
-            bg_results = await self._subagent_manager.poll_results(
-                self._agent_state.session_id
-            )
-            for bg in bg_results:
-                content = bg.content or bg.error or "[No output]"
-                injected = UserMessage(
-                    content=(
-                        f"[Background task '{bg.agent_type}' (id: {bg.task_id[:8]}) completed]\n\n"
-                        f"{content}"
-                    ),
-                )
-                self._agent_state.messages.append(injected)
-                logger.info(f"Injected subagent result: {bg.task_id[:8]}")
 
     # ── LLM streaming & retry ──────────────────────────────────
 

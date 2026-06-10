@@ -915,23 +915,9 @@ class TestHandleSessionArchive:
 
 class TestHandleSubagentListActive:
     @pytest.mark.anyio
-    async def test_returns_active_subagents(self, runtime, transport):
-        runtime.subagent_manager = MagicMock()
-        runtime.subagent_manager.list_active = MagicMock(
-            return_value=[
-                {"task_id": "t1", "agent_type": "explore", "status": "running"},
-            ]
-        )
+    async def test_returns_empty_list(self, runtime, transport):
         result = await handlers.handle_subagent_list_active(
             runtime, {"session_id": "sess-1"}, transport, 1, "c1"
-        )
-        assert len(result["subagents"]) == 1
-        assert result["subagents"][0]["task_id"] == "t1"
-
-    @pytest.mark.anyio
-    async def test_returns_empty_when_no_session(self, runtime, transport):
-        result = await handlers.handle_subagent_list_active(
-            runtime, {}, transport, 1, "c1"
         )
         assert result["subagents"] == []
 

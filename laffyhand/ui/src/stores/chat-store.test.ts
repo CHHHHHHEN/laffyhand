@@ -322,31 +322,12 @@ describe("chat-store", () => {
       id: "sa-1",
       agent_type: "explore",
       description: "searching files",
-      mode: "foreground",
       depth: 0,
     })
     const state = useChatStore.getState().sessions[SID]!
     expect(state.foregroundSubagents).toHaveLength(1)
-    expect(state.backgroundSubagents).toHaveLength(0)
     expect(state.foregroundSubagents[0]!.id).toBe("sa-1")
     expect(state.foregroundSubagents[0]!.status).toBe("running")
-    expect(state.foregroundSubagents[0]!.mode).toBe("foreground")
-  })
-
-  it("startSubagent adds background subagent", () => {
-    const store = useChatStore.getState()
-    store.startSubagent(SID, {
-      id: "sa-2",
-      agent_type: "general",
-      description: "background task",
-      mode: "background",
-      depth: 1,
-    })
-    const state = useChatStore.getState().sessions[SID]!
-    expect(state.backgroundSubagents).toHaveLength(1)
-    expect(state.foregroundSubagents).toHaveLength(0)
-    expect(state.backgroundSubagents[0]!.parentId).toBeNull()
-    expect(state.backgroundSubagents[0]!.depth).toBe(1)
   })
 
   it("startSubagent with parentId sets parentId correctly", () => {
@@ -356,7 +337,6 @@ describe("chat-store", () => {
       parent_id: "sa-parent",
       agent_type: "explore",
       description: "child task",
-      mode: "foreground",
       depth: 1,
     })
     const sa = useChatStore.getState().sessions[SID]!.foregroundSubagents[0]!
@@ -365,7 +345,7 @@ describe("chat-store", () => {
 
   it("updateSubagent appends text content", () => {
     const store = useChatStore.getState()
-    store.startSubagent(SID, { id: "sa-1", agent_type: "explore", description: "testing", mode: "foreground", depth: 0 })
+    store.startSubagent(SID, { id: "sa-1", agent_type: "explore", description: "testing", depth: 0 })
     store.updateSubagent(SID, "sa-1", { kind: "text", content: "Hello " })
     store.updateSubagent(SID, "sa-1", { kind: "text", content: "World" })
     expect(useChatStore.getState().sessions[SID]!.foregroundSubagents[0]!.text).toBe("Hello World")
@@ -373,14 +353,14 @@ describe("chat-store", () => {
 
   it("updateSubagent appends reasoning content", () => {
     const store = useChatStore.getState()
-    store.startSubagent(SID, { id: "sa-1", agent_type: "explore", description: "testing", mode: "foreground", depth: 0 })
+    store.startSubagent(SID, { id: "sa-1", agent_type: "explore", description: "testing", depth: 0 })
     store.updateSubagent(SID, "sa-1", { kind: "reasoning", content: "thinking..." })
     expect(useChatStore.getState().sessions[SID]!.foregroundSubagents[0]!.reasoning).toBe("thinking...")
   })
 
   it("updateSubagent adds tool calls", () => {
     const store = useChatStore.getState()
-    store.startSubagent(SID, { id: "sa-1", agent_type: "explore", description: "testing", mode: "foreground", depth: 0 })
+    store.startSubagent(SID, { id: "sa-1", agent_type: "explore", description: "testing", depth: 0 })
     store.updateSubagent(SID, "sa-1", { kind: "tool", tool_name: "read_file", tool_input: '{"path": "/test"}' })
     const sa = useChatStore.getState().sessions[SID]!.foregroundSubagents[0]!
     expect(sa.toolCount).toBe(1)
@@ -389,7 +369,7 @@ describe("chat-store", () => {
 
   it("updateSubagent handles error kind", () => {
     const store = useChatStore.getState()
-    store.startSubagent(SID, { id: "sa-1", agent_type: "explore", description: "testing", mode: "foreground", depth: 0 })
+    store.startSubagent(SID, { id: "sa-1", agent_type: "explore", description: "testing", depth: 0 })
     store.updateSubagent(SID, "sa-1", { kind: "error", content: "something went wrong" })
     const sa = useChatStore.getState().sessions[SID]!.foregroundSubagents[0]!
     expect(sa.status).toBe("error")
@@ -398,7 +378,7 @@ describe("chat-store", () => {
 
   it("updateSubagent does nothing for unknown id", () => {
     const store = useChatStore.getState()
-    store.startSubagent(SID, { id: "sa-1", agent_type: "explore", description: "testing", mode: "foreground", depth: 0 })
+    store.startSubagent(SID, { id: "sa-1", agent_type: "explore", description: "testing", depth: 0 })
     const before = useChatStore.getState().sessions[SID]!.foregroundSubagents[0]!.text
     store.updateSubagent(SID, "nonexistent", { kind: "text", content: "should not appear" })
     expect(useChatStore.getState().sessions[SID]!.foregroundSubagents[0]!.text).toBe(before)
@@ -406,7 +386,7 @@ describe("chat-store", () => {
 
   it("endSubagent updates status and token counts", () => {
     const store = useChatStore.getState()
-    store.startSubagent(SID, { id: "sa-1", agent_type: "explore", description: "testing", mode: "foreground", depth: 0 })
+    store.startSubagent(SID, { id: "sa-1", agent_type: "explore", description: "testing", depth: 0 })
     store.endSubagent(SID, "sa-1", {
       status: "completed",
       summary: "done",
@@ -422,31 +402,27 @@ describe("chat-store", () => {
 
   it("endSubagent preserves existing fields when event fields are missing", () => {
     const store = useChatStore.getState()
-    store.startSubagent(SID, { id: "sa-1", agent_type: "explore", description: "testing", mode: "foreground", depth: 0 })
+    store.startSubagent(SID, { id: "sa-1", agent_type: "explore", description: "testing", depth: 0 })
     store.endSubagent(SID, "sa-1", { status: "completed" })
     const sa = useChatStore.getState().sessions[SID]!.foregroundSubagents[0]!
     expect(sa.inputTokens).toBe(0)
     expect(sa.summary).toBeUndefined()
   })
 
-  it("clearForegroundSubagents empties foreground array only", () => {
+  it("clearForegroundSubagents empties foreground array", () => {
     const store = useChatStore.getState()
-    store.startSubagent(SID, { id: "fg", agent_type: "explore", description: "fg", mode: "foreground", depth: 0 })
-    store.startSubagent(SID, { id: "bg", agent_type: "explore", description: "bg", mode: "background", depth: 0 })
+    store.startSubagent(SID, { id: "sa-1", agent_type: "explore", description: "test", depth: 0 })
     store.clearForegroundSubagents(SID)
     const state = useChatStore.getState().sessions[SID]!
     expect(state.foregroundSubagents).toHaveLength(0)
-    expect(state.backgroundSubagents).toHaveLength(1)
   })
 
-  it("clearMessages clears both subagent arrays", () => {
+  it("clearMessages clears subagent arrays", () => {
     const store = useChatStore.getState()
-    store.startSubagent(SID, { id: "sa-1", agent_type: "explore", description: "test", mode: "foreground", depth: 0 })
-    store.startSubagent(SID, { id: "sa-2", agent_type: "explore", description: "test", mode: "background", depth: 0 })
+    store.startSubagent(SID, { id: "sa-1", agent_type: "explore", description: "test", depth: 0 })
     store.clearMessages(SID)
     const state = useChatStore.getState().sessions[SID]!
     expect(state.foregroundSubagents).toHaveLength(0)
-    expect(state.backgroundSubagents).toHaveLength(0)
   })
 
   // ── Multiple sessions isolation ──

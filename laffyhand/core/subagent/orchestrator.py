@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-import asyncio
 import uuid
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from laffyhand.core.models import (
@@ -14,7 +12,7 @@ from laffyhand.core.models import (
 )
 from laffyhand.core.llm.specs.models import AssistantMessage
 from laffyhand.core.models import CompactionConfig
-from laffyhand.core.session.todo import TodoStatus, TodoUpdate as TodoStatusUpdate
+from laffyhand.core.session.todo import TodoUpdate as TodoStatusUpdate
 from laffyhand.core.subagent._shared import (
     build_subagent_state,
     map_event_to_subagent_delta,
@@ -24,7 +22,6 @@ if TYPE_CHECKING:
     from laffyhand.core.agent import AgentInfo
     from laffyhand.core.session.manager import SessionManager
     from laffyhand.core.session.todo import TodoManager
-    from laffyhand.core.subagent.manager import SubagentTaskRunner
     from laffyhand.core.tools.registry import ToolRegistry
     from laffyhand.core.llm.facade import LLM
 
@@ -32,10 +29,11 @@ if TYPE_CHECKING:
 MAX_SUBAGENT_DEPTH = 3
 
 
-@dataclass
-class SessionContext:
-    subagent_id: str | None = None
-    subagent_depth: int = 0
+class _SubagentCtx:
+    """Internal per-session subagent nesting context."""
+    def __init__(self) -> None:
+        self.subagent_id: str | None = None
+        self.subagent_depth: int = 0
 
 
 class SubagentOrchestrator:
@@ -43,7 +41,6 @@ class SubagentOrchestrator:
         self,
         session_manager: SessionManager,
         tool_registry: ToolRegistry,
-        subagent_manager: SubagentTaskRunner,
         llm_provider: Callable[[str], LLM],
         compaction_config: CompactionConfig,
         todo_manager: TodoManager | None = None,
@@ -53,17 +50,16 @@ class SubagentOrchestrator:
     ) -> None:
         self.session_manager = session_manager
         self.tool_registry = tool_registry
-        self.subagent_manager = subagent_manager
         self._llm_provider = llm_provider
         self.compaction_config = compaction_config
         self.todo_manager = todo_manager
         self._event_sink_provider = event_sink_provider
-        self._session_contexts: dict[str, SessionContext] = {}
+        self._session_contexts: dict[str, _SubagentCtx] = {}
 
-    def get_context(self, session_id: str) -> SessionContext:
+    def _get_context(self, session_id: str) -> _SubagentCtx:
         ctx = self._session_contexts.get(session_id)
         if ctx is None:
-            ctx = SessionContext()
+            ctx = _SubagentCtx()
             self._session_contexts[session_id] = ctx
         return ctx
 
@@ -73,7 +69,6 @@ class SubagentOrchestrator:
         agent_info: AgentInfo,
         prompt: str,
         description: str = "",
-        background: bool = False,
         todo_id: str | None = None,
         *,
         event_sink: Callable[[Any], Awaitable[None]] | None = None,
@@ -86,7 +81,7 @@ class SubagentOrchestrator:
             )
 
         task_id = uuid.uuid4().hex[:12]
-        ctx = self.get_context(parent_session_id)
+        ctx = self._get_context(parent_session_id)
         parent_subagent_id = ctx.subagent_id
         subagent_depth = (ctx.subagent_depth + 1) if ctx.subagent_id else 1
 
@@ -103,48 +98,6 @@ class SubagentOrchestrator:
             )
             if sink:
                 await sink(TodoUpdateEvent())
-
-        if background:
-            bg_llm = self._llm_provider(parent_session_id)
-
-            def _on_complete(_task_id: str, success: bool) -> None:
-                if todo_id and self.todo_manager:
-                    status: TodoStatus = "completed" if success else "pending"
-                    self.todo_manager.update_task(
-                        todo_id,
-                        parent_session_id,
-                        TodoStatusUpdate(status=status),
-                    )
-                    sink = event_sink or (
-                        self._event_sink_provider(parent_session_id)
-                        if self._event_sink_provider
-                        else None
-                    )
-                    if sink:
-                        asyncio.ensure_future(sink(TodoUpdateEvent()))
-
-            await self.subagent_manager.spawn(
-                parent_session_id=parent_session_id,
-                agent_info=agent_info,
-                prompt=prompt,
-                llm=bg_llm,
-                tool_registry=self.tool_registry,
-                parent_permission=self.tool_registry.permission,
-                session_manager=self.session_manager,
-                compaction_config=self.compaction_config,
-                on_complete=_on_complete,
-                event_sink=event_sink
-                or (
-                    self._event_sink_provider(parent_session_id)
-                    if self._event_sink_provider
-                    else None
-                ),
-                task_id=task_id,
-                parent_subagent_id=parent_subagent_id,
-                subagent_depth=subagent_depth,
-                description=description,
-            )
-            return f"Sub-agent [{agent_info.name}] started (id: {task_id[:8]}). I'll notify you when it completes."
 
         prev_subagent_id = ctx.subagent_id
         prev_subagent_depth = ctx.subagent_depth
@@ -187,12 +140,6 @@ class SubagentOrchestrator:
 
         return result
 
-    def cancel_session(self, session_id: str) -> None:
-        self.subagent_manager.cancel_session(session_id)
-
-    async def cancel_all(self) -> None:
-        self.subagent_manager.cancel_all()
-
     async def _run_foreground(
         self,
         parent_session_id: str,
@@ -223,7 +170,6 @@ class SubagentOrchestrator:
                     agent_type=agent_info.name,
                     description=description or prompt[:80],
                     prompt=prompt,
-                    mode="foreground",
                     depth=subagent_depth,
                 )
             )

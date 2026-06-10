@@ -141,7 +141,6 @@ agent:
   title_mode: "on_compact"
   compaction_tail_turns: 2
   max_steps: 50
-  max_concurrent_subagents: 2
 
 paths:
   skills: []

@@ -7,7 +7,6 @@ function makeSubagent(overrides: Partial<ActiveSubagent> & { id: string }): Acti
     parentId: null,
     agentType: "explore",
     description: "",
-    mode: "foreground",
     depth: 0,
     status: "running",
     text: "",

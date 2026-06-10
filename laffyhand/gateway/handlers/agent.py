@@ -36,7 +36,4 @@ async def handle_subagent_list_active(
     _request_id: str | int | None,
     conn_id: str,
 ) -> dict[str, Any]:
-    session_id: str | None = params.get("session_id")
-    if not session_id:
-        return {"subagents": []}
-    return {"subagents": runtime.subagent_manager.list_active(session_id)}
+    return {"subagents": []}

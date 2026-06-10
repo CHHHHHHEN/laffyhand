@@ -77,7 +77,6 @@ export interface ActiveSubagent {
   agentType: string
   description: string
   prompt?: string
-  mode: "foreground" | "background"
   depth: number
   status: "running" | "completed" | "error" | "cancelled"
   text: string

@@ -43,7 +43,6 @@ class AgentConfig(BaseModel):
     title_mode: Literal["off", "on_create", "on_compact", "auto"] = "auto"
     compaction_tail_turns: int = 2
     max_steps: int = 50
-    max_concurrent_subagents: int = 2
 
 
 class MemoryConfig(BaseModel):
