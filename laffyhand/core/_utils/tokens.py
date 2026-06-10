@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 from laffyhand.core.domain.messages import (
+    AgentSwitchedMessage,
     AssistantMessage,
+    CompactionMessage,
     Message,
+    ModelSwitchedMessage,
     SystemMessage,
     ToolMessage,
     UserMessage,
@@ -29,6 +32,8 @@ def estimate_message_tokens(msg: Message) -> int:
                 total += estimate_tokens(tc.tool_name + tc.args)
     elif isinstance(msg, ToolMessage):
         total += estimate_tokens(msg.content)
+    elif isinstance(msg, (CompactionMessage, AgentSwitchedMessage, ModelSwitchedMessage)):
+        total += estimate_tokens(msg.model_dump_json())
     return total
 
 

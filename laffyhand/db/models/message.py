@@ -4,11 +4,7 @@ from typing import Any, List, Literal, Optional, Sequence, Union
 
 from pydantic import BaseModel, Field
 
-
-class FilePart(BaseModel):
-    path: str = Field(description="文件路径")
-    content: str = Field(description="文件内容")
-    reference: str = Field(description="用户的引用方式，如 @path")
+from laffyhand.core.domain.messages import FilePart
 
 
 class UserData(BaseModel):
@@ -141,6 +137,7 @@ class CompactionData(BaseModel):
     reason: str = Field(description="压缩原因")
     summary: str = Field(description="压缩摘要")
     include: Optional[str] = Field(default=None, description="额外包含内容")
+    child_session_id: Optional[str] = Field(default=None, description="压缩后的子会话 ID")
 
 
 MessageData = Union[

@@ -11,7 +11,14 @@ from laffyhand.core.context.chain import (
     select_tail,
 )
 from laffyhand.core.context._prune import prune
-from laffyhand.core.domain.messages import AssistantMessage, Message, UserMessage
+from laffyhand.core.domain.messages import (
+    AgentSwitchedMessage,
+    AssistantMessage,
+    CompactionMessage,
+    Message,
+    ModelSwitchedMessage,
+    UserMessage,
+)
 from laffyhand.core.models import AgentState, CompactionConfig, SessionID
 from laffyhand.core._utils import estimate_messages_tokens
 
@@ -26,7 +33,7 @@ class PreparedContext(BaseModel):
     session_id: str | None = None
 
 
-class ContextManager:
+class ContextAssembler:
     def __init__(
         self,
         llm: LLM,
@@ -39,42 +46,6 @@ class ContextManager:
         self._session_manager = session_manager
         self._on_compacted = on_compacted
         self._compacted_this_step = False
-
-    async def prepare(self, state: AgentState) -> PreparedContext:
-        context_size = state.usage.context_size
-        if not context_size:
-            return PreparedContext(messages=state.messages)
-
-        messages = state.messages
-        if self._config.prune:
-            messages = prune(
-                messages,
-                curr_context_usage=state.usage.curr_context_usage,
-                context_size=context_size,
-                config=self._config,
-            )
-
-        reserved = self._config.reserved or min(
-            self._config.reserved_buffer, context_size // 4
-        )
-        tokens = state.usage.curr_context_usage or estimate_messages_tokens(messages)
-        if is_overflow(tokens, context_size, reserved) and not self._compacted_this_step:
-            head, tail = select_tail(messages, self._config, context_size)
-            if head:
-                self._compacted_this_step = True
-                compacted = await self._do_compact(state)
-                if compacted:
-                    logger.info(f"Pre-turn compaction resolved overflow ({tokens} tokens)")
-                    return PreparedContext(
-                        messages=state.messages,
-                        compacted=True,
-                        session_id=str(state.session_id),
-                    )
-
-        # Apply steer wrapping
-        messages = self._wrap_steer(messages, state.step)
-
-        return PreparedContext(messages=messages)
 
     @staticmethod
     def _wrap_steer(messages: list[Message], step: int) -> list[Message]:
@@ -95,9 +66,22 @@ class ContextManager:
             msg = result[i]
             if isinstance(msg, UserMessage):
                 result[i] = UserMessage(
-                    content=f"<system-reminder>\n{msg.content}\n</system-reminder>"
+                    content=f"<system-reminder>\n{msg.content}\n</system-reminder>",
+                    files=msg.files,
+                    agents=msg.agents,
+                    references=msg.references,
                 )
         return result
+
+    @staticmethod
+    def _filter_llm_messages(messages: list[Message]) -> list[Message]:
+        return [
+            m
+            for m in messages
+            if not isinstance(
+                m, (CompactionMessage, AgentSwitchedMessage, ModelSwitchedMessage)
+            )
+        ]
 
     async def _do_compact(self, state: AgentState) -> bool:
         if self._session_manager is None or not state.session_id:
@@ -110,7 +94,11 @@ class ContextManager:
 
         original_system, summary_messages, tail = result
         summary_content = next(
-            (m.content for m in summary_messages if isinstance(m, AssistantMessage) and m.content),
+            (
+                m.content
+                for m in summary_messages
+                if isinstance(m, AssistantMessage) and m.content
+            ),
             "",
         )
         child = self._session_manager.create_compacted_child(
@@ -125,6 +113,48 @@ class ContextManager:
         if self._on_compacted is not None:
             self._on_compacted(child.id)
         return True
+
+    async def prepare(self, state: AgentState) -> PreparedContext:
+        context_size = state.usage.context_size
+        if not context_size:
+            return PreparedContext(
+                messages=self._filter_llm_messages(state.messages),
+            )
+
+        messages = state.messages
+        if self._config.prune:
+            messages = prune(
+                messages,
+                curr_context_usage=state.usage.curr_context_usage,
+                context_size=context_size,
+                config=self._config,
+            )
+
+        reserved = self._config.reserved or min(
+            self._config.reserved_buffer, context_size // 4
+        )
+        tokens = state.usage.curr_context_usage or estimate_messages_tokens(messages)
+        if (
+            is_overflow(tokens, context_size, reserved)
+            and not self._compacted_this_step
+        ):
+            head, tail = select_tail(messages, self._config, context_size)
+            if head:
+                self._compacted_this_step = True
+                compacted = await self._do_compact(state)
+                if compacted:
+                    logger.info(
+                        f"Pre-turn compaction resolved overflow ({tokens} tokens)"
+                    )
+                    return PreparedContext(
+                        messages=self._filter_llm_messages(state.messages),
+                        compacted=True,
+                        session_id=str(state.session_id),
+                    )
+
+        messages = self._wrap_steer(messages, state.step)
+        messages = self._filter_llm_messages(messages)
+        return PreparedContext(messages=messages)
 
     async def post_turn(self, state: AgentState) -> bool:
         if self._compacted_this_step:

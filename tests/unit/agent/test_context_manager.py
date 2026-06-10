@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from laffyhand.core.context import ContextManager, PreparedContext
+from laffyhand.core.context import ContextAssembler, PreparedContext
 from laffyhand.core.domain.messages import (
     Message,
     SystemMessage,
@@ -44,11 +44,11 @@ class TestPreparedContext:
         assert ctx.session_id == "sess-2"
 
 
-class TestContextManagerPrepare:
+class TestContextAssemblerPrepare:
     @pytest.mark.anyio
     async def test_no_context_size_returns_messages_as_is(self) -> None:
         llm = MagicMock()
-        cm = ContextManager(llm=llm, config=CompactionConfig())
+        cm = ContextAssembler(llm=llm, config=CompactionConfig())
         state = _make_state(context_size=0, messages=[UserMessage(content="hi")])
 
         ctx = await cm.prepare(state)
@@ -58,7 +58,7 @@ class TestContextManagerPrepare:
     @pytest.mark.anyio
     async def test_no_overflow_passes_through(self) -> None:
         llm = MagicMock()
-        cm = ContextManager(llm=llm, config=CompactionConfig())
+        cm = ContextAssembler(llm=llm, config=CompactionConfig())
         state = _make_state(curr_usage=10_000, messages=[UserMessage(content="hi")])
 
         ctx = await cm.prepare(state)
@@ -69,7 +69,7 @@ class TestContextManagerPrepare:
     async def test_prune_applied_when_enabled(self) -> None:
         llm = MagicMock()
         config = CompactionConfig(prune=True)
-        cm = ContextManager(llm=llm, config=config)
+        cm = ContextAssembler(llm=llm, config=config)
 
         big = "x" * (config.prune_protect * 4 + 5)
         msgs = [
@@ -87,7 +87,7 @@ class TestContextManagerPrepare:
     @pytest.mark.anyio
     async def test_no_prune_when_disabled(self) -> None:
         llm = MagicMock()
-        cm = ContextManager(llm=llm, config=CompactionConfig(prune=False))
+        cm = ContextAssembler(llm=llm, config=CompactionConfig(prune=False))
 
         msgs = [
             ToolMessage(tool_call_id="c1", content="original"),
@@ -102,7 +102,7 @@ class TestContextManagerPrepare:
         self,
     ) -> None:
         llm = AsyncMock()
-        cm = ContextManager(
+        cm = ContextAssembler(
             llm=llm,
             config=CompactionConfig(),
             session_manager=None,
@@ -125,7 +125,7 @@ class TestContextManagerPrepare:
         session_manager = MagicMock()
         session_manager.create_compacted_child = MagicMock()
 
-        cm = ContextManager(
+        cm = ContextAssembler(
             llm=llm,
             config=CompactionConfig(),
             session_manager=session_manager,
@@ -146,11 +146,11 @@ class TestContextManagerPrepare:
         assert ctx.compacted is False
 
 
-class TestContextManagerPostTurn:
+class TestContextAssemblerPostTurn:
     @pytest.mark.anyio
     async def test_no_overflow_returns_false(self) -> None:
         llm = MagicMock()
-        cm = ContextManager(llm=llm, config=CompactionConfig())
+        cm = ContextAssembler(llm=llm, config=CompactionConfig())
         state = _make_state(curr_usage=10_000)
 
         result = await cm.post_turn(state)
@@ -159,7 +159,7 @@ class TestContextManagerPostTurn:
     @pytest.mark.anyio
     async def test_compacted_this_step_skips(self) -> None:
         llm = MagicMock()
-        cm = ContextManager(llm=llm, config=CompactionConfig())
+        cm = ContextAssembler(llm=llm, config=CompactionConfig())
         cm._compacted_this_step = True
 
         state = _make_state(curr_usage=120_000)
@@ -176,7 +176,7 @@ class TestContextManagerPostTurn:
         child.id = "sess-2"
         session_manager.create_compacted_child = MagicMock(return_value=child)
 
-        cm = ContextManager(
+        cm = ContextAssembler(
             llm=llm,
             config=CompactionConfig(auto_continue=True),
             session_manager=session_manager,
@@ -199,11 +199,11 @@ class TestContextManagerPostTurn:
         assert result is False
 
 
-class TestContextManagerFullFlow:
+class TestContextAssemblerFullFlow:
     @pytest.mark.anyio
     async def test_prepare_then_post_turn(self) -> None:
         llm = AsyncMock()
-        cm = ContextManager(
+        cm = ContextAssembler(
             llm=llm,
             config=CompactionConfig(auto_continue=False),
             session_manager=None,
@@ -222,7 +222,7 @@ class TestContextManagerFullFlow:
 
     def test_reset_step_flag(self) -> None:
         llm = MagicMock()
-        cm = ContextManager(llm=llm, config=CompactionConfig())
+        cm = ContextAssembler(llm=llm, config=CompactionConfig())
         cm._compacted_this_step = True
         cm.reset_step_flag()
         assert cm._compacted_this_step is False

@@ -1,8 +1,12 @@
 from laffyhand.core.domain.messages import (
+    AgentSwitchedMessage,
     AssistantMessage,
+    CompactionMessage,
+    FilePart,
     FinishReason,
     Message,
     ModelID,
+    ModelSwitchedMessage,
     ProviderID,
     SystemMessage,
     ToolCallAccumulator,
@@ -14,10 +18,14 @@ from laffyhand.core.domain.messages import (
 )
 
 __all__ = [
+    "AgentSwitchedMessage",
     "AssistantMessage",
+    "CompactionMessage",
+    "FilePart",
     "FinishReason",
     "Message",
     "ModelID",
+    "ModelSwitchedMessage",
     "ProviderID",
     "SystemMessage",
     "ToolCallAccumulator",

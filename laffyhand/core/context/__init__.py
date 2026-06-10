@@ -1,6 +1,6 @@
-from laffyhand.core.context.manager import ContextManager, PreparedContext
+from laffyhand.core.context.assembler import ContextAssembler, PreparedContext
 
 __all__ = [
-    "ContextManager",
+    "ContextAssembler",
     "PreparedContext",
 ]

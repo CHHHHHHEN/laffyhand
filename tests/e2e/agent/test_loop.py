@@ -43,6 +43,8 @@ class FakeLLM:
     def __init__(self, event_sequences: list[list]):
         self._sequences = event_sequences
         self._call_count = 0
+        self.model = "test-model"
+        self.provider = "test-provider"
 
     async def stream(self, messages, tools=None):
         if self._call_count >= len(self._sequences):

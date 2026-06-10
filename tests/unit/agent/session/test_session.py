@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from laffyhand.core.domain.messages import AssistantMessage, SystemMessage, ToolMessage, UserMessage
+from laffyhand.core.domain.messages import AssistantMessage, Message, SystemMessage, ToolMessage, UserMessage
 from laffyhand.core.session import SessionManager
 from laffyhand.core.domain.messages import ToolCallContent
 from laffyhand.core.exceptions import SessionError
@@ -12,7 +12,7 @@ from laffyhand.core.models import (
 )
 
 
-def make_messages() -> list:
+def make_messages() -> list[Message]:
     return [
         SystemMessage(content="You are a helpful assistant."),
         UserMessage(content="Hello!"),
@@ -113,7 +113,7 @@ class TestMessages:
 
     def test_store_messages_incremental(self, session_manager: SessionManager) -> None:
         session = session_manager.create()
-        first = [
+        first: list[Message] = [
             SystemMessage(content="system"),
             UserMessage(content="hi"),
         ]
@@ -238,7 +238,7 @@ class TestStatePersistence:
         even if state.messages has the same content.
         """
         session = session_manager.create()
-        msgs = [
+        msgs: list[Message] = [
             SystemMessage(content="system"),
             UserMessage(content="first"),
             AssistantMessage(content="response"),
@@ -361,7 +361,7 @@ class TestFork:
 
 class TestSearch:
     def test_search_content(self, session_manager: SessionManager) -> None:
-        msgs = [
+        msgs: list[Message] = [
             SystemMessage(content="system"),
             UserMessage(content="What is the meaning of life?"),
             AssistantMessage(content="42"),
@@ -372,7 +372,7 @@ class TestSearch:
         assert results[0].id == session.id
 
     def test_search_no_match(self, session_manager: SessionManager) -> None:
-        msgs = [UserMessage(content="Hello world.")]
+        msgs: list[Message] = [UserMessage(content="Hello world.")]
         session_manager.create(messages=msgs)
         results = session_manager.search("nonexistenttermxyz")
         assert len(results) == 0

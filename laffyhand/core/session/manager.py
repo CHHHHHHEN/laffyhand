@@ -8,6 +8,7 @@ from loguru import logger
 from laffyhand.core._ports import MessageRepository, SessionRepository
 from laffyhand.core.domain.messages import (
     AssistantMessage,
+    CompactionMessage,
     Message,
     ModelID,
     ProviderID,
@@ -52,7 +53,7 @@ class SessionManager:
         model: str = "",
         agent_name: str = "",
         parent_id: str | None = None,
-        messages: list[Message] | None = None,
+        messages: Sequence[Message] | None = None,
     ) -> Session:
         session = Session(
             title=title,
@@ -141,7 +142,7 @@ class SessionManager:
 
     # ── Messages ──────────────────────────────────────────────
 
-    def store_messages(self, session_id: str, messages: list[Message]) -> int:
+    def store_messages(self, session_id: str, messages: Sequence[Message]) -> int:
         session = self.ensure_exists(session_id)
         began = self._begin()
         try:
@@ -274,17 +275,44 @@ class SessionManager:
             + [UserMessage(content=summary_content.strip())]
             + list(tail_messages)
         )
-        child = self.create(
-            title=parent.title if parent else "",
-            cwd=parent.cwd if parent else "",
-            provider=parent.provider if parent else "",
-            model=parent.model if parent else "",
-            agent_name=parent.agent_name if parent else "",
-            parent_id=parent_id,
-            messages=tail_all,
-        )
-        self._sessions.complete(parent_id)
-        self._conn.commit()
+
+        began = self._begin()
+        try:
+            # Create child session inline (no auto-commit)
+            child = Session(
+                title=parent.title if parent else "",
+                cwd=parent.cwd if parent else "",
+                provider=ProviderID(parent.provider) if parent and parent.provider else ProviderID(""),
+                model=ModelID(parent.model) if parent and parent.model else ModelID(""),
+                agent_name=parent.agent_name if parent else "",
+                parent_id=parent_id,
+            )
+            self._sessions.insert(child)
+            for msg in tail_all:
+                self._messages.insert(msg, child.id)
+            child.message_count = len(tail_all)
+            self._sessions.update_counters(
+                child.id, message_count=child.message_count,
+            )
+
+            # Record compaction event in parent session
+            compaction_msg = CompactionMessage(
+                reason="overflow",
+                summary=summary_content,
+                child_session_id=child.id,
+            )
+            self._messages.insert(compaction_msg, parent_id)
+            parent_msg_count = self._messages.count_by_session(parent_id)
+            self._sessions.update_counters(parent_id, message_count=parent_msg_count)
+
+            # Complete parent within the same transaction
+            self._sessions.complete(parent_id)
+
+            self._end(began)
+        except Exception:
+            self._rollback(began)
+            raise
+
         logger.info(f"Compacted {parent_id} -> {child.id}")
         return child
 

@@ -12,7 +12,7 @@ from laffyhand.core.models import (
     StepFinish,
     TextDelta,
 )
-from laffyhand.core.domain.messages import SystemMessage, UserMessage
+from laffyhand.core.domain.messages import FilePart, SystemMessage, UserMessage
 from laffyhand.core.tools.permission import request_callback as _pm_callback
 from laffyhand.gateway.protocol import Notification
 
@@ -41,7 +41,18 @@ async def _prepare_chat(
     if state is None:
         raise RuntimeError(f"Session state not found: {session_id}")
     state.step = 0
-    user_message = UserMessage(content=message)
+    raw_files = params.get("files") or []
+    files = [
+        FilePart(path=f.get("path", ""), content=f.get("content", ""), reference=f.get("reference", ""))
+        for f in raw_files
+        if isinstance(f, dict)
+    ]
+    user_message = UserMessage(
+        content=message,
+        files=files,
+        agents=params.get("agents", []),
+        references=params.get("references", []),
+    )
     async with runtime.get_session_lock(session_id):
         state.messages.append(user_message)
 

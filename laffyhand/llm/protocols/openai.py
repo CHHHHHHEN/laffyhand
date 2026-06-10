@@ -10,6 +10,7 @@ from laffyhand.core.domain.messages import (
     ToolCallAccumulator,
     ToolDefinition,
     Usage,
+    UserMessage,
 )
 from laffyhand.llm.specs.models import (
     LLMRequest,
@@ -185,7 +186,15 @@ class OpenAIProtocol(Protocol):
         if msg.role == "system":
             return OpenAISystemMessage(content=msg.content)
         if msg.role == "user":
-            return OpenAIUserMessage(content=msg.content)
+            assert isinstance(msg, UserMessage)
+            text = msg.content
+            if msg.files:
+                file_refs = "\n".join(
+                    f"[File: {f.reference}]\n{f.content}"
+                    for f in msg.files
+                )
+                text = f"{text}\n\n{file_refs}" if text else file_refs
+            return OpenAIUserMessage(content=text)
         if msg.role == "assistant":
             assert isinstance(msg, AssistantMessage)
             content: str | None = msg.content

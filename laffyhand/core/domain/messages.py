@@ -34,6 +34,12 @@ FinishReason = Literal[
 ]
 
 
+class FilePart(BaseModel):
+    path: str
+    content: str
+    reference: str
+
+
 class SystemMessage(BaseModel):
     role: Literal["system"] = "system"
     content: str
@@ -42,6 +48,9 @@ class SystemMessage(BaseModel):
 class UserMessage(BaseModel):
     role: Literal["user"] = "user"
     content: str
+    files: list[FilePart] = []
+    agents: list[str] = []
+    references: list[str] = []
 
 
 class AssistantMessage(BaseModel):
@@ -50,6 +59,10 @@ class AssistantMessage(BaseModel):
     reasoning: Optional[str] = None
     tool_calls: Optional[List[ToolCallContent]] = None
     tokens: Optional[Usage] = None
+    agent: str = ""
+    model_info: dict[str, Any] = {}
+    finish_reason: str = "stop"
+    cost: int = 0
 
 
 class ToolMessage(BaseModel):
@@ -57,11 +70,36 @@ class ToolMessage(BaseModel):
     tool_call_id: str
     content: str
     is_error: bool = False
-    tool_name: str | None = None
-    args: str | None = None
+    tool_name: Optional[str] = None
+    args: Optional[str] = None
 
 
-Message = Union[SystemMessage, UserMessage, AssistantMessage, ToolMessage]
+class CompactionMessage(BaseModel):
+    role: Literal["compaction"] = "compaction"
+    reason: str
+    summary: str
+    child_session_id: Optional[str] = None
+
+
+class AgentSwitchedMessage(BaseModel):
+    role: Literal["agent-switched"] = "agent-switched"
+    agent: str
+
+
+class ModelSwitchedMessage(BaseModel):
+    role: Literal["model-switched"] = "model-switched"
+    model: dict[str, Any]
+
+
+Message = Union[
+    SystemMessage,
+    UserMessage,
+    AssistantMessage,
+    ToolMessage,
+    CompactionMessage,
+    AgentSwitchedMessage,
+    ModelSwitchedMessage,
+]
 
 
 class ToolCallAccumulator(BaseModel):

@@ -4,8 +4,11 @@ from collections.abc import Sequence
 
 
 from laffyhand.core.domain.messages import (
+    AgentSwitchedMessage,
     AssistantMessage,
+    CompactionMessage,
     Message,
+    ModelSwitchedMessage,
     SystemMessage,
     ToolMessage,
     UserMessage,
@@ -75,6 +78,13 @@ def build_summary_text(messages: Sequence[Message], tool_truncate: int = 500) ->
             lines.append(
                 f"[Tool Result - {msg.tool_call_id}]: {truncate_output(msg.content, tool_truncate)}"
             )
+        elif isinstance(msg, CompactionMessage):
+            lines.append(f"[Compaction]: {msg.reason}")
+            lines.append(f"[Summary]: {msg.summary}")
+        elif isinstance(msg, AgentSwitchedMessage):
+            lines.append(f"[Agent Switched]: {msg.agent}")
+        elif isinstance(msg, ModelSwitchedMessage):
+            lines.append(f"[Model Switched]: {msg.model}")
     return "\n".join(lines)
 
 

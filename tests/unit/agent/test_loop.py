@@ -24,6 +24,7 @@ class _MockLLM(LLM):
 
     def __init__(self, events: list | None = None):
         self.model = "test"
+        self.provider = "test"
         self.route = None
         self._events = events or []
 
@@ -37,6 +38,7 @@ class _SeqMockLLM(LLM):
 
     def __init__(self, *event_lists: list):
         self.model = "test"
+        self.provider = "test"
         self.route = None
         self._event_lists = event_lists
         self._call_count = 0

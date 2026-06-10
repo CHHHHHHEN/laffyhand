@@ -42,6 +42,9 @@ class LoopOrchestrator:
         assert state is not None, f"state not found for session {session_id}"
         llm = self._llm_provider(session_id)
 
+        session_obj = self._session_manager.get(session_id)
+        agent_name = session_obj.agent_name if session_obj else ""
+
         turn = AgentTurn(
             state,
             llm,
@@ -54,6 +57,7 @@ class LoopOrchestrator:
             ),
             event_bus=self._event_bus,
             session_id=session_id,
+            agent_name=agent_name,
         )
 
         async with self._event_bus.subscribe(session_id, is_primary=True) as stream:

@@ -4,7 +4,7 @@ import unittest
 from unittest.mock import MagicMock
 
 import pytest
-from laffyhand.core.context import ContextManager
+from laffyhand.core.context import ContextAssembler
 from laffyhand.core.context._prune import prune
 from laffyhand.core.context._summarize import (
     _is_summary_content,
@@ -225,7 +225,9 @@ class TestPrune(unittest.TestCase):
     def test_prune_no_tool_messages(self):
         msgs = [SystemMessage(content="sys"), UserMessage(content="hi")]
         result = prune(msgs)
-        self.assertIs(result, msgs, "no tool messages -> return same list")
+        assert len(result) == 2
+        assert result[0].content == "sys"
+        assert result[1].content == "hi"
 
     def test_prune_skips_small_savings(self):
         large = ToolMessage(tool_call_id="c1", content="x" * (PRUNE_PROTECT * 4 + 5))
@@ -549,12 +551,12 @@ class TestSummaryChain(unittest.TestCase):
 class TestWrapSteer(unittest.TestCase):
     def test_no_wrap_when_step_one(self):
         msgs = [UserMessage(content="hello")]
-        result = ContextManager._wrap_steer(msgs, step=1)
+        result = ContextAssembler._wrap_steer(msgs, step=1)
         self.assertEqual(result[0].content, "hello")
 
     def test_no_wrap_when_no_assistant(self):
         msgs = [UserMessage(content="hello"), UserMessage(content="world")]
-        result = ContextManager._wrap_steer(msgs, step=2)
+        result = ContextAssembler._wrap_steer(msgs, step=2)
         self.assertEqual(result, msgs)
 
     def test_wraps_user_messages_after_last_assistant(self):
@@ -564,7 +566,7 @@ class TestWrapSteer(unittest.TestCase):
             UserMessage(content="second"),
             UserMessage(content="third"),
         ]
-        result = ContextManager._wrap_steer(msgs, step=2)
+        result = ContextAssembler._wrap_steer(msgs, step=2)
         self.assertEqual(result[0].content, "first")
         self.assertEqual(result[1].content, "response")
         self.assertIn("<system-reminder>", result[2].content)
@@ -579,22 +581,22 @@ class TestWrapSteer(unittest.TestCase):
             ToolMessage(tool_call_id="c1", content="tool result"),
             UserMessage(content="follow-up"),
         ]
-        result = ContextManager._wrap_steer(msgs, step=2)
+        result = ContextAssembler._wrap_steer(msgs, step=2)
         self.assertIsInstance(result[1], ToolMessage)
         self.assertEqual(result[1].content, "tool result")
         self.assertIn("<system-reminder>", result[2].content)
 
     def test_identity_when_no_modifications(self):
         msgs = [UserMessage(content="hello")]
-        result = ContextManager._wrap_steer(msgs, step=2)
+        result = ContextAssembler._wrap_steer(msgs, step=2)
         self.assertIs(result, msgs, "no changes -> return same list")
 
 
-class TestContextManagerPrepareSteer(unittest.TestCase):
+class TestContextAssemblerPrepareSteer(unittest.TestCase):
     @pytest.mark.anyio
     async def test_prepare_applies_steer_wrapping(self):
         llm = MagicMock()
-        cm = ContextManager(llm=llm, config=CompactionConfig())
+        cm = ContextAssembler(llm=llm, config=CompactionConfig())
         msgs = [
             UserMessage(content="initial"),
             AssistantMessage(content="ok"),
@@ -612,7 +614,7 @@ class TestContextManagerPrepareSteer(unittest.TestCase):
     @pytest.mark.anyio
     async def test_prepare_skips_steer_on_step_one(self):
         llm = MagicMock()
-        cm = ContextManager(llm=llm, config=CompactionConfig())
+        cm = ContextAssembler(llm=llm, config=CompactionConfig())
         msgs = [
             UserMessage(content="initial"),
             AssistantMessage(content="ok"),

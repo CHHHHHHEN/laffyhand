@@ -49,7 +49,7 @@ from laffyhand.core.models import (
 )
 
 from laffyhand.core._utils import exponential_backoff
-from laffyhand.core.context import ContextManager
+from laffyhand.core.context import ContextAssembler
 from laffyhand.core.tools.registry import ToolExecutionResult
 from laffyhand.llm import LLM
 from laffyhand.core.tools import ToolRegistry
@@ -155,6 +155,7 @@ class AgentTurn:
         on_compacted: Callable[[str], None] | None = None,
         event_bus: SessionEventBus,
         session_id: str,
+        agent_name: str = "",
     ) -> None:
         self._agent_state = agent_state
         self._llm = llm
@@ -166,9 +167,10 @@ class AgentTurn:
         self._on_compacted = on_compacted
         self._event_bus = event_bus
         self._session_id = session_id
+        self._agent_name = agent_name
 
         self._context_size = agent_state.usage.context_size
-        self._context_manager = ContextManager(
+        self._context_manager = ContextAssembler(
             llm=llm,
             config=compaction_config,
             session_manager=session_manager,
@@ -347,6 +349,13 @@ class AgentTurn:
             else None,
             tool_calls=turn_ctx.tool_calls if turn_ctx.tool_calls else None,
             tokens=turn_ctx.usage,
+            agent=self._agent_name,
+            model_info={
+                "id": str(self._llm.model),
+                "provider": str(self._llm.provider),
+            },
+            finish_reason=turn_ctx.finish_reason or "stop",
+            cost=0,
         )
 
     async def _execute_tools(
