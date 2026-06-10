@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator, Callable
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel
@@ -16,6 +16,7 @@ from laffyhand.core.domain.messages import (
     Usage,
     UserMessage,
 )
+from laffyhand.core.event_bus import SessionEventBus
 from laffyhand.llm import (
     StreamText,
     StreamReasoning,
@@ -57,12 +58,7 @@ if TYPE_CHECKING:
     from laffyhand.core.session import SessionManager
 
 
-# ── Message persistence helper ───────────────────────────────────
-
-
 class MessageStore:
-    """Tracks and persists new messages since last flush."""
-
     def __init__(
         self, session_manager: SessionManager | None, session_id: str | None
     ) -> None:
@@ -81,12 +77,7 @@ class MessageStore:
                 self._stored_count = len(messages)
 
 
-# ── Stream event conversion helper ──────────────────────────────
-
-
 class StreamEventConverter:
-    """Converts LLM stream events to agent-level events, managing segment IDs."""
-
     def __init__(self, step_index: int) -> None:
         self.step_index = step_index
         self.content_buf: list[str] = []
@@ -142,18 +133,12 @@ class StreamEventConverter:
         return events
 
 
-# ── Turn context ─────────────────────────────────────────────
-
-
 class TurnContext(BaseModel):
     content_buf: list[str] = []
     reasoning_buf: list[str] = []
     tool_calls: list[ToolCallContent] = []
     finish_reason: FinishReason | None = None
     usage: Usage | None = None
-
-
-# ── Agent turn class ─────────────────────────────────────────
 
 
 class AgentTurn:
@@ -168,6 +153,8 @@ class AgentTurn:
         max_steps: int = 50,
         session_manager: SessionManager | None = None,
         on_compacted: Callable[[str], None] | None = None,
+        event_bus: SessionEventBus,
+        session_id: str,
     ) -> None:
         self._agent_state = agent_state
         self._llm = llm
@@ -177,6 +164,8 @@ class AgentTurn:
         self._max_steps = max_steps
         self._session_manager = session_manager
         self._on_compacted = on_compacted
+        self._event_bus = event_bus
+        self._session_id = session_id
 
         self._context_size = agent_state.usage.context_size
         self._context_manager = ContextManager(
@@ -188,7 +177,10 @@ class AgentTurn:
         self._store = MessageStore(session_manager, agent_state.session_id)
         self._tc: TurnContext | None = None
 
-    async def run(self) -> AsyncIterator[AgentEvent]:
+    async def _publish(self, event: AgentEvent) -> None:
+        await self._event_bus.publish(self._session_id, event)
+
+    async def run(self) -> None:
         self._store.sync(len(self._agent_state.messages))
 
         while True:
@@ -204,7 +196,7 @@ class AgentTurn:
 
             ctx = await self._context_manager.prepare(self._agent_state)
             if ctx.compacted:
-                yield Compacting(data="Compacting conversation history...")
+                await self._publish(Compacting(data="Compacting conversation history..."))
                 continue
 
             step_index = self._agent_state.step
@@ -216,11 +208,10 @@ class AgentTurn:
                 f"Sending {len(ctx.messages)} messages to LLM, {len(tool_definitions)} tools"
             )
 
-            yield StepStart(index=step_index)
+            await self._publish(StepStart(index=step_index))
 
             self._tc = None
-            async for ev in self._retry_llm(ctx.messages, tool_definitions, step_index):
-                yield ev
+            await self._retry_llm(ctx.messages, tool_definitions, step_index)
 
             turn_ctx = self._tc
             assert turn_ctx is not None
@@ -235,32 +226,33 @@ class AgentTurn:
 
             if turn_ctx.usage is not None:
                 self._agent_state.usage.add(turn_ctx.usage)
-                yield UsageUpdate(
-                    session_usage=self._agent_state.usage.model_dump(),
+                await self._publish(
+                    UsageUpdate(
+                        session_usage=self._agent_state.usage.model_dump(),
+                    )
                 )
 
             if turn_ctx.finish_reason == "tool_calls" and turn_ctx.tool_calls:
-                async for ev in self._execute_tools(turn_ctx, step_index):
-                    yield ev
+                await self._execute_tools(turn_ctx, step_index)
                 continue
 
-            yield StepFinish(
-                index=step_index,
-                reason=turn_ctx.finish_reason or "stop",
-                usage=turn_ctx.usage,
+            await self._publish(
+                StepFinish(
+                    index=step_index,
+                    reason=turn_ctx.finish_reason or "stop",
+                    usage=turn_ctx.usage,
+                )
             )
 
             if turn_ctx.finish_reason is not None:
                 await self._store.flush(self._agent_state.messages)
                 auto_continue = await self._context_manager.post_turn(self._agent_state)
                 if auto_continue:
-                    yield Compacting(data="Compacting conversation history...")
+                    await self._publish(Compacting(data="Compacting conversation history..."))
                     await self._store.flush(self._agent_state.messages)
-                    yield Compacting(data="Continuing after compaction...")
+                    await self._publish(Compacting(data="Continuing after compaction..."))
                     continue
                 break
-
-    # ── Step lifecycle methods ──────────────────────────────────
 
     def _check_interrupt(self) -> bool:
         if self._agent_state.interrupt_requested:
@@ -269,24 +261,22 @@ class AgentTurn:
             return True
         return False
 
-    # ── LLM streaming & retry ──────────────────────────────────
-
     async def _retry_llm(
         self,
         context: list[Message],
         tool_definitions: list[Any],
         step_index: int,
-    ) -> AsyncIterator[AgentEvent]:
+    ) -> None:
         _retry_count = 0
         while True:
             converter = StreamEventConverter(step_index)
 
             async for event in self._llm.stream(context, tools=tool_definitions):
                 for ev in converter.handle(event):
-                    yield ev
+                    await self._publish(ev)
 
             for ev in converter.end_segments():
-                yield ev
+                await self._publish(ev)
 
             tc = self._decide_retry(converter, _retry_count)
             if tc is not None:
@@ -336,8 +326,6 @@ class AgentTurn:
             )
         return None
 
-    # ── Assistant message construction ──────────────────────────
-
     def _build_assistant_message(self, turn_ctx: TurnContext) -> AssistantMessage:
         combined_content = (
             "".join(turn_ctx.content_buf) if turn_ctx.content_buf else None
@@ -361,13 +349,11 @@ class AgentTurn:
             tokens=turn_ctx.usage,
         )
 
-    # ── Tool execution ──────────────────────────────────────────
-
     async def _execute_tools(
         self,
         turn_ctx: TurnContext,
         step_index: int,
-    ) -> AsyncIterator[AgentEvent]:
+    ) -> None:
         logger.debug(f"Executing {len(turn_ctx.tool_calls)} tool call(s)")
         exec_context: dict[str, str | None] = {
             "session_id": self._agent_state.session_id,
@@ -394,19 +380,23 @@ class AgentTurn:
             exec_result = result_by_tool_id[tc.tool_call_id]
             self._agent_state.messages.append(exec_result.message)
             if exec_result.is_error:
-                yield ToolError(
-                    id=tc.tool_call_id,
-                    name=tc.tool_name,
-                    message=exec_result.event_data,
+                await self._publish(
+                    ToolError(
+                        id=tc.tool_call_id,
+                        name=tc.tool_name,
+                        message=exec_result.event_data,
+                    )
                 )
             else:
-                yield ToolResult(
-                    id=tc.tool_call_id,
-                    name=tc.tool_name,
-                    result=exec_result.event_data,
+                await self._publish(
+                    ToolResult(
+                        id=tc.tool_call_id,
+                        name=tc.tool_name,
+                        result=exec_result.event_data,
+                    )
                 )
                 if tc.tool_name in ("todowrite", "task"):
-                    yield TodoUpdate()
+                    await self._publish(TodoUpdate())
 
         if self._agent_state.pending_steer:
             steer_text = self._agent_state.pending_steer
@@ -416,10 +406,12 @@ class AgentTurn:
             )
             logger.debug("Injected steer text as UserMessage")
 
-        yield StepFinish(
-            index=step_index,
-            reason=turn_ctx.finish_reason or "stop",
-            usage=turn_ctx.usage,
+        await self._publish(
+            StepFinish(
+                index=step_index,
+                reason=turn_ctx.finish_reason or "stop",
+                usage=turn_ctx.usage,
+            )
         )
         await self._store.flush(self._agent_state.messages)
 

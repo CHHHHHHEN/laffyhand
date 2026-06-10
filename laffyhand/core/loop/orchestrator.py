@@ -1,8 +1,10 @@
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
-from typing import TYPE_CHECKING, Any
+import asyncio
+from collections.abc import Callable
+from typing import TYPE_CHECKING
 
+from laffyhand.core.event_bus import SessionEventBus
 from laffyhand.core.loop.turn import AgentTurn
 from laffyhand.core.models import CompactionConfig
 from laffyhand.core.session.state_store import SessionStateStore
@@ -24,6 +26,7 @@ class LoopOrchestrator:
         max_steps: int,
         title_scheduler: Callable[[str, str], None],
         session_store: SessionStateStore,
+        event_bus: SessionEventBus,
     ) -> None:
         self._session_manager = session_manager
         self._tool_registry = tool_registry
@@ -32,32 +35,35 @@ class LoopOrchestrator:
         self._max_steps = max_steps
         self._title_scheduler = title_scheduler
         self._session_store = session_store
+        self._event_bus = event_bus
 
-    async def run_agent_turn(
-        self,
-        session_id: str,
-        event_sink: Callable[[Any], Awaitable[None]] | None = None,
-    ):
+    async def run_agent_turn(self, session_id: str):
         state = self._session_store.get(session_id)
         assert state is not None, f"state not found for session {session_id}"
-        if event_sink is not None:
-            self._session_store.set_event_sink(session_id, event_sink)
         llm = self._llm_provider(session_id)
-        try:
-            async for event in AgentTurn(
-                state,
-                llm,
-                self._tool_registry,
-                compaction_config=self._compaction_config,
-                max_steps=self._max_steps,
-                session_manager=self._session_manager,
-                on_compacted=lambda child_sid: self._title_scheduler(
-                    child_sid, "on_compact"
-                ),
-            ).run():
-                yield event
-        finally:
-            self._session_store.pop_event_sink(session_id)
+
+        turn = AgentTurn(
+            state,
+            llm,
+            self._tool_registry,
+            compaction_config=self._compaction_config,
+            max_steps=self._max_steps,
+            session_manager=self._session_manager,
+            on_compacted=lambda child_sid: self._title_scheduler(
+                child_sid, "on_compact"
+            ),
+            event_bus=self._event_bus,
+            session_id=session_id,
+        )
+
+        async with self._event_bus.subscribe(session_id, is_primary=True) as stream:
+            task = asyncio.create_task(turn.run())
+            try:
+                async for event in stream:
+                    yield event
+            finally:
+                await task
+
 
 __all__ = [
     "LoopOrchestrator",

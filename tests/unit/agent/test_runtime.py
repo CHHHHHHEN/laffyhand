@@ -14,6 +14,7 @@ from laffyhand.core.models import (
     AgentState,
     SessionID,
     SessionUsage,
+    StepFinish,
 )
 from typing import Any
 
@@ -534,22 +535,26 @@ class TestCreateSubagent:
 
         with patch("laffyhand.core.loop.AgentTurn") as mock_turn_cls:
             mock_instance = MagicMock()
+            captured_bus = None
+            captured_sid = None
 
             def _make_instance(*args, **kwargs):
+                nonlocal captured_bus, captured_sid
                 child_state = args[0]
                 child_state.messages.append(
                     AssistantMessage(content="final answer")
                 )
+                captured_bus = kwargs["event_bus"]
+                captured_sid = kwargs["session_id"]
                 return mock_instance
 
             mock_turn_cls.side_effect = _make_instance
 
-            async def _run_gen():
-                from laffyhand.core.models import StepFinish
+            async def _run_mock():
+                await captured_bus.publish(captured_sid, StepFinish(index=1, reason="stop"))
+                await captured_bus.close_session(captured_sid)
 
-                yield StepFinish(index=1, reason="stop")
-
-            mock_instance.run.return_value = _run_gen()
+            mock_instance.run = AsyncMock(side_effect=_run_mock)
 
             result = await runtime.create_subagent(session.id, agent_info, "Do the task")
 
@@ -571,14 +576,22 @@ class TestCreateSubagent:
 
         with patch("laffyhand.core.loop.AgentTurn") as mock_turn_cls:
             mock_instance = MagicMock()
+            captured_bus = None
+            captured_sid = None
 
-            async def _run_gen():
-                from laffyhand.core.models import StepFinish
+            def _make_instance(*args, **kwargs):
+                nonlocal captured_bus, captured_sid
+                captured_bus = kwargs["event_bus"]
+                captured_sid = kwargs["session_id"]
+                return mock_instance
 
-                yield StepFinish(index=1, reason="stop")
+            mock_turn_cls.side_effect = _make_instance
 
-            mock_instance.run.return_value = _run_gen()
-            mock_turn_cls.return_value = mock_instance
+            async def _run_mock():
+                await captured_bus.publish(captured_sid, StepFinish(index=1, reason="stop"))
+                await captured_bus.close_session(captured_sid)
+
+            mock_instance.run = AsyncMock(side_effect=_run_mock)
 
             result = await runtime.create_subagent(session.id, agent_info, "Do it")
         assert "<task>" in result
@@ -600,29 +613,52 @@ class TestCreateSubagent:
         todo = runtime.todo_manager.add_task(session.id, "test task")
 
         events: list[Any] = []
-
-        async def event_sink(event: Any) -> None:
-            events.append(event)
-
-        runtime.session_store.set_event_sink(session.id, event_sink)
+        bus = runtime.session_event_bus
 
         with patch("laffyhand.core.loop.AgentTurn") as mock_turn_cls:
             mock_instance = MagicMock()
+            captured_bus = None
+            captured_sid = None
 
-            async def _run_gen():
-                from laffyhand.core.models import StepFinish
+            def _make_instance(*args, **kwargs):
+                nonlocal captured_bus, captured_sid
+                child_state = args[0]
+                child_state.messages.append(
+                    AssistantMessage(content="final answer")
+                )
+                captured_bus = kwargs["event_bus"]
+                captured_sid = kwargs["session_id"]
+                return mock_instance
 
-                yield StepFinish(index=1, reason="stop")
+            mock_turn_cls.side_effect = _make_instance
 
-            mock_instance.run.return_value = _run_gen()
-            mock_turn_cls.return_value = mock_instance
+            async def _run_mock():
+                await captured_bus.publish(captured_sid, StepFinish(index=1, reason="stop"))
+                await captured_bus.close_session(captured_sid)
 
-            await runtime.create_subagent(
-                session.id,
-                agent_info,
-                "Do it",
-                todo_id=todo.id,
-            )
+            mock_instance.run = AsyncMock(side_effect=_run_mock)
+
+            async def _run_and_collect():
+                async def _subagent_and_close():
+                    try:
+                        return await runtime.create_subagent(
+                            session.id,
+                            agent_info,
+                            "Do it",
+                            todo_id=todo.id,
+                        )
+                    finally:
+                        await bus.close_session(session.id)
+
+                async with bus.subscribe(session.id) as stream:
+                    task = asyncio.create_task(_subagent_and_close())
+                    try:
+                        async for event in stream:
+                            events.append(event)
+                    finally:
+                        await task
+
+            await _run_and_collect()
 
         # Should have two TodoUpdate events: in_progress + completed
         from laffyhand.core.models import TodoUpdate as TodoUpdateEvent
@@ -650,29 +686,48 @@ class TestCreateSubagent:
         agent_info = AgentInfo(name="test", system_prompt="You are test.")
 
         events: list[Any] = []
-
-        async def event_sink(event: Any) -> None:
-            events.append(event)
-
-        runtime.session_store.set_event_sink(session.id, event_sink)
+        bus = runtime.session_event_bus
 
         with patch("laffyhand.core.loop.AgentTurn") as mock_turn_cls:
             mock_instance = MagicMock()
+            captured_bus = None
+            captured_sid = None
 
-            async def _run_gen():
-                from laffyhand.core.models import StepFinish
+            def _make_instance(*args, **kwargs):
+                nonlocal captured_bus, captured_sid
+                captured_bus = kwargs["event_bus"]
+                captured_sid = kwargs["session_id"]
+                return mock_instance
 
-                yield StepFinish(index=1, reason="stop")
+            mock_turn_cls.side_effect = _make_instance
 
-            mock_instance.run.return_value = _run_gen()
-            mock_turn_cls.return_value = mock_instance
+            async def _run_mock():
+                await captured_bus.publish(captured_sid, StepFinish(index=1, reason="stop"))
+                await captured_bus.close_session(captured_sid)
 
-            await runtime.create_subagent(
-                session.id,
-                agent_info,
-                "Do it",
-                todo_id=None,
-            )
+            mock_instance.run = AsyncMock(side_effect=_run_mock)
+
+            async def _run_and_collect():
+                async def _subagent_and_close():
+                    try:
+                        return await runtime.create_subagent(
+                            session.id,
+                            agent_info,
+                            "Do it",
+                            todo_id=None,
+                        )
+                    finally:
+                        await bus.close_session(session.id)
+
+                async with bus.subscribe(session.id) as stream:
+                    task = asyncio.create_task(_subagent_and_close())
+                    try:
+                        async for event in stream:
+                            events.append(event)
+                    finally:
+                        await task
+
+            await _run_and_collect()
 
         from laffyhand.core.models import TodoUpdate as TodoUpdateEvent
 

@@ -2,8 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import copy
-from collections.abc import Awaitable, Callable
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from loguru import logger
 
@@ -21,7 +20,7 @@ class SessionStateStore:
         self._pending_permissions: dict[
             str, tuple[asyncio.Event, str, str, bool | None, str | None]
         ] = {}
-        self._event_sinks: dict[str, Callable[[Any], Awaitable[None]]] = {}
+
 
     # ── State access ──────────────────────────────────────────
 
@@ -51,23 +50,6 @@ class SessionStateStore:
         self,
     ) -> dict[str, tuple[asyncio.Event, str, str, bool | None, str | None]]:
         return self._pending_permissions
-
-    # ── Event sinks ───────────────────────────────────────────
-
-    def set_event_sink(
-        self, session_id: str, sink: Callable[[Any], Awaitable[None]]
-    ) -> None:
-        self._event_sinks[session_id] = sink
-
-    def pop_event_sink(
-        self, session_id: str
-    ) -> Callable[[Any], Awaitable[None]] | None:
-        return self._event_sinks.pop(session_id, None)
-
-    def get_event_sink(
-        self, session_id: str
-    ) -> Callable[[Any], Awaitable[None]] | None:
-        return self._event_sinks.get(session_id)
 
     # ── Session lifecycle ─────────────────────────────────────
 

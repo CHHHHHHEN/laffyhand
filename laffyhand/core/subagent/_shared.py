@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any
 
+from laffyhand.core.event_bus import SessionEventBus
 from laffyhand.core.models import (
     Compacting,
     ReasoningDelta,
@@ -76,42 +76,52 @@ async def build_subagent_state(
 async def map_event_to_subagent_delta(
     task_id: str,
     event: Any,
-    sink: Callable[[Any], Awaitable[None]],
+    event_bus: SessionEventBus,
+    parent_session_id: str,
 ) -> int:
     if isinstance(event, TextDelta):
-        await sink(SubAgentDelta(id=task_id, kind="text", content=event.text))
+        await event_bus.publish(
+            parent_session_id,
+            SubAgentDelta(id=task_id, kind="text", content=event.text),
+        )
     elif isinstance(event, ReasoningDelta):
-        await sink(SubAgentDelta(id=task_id, kind="reasoning", content=event.text))
+        await event_bus.publish(
+            parent_session_id,
+            SubAgentDelta(id=task_id, kind="reasoning", content=event.text),
+        )
     elif isinstance(event, ToolCall):
-        await sink(
+        await event_bus.publish(
+            parent_session_id,
             SubAgentDelta(
                 id=task_id,
                 kind="tool",
                 tool_name=event.tool_name,
                 tool_input=event.args,
-            )
+            ),
         )
         return 1
     elif isinstance(event, ToolResult):
-        await sink(
+        await event_bus.publish(
+            parent_session_id,
             SubAgentDelta(
                 id=task_id,
                 kind="tool_result",
                 tool_name=event.name,
                 content=event.result,
-            )
+            ),
         )
     elif isinstance(event, ToolError):
-        await sink(
+        await event_bus.publish(
+            parent_session_id,
             SubAgentDelta(
                 id=task_id,
                 kind="tool_result",
                 tool_name=event.name,
                 content=event.message,
-            )
+            ),
         )
     elif isinstance(
         event, (StepStart, TextStart, TextEnd, ReasoningStart, ReasoningEnd, Compacting)
     ):
-        await sink(event)
+        await event_bus.publish(parent_session_id, event)
     return 0

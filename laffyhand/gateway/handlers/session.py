@@ -310,23 +310,20 @@ async def handle_session_subscribe(
     if state is None:
         raise ValueError(f"Session not found: {session_id}")
 
-    queue = await runtime.session_event_bus.subscribe(session_id)
-
     logger.debug(f"Session subscribe started for {session_id} (conn={conn_id})")
 
     try:
-        while True:
-            event = await queue.get()
-            if event is None:
-                break
-            notif = Notification(method="event", params=event)
-            try:
-                await transport.send(notif.json())
-            except Exception:
-                logger.debug(
-                    f"Session subscribe transport closed for {session_id} (conn={conn_id})"
-                )
-                break
+        async with runtime.session_event_bus.subscribe(session_id) as stream:
+            async for event in stream:
+                params = event.model_dump(exclude_none=True)
+                notif = Notification(method="event", params=params)
+                try:
+                    await transport.send(notif.json())
+                except Exception:
+                    logger.debug(
+                        f"Session subscribe transport closed for {session_id} (conn={conn_id})"
+                    )
+                    break
     except asyncio.CancelledError:
         logger.info(f"Session subscribe cancelled for {session_id} (conn={conn_id})")
         raise
@@ -335,5 +332,4 @@ async def handle_session_subscribe(
             f"Session subscribe error for {session_id} (conn={conn_id})"
         )
     finally:
-        await runtime.session_event_bus.unsubscribe(session_id, queue)
         logger.debug(f"Session subscribe ended for {session_id} (conn={conn_id})")

@@ -11,6 +11,7 @@ from laffyhand.core.models import (
     SessionID,
     SessionUsage,
 )
+from laffyhand.core.event_bus import SessionEventBus
 from laffyhand.core.loop import AgentTurn, TurnContext
 from laffyhand.llm.facade import LLM
 from laffyhand.core.tools.registry import ToolRegistry
@@ -84,7 +85,8 @@ class TestAgentLoopAssistantMessage(unittest.TestCase):
 
         async def _collect():
             nonlocal events
-            async for event in AgentTurn(
+            bus = SessionEventBus()
+            turn = AgentTurn(
                 state,
                 llm,
                 self.tool_registry,
@@ -95,8 +97,21 @@ class TestAgentLoopAssistantMessage(unittest.TestCase):
                 ),
                 retry_config=retry_config,
                 max_steps=max_steps,
-            ).run():
-                events.append(event)
+                event_bus=bus,
+                session_id="test",
+            )
+
+            async def _run_and_close():
+                await turn.run()
+                await bus.close_session("test")
+
+            async with bus.subscribe("test") as stream:
+                task = asyncio.create_task(_run_and_close())
+                try:
+                    async for event in stream:
+                        events.append(event)
+                finally:
+                    await task
             return state
 
         result = asyncio.run(_collect())
@@ -211,15 +226,29 @@ class TestAgentLoopAssistantMessage(unittest.TestCase):
             session_id=SessionID("test"),
             usage=SessionUsage(context_size=100_000),
         )
-        events = []
+        events: list = []
         async def _collect():
             nonlocal events
-            async for event in AgentTurn(
+            bus = SessionEventBus()
+            turn = AgentTurn(
                 state, llm, self.tool_registry,
                 compaction_config=CompactionConfig(tail_turns=1, auto_continue=False, prune=False),
                 retry_config=_FAST_RETRY, max_steps=1,
-            ).run():
-                events.append(event)
+                event_bus=bus,
+                session_id="test",
+            )
+
+            async def _run_and_close():
+                await turn.run()
+                await bus.close_session("test")
+
+            async with bus.subscribe("test") as stream:
+                task = asyncio.create_task(_run_and_close())
+                try:
+                    async for event in stream:
+                        events.append(event)
+                finally:
+                    await task
             return state
         result = asyncio.run(_collect())
         msgs = [m for m in result.messages if isinstance(m, AssistantMessage)]
@@ -310,6 +339,7 @@ class TestAgentTurn(unittest.TestCase):
 
         async def _collect():
             nonlocal events
+            bus = SessionEventBus()
             turn = AgentTurn(
                 state,
                 llm,
@@ -321,9 +351,21 @@ class TestAgentTurn(unittest.TestCase):
                 ),
                 retry_config=retry_config,
                 max_steps=max_steps,
+                event_bus=bus,
+                session_id="test",
             )
-            async for event in turn.run():
-                events.append(event)
+
+            async def _run_and_close():
+                await turn.run()
+                await bus.close_session("test")
+
+            async with bus.subscribe("test") as stream:
+                task = asyncio.create_task(_run_and_close())
+                try:
+                    async for event in stream:
+                        events.append(event)
+                finally:
+                    await task
             return state
 
         result = asyncio.run(_collect())

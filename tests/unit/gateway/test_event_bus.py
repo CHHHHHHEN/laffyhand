@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any
 
 import pytest
 
 from laffyhand.core.event_bus import SessionEventBus
+from laffyhand.core.models import TextDelta
 
 
 @pytest.fixture
@@ -16,82 +16,91 @@ def bus() -> SessionEventBus:
 class TestSessionEventBus:
     @pytest.mark.anyio
     async def test_subscribe_and_publish(self, bus: SessionEventBus) -> None:
-        q = await bus.subscribe("sess-1")
-        await bus.publish("sess-1", {"type": "text-delta", "text": "hello"})
+        async with bus.subscribe("sess-1") as stream:
+            await bus.publish(
+                "sess-1", TextDelta(id="1", text="hello")
+            )
 
-        result = await asyncio.wait_for(q.get(), timeout=1)
-        assert result == {"type": "text-delta", "text": "hello"}
+            result = await asyncio.wait_for(stream.__anext__(), timeout=1)
+            assert isinstance(result, TextDelta)
+            assert result.text == "hello"
 
     @pytest.mark.anyio
     async def test_publish_fan_out_to_multiple_subscribers(
         self, bus: SessionEventBus,
     ) -> None:
-        q1 = await bus.subscribe("sess-1")
-        q2 = await bus.subscribe("sess-1")
+        async def collect(sid: str) -> list:
+            results = []
+            async with bus.subscribe(sid) as stream:
+                results.append(await asyncio.wait_for(stream.__anext__(), timeout=1))
+                results.append(await asyncio.wait_for(stream.__anext__(), timeout=1))
+            return results
 
-        await bus.publish("sess-1", {"type": "finish"})
+        async def publish() -> None:
+            await asyncio.sleep(0.05)
+            await bus.publish("sess-1", TextDelta(id="1", text="first"))
+            await bus.publish("sess-1", TextDelta(id="1", text="second"))
 
-        r1 = await asyncio.wait_for(q1.get(), timeout=1)
-        r2 = await asyncio.wait_for(q2.get(), timeout=1)
-        assert r1 == {"type": "finish"}
-        assert r2 == {"type": "finish"}
+        async with asyncio.TaskGroup() as tg:
+            collector = tg.create_task(collect("sess-1"))
+            tg.create_task(publish())
+
+        assert len(collector.result()) == 2
+        assert collector.result()[0].text == "first"
+        assert collector.result()[1].text == "second"
 
     @pytest.mark.anyio
     async def test_publish_only_target_session(self, bus: SessionEventBus) -> None:
-        q1 = await bus.subscribe("sess-1")
-        q2 = await bus.subscribe("sess-2")
+        async with bus.subscribe("sess-1") as s1:
+            async with bus.subscribe("sess-2") as s2:
+                await bus.publish(
+                    "sess-1", TextDelta(id="1", text="hello")
+                )
 
-        await bus.publish("sess-1", {"type": "text-delta", "text": "hello"})
+                r1 = await asyncio.wait_for(s1.__anext__(), timeout=1)
+                assert isinstance(r1, TextDelta)
+                assert r1.text == "hello"
 
-        r1 = await asyncio.wait_for(q1.get(), timeout=1)
-        assert r1 == {"type": "text-delta", "text": "hello"}
-
-        with pytest.raises(asyncio.TimeoutError):
-            await asyncio.wait_for(q2.get(), timeout=0.1)
+                with pytest.raises(asyncio.TimeoutError):
+                    await asyncio.wait_for(s2.__anext__(), timeout=0.1)
 
     @pytest.mark.anyio
     async def test_close_session_sends_sentinel(self, bus: SessionEventBus) -> None:
-        q = await bus.subscribe("sess-1")
-        await bus.close_session("sess-1")
+        async with bus.subscribe("sess-1") as stream:
+            await bus.close_session("sess-1")
 
-        result = await asyncio.wait_for(q.get(), timeout=1)
-        assert result is None
-
-    @pytest.mark.anyio
-    async def test_close_session_removes_queues(self, bus: SessionEventBus) -> None:
-        await bus.subscribe("sess-1")
-        await bus.close_session("sess-1")
-        assert await bus.has_subscribers("sess-1") is False
+            with pytest.raises(StopAsyncIteration):
+                await asyncio.wait_for(stream.__anext__(), timeout=1)
 
     @pytest.mark.anyio
-    async def test_unsubscribe_removes_queue(self, bus: SessionEventBus) -> None:
-        q = await bus.subscribe("sess-1")
-        await bus.unsubscribe("sess-1", q)
+    async def test_close_session_removes_subscribers(
+        self, bus: SessionEventBus,
+    ) -> None:
+        async with bus.subscribe("sess-1"):
+            pass
+
         assert await bus.has_subscribers("sess-1") is False
 
     @pytest.mark.anyio
     async def test_has_subscribers(self, bus: SessionEventBus) -> None:
         assert await bus.has_subscribers("sess-1") is False
 
-        await bus.subscribe("sess-1")
-        assert await bus.has_subscribers("sess-1") is True
+        async with bus.subscribe("sess-1"):
+            assert await bus.has_subscribers("sess-1") is True
 
     @pytest.mark.anyio
     async def test_close_session_unblocks_waiting_subscriber(
         self, bus: SessionEventBus,
     ) -> None:
-        q = await bus.subscribe("sess-1")
-
-        async def delayed_close() -> None:
+        async def close() -> None:
             await asyncio.sleep(0.05)
             await bus.close_session("sess-1")
 
-        async def reader() -> dict[str, Any] | None:
-            return await q.get()
+        async def read() -> None:
+            async with bus.subscribe("sess-1") as stream:
+                with pytest.raises(StopAsyncIteration):
+                    await asyncio.wait_for(stream.__anext__(), timeout=5)
 
         async with asyncio.TaskGroup() as tg:
-            t1 = tg.create_task(reader())
-            tg.create_task(delayed_close())
-            result = await t1
-
-        assert result is None
+            tg.create_task(close())
+            tg.create_task(read())

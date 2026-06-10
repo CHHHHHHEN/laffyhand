@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 import uuid
-from collections.abc import Awaitable, Callable
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
+from laffyhand.core.event_bus import SessionEventBus
 from laffyhand.core.models import (
     StepFinish,
     SubAgentEnd,
@@ -30,7 +32,6 @@ MAX_SUBAGENT_DEPTH = 3
 
 
 class _SubagentCtx:
-    """Internal per-session subagent nesting context."""
     def __init__(self) -> None:
         self.subagent_id: str | None = None
         self.subagent_depth: int = 0
@@ -45,15 +46,14 @@ class SubagentOrchestrator:
         compaction_config: CompactionConfig,
         todo_manager: TodoManager | None = None,
         *,
-        event_sink_provider: Callable[[str], Callable[[Any], Awaitable[None]] | None]
-        | None = None,
+        event_bus: SessionEventBus,
     ) -> None:
         self.session_manager = session_manager
         self.tool_registry = tool_registry
         self._llm_provider = llm_provider
         self.compaction_config = compaction_config
         self.todo_manager = todo_manager
-        self._event_sink_provider = event_sink_provider
+        self._event_bus = event_bus
         self._session_contexts: dict[str, _SubagentCtx] = {}
 
     def _get_context(self, session_id: str) -> _SubagentCtx:
@@ -63,6 +63,9 @@ class SubagentOrchestrator:
             self._session_contexts[session_id] = ctx
         return ctx
 
+    async def _publish(self, parent_session_id: str, event: Any) -> None:
+        await self._event_bus.publish(parent_session_id, event)
+
     async def create_subagent(
         self,
         parent_session_id: str,
@@ -70,8 +73,6 @@ class SubagentOrchestrator:
         prompt: str,
         description: str = "",
         todo_id: str | None = None,
-        *,
-        event_sink: Callable[[Any], Awaitable[None]] | None = None,
     ) -> str:
         depth = self.session_manager.get_depth(parent_session_id)
         if depth > MAX_SUBAGENT_DEPTH:
@@ -91,13 +92,7 @@ class SubagentOrchestrator:
                 parent_session_id,
                 TodoStatusUpdate(status="in_progress"),
             )
-            sink = event_sink or (
-                self._event_sink_provider(parent_session_id)
-                if self._event_sink_provider
-                else None
-            )
-            if sink:
-                await sink(TodoUpdateEvent())
+            await self._publish(parent_session_id, TodoUpdateEvent())
 
         prev_subagent_id = ctx.subagent_id
         prev_subagent_depth = ctx.subagent_depth
@@ -109,12 +104,6 @@ class SubagentOrchestrator:
                 parent_session_id,
                 agent_info,
                 prompt,
-                event_sink=event_sink
-                or (
-                    self._event_sink_provider(parent_session_id)
-                    if self._event_sink_provider
-                    else None
-                ),
                 task_id=task_id,
                 parent_subagent_id=parent_subagent_id,
                 subagent_depth=subagent_depth,
@@ -130,13 +119,7 @@ class SubagentOrchestrator:
                 parent_session_id,
                 TodoStatusUpdate(status="completed"),
             )
-            sink = event_sink or (
-                self._event_sink_provider(parent_session_id)
-                if self._event_sink_provider
-                else None
-            )
-            if sink:
-                await sink(TodoUpdateEvent())
+            await self._publish(parent_session_id, TodoUpdateEvent())
 
         return result
 
@@ -145,7 +128,6 @@ class SubagentOrchestrator:
         parent_session_id: str,
         agent_info: AgentInfo,
         prompt: str,
-        event_sink: Callable[[Any], Awaitable[None]] | None = None,
         task_id: str = "",
         parent_subagent_id: str | None = None,
         subagent_depth: int = 0,
@@ -160,26 +142,24 @@ class SubagentOrchestrator:
             self.tool_registry,
         )
 
+        child_session_id = str(child_state.session_id)
         llm = self._llm_provider(parent_session_id)
 
-        if event_sink:
-            await event_sink(
-                SubAgentStart(
-                    id=task_id,
-                    parent_id=parent_subagent_id,
-                    agent_type=agent_info.name,
-                    description=description or prompt[:80],
-                    prompt=prompt,
-                    depth=subagent_depth,
-                )
-            )
-
-        result_content = ""
-        tool_call_count = 0
+        await self._publish(
+            parent_session_id,
+            SubAgentStart(
+                id=task_id,
+                parent_id=parent_subagent_id,
+                agent_type=agent_info.name,
+                description=description or prompt[:80],
+                prompt=prompt,
+                depth=subagent_depth,
+            ),
+        )
 
         from laffyhand.core.loop import AgentTurn
 
-        async for event in AgentTurn(
+        turn = AgentTurn(
             child_state,
             llm,
             child_registry,
@@ -188,16 +168,27 @@ class SubagentOrchestrator:
             ),
             max_steps=agent_info.max_steps,
             session_manager=self.session_manager,
-        ).run():
-            if event_sink:
-                tool_call_count += await map_event_to_subagent_delta(
-                    task_id, event, event_sink
-                )
-            if isinstance(event, StepFinish):
-                for msg in reversed(child_state.messages):
-                    if isinstance(msg, AssistantMessage) and msg.content:
-                        result_content = msg.content
-                        break
+            event_bus=self._event_bus,
+            session_id=child_session_id,
+        )
+
+        result_content = ""
+        tool_call_count = 0
+
+        async with self._event_bus.subscribe(child_session_id) as stream:
+            task = asyncio.create_task(turn.run())
+            try:
+                async for event in stream:
+                    tool_call_count += await map_event_to_subagent_delta(
+                        task_id, event, self._event_bus, parent_session_id
+                    )
+                    if isinstance(event, StepFinish):
+                        for msg in reversed(child_state.messages):
+                            if isinstance(msg, AssistantMessage) and msg.content:
+                                result_content = msg.content
+                                break
+            finally:
+                await task
 
         assert child_state.session_id is not None
         self.session_manager.save_state(child_state.session_id, child_state)
@@ -207,17 +198,17 @@ class SubagentOrchestrator:
         if not result:
             result = "[No output]"
 
-        if event_sink:
-            step_usage = child_state.usage
-            await event_sink(
-                SubAgentEnd(
-                    id=task_id,
-                    status="completed",
-                    summary=result[:200],
-                    tool_count=tool_call_count,
-                    input_tokens=step_usage.total_input,
-                    output_tokens=step_usage.total_output,
-                )
-            )
+        step_usage = child_state.usage
+        await self._publish(
+            parent_session_id,
+            SubAgentEnd(
+                id=task_id,
+                status="completed",
+                summary=result[:200],
+                tool_count=tool_call_count,
+                input_tokens=step_usage.total_input,
+                output_tokens=step_usage.total_output,
+            ),
+        )
 
         return f"<task>\n{result}\n</task>"

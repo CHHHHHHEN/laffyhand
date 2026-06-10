@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
+from collections.abc import AsyncIterator, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -89,7 +89,7 @@ class AgentRuntime:
             llm_provider=self._llm_for_session,
             compaction_config=self.compaction_config,
             todo_manager=self.todo_manager,
-            event_sink_provider=lambda sid: self._session_store.get_event_sink(sid),
+            event_bus=self.session_event_bus,
         )
 
         self._memory_service = (
@@ -121,6 +121,7 @@ class AgentRuntime:
             max_steps=self.max_steps,
             title_scheduler=self._schedule_title_generation,
             session_store=self._session_store,
+            event_bus=self.session_event_bus,
         )
 
     def update_sessions_workspace_env(self, new_workspace: str) -> None:
@@ -245,11 +246,8 @@ class AgentRuntime:
     async def run_agent_turn(
         self,
         session_id: str,
-        event_sink: Callable[[Any], Awaitable[None]] | None = None,
     ) -> AsyncIterator[AgentEvent]:
-        async for event in self.loop_orchestrator.run_agent_turn(
-            session_id, event_sink=event_sink
-        ):
+        async for event in self.loop_orchestrator.run_agent_turn(session_id):
             yield event
 
     async def compact_session(self, session_id: str) -> str | None:

@@ -15,6 +15,7 @@ from laffyhand.core.models import (
     SessionUsage,
 )
 
+from laffyhand.core.event_bus import SessionEventBus
 from laffyhand.core.loop import AgentTurn
 from laffyhand.core.tools.base import BaseTool
 from laffyhand.core.tools.registry import ToolRegistry
@@ -64,11 +65,37 @@ class TestAgentLoopE2E(unittest.TestCase):
             usage=SessionUsage(context_size=context_size),
         )
 
-    def _collect(self, gen):
-        async def _run():
-            return [e async for e in gen]
+    def _run_and_collect(self, state, llm, registry, compaction_config, max_steps=None):
+        bus = SessionEventBus()
+        kwargs = dict(
+            event_bus=bus,
+            session_id="test",
+        )
+        if max_steps is not None:
+            kwargs["max_steps"] = max_steps
+        turn = AgentTurn(
+            state, llm, registry, compaction_config,
+            **kwargs,
+        )
+        events = []
 
-        return asyncio.run(_run())
+        async def _run():
+            nonlocal events
+
+            async def _run_and_close():
+                await turn.run()
+                await bus.close_session("test")
+
+            async with bus.subscribe("test") as stream:
+                task = asyncio.create_task(_run_and_close())
+                try:
+                    async for event in stream:
+                        events.append(event)
+                finally:
+                    await task
+
+        asyncio.run(_run())
+        return events
 
     def test_simple_text_response(self):
         """LLM responds with text and finishes -> loop exits after one turn."""
@@ -85,9 +112,7 @@ class TestAgentLoopE2E(unittest.TestCase):
             ]
         )
         state = self._make_state()
-        events = self._collect(
-            AgentTurn(state, llm, self.registry, CompactionConfig(prune=False)).run()
-        )
+        events = self._run_and_collect(state, llm, self.registry, CompactionConfig(prune=False))
         self.assertEqual(state.step, 1)
         self.assertEqual(state.turn_count, 1)
         self.assertGreater(len(events), 0)
@@ -117,9 +142,7 @@ class TestAgentLoopE2E(unittest.TestCase):
             ]
         )
         state = self._make_state()
-        events = self._collect(
-            AgentTurn(state, llm, self.registry, CompactionConfig(prune=False)).run()
-        )
+        events = self._run_and_collect(state, llm, self.registry, CompactionConfig(prune=False))
         self.assertEqual(state.step, 2)
         self.assertEqual(state.turn_count, 2)
         types = [e.type for e in events]
@@ -139,11 +162,7 @@ class TestAgentLoopE2E(unittest.TestCase):
         ]
         llm = FakeLLM([tool_event, tool_event, tool_event])
         state = self._make_state()
-        self._collect(
-            AgentTurn(
-                state, llm, self.registry, CompactionConfig(prune=False), max_steps=2
-            ).run()
-        )
+        self._run_and_collect(state, llm, self.registry, CompactionConfig(prune=False), max_steps=2)
         self.assertEqual(state.step, 3)
         self.assertEqual(state.turn_count, 2)
 
@@ -162,9 +181,7 @@ class TestAgentLoopE2E(unittest.TestCase):
         state = self._make_state()
         self.assertEqual(state.step, 0)
         self.assertEqual(state.turn_count, 0)
-        self._collect(
-            AgentTurn(state, llm, self.registry, CompactionConfig(prune=False)).run()
-        )
+        self._run_and_collect(state, llm, self.registry, CompactionConfig(prune=False))
         self.assertEqual(state.step, 1)
         self.assertEqual(state.turn_count, 1)
 
@@ -193,9 +210,7 @@ class TestAgentLoopE2E(unittest.TestCase):
             ]
         )
         state = self._make_state()
-        self._collect(
-            AgentTurn(state, llm, self.registry, CompactionConfig(prune=False)).run()
-        )
+        self._run_and_collect(state, llm, self.registry, CompactionConfig(prune=False))
         tool_msgs = [m for m in state.messages if isinstance(m, ToolMessage)]
         self.assertEqual(len(tool_msgs), 1)
         self.assertEqual(tool_msgs[0].tool_call_id, "call_1")

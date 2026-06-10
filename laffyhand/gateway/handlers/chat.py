@@ -147,13 +147,14 @@ class ChatStreamSession:
                     leftover_steer = state.pending_steer
                     state.pending_steer = None
 
-        done_params = Finish(
+        done_event = Finish(
             reason=self._finish_reason,
             usage=self._usage_info,
             session_id=self._session_id,
             session_usage=state.usage.model_dump() if state and state.usage else None,
             leftover_steer=leftover_steer,
-        ).model_dump(exclude_none=True)
+        )
+        done_params = done_event.model_dump(exclude_none=True)
         done = Notification(method="event", params=done_params)
         try:
             await self._transport.send(done.json())
@@ -161,7 +162,6 @@ class ChatStreamSession:
             logger.warning(
                 "Failed to send finish event to client (connection may be closed)"
             )
-        await self._runtime.session_event_bus.publish(self._session_id, done_params)
         await self._runtime.session_event_bus.close_session(self._session_id)
 
     async def _stream(self) -> None:
@@ -169,12 +169,10 @@ class ChatStreamSession:
         try:
             async for event in self._runtime.run_agent_turn(
                 session_id=self._session_id,
-                event_sink=self._event_sink,
             ):
                 params = event.model_dump(exclude_none=True)
                 notif = Notification(method="event", params=params)
                 await self._transport.send(notif.json())
-                await self._runtime.session_event_bus.publish(self._session_id, params)
 
                 if isinstance(event, StepFinish):
                     self._finish_reason = event.reason
@@ -204,7 +202,6 @@ class ChatStreamSession:
                 cancel_params = {"type": "cancelled", "data": "Stream cancelled"}
                 cancel = Notification(method="event", params=cancel_params)
                 await self._transport.send(cancel.json())
-                await self._runtime.session_event_bus.publish(self._session_id, cancel_params)
 
     async def _permission_callback(
         self, permission: str, pattern: str
@@ -237,13 +234,6 @@ class ChatStreamSession:
             return (bool(result), reason)
         finally:
             self._runtime.session_store.pending_permissions.pop(request_id, None)
-
-    async def _event_sink(self, event: Any) -> None:
-        params = event.model_dump(exclude_none=True)
-        notif = Notification(method="event", params=params)
-        await self._transport.send(notif.json())
-        await self._runtime.session_event_bus.publish(self._session_id, params)
-
 
 async def handle_chat_stream(
     runtime: AgentRuntime,
